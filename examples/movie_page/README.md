@@ -12,6 +12,16 @@ The Markdown body reads like a compact movie page on a website. It repeats the t
 description, details table, and Rotten Tomatoes critics/audience ratings in a friendly
 format, but the YAML frontmatter is the authoritative structure.
 
+The example is meant to be copied from the files in this directory or printed through
+the docs CLI:
+
+```bash
+uv run softschema docs example
+uv run softschema docs example-artifact
+uv run softschema docs example-model
+uv run softschema docs example-host
+```
+
 Validate it with:
 
 ```bash

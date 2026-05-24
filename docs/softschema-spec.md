@@ -146,7 +146,8 @@ Schema sidecars are implementation artifacts. They are not normally referenced f
 authored document metadata.
 
 Schema sidecars are not data sidecars. A data sidecar stores payload values outside the
-frontmatter. This spec allows projects to declare data sidecars by convention, but the
+frontmatter. This spec allows projects to declare data sidecars by convention, but it
+does not standardize a data-sidecar discovery mechanism in the first version. The
 default artifact shape keeps consumed values in frontmatter.
 
 ## Source of Truth
@@ -154,10 +155,17 @@ default artifact shape keeps consumed values in frontmatter.
 Structured consumers should read, in order of project convention:
 
 1. YAML frontmatter payload values
-2. Declared YAML data sidecars
+2. Declared YAML data sidecars, when the host project defines that convention
 3. Pure data files
 
 Markdown body prose and tables are reader-facing. They can mirror structured values, but
 they are not authoritative.
+
+## Embedded Docs and Examples
+
+Implementations may bundle the guide, spec, skill instructions, and examples for agent
+discovery. Bundling docs does not make example files a scaffolding API. Examples are
+copyable references unless a specific implementation explicitly provides project
+mutation commands.
 
 <!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->

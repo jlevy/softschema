@@ -52,6 +52,21 @@ reference.
 spec, then the example. This keeps the agent entry points short while making the repo
 usable as a transferable skill.
 
+The CLI also bundles those docs and examples:
+
+```bash
+softschema docs --list
+softschema docs guide
+softschema docs spec
+softschema docs example-artifact
+softschema skill --brief
+```
+
+This follows the CLI-as-skill pattern: a short skill file can tell an agent which
+command to run, and the CLI can print progressively larger reference material only when
+needed. Example files remain copyable references. The CLI does not include an
+`init-example` or other scaffolding command in the first release.
+
 ## Binding Semantics
 
 `SchemaBinding` names one artifact contract:
@@ -74,6 +89,10 @@ are override and disambiguation flags.
 
 The CLI still needs a validation implementation, such as `--model` or `--schema`,
 because document metadata identifies the contract but does not import code.
+
+`softschema docs` and `softschema skill` are informational commands. They print bundled
+Markdown resources to stdout so agents in installed environments can discover the guide,
+spec, skill, and copyable examples without knowing the source checkout layout.
 
 ## Validation
 
@@ -127,6 +146,11 @@ store artifact payload values outside the Markdown frontmatter. The first Python
 does not implement generic data-sidecar loading; callers should keep consumed values in
 frontmatter unless a host project owns a clearer sidecar convention.
 
+The package depends on `frontmatter-format` for Markdown frontmatter and YAML reading.
+That dependency owns frontmatter mechanics; softschema owns the contract, envelope,
+binding, and validation semantics. Do not treat `frontmatter-format` as a generic
+softschema data-sidecar runtime.
+
 ## Dependency Boundary
 
 The standalone package depends only on the packages declared in `pyproject.toml`. It
@@ -147,12 +171,15 @@ provides the contract and validation layer those hosts can call at file boundari
 - Keep TypeScript/Zod as a future path, represented only by a README stub for now.
 - Treat invalid `softschema:` metadata as a validation error.
 - Do not carry private compatibility shims into the public repo.
+- Bundle guide/spec/example/skill resources into the Python wheel and expose them with
+  informational CLI commands.
+- Keep examples as copyable source files, not generated scaffolding.
 
 ## Deferred
 
 - TypeScript/Zod implementation.
 - Sidecar data loading beyond simple JSON Schema sidecars.
-- Agent tool APIs beyond the CLI and skill instructions.
+- Agent tool APIs beyond the CLI docs and skill instructions.
 - `softschema init-example` or other artifact scaffolding commands.
 - Generic process graph or structure-report generation.
 - Web docs.

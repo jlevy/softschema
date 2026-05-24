@@ -97,6 +97,18 @@ uv run softschema validate examples/movie_page/spirited-away.md \
 envelope key from the YAML by default. Use `--contract`, `--status`, or `--envelope`
 only to override or disambiguate.
 
+Read the bundled docs from the CLI:
+
+```bash
+uv run softschema docs --list
+uv run softschema docs guide
+uv run softschema docs example-artifact
+uv run softschema skill --brief
+```
+
+The examples are plain files under `examples/`. The CLI can print them so an agent or
+human can copy from them, but it does not scaffold or mutate another project.
+
 Compile the example schema sidecar:
 
 ```bash

@@ -15,6 +15,16 @@ Read these repo docs when available:
 - `docs/softschema-spec.md` for the exact language-neutral artifact format.
 - `examples/movie_page/README.md` for a complete Python-backed example.
 
+If the Python CLI is installed, load the same material with:
+
+```bash
+softschema skill --brief
+softschema docs guide
+softschema docs spec
+softschema docs example
+softschema docs example-artifact
+```
+
 ## Workflow
 
 1. Identify the artifact and the values downstream consumers actually need.
@@ -47,6 +57,8 @@ most context in readable Markdown.
   summary in frontmatter when a data sidecar is used.
 - Treat schema sidecars and data sidecars as different things: schema sidecars describe
   validation contracts; data sidecars hold payload values.
+- The first Python package supports schema sidecars. Generic data-sidecar loading is a
+  host convention, not built-in softschema behavior.
 
 ## Rules
 
@@ -61,6 +73,9 @@ most context in readable Markdown.
 - Do not harden everything at once. Promote the fields that are actually consumed.
 - Keep README content as a short subset of the guide, and put exact format rules in the
   spec.
+- Keep examples copyable. Use `softschema docs example-artifact` or the files under
+  `examples/` as references; do not scaffold a target project unless the user explicitly
+  asks for that workflow.
 
 ## Review Checklist
 
@@ -81,6 +96,8 @@ Before finishing a softschema change, check:
 uv run softschema inspect path/to/artifact.md
 uv run softschema validate path/to/artifact.md --model package.module:Model --schema schemas/contract.schema.yaml
 uv run softschema compile package.module:Model --contract example:Contract/v1 --out schemas/contract.schema.yaml
+uv run softschema docs --list
+uv run softschema skill --brief
 ```
 
 <!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->

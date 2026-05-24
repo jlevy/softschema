@@ -19,7 +19,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "frontmatter-format",
+    "frontmatter-format>=0.3.0",
     "jsonschema>=4.20",
     "pydantic>=2",
     "pyyaml",
@@ -58,12 +58,25 @@ bump = true
 [tool.hatch.build.targets.wheel]
 packages = ["packages/python/src/softschema"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"README.md" = "softschema/resources/README.md"
+"AGENTS.md" = "softschema/resources/AGENTS.md"
+"docs" = "softschema/resources/docs"
+"examples/movie_page/README.md" = "softschema/resources/examples/movie_page/README.md"
+"examples/movie_page/spirited-away.md" = "softschema/resources/examples/movie_page/spirited-away.md"
+"examples/movie_page/model.py" = "softschema/resources/examples/movie_page/model.py"
+"examples/movie_page/host_integration.py" = "softschema/resources/examples/movie_page/host_integration.py"
+"examples/movie_page/movie-page.schema.yaml" = "softschema/resources/examples/movie_page/movie-page.schema.yaml"
+"skills" = "softschema/resources/skills"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "README.md",
+    "AGENTS.md",
     "LICENSE",
     "docs",
     "examples",
+    "packages/python/README.md",
     "packages/python/src",
     "packages/python/tests",
     "packages/typescript/README.md",

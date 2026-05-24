@@ -111,6 +111,11 @@ record, or a hand-authored validator.
 - Distinguish data sidecars from schema sidecars. Data sidecars hold payload values;
   schema sidecars describe validation contracts.
 
+The first Python package validates the default frontmatter shape, pure YAML artifacts,
+and JSON Schema sidecars. It does not implement a generic data-sidecar loader. A host
+project can still define a data-sidecar convention when payloads become too large for
+frontmatter, but that convention should be explicit and documented by the host.
+
 ## Adoption Path
 
 1. Pick one artifact that humans or agents already write.
@@ -130,6 +135,20 @@ An agent can use this repository in three layers:
 2. Read [Softschema Spec](softschema-spec.md) for the exact artifact format.
 3. Inspect [examples/movie_page](../examples/movie_page/README.md) and the Python
    package when it needs working code.
+
+If the Python CLI is installed, the same material is available without knowing the file
+layout:
+
+```bash
+softschema skill --brief
+softschema docs guide
+softschema docs spec
+softschema docs example
+softschema docs example-artifact
+```
+
+The example commands print copyable reference files. They do not scaffold or mutate a
+target project.
 
 When adding soft schemas to another project, first look for Markdown or YAML artifacts
 whose values are already consumed by code, QA, review, or aggregation. Promote those
@@ -172,6 +191,25 @@ assert result.ok
 The artifact still declares `softschema.contract` for portability and review. The host
 registry decides what that contract means in the running application: a Pydantic model,
 a JSON Schema sidecar, a future Zod schema, or another validator.
+
+## Sidecars
+
+There are two different sidecar ideas:
+
+- Schema sidecars describe validation contracts, usually generated JSON Schema written
+  as YAML.
+- Data sidecars hold artifact payload values outside the Markdown frontmatter.
+
+The Python package supports schema sidecars through `SchemaBinding.schema_path` and the
+`softschema compile` command. It depends on `frontmatter-format` for frontmatter and
+YAML mechanics, but `frontmatter-format` is not treated as a softschema data-sidecar
+runtime.
+
+Use frontmatter for small consumed payloads. Consider a data sidecar only when the
+structured payload is large, machine-generated, or distracting to readers. When a host
+project uses data sidecars, keep routing fields such as `softschema.contract` and a
+short summary in frontmatter, and document exactly how consumers find and validate the
+sidecar.
 
 ## Documentation Shape
 

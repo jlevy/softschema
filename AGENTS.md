@@ -26,6 +26,8 @@ uv sync --all-extras
 uv run python devtools/lint.py --check
 uv run pytest
 uv build
+uv run softschema docs --list
+uv run softschema skill --brief
 ```
 
 When adding a schema, start by identifying the values downstream consumers actually
@@ -38,6 +40,8 @@ Documentation rules:
   present-state descriptions, and enough context for a low-context reader.
 - Keep the README as a short subset of `docs/softschema-guide.md`.
 - Put exact artifact-format rules in `docs/softschema-spec.md`.
+- Keep examples as copyable source files under `examples/`; the CLI may print them, but
+  should not scaffold or mutate projects in the first release.
 - Include the standard documentation footer in repo docs. Do not add it to authored
   softschema example artifacts.
 

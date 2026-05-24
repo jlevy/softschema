@@ -127,6 +127,52 @@ def test_inspect_reports_envelope_keys_and_metadata(
     assert output["metadata"]["status"] == "enforced"
 
 
+def test_docs_list_includes_copyable_example_topics(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = softschema_main(["docs", "--list"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "guide" in output
+    assert "spec" in output
+    assert "example-artifact" in output
+    assert "does not scaffold or mutate projects" in output
+
+
+def test_docs_prints_bundled_guide(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = softschema_main(["docs", "guide"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "# Softschema Guide" in output
+    assert "programming-language agnostic" in output
+    assert "Automation, exactness, and structure are separate axes" in output
+
+
+def test_docs_prints_copyable_movie_artifact(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = softschema_main(["docs", "example-artifact"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "softschema:" in output
+    assert "contract: example.movies:MoviePage/v1" in output
+    assert "# Spirited Away (2001)" in output
+    assert "| Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |" in output
+
+
+def test_skill_brief_points_agents_to_docs_and_rules(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = softschema_main(["skill", "--brief"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "softschema docs guide" in output
+    assert "softschema docs spec" in output
+    assert "Do not parse Markdown body prose or tables" in output
+
+
 def test_validate_overrides_apply_when_frontmatter_lacks_metadata(
     tmp_path: Path, model_module: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

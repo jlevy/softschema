@@ -6,8 +6,9 @@ import argparse
 import importlib
 import json
 import sys
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
+from importlib import resources
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,8 +20,87 @@ from softschema.models import SchemaBinding, Status, parse_document_metadata
 from softschema.validate import validate_artifact
 
 
+@dataclass(frozen=True)
+class ResourceTopic:
+    title: str
+    path: str
+    summary: str
+
+
+DOC_TOPICS: dict[str, ResourceTopic] = {
+    "readme": ResourceTopic("README", "README.md", "Short first-visitor overview."),
+    "guide": ResourceTopic(
+        "Softschema Guide",
+        "docs/softschema-guide.md",
+        "Concepts, mental model, and adoption path.",
+    ),
+    "spec": ResourceTopic(
+        "Softschema Spec",
+        "docs/softschema-spec.md",
+        "Language-neutral artifact format.",
+    ),
+    "design": ResourceTopic(
+        "Design",
+        "docs/design.md",
+        "Python package design decisions.",
+    ),
+    "development": ResourceTopic(
+        "Development",
+        "docs/development.md",
+        "Local development workflow.",
+    ),
+    "installation": ResourceTopic(
+        "Installation",
+        "docs/installation.md",
+        "Installing uv and Python.",
+    ),
+    "publishing": ResourceTopic(
+        "Publishing",
+        "docs/publishing.md",
+        "Release and PyPI workflow.",
+    ),
+    "example": ResourceTopic(
+        "Movie Page Example",
+        "examples/movie_page/README.md",
+        "Copyable example overview.",
+    ),
+    "example-artifact": ResourceTopic(
+        "Movie Page Artifact",
+        "examples/movie_page/spirited-away.md",
+        "Copyable Markdown/YAML artifact.",
+    ),
+    "example-model": ResourceTopic(
+        "Movie Page Model",
+        "examples/movie_page/model.py",
+        "Pydantic model used by the example.",
+    ),
+    "example-host": ResourceTopic(
+        "Movie Page Host Integration",
+        "examples/movie_page/host_integration.py",
+        "Host registry and validation helper.",
+    ),
+    "skill": ResourceTopic(
+        "Softschema Skill",
+        "skills/softschema/SKILL.md",
+        "Portable agent skill instructions.",
+    ),
+    "agents": ResourceTopic(
+        "Agent Instructions",
+        "AGENTS.md",
+        "Repo-level agent instructions.",
+    ),
+}
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="softschema")
+    parser = argparse.ArgumentParser(
+        prog="softschema",
+        description="Validate and explain soft schema Markdown/YAML artifacts.",
+        epilog=(
+            "Agents: run 'softschema skill --brief' for operating guidance, "
+            "or 'softschema docs guide' for the full concept."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate an artifact.")
@@ -46,6 +126,24 @@ def main(argv: list[str] | None = None) -> int:
     inspect_parser = subparsers.add_parser("inspect", help="Inspect artifact metadata.")
     inspect_parser.add_argument("path", type=Path)
     inspect_parser.set_defaults(func=_inspect_cmd)
+
+    docs_parser = subparsers.add_parser("docs", help="Print bundled docs and examples.")
+    docs_parser.add_argument("topic", nargs="?", choices=sorted(DOC_TOPICS))
+    docs_parser.add_argument(
+        "--list",
+        dest="list_topics",
+        action="store_true",
+        help="List bundled documentation topics.",
+    )
+    docs_parser.set_defaults(func=_docs_cmd)
+
+    skill_parser = subparsers.add_parser("skill", help="Print agent-facing guidance.")
+    skill_parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="Print compact skill guidance for constrained contexts.",
+    )
+    skill_parser.set_defaults(func=_skill_cmd)
 
     args = parser.parse_args(argv)
     return args.func(args)
@@ -138,6 +236,22 @@ def _inspect_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def _docs_cmd(args: argparse.Namespace) -> int:
+    if args.list_topics or args.topic is None:
+        _write_text(_docs_listing())
+        return 0
+    _write_text(_read_resource(DOC_TOPICS[args.topic].path))
+    return 0
+
+
+def _skill_cmd(args: argparse.Namespace) -> int:
+    if args.brief:
+        _write_text(_brief_skill_text())
+        return 0
+    _write_text(_read_resource(DOC_TOPICS["skill"].path))
+    return 0
+
+
 def _load_model(spec: str) -> type[BaseModel]:
     module_name, _, attr = spec.partition(":")
     if not module_name or not attr:
@@ -154,6 +268,70 @@ def _load_model(spec: str) -> type[BaseModel]:
     if not isinstance(obj, type) or not issubclass(obj, BaseModel):
         raise TypeError(f"{spec!r} is not a Pydantic BaseModel class")
     return obj
+
+
+def _docs_listing() -> str:
+    lines = [
+        "Available softschema docs:",
+        "",
+    ]
+    width = max(len(name) for name in DOC_TOPICS)
+    for name, topic in sorted(DOC_TOPICS.items()):
+        lines.append(f"  {name.ljust(width)}  {topic.summary}")
+    lines.extend(
+        [
+            "",
+            "Run `softschema docs <topic>` to print a document.",
+            "Copy examples from the printed docs or from the repository files; "
+            "the CLI does not scaffold or mutate projects.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _brief_skill_text() -> str:
+    return """# Softschema Skill Brief
+
+Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
+consume some values reliably.
+
+- Read `softschema docs guide` for the mental model.
+- Read `softschema docs spec` for the exact artifact format.
+- Inspect `softschema docs example` and `softschema docs example-artifact` for the
+  copyable movie example.
+- Treat YAML/frontmatter as authoritative.
+- Do not parse Markdown body prose or tables for consumed values.
+- Use `softschema.contract` to name the payload contract.
+- Keep examples copyable; do not scaffold or mutate a target project unless the user
+  explicitly asks for that workflow.
+"""
+
+
+def _read_resource(relative_path: str) -> str:
+    resource_path = resources.files("softschema").joinpath("resources", *Path(relative_path).parts)
+    try:
+        return resource_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        pass
+
+    dev_path = _dev_repo_root() / relative_path
+    if dev_path.is_file():
+        return dev_path.read_text(encoding="utf-8")
+
+    raise FileNotFoundError(f"bundled softschema resource not found: {relative_path}")
+
+
+def _dev_repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file() and (parent / "docs").is_dir():
+            return parent
+    return Path(__file__).resolve().parents[4]
+
+
+def _write_text(text: str) -> None:
+    sys.stdout.write(text)
+    if not text.endswith("\n"):
+        sys.stdout.write("\n")
 
 
 def _json(value: Any) -> str:
