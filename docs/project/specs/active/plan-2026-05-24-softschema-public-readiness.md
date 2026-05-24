@@ -193,7 +193,7 @@ a Python translation:
 - [x] Create this softschema-owned plan spec.
 - [x] Copy the reusable design framing out of the accidental tryscript plan.
 - [x] Link implementation beads to this spec.
-- [ ] Remove accidental softschema planning work from the unrelated tryscript repo after
+- [x] Remove accidental softschema planning work from the unrelated tryscript repo after
       this plan is committed and pushed.
 
 ### Phase 1: Documentation Review
@@ -251,7 +251,7 @@ a Python translation:
 | Bead | Status | Role |
 | --- | --- | --- |
 | `ss-avhi` | in progress | Parent epic for the public readiness plan. |
-| `ss-h4sp` | open | Remove accidental softschema planning artifacts from tryscript. |
+| `ss-h4sp` | closed | Remove accidental softschema planning artifacts from tryscript. |
 | `ss-thj8` | open | Review README, guide, spec, and docs structure. |
 | `ss-oovv` | open | Review the movie page example and integration tests. |
 | `ss-va24` | open | Review Python API, CLI behavior, and bundled resources. |
