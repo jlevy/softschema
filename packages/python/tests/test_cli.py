@@ -228,19 +228,40 @@ def test_validate_overrides_apply_when_frontmatter_lacks_metadata(
 
 
 def test_validate_exits_two_when_contract_missing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, model_module: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     doc = tmp_path / "doc.md"
     write_doc(doc, "sample:\n  name: hello\n  count: 1\n")
 
-    exit_code = softschema_main(["validate", str(doc)])
+    exit_code = softschema_main(["validate", str(doc), "--model", SAMPLE_MODEL_SPEC])
 
     assert exit_code == 2
     assert "--contract" in capsys.readouterr().err
 
 
-def test_validate_exits_two_on_ambiguous_envelope(
+def test_validate_exits_two_when_validation_implementation_missing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    doc = tmp_path / "doc.md"
+    write_doc(
+        doc,
+        """
+        softschema:
+          contract: test:Sample/v1
+        sample:
+          name: hello
+          count: 1
+        """,
+    )
+
+    exit_code = softschema_main(["validate", str(doc)])
+
+    assert exit_code == 2
+    assert "--model" in capsys.readouterr().err
+
+
+def test_validate_exits_two_on_ambiguous_envelope(
+    tmp_path: Path, model_module: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     doc = tmp_path / "doc.md"
     write_doc(
@@ -257,7 +278,7 @@ def test_validate_exits_two_on_ambiguous_envelope(
         """,
     )
 
-    exit_code = softschema_main(["validate", str(doc)])
+    exit_code = softschema_main(["validate", str(doc), "--model", SAMPLE_MODEL_SPEC])
 
     assert exit_code == 2
     assert "--envelope" in capsys.readouterr().err

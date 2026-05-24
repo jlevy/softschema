@@ -107,8 +107,15 @@ def main(argv: list[str] | None = None) -> int:
     validate_parser.add_argument("path", type=Path)
     validate_parser.add_argument("--contract", help="Override the document contract ID.")
     validate_parser.add_argument("--envelope", help="Override the inferred envelope key.")
-    validate_parser.add_argument("--model", help="Pydantic model as module:Class.")
-    validate_parser.add_argument("--schema", type=Path, help="JSON Schema YAML sidecar.")
+    validate_parser.add_argument(
+        "--model",
+        help="Pydantic model as module:Class. Required unless --schema is provided.",
+    )
+    validate_parser.add_argument(
+        "--schema",
+        type=Path,
+        help="JSON Schema YAML sidecar. Required unless --model is provided.",
+    )
     validate_parser.add_argument(
         "--status",
         choices=[status.value for status in Status],
@@ -156,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def _validate_cmd(args: argparse.Namespace) -> int:
     try:
+        if args.model is None and args.schema is None:
+            raise ValueError("missing validation implementation; pass --model, --schema, or both")
         contract_id, status, envelope_key = _infer_validation_binding(args)
         model = _load_model(args.model) if args.model else None
     except (TypeError, ValueError, ValidationError) as exc:
