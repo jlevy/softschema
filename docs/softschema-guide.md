@@ -148,6 +148,31 @@ The Python package is a convenience implementation:
 
 The concepts do not require Python.
 
+## Host Integration Pattern
+
+A host application owns the mapping from contract IDs to implementation schemas. In
+Python, that usually means registering complete `SchemaBinding` objects during startup
+or command setup, then validating artifacts at file boundaries:
+
+```python
+from pathlib import Path
+
+from examples.movie_page.host_integration import build_movie_page_registry
+from softschema import validate_artifact
+
+registry = build_movie_page_registry()
+result = validate_artifact(
+    Path("examples/movie_page/spirited-away.md"),
+    contract_id="example.movies:MoviePage/v1",
+    registry=registry,
+)
+assert result.ok
+```
+
+The artifact still declares `softschema.contract` for portability and review. The host
+registry decides what that contract means in the running application: a Pydantic model,
+a JSON Schema sidecar, a future Zod schema, or another validator.
+
 ## Documentation Shape
 
 The root README is a short subset of this guide. It should help a new visitor decide

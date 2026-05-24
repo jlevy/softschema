@@ -163,7 +163,7 @@ def validate(
         )
     try:
         values = resolver.resolve(dict(frontmatter))
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
+    except Exception as exc:
         return ValidationResult(
             structural=StructuralResult(ok=False, errors=[_resolver_error(resolver, exc)]),
             semantic=SemanticResult(ok=False, skipped_reason="resolver_error"),
@@ -268,7 +268,7 @@ def _validate_frontmatter_artifact(
     resolver = _resolver_for_binding(binding)
     try:
         values = resolver.resolve(frontmatter)
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
+    except Exception as exc:
         return _resolver_failure(doc_path, binding, metadata, warnings, resolver, exc)
     return _validate_extracted_values(
         doc_path,

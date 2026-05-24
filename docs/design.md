@@ -10,6 +10,11 @@ of that practice.
 packages own process orchestration, plugin loading, browser views, repair loops,
 provider adapters, and domain models.
 
+The package does not model process graphs or emit structure reports. A host framework
+may build those reports by walking its own workflows and resolving `SchemaBinding`
+objects, but that report shape is application-specific and stays outside the core
+package.
+
 ## Public Modules
 
 | Module | Purpose |
@@ -128,6 +133,10 @@ The standalone package depends only on the packages declared in `pyproject.toml`
 must not import project-specific frameworks, domain packages, browser packages, GCP
 libraries, or process-orchestration code.
 
+Host packages own higher-level inventories such as process graph reports, browser
+views, repair workflows, plugin discovery, and generated prompt sections. `softschema`
+provides the contract and validation layer those hosts can call at file boundaries.
+
 ## Accepted
 
 - Keep the soft schema mental model and artifact format programming-language agnostic.
@@ -144,6 +153,8 @@ libraries, or process-orchestration code.
 - TypeScript/Zod implementation.
 - Sidecar data loading beyond simple JSON Schema sidecars.
 - Agent tool APIs beyond the CLI and skill instructions.
+- `softschema init-example` or other artifact scaffolding commands.
+- Generic process graph or structure-report generation.
 - Web docs.
 
 ## Rejected

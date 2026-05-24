@@ -24,16 +24,56 @@ Read these repo docs when available:
 5. Add a Pydantic model or JSON Schema sidecar only when a boundary needs validation.
 6. Validate generated artifacts before relying on them.
 
+## When to Add Structure
+
+Promote a value into YAML when code reads it, QA checks it, a later step depends on it,
+a rollup aggregates it, or repeated failures would be caught by a type, enum, range, or
+cross-field invariant.
+
+Add a source model or JSON Schema sidecar when field names have stabilized across real
+artifacts, multiple consumers rely on the same shape, or the boundary needs visible
+failure instead of best-effort interpretation.
+
+Keep prose unstructured when it is exploratory, judgment-heavy, or would force false
+precision. A useful soft schema can validate only a few consumed values while leaving
+most context in readable Markdown.
+
+## Data Placement
+
+- Use inline frontmatter for small payloads that readers can scan.
+- Use a YAML data sidecar when structured payloads become large, machine-generated, or
+  distracting in frontmatter.
+- Keep routing fields, contract ID, counts, digest or generated metadata, and a short
+  summary in frontmatter when a data sidecar is used.
+- Treat schema sidecars and data sidecars as different things: schema sidecars describe
+  validation contracts; data sidecars hold payload values.
+
 ## Rules
 
 - Treat YAML/frontmatter as authoritative.
-- Do not parse Markdown tables or prose as structured values.
+- Do not parse Markdown tables or prose as structured values. If code needs a value,
+  fix the producer to write it into YAML, a declared data sidecar, or pure data.
+- Keep exactly one source of truth for each structured value. Body tables may mirror
+  YAML for readers, but consumers must read the YAML.
 - Prefer contract IDs like `namespace:UpperCamelCaseName/v1`.
 - Remember that a contract ID can map to Pydantic, Zod, JSON Schema, or another
   validator.
 - Do not harden everything at once. Promote the fields that are actually consumed.
 - Keep README content as a short subset of the guide, and put exact format rules in the
   spec.
+
+## Review Checklist
+
+Before finishing a softschema change, check:
+
+1. Every consumed value is in YAML, a declared YAML data sidecar, or pure data.
+2. No code parses Markdown body prose or tables for structured fields.
+3. The artifact still reads well for humans and agents.
+4. The contract ID names the payload shape, not an implementation wrapper.
+5. Boundary validation fails visibly for malformed YAML, contract mismatches, or schema
+   violations.
+6. Any duplicated field lists, enum values, or schema tables are generated or have a
+   clear owner.
 
 ## Useful Commands
 

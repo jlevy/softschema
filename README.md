@@ -109,7 +109,7 @@ uv run softschema compile examples.movie_page.model:MoviePage \
 
 ```text
 docs/                  guide, spec, design, and workflow docs
-examples/movie_page/   complete example with model, artifact, and schema
+examples/movie_page/   complete example with model, host integration, artifact, schema
 packages/python/       Python implementation and tests
 packages/typescript/   future TypeScript/Zod notes only
 skills/softschema/     agent-facing usage guidance

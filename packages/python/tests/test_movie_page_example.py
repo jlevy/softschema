@@ -5,8 +5,7 @@ from pathlib import Path
 
 from frontmatter_format import fmf_read
 
-from examples.movie_page.model import MoviePage
-from softschema import SchemaBinding, Status, validate_artifact
+from examples.movie_page.host_integration import validate_movie_page
 from softschema.cli import main as softschema_main
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -15,15 +14,7 @@ MOVIE_SCHEMA = ROOT / "examples/movie_page/movie-page.schema.yaml"
 
 
 def test_movie_page_demo_matches_structured_values() -> None:
-    binding = SchemaBinding(
-        contract_id="example.movies:MoviePage/v1",
-        model=MoviePage,
-        envelope_key="movie",
-        status=Status.enforced,
-        schema_path=MOVIE_SCHEMA,
-    )
-
-    result = validate_artifact(MOVIE_PAGE, binding=binding)
+    result = validate_movie_page(MOVIE_PAGE)
 
     assert result.ok
     assert result.values is not None

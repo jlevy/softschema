@@ -18,7 +18,7 @@ This spec defines:
 - validation expectations
 
 It does not define a Markdown body parser, a form runtime, a repair loop, a provider
-structured-output adapter, or a TypeScript implementation.
+structured-output adapter, a process graph report, or a TypeScript implementation.
 
 ## Artifact Shape
 

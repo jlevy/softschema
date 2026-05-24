@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import gzip
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from softschema import (
+    ArtifactProfile,
     SchemaBinding,
     SchemaRegistry,
     Status,
@@ -92,6 +94,44 @@ def test_validate_requires_a_model_or_schema(tmp_path: Path) -> None:
         validate(doc)
 
 
+def test_validate_returns_structured_failure_when_resolver_pointer_is_missing(
+    tmp_path: Path,
+) -> None:
+    doc = tmp_path / "doc.md"
+    write_doc(doc, "sample:\n  name: hello\n")
+
+    result = validate(
+        doc,
+        model=SampleModel,
+        resolver=ValueResolver(kind="values_key", pointer="/missing"),
+    )
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "resolver_error"
+    assert result.semantic.skipped_reason == "resolver_error"
+
+
+def test_validate_returns_structured_failure_when_host_adapter_raises(
+    tmp_path: Path,
+) -> None:
+    def adapter(_frontmatter: dict[str, object]) -> dict[str, object]:
+        raise RuntimeError("adapter failed")
+
+    doc = tmp_path / "doc.md"
+    write_doc(doc, "sample:\n  name: hello\n")
+
+    result = validate(
+        doc,
+        model=SampleModel,
+        resolver=ValueResolver(kind="host_adapter", host_adapter=adapter),
+    )
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "resolver_error"
+    assert result.structural.errors[0]["exception_type"] == "RuntimeError"
+    assert result.semantic.skipped_reason == "resolver_error"
+
+
 def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(
@@ -117,6 +157,51 @@ def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -
 
     assert result.ok
     assert result.contract_id == "example:Sample/v1"
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_validate_artifact_accepts_gzipped_markdown(tmp_path: Path) -> None:
+    doc = tmp_path / "sample.md.gz"
+    with gzip.open(doc, "wt", encoding="utf-8") as fh:
+        fh.write(
+            """---
+softschema:
+  contract: example:Sample/v1
+sample:
+  name: hello
+  direction: up
+  delta: 1.5
+---
+# title
+"""
+        )
+    binding = SchemaBinding(
+        contract_id="example:Sample/v1",
+        model=SampleModel,
+        envelope_key="sample",
+        status=Status.enforced,
+    )
+
+    result = validate_artifact(doc, binding=binding)
+
+    assert result.ok
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_validate_artifact_accepts_pure_yaml(tmp_path: Path) -> None:
+    doc = tmp_path / "sample.yaml"
+    doc.write_text("name: hello\ndirection: up\ndelta: 1.5\n")
+    binding = SchemaBinding(
+        contract_id="example:Sample/v1",
+        model=SampleModel,
+        profile=ArtifactProfile.pure_yaml,
+        status=Status.enforced,
+    )
+
+    result = validate_artifact(doc, binding=binding)
+
+    assert result.ok
+    assert result.profile == ArtifactProfile.pure_yaml
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
 
 
@@ -201,6 +286,30 @@ def test_validate_artifact_resolves_schema_path_relative_to_doc(tmp_path: Path) 
     result = validate_artifact(doc, binding=binding)
 
     assert result.ok
+
+
+def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> None:
+    doc = tmp_path / "sample.md"
+    write_doc(
+        doc,
+        """
+        sample:
+          name: hello
+          direction: up
+          delta: 1.5
+        """,
+    )
+    binding = SchemaBinding(
+        contract_id="example:Sample/v1",
+        envelope_key="sample",
+        schema_path=Path("missing.schema.yaml"),
+    )
+
+    result = validate_artifact(doc, binding=binding)
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "schema_sidecar_missing"
+    assert result.semantic.skipped_reason == "no_pydantic_model"
 
 
 def test_registry_registers_complete_bindings_only() -> None:
