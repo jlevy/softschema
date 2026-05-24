@@ -19,6 +19,7 @@ If the Python CLI is installed, load the same material with:
 
 ```bash
 softschema skill --brief
+softschema docs --list --json
 softschema docs guide
 softschema docs spec
 softschema docs example
@@ -97,6 +98,7 @@ uv run softschema inspect path/to/artifact.md
 uv run softschema validate path/to/artifact.md --model package.module:Model --schema schemas/contract.schema.yaml
 uv run softschema compile package.module:Model --contract example:Contract/v1 --out schemas/contract.schema.yaml
 uv run softschema docs --list
+uv run softschema docs --list --json
 uv run softschema skill --brief
 ```
 

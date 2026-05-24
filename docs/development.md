@@ -21,6 +21,7 @@ Direct commands:
 uv run python devtools/lint.py --check
 uv run pytest
 uv run softschema docs --list
+uv run softschema docs --list --json
 uv run softschema skill --brief
 uv build
 ```

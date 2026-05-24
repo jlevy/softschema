@@ -135,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="List bundled documentation topics.",
     )
+    docs_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit topic metadata, and document content when a topic is selected, as JSON.",
+    )
     docs_parser.set_defaults(func=_docs_cmd)
 
     skill_parser = subparsers.add_parser("skill", help="Print agent-facing guidance.")
@@ -238,7 +243,24 @@ def _inspect_cmd(args: argparse.Namespace) -> int:
 
 def _docs_cmd(args: argparse.Namespace) -> int:
     if args.list_topics or args.topic is None:
+        if args.json:
+            print(_json(_docs_listing_payload()))
+            return 0
         _write_text(_docs_listing())
+        return 0
+    if args.json:
+        topic = DOC_TOPICS[args.topic]
+        print(
+            _json(
+                {
+                    "name": args.topic,
+                    "title": topic.title,
+                    "path": topic.path,
+                    "summary": topic.summary,
+                    "content": _read_resource(topic.path),
+                }
+            )
+        )
         return 0
     _write_text(_read_resource(DOC_TOPICS[args.topic].path))
     return 0
@@ -287,6 +309,22 @@ def _docs_listing() -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _docs_listing_payload() -> dict[str, Any]:
+    return {
+        "topics": [
+            {
+                "name": name,
+                "title": topic.title,
+                "path": topic.path,
+                "summary": topic.summary,
+            }
+            for name, topic in sorted(DOC_TOPICS.items())
+        ],
+        "copyable_examples": ["example", "example-artifact", "example-model", "example-host"],
+        "scaffolding": False,
+    }
 
 
 def _brief_skill_text() -> str:

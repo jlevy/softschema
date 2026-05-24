@@ -161,6 +161,28 @@ def test_docs_prints_copyable_movie_artifact(capsys: pytest.CaptureFixture[str])
     assert "| Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |" in output
 
 
+def test_docs_list_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = softschema_main(["docs", "--list", "--json"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    topic_names = [topic["name"] for topic in output["topics"]]
+    assert "guide" in topic_names
+    assert "spec" in topic_names
+    assert "example-artifact" in output["copyable_examples"]
+    assert output["scaffolding"] is False
+
+
+def test_docs_topic_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = softschema_main(["docs", "spec", "--json"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["name"] == "spec"
+    assert output["path"] == "docs/softschema-spec.md"
+    assert "# Softschema Spec" in output["content"]
+
+
 def test_skill_brief_points_agents_to_docs_and_rules(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

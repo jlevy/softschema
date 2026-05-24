@@ -56,6 +56,7 @@ The CLI also bundles those docs and examples:
 
 ```bash
 softschema docs --list
+softschema docs --list --json
 softschema docs guide
 softschema docs spec
 softschema docs example-artifact
@@ -93,6 +94,8 @@ because document metadata identifies the contract but does not import code.
 `softschema docs` and `softschema skill` are informational commands. They print bundled
 Markdown resources to stdout so agents in installed environments can discover the guide,
 spec, skill, and copyable examples without knowing the source checkout layout.
+`softschema docs --list --json` exposes the same topic directory as structured data for
+automation.
 
 ## Validation
 

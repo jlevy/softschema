@@ -101,6 +101,7 @@ Read the bundled docs from the CLI:
 
 ```bash
 uv run softschema docs --list
+uv run softschema docs --list --json
 uv run softschema docs guide
 uv run softschema docs example-artifact
 uv run softschema skill --brief

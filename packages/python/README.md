@@ -20,6 +20,7 @@ Installed environments can print the same reference material:
 
 ```bash
 softschema docs --list
+softschema docs --list --json
 softschema docs guide
 softschema docs example-artifact
 softschema skill --brief

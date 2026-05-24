@@ -141,6 +141,7 @@ layout:
 
 ```bash
 softschema skill --brief
+softschema docs --list --json
 softschema docs guide
 softschema docs spec
 softschema docs example
