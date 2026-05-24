@@ -1,0 +1,163 @@
+# Softschema Guide
+
+Soft schemas are a practice for adding structure gradually to artifacts that mix human
+context and machine-readable values.
+
+This is the standalone reference to hand to a human or coding agent that needs to
+understand the pattern. For the exact file format, metadata keys, and validation rules,
+see [Softschema Spec](softschema-spec.md). For the Python implementation, see the root
+README and package docs.
+
+The practice is programming-language agnostic. A softschema artifact is a Markdown/YAML
+file with a payload contract. This repository demonstrates the pattern with a Python
+package, but another project could map the same artifacts to TypeScript, Zod, JSON
+Schema, database records, or custom validators.
+
+## Problem
+
+LLMs and agents make it easy to automate work that still looks like human reasoning:
+mixed prose, judgment calls, partial structure, and implicit context. That work may be
+automated, but not exact enough or structured enough for downstream tools.
+
+Soft schemas solve this by letting teams promote only the values that are consumed,
+while keeping the rest of the artifact readable.
+
+## Core Idea
+
+Automation, exactness, and structure are separate axes.
+
+| Axis | Low End | High End | Softschema Role |
+| --- | --- | --- | --- |
+| Automation | human-performed | harness-driven | Artifacts are files that humans, agents, and code can all edit |
+| Exactness | judgment-heavy | deterministic | Add validation where a boundary needs it |
+| Structure | prose | typed records | Promote consumed values without discarding narrative context |
+
+The usual path is:
+
+```text
+prose
+  -> expected sections and vocabulary
+  -> YAML/frontmatter values for consumed fields
+  -> schema validation at boundaries
+  -> pure data or deterministic code when the shape is stable
+```
+
+Projects do not need to move all the way to pure data. Many useful artifacts remain part
+prose and part structured data.
+
+## Default Artifact Pattern
+
+Use Markdown with YAML frontmatter:
+
+```markdown
+---
+softschema:
+  contract: example.movies:MoviePage/v1
+  status: enforced
+movie:
+  title: Spirited Away
+  release_year: 2001
+  ratings:
+    rotten_tomatoes:
+      critics:
+        label: Tomatometer
+        score_percent: 96
+        total_reviews: 225
+      audience:
+        label: Popcornmeter
+        score_percent: 96
+        total_ratings: 250000
+        total_ratings_display: 250,000+
+---
+# Spirited Away (2001)
+
+Rotten Tomatoes shows a 96% Tomatometer based on 225 critic reviews and a 96%
+Popcornmeter based on 250,000+ audience ratings.
+```
+
+The YAML payload is authoritative. The Markdown body is a friendly projection for
+readers. It can include prose, headings, summaries, and tables, but structured consumers
+should not parse the body.
+
+## Contract IDs
+
+Contract IDs name artifact payload contracts.
+
+Recommended form:
+
+```text
+namespace:UpperCamelCaseName/version
+```
+
+Examples:
+
+- `example.movies:MoviePage/v1`
+- `example.docs:IncidentReview/v1`
+- `com.acme.docs:IncidentReview/1.0`
+
+The name can resemble a class or type name, but it is not required to resolve to a class
+in any language. The same contract may map to Pydantic, Zod, JSON Schema, a database
+record, or a hand-authored validator.
+
+## Authoring Rules
+
+- Put structured values in YAML frontmatter, declared data sidecars, or pure data files.
+- Treat Markdown body prose and tables as reader-facing projections.
+- Never parse structured fields from the Markdown body.
+- Use one top-level envelope key for normal document payloads.
+- Use `softschema.contract` to identify the payload contract.
+- Keep resolver details, schema sidecar paths, implementation language, and migration
+  state out of authored artifacts unless a project has a specific reason to expose them.
+- Distinguish data sidecars from schema sidecars. Data sidecars hold payload values;
+  schema sidecars describe validation contracts.
+
+## Adoption Path
+
+1. Pick one artifact that humans or agents already write.
+2. Identify the values downstream consumers actually need.
+3. Add those values to YAML frontmatter under one envelope key.
+4. Add `softschema.contract`.
+5. Keep the body readable.
+6. Add a source model or JSON Schema sidecar when a boundary needs validation.
+7. Tighten the model only when repeated failures show the structure needs to be more
+   exact.
+
+## How Agents Should Use This Repo
+
+An agent can use this repository in three layers:
+
+1. Read this guide to understand the mental model and adoption pattern.
+2. Read [Softschema Spec](softschema-spec.md) for the exact artifact format.
+3. Inspect [examples/movie_page](../examples/movie_page/README.md) and the Python
+   package when it needs working code.
+
+When adding soft schemas to another project, first look for Markdown or YAML artifacts
+whose values are already consumed by code, QA, review, or aggregation. Promote those
+values into YAML. Leave the body readable.
+
+## Relationship to the Python Package
+
+The Python package is a convenience implementation:
+
+- `SchemaBinding` maps a contract ID to a Pydantic model and optional JSON Schema
+  sidecar
+- `validate_artifact` validates an artifact
+- `compile_model` emits JSON Schema sidecars from Pydantic models
+- `softschema validate` reads `softschema.contract`, `softschema.status`, and a single
+  payload envelope from the artifact by default
+
+The concepts do not require Python.
+
+## Documentation Shape
+
+The root README is a short subset of this guide. It should help a new visitor decide
+what the repo is and run the example. This guide carries the durable concept and
+adoption model. The spec carries exact artifact rules.
+
+When changing the pattern, update the docs in this order:
+
+1. Update this guide if the mental model or adoption advice changes.
+2. Update [Softschema Spec](softschema-spec.md) if the artifact format changes.
+3. Trim the README back to a short subset of the guide.
+
+<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
