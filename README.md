@@ -4,17 +4,18 @@ Soft schemas are a practice for adding structure gradually to artifacts that mix
 context and machine-readable values.
 
 They are useful when a human or agent writes a readable document, but code needs a few
-values from that document reliably. The YAML/frontmatter carries the authoritative
-values. The Markdown body stays readable.
+values from that document reliably.
+The YAML/frontmatter carries the authoritative values.
+The Markdown body stays readable.
 
-The pattern is programming-language agnostic. This repo also ships the first concrete
-implementation in Python.
+The pattern is programming-language agnostic.
+This repo also ships the first concrete implementation in Python.
 
 ## Core Idea
 
-Automation, exactness, and structure are separate axes. LLMs and agents make it easy to
-automate work that still has human-like failure modes: mixed prose, judgment calls,
-partial structure, and implicit context.
+Automation, exactness, and structure are separate axes.
+LLMs and agents make it easy to automate work that still has human-like failure modes:
+mixed prose, judgment calls, partial structure, and implicit context.
 
 Soft schemas let a project promote only the values downstream tools consume, while
 keeping the rest of the artifact readable.
@@ -29,8 +30,8 @@ prose
 
 ## Artifact Shape
 
-The default shape is Markdown with YAML frontmatter. Use `softschema.contract` to name
-the contract for the enclosed payload:
+The default shape is Markdown with YAML frontmatter.
+Use `softschema.contract` to name the contract for the enclosed payload:
 
 ```markdown
 ---
@@ -58,8 +59,8 @@ Rotten Tomatoes shows a 96% Tomatometer based on 225 critic reviews and a 96%
 Popcornmeter based on 250,000+ audience ratings.
 ```
 
-The YAML payload is authoritative. Markdown body prose and tables are reader-facing
-projections.
+The YAML payload is authoritative.
+Markdown body prose and tables are reader-facing projections.
 
 ## Contract IDs
 
@@ -94,8 +95,8 @@ uv run softschema validate examples/movie_page/spirited-away.md \
 ```
 
 `validate` reads `softschema.contract`, `softschema.status`, and the single top-level
-envelope key from the YAML by default. Use `--contract`, `--status`, or `--envelope`
-only to override or disambiguate.
+envelope key from the YAML by default.
+Use `--contract`, `--status`, or `--envelope` only to override or disambiguate.
 
 Read the bundled docs from the CLI:
 
@@ -136,10 +137,12 @@ for a future TypeScript package.
 
 - [Softschema Guide](docs/softschema-guide.md)
 - [Softschema Spec](docs/softschema-spec.md)
-- [Design](docs/design.md)
+- [Python Package Design](docs/softschema-python-design.md)
 - [Installing uv and Python](docs/installation.md)
 - [Development](docs/development.md)
 - [Publishing](docs/publishing.md)
 - [Movie Page Example](examples/movie_page/README.md)
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

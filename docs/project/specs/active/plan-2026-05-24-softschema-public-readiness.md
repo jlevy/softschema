@@ -17,13 +17,13 @@ This repo has two jobs:
 2. Ship a specific, convenient Python package that demonstrates and implements the
    Markdown/YAML validation slice of that practice.
 
-The concept comes first. The Python package is the first concrete implementation, but
-the artifact format and mental model should be useful to projects written in any
-language.
+The concept comes first.
+The Python package is the first concrete implementation, but the artifact format and
+mental model should be useful to projects written in any language.
 
 This plan is also the place to preserve the useful design framing from the accidental
-tryscript plan before that unrelated repo is cleaned up. Do not create or keep
-softschema planning artifacts in tryscript.
+tryscript plan before that unrelated repo is cleaned up.
+Do not create or keep softschema planning artifacts in tryscript.
 
 ## Goals
 
@@ -34,8 +34,9 @@ softschema planning artifacts in tryscript.
   - the concrete Python implementation
 - Make the format understandable to humans and coding agents from the README, guide,
   spec, and examples.
-- Keep tools optional. A project can adopt only the convention, use the Python package,
-  or map the format to another implementation.
+- Keep tools optional.
+  A project can adopt only the convention, use the Python package, or map the format to
+  another implementation.
 - Make YAML/frontmatter the authoritative source for consumed values while keeping
   Markdown readable.
 - Validate at boundaries where downstream code, QA, review, or aggregation needs
@@ -68,9 +69,10 @@ Soft schemas are useful because automation, exactness, and structure are separat
 | Structure | prose and conventions | typed fields or pure data |
 
 Traditional software often made these axes look inseparable: code is automated,
-structured, and usually exact. LLM and agent workflows changed that. A task can now be
-automated while still having human-like failure modes: ambiguous instructions,
-inconsistent output shape, implicit assumptions, and weak composability.
+structured, and usually exact.
+LLM and agent workflows changed that.
+A task can now be automated while still having human-like failure modes: ambiguous
+instructions, inconsistent output shape, implicit assumptions, and weak composability.
 
 Soft schemas provide a gradual path:
 
@@ -82,9 +84,9 @@ prose
   -> pure data or deterministic code when the shape is stable
 ```
 
-Projects can move on one axis without forcing movement on the others. A team may
-automate a prose-heavy workflow with an agent, add validation to only the consumed
-fields, or later replace stable transformations with deterministic code.
+Projects can move on one axis without forcing movement on the others.
+A team may automate a prose-heavy workflow with an agent, add validation to only the
+consumed fields, or later replace stable transformations with deterministic code.
 
 ## Current State
 
@@ -93,7 +95,7 @@ The `extract-softschema` branch already has the first standalone repo shape:
 - Concept-first `README.md`.
 - `docs/softschema-guide.md` as the durable concept and adoption guide.
 - `docs/softschema-spec.md` as the exact language-neutral artifact format.
-- `docs/design.md` as the Python package and implementation design.
+- `docs/softschema-python-design.md` as the Python package and implementation design.
 - `examples/movie_page` with a practical Spirited Away artifact, model, schema, and host
   integration example.
 - `packages/python/src/softschema` with validation, registry, schema compile, and CLI
@@ -117,27 +119,30 @@ The repo is organized as a concept and implementation repo:
 | `README.md` | Short first-visitor orientation, core example, and links |
 | `docs/softschema-guide.md` | Standalone concept and adoption guide for humans and agents |
 | `docs/softschema-spec.md` | Exact language-neutral artifact format |
-| `docs/design.md` | Python package and implementation design |
+| `docs/softschema-python-design.md` | Python package and implementation design |
 | `examples/movie_page` | Practical public example with readable Markdown and structured YAML |
 | `packages/python` | Python implementation and tests |
 | `packages/typescript` | Future TypeScript/Zod notes only |
 | `skills/softschema` | Agent-facing skill guidance |
 
-For now, do not add a standalone `docs/softschema-design.md`. The durable public docs
-are the guide and spec. Keep product and cross-language design detail in this plan until
-it is clear that a permanent design reference is worth another top-level docs file.
-Keep `docs/design.md` focused on Python package and implementation decisions.
+For now, do not add a standalone language-neutral `docs/softschema-design.md`. The
+durable public docs are the guide and spec.
+Keep product and cross-language design detail in this plan until it is clear that a
+permanent design reference is worth another top-level docs file.
+Keep `docs/softschema-python-design.md` focused on Python package and implementation
+decisions.
 
 ### Documentation Model
 
-The README should remain a short subset of the guide. The guide carries the durable
-mental model and adoption advice. The spec carries exact artifact rules. The package
-design doc carries implementation choices. This plan carries the current public
-readiness roadmap and temporary design notes.
+The README should remain a short subset of the guide.
+The guide carries the durable mental model and adoption advice.
+The spec carries exact artifact rules.
+The package design doc carries implementation choices.
+This plan carries the current public readiness roadmap and temporary design notes.
 
-Small docs should stay consolidated. Avoid reintroducing small standalone docs such as
-`validation.md`, `schema-bundles.md`, or `examples.md` unless a topic grows large enough
-to need a separate reference.
+Small docs should stay consolidated.
+Avoid reintroducing small standalone docs such as `validation.md`, `schema-bundles.md`,
+or `examples.md` unless a topic grows large enough to need a separate reference.
 
 ### Design Principles
 
@@ -147,8 +152,8 @@ to need a separate reference.
   to Pydantic, Zod, JSON Schema, database records, or custom validators.
 - **Boundary-driven hardening beats blanket structure.** Add fields and validation
   because something consumes them.
-- **Soft authoring can still have strict validation.** "Soft" describes gradual
-  adoption and mixed artifacts, not weak enforcement at a boundary.
+- **Soft authoring can still have strict validation.** “Soft” describes gradual adoption
+  and mixed artifacts, not weak enforcement at a boundary.
 - **The language-neutral surface must not leak Python.** Python details belong in the
   Python package docs and implementation APIs.
 - **Examples should be practical, public, and few.** One complete example is better than
@@ -156,12 +161,12 @@ to need a separate reference.
 
 ### Cross-Language Boundary
 
-The public artifact format is Markdown/YAML plus optional JSON Schema sidecars. That is
-the portability boundary.
+The public artifact format is Markdown/YAML plus optional JSON Schema sidecars.
+That is the portability boundary.
 
-In the Python package, Pydantic models are the source implementation schema. In a future
-TypeScript package, Zod schemas should play that role. JSON Schema carries the portable
-structural subset between implementations.
+In the Python package, Pydantic models are the source implementation schema.
+In a future TypeScript package, Zod schemas should play that role.
+JSON Schema carries the portable structural subset between implementations.
 
 Implementation-specific invariants belong in the implementation schema:
 
@@ -169,7 +174,7 @@ Implementation-specific invariants belong in the implementation schema:
 - Zod refinements for TypeScript
 - hand-written checks for other hosts
 
-The language-neutral docs should say "source model" or "implementation schema" unless
+The language-neutral docs should say “source model” or “implementation schema” unless
 they are specifically discussing the Python package.
 
 ### Future TypeScript/Zod Package
@@ -194,46 +199,46 @@ a Python translation:
 - [x] Copy the reusable design framing out of the accidental tryscript plan.
 - [x] Link implementation beads to this spec.
 - [x] Remove accidental softschema planning work from the unrelated tryscript repo after
-      this plan is committed and pushed.
+  this plan is committed and pushed.
 
 ### Phase 1: Documentation Review
 
 - [ ] Review `README.md` as the first-visitor entry point.
 - [ ] Review `docs/softschema-guide.md` as the durable concept and adoption guide.
 - [ ] Review `docs/softschema-spec.md` as the exact artifact format.
-- [ ] Review `docs/design.md` as Python package design, not a broad product manifesto.
+- [ ] Review `docs/softschema-python-design.md` as Python package design, not a broad
+  product manifesto.
 - [ ] Keep this plan as the temporary home for broad product-design notes unless a
-      permanent `docs/softschema-design.md` becomes clearly useful.
+  permanent language-neutral `docs/softschema-design.md` becomes clearly useful.
 - [ ] Ensure docs consistently explain that the practice is language-neutral and the
-      current implementation is Python.
+  current implementation is Python.
 - [ ] Ensure docs consistently say the YAML/frontmatter payload is authoritative and the
-      Markdown body is reader-facing.
+  Markdown body is reader-facing.
 - [ ] Ensure docs consistently explain `softschema.contract` as the payload contract,
-      not the schema of the `softschema:` metadata block.
+  not the schema of the `softschema:` metadata block.
 
 ### Phase 2: Example Review
 
 - [ ] Verify `examples/movie_page/spirited-away.md` is friendly, readable, and contains
-      the same structured information as its YAML payload.
+  the same structured information as its YAML payload.
 - [ ] Verify the movie example includes title, description, structured domains, readable
-      body prose, a table, Rotten Tomatoes critics/audience ratings, and vote/review
-      counts.
+  body prose, a table, Rotten Tomatoes critics/audience ratings, and vote/review counts.
 - [ ] Verify `examples/movie_page/model.py` remains simple enough to understand by
-      reading it directly.
+  reading it directly.
 - [ ] Verify the integration test uses the example code rather than duplicating hidden
-      demo logic.
+  demo logic.
 
 ### Phase 3: Python Package Review
 
 - [ ] Review public API names with no backward-compatibility constraint.
 - [ ] Keep complete binding registration and avoid aliases, legacy statuses, and
-      compatibility projections.
+  compatibility projections.
 - [ ] Verify `softschema validate` reads contract/status/envelope from the artifact by
-      default and treats CLI flags as overrides.
+  default and treats CLI flags as overrides.
 - [ ] Verify `softschema validate` requires `--model`, `--schema`, or both.
 - [ ] Verify bundled docs and examples are included in wheel and sdist.
 - [ ] Verify `frontmatter-format` is documented as the frontmatter/YAML mechanics
-      dependency, not a generic data-sidecar runtime.
+  dependency, not a generic data-sidecar runtime.
 
 ### Phase 4: Release Readiness
 
@@ -242,7 +247,7 @@ a Python translation:
 - [ ] Run `uv build`.
 - [ ] Inspect the built wheel for bundled resources.
 - [ ] Run `softschema docs --list`, `softschema docs --list --json`,
-      `softschema docs guide`, and `softschema skill --brief`.
+  `softschema docs guide`, and `softschema skill --brief`.
 - [ ] Run the movie example validation command from the README.
 - [ ] Confirm tbd sync is healthy.
 
@@ -296,8 +301,8 @@ uv run softschema skill --brief
 
 ## Open Questions
 
-- Should a permanent `docs/softschema-design.md` exist later, or are the guide, spec,
-  package design doc, and this plan enough?
+- Should a permanent language-neutral `docs/softschema-design.md` exist later, or are
+  the guide, spec, `docs/softschema-python-design.md`, and this plan enough?
 - Should the future TypeScript package be named `@softschema/core`, `softschema`, or a
   different scoped name?
 - Should JSON Schema export be part of the first TypeScript package, or a later optional
@@ -308,8 +313,10 @@ uv run softschema skill --brief
 
 - [Softschema Guide](../../../softschema-guide.md)
 - [Softschema Spec](../../../softschema-spec.md)
-- [Python Package Design](../../../design.md)
+- [Python Package Design](../../../softschema-python-design.md)
 - [Movie Page Example](../../../../examples/movie_page/README.md)
 - [Future TypeScript Notes](../../../../packages/typescript/README.md)
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

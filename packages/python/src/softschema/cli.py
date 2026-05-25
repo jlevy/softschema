@@ -39,9 +39,9 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "docs/softschema-spec.md",
         "Language-neutral artifact format.",
     ),
-    "design": ResourceTopic(
-        "Design",
-        "docs/design.md",
+    "python-design": ResourceTopic(
+        "Python Package Design",
+        "docs/softschema-python-design.md",
         "Python package design decisions.",
     ),
     "development": ResourceTopic(
