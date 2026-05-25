@@ -159,7 +159,7 @@ values into YAML. Leave the body readable.
 
 The Python package is a convenience implementation:
 
-- `SchemaBinding` maps a contract ID to a Pydantic model and optional JSON Schema
+- `SoftschemaBinding` maps a contract ID to a Pydantic model and optional JSON Schema
   sidecar
 - `validate_artifact` validates an artifact
 - `compile_model` emits JSON Schema sidecars from Pydantic models
@@ -171,7 +171,7 @@ The concepts do not require Python.
 ## Host Integration Pattern
 
 A host application owns the mapping from contract IDs to implementation schemas. In
-Python, that usually means registering complete `SchemaBinding` objects during startup
+Python, that usually means registering complete `SoftschemaBinding` objects during startup
 or command setup, then validating artifacts at file boundaries:
 
 ```python
@@ -201,7 +201,7 @@ There are two different sidecar ideas:
   as YAML.
 - Data sidecars hold artifact payload values outside the Markdown frontmatter.
 
-The Python package supports schema sidecars through `SchemaBinding.schema_path` and the
+The Python package supports schema sidecars through `SoftschemaBinding.schema_path` and the
 `softschema compile` command. It depends on `frontmatter-format` for frontmatter and
 YAML mechanics, but `frontmatter-format` is not treated as a softschema data-sidecar
 runtime.

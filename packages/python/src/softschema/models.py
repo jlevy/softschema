@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class Status(StrEnum):
+class SoftschemaStatus(StrEnum):
     """How strongly a project treats a soft schema at a boundary."""
 
     soft = "soft"
@@ -17,14 +17,14 @@ class Status(StrEnum):
     enforced = "enforced"
 
 
-class ArtifactProfile(StrEnum):
+class SoftschemaProfile(StrEnum):
     """Storage shape for an artifact."""
 
     frontmatter_md = "frontmatter-md"
     pure_yaml = "pure-yaml"
 
 
-class StructureStage(StrEnum):
+class SoftschemaStage(StrEnum):
     """Coarse position on the structure continuum."""
 
     prose = "prose"
@@ -33,16 +33,16 @@ class StructureStage(StrEnum):
     pure_data = "pure_data"
 
 
-class DocumentMetadata(BaseModel):
+class SoftschemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     contract_id: str = Field(alias="contract")
-    status: Status | None = None
+    status: SoftschemaStatus | None = None
 
 
-class SchemaBinding(BaseModel):
+class SoftschemaBinding(BaseModel):
     """Contract between an artifact payload and an implementation schema."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -50,23 +50,23 @@ class SchemaBinding(BaseModel):
     contract_id: str
     model: type[BaseModel] | None = None
     envelope_key: str | None = None
-    status: Status = Status.soft
+    status: SoftschemaStatus = SoftschemaStatus.soft
     owner: str | None = None
-    profile: ArtifactProfile = ArtifactProfile.frontmatter_md
+    profile: SoftschemaProfile = SoftschemaProfile.frontmatter_md
     schema_path: Path | None = None
 
     @property
-    def stage(self) -> StructureStage:
-        if self.profile == ArtifactProfile.pure_yaml:
-            return StructureStage.pure_data
+    def stage(self) -> SoftschemaStage:
+        if self.profile == SoftschemaProfile.pure_yaml:
+            return SoftschemaStage.pure_data
         if self.model is not None or self.schema_path is not None:
-            return StructureStage.validated_frontmatter
+            return SoftschemaStage.validated_frontmatter
         if self.envelope_key is not None:
-            return StructureStage.frontmatter
-        return StructureStage.prose
+            return SoftschemaStage.frontmatter
+        return SoftschemaStage.prose
 
 
-class ValidationWarning(BaseModel):
+class SoftschemaWarning(BaseModel):
     """Structured non-fatal warning emitted by validation."""
 
     code: str
@@ -74,13 +74,13 @@ class ValidationWarning(BaseModel):
     severity: Literal["info", "warning"] = "warning"
 
 
-def parse_document_metadata(raw: Any) -> DocumentMetadata | None:
+def parse_softschema_metadata(raw: Any) -> SoftschemaMetadata | None:
     """Parse compact or expanded document-level ``softschema:`` metadata."""
     if raw is None:
         return None
     if isinstance(raw, str):
-        return DocumentMetadata.model_validate({"contract": raw})
+        return SoftschemaMetadata.model_validate({"contract": raw})
     if isinstance(raw, dict):
-        return DocumentMetadata.model_validate(raw)
+        return SoftschemaMetadata.model_validate(raw)
     msg = f"softschema metadata must be a string or mapping, got {type(raw).__name__}"
     raise TypeError(msg)

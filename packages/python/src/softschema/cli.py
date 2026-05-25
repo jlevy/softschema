@@ -16,7 +16,7 @@ from frontmatter_format import fmf_read
 from pydantic import BaseModel, ValidationError
 
 from softschema.compile import compile_model
-from softschema.models import SchemaBinding, Status, parse_document_metadata
+from softschema.models import SoftschemaBinding, SoftschemaStatus, parse_softschema_metadata
 from softschema.validate import validate_artifact
 
 
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     validate_parser.add_argument(
         "--status",
-        choices=[status.value for status in Status],
+        choices=[status.value for status in SoftschemaStatus],
         help="Override the document status.",
     )
     validate_parser.set_defaults(func=_validate_cmd)
@@ -170,7 +170,7 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     except (TypeError, ValueError, ValidationError) as exc:
         print(f"softschema validate: {exc}", file=sys.stderr)
         return 2
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id=contract_id,
         model=model,
         envelope_key=envelope_key,
@@ -182,14 +182,14 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
-def _infer_validation_binding(args: argparse.Namespace) -> tuple[str, Status, str | None]:
+def _infer_validation_binding(args: argparse.Namespace) -> tuple[str, SoftschemaStatus, str | None]:
     _content, frontmatter = fmf_read(args.path)
     if not isinstance(frontmatter, dict):
         if args.contract is None:
             raise ValueError("missing --contract because the document has no YAML frontmatter")
         return args.contract, _status_from_args(args, None), args.envelope
 
-    metadata = parse_document_metadata(frontmatter.get("softschema"))
+    metadata = parse_softschema_metadata(frontmatter.get("softschema"))
     contract_id = args.contract or (metadata.contract_id if metadata is not None else None)
     if contract_id is None:
         raise ValueError("missing --contract because the document has no softschema.contract")
@@ -197,12 +197,12 @@ def _infer_validation_binding(args: argparse.Namespace) -> tuple[str, Status, st
     return contract_id, _status_from_args(args, metadata), _envelope_from_args(args, frontmatter)
 
 
-def _status_from_args(args: argparse.Namespace, metadata: Any) -> Status:
+def _status_from_args(args: argparse.Namespace, metadata: Any) -> SoftschemaStatus:
     if args.status is not None:
-        return Status(args.status)
+        return SoftschemaStatus(args.status)
     if metadata is not None and metadata.status is not None:
         return metadata.status
-    return Status.soft
+    return SoftschemaStatus.soft
 
 
 def _envelope_from_args(args: argparse.Namespace, frontmatter: dict[str, Any]) -> str | None:
@@ -235,7 +235,7 @@ def _inspect_cmd(args: argparse.Namespace) -> int:
     metadata = None
     envelope_keys: list[str] = []
     if isinstance(frontmatter, dict):
-        metadata = parse_document_metadata(frontmatter.get("softschema"))
+        metadata = parse_softschema_metadata(frontmatter.get("softschema"))
         envelope_keys = [str(key) for key in frontmatter if key != "softschema"]
     print(
         _json(

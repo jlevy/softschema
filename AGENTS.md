@@ -9,6 +9,12 @@ Start here:
 - [Softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
 - [Movie page example](examples/movie_page/README.md): complete Python-backed example.
 
+For implementer reference (only when changing the Python package itself):
+
+- [Python Package Design](docs/softschema-python-design.md): module layout, CLI surface,
+  validation layers, and ADR-style decisions. Skip when only authoring or validating
+  artifacts.
+
 Key rules:
 
 - Treat YAML/frontmatter as the authoritative structured data.

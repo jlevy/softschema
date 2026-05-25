@@ -7,10 +7,10 @@ import pytest
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from softschema import (
-    ArtifactProfile,
-    SchemaBinding,
-    SchemaRegistry,
-    Status,
+    SoftschemaBinding,
+    SoftschemaProfile,
+    SoftschemaRegistry,
+    SoftschemaStatus,
     ValueResolver,
     compile_model,
     validate,
@@ -146,11 +146,11 @@ def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -
           delta: 1.5
         """,
     )
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1",
         model=SampleModel,
         envelope_key="sample",
-        status=Status.enforced,
+        status=SoftschemaStatus.enforced,
     )
 
     result = validate_artifact(doc, binding=binding)
@@ -175,11 +175,11 @@ sample:
 # title
 """
         )
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1",
         model=SampleModel,
         envelope_key="sample",
-        status=Status.enforced,
+        status=SoftschemaStatus.enforced,
     )
 
     result = validate_artifact(doc, binding=binding)
@@ -191,17 +191,17 @@ sample:
 def test_validate_artifact_accepts_pure_yaml(tmp_path: Path) -> None:
     doc = tmp_path / "sample.yaml"
     doc.write_text("name: hello\ndirection: up\ndelta: 1.5\n")
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1",
         model=SampleModel,
-        profile=ArtifactProfile.pure_yaml,
-        status=Status.enforced,
+        profile=SoftschemaProfile.pure_yaml,
+        status=SoftschemaStatus.enforced,
     )
 
     result = validate_artifact(doc, binding=binding)
 
     assert result.ok
-    assert result.profile == ArtifactProfile.pure_yaml
+    assert result.profile == SoftschemaProfile.pure_yaml
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
 
 
@@ -218,7 +218,7 @@ def test_validate_artifact_rejects_contract_mismatch(tmp_path: Path) -> None:
           delta: 1.5
         """,
     )
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1", model=SampleModel, envelope_key="sample"
     )
 
@@ -241,7 +241,7 @@ def test_validate_artifact_rejects_invalid_metadata(tmp_path: Path) -> None:
           delta: 1.5
         """,
     )
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1", model=SampleModel, envelope_key="sample"
     )
 
@@ -254,7 +254,7 @@ def test_validate_artifact_rejects_invalid_metadata(tmp_path: Path) -> None:
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(doc, "wrong:\n  name: hello\n  direction: up\n  delta: 1.5\n")
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1", model=SampleModel, envelope_key="sample"
     )
 
@@ -277,7 +277,7 @@ def test_validate_artifact_resolves_schema_path_relative_to_doc(tmp_path: Path) 
           delta: 1.5
         """,
     )
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1",
         envelope_key="sample",
         schema_path=Path("sample.schema.yaml"),
@@ -299,7 +299,7 @@ def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> Non
           delta: 1.5
         """,
     )
-    binding = SchemaBinding(
+    binding = SoftschemaBinding(
         contract_id="example:Sample/v1",
         envelope_key="sample",
         schema_path=Path("missing.schema.yaml"),
@@ -313,13 +313,13 @@ def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> Non
 
 
 def test_registry_registers_complete_bindings_only() -> None:
-    registry = SchemaRegistry()
-    binding = SchemaBinding(contract_id="example:Sample/v1", model=SampleModel)
+    registry = SoftschemaRegistry()
+    binding = SoftschemaBinding(contract_id="example:Sample/v1", model=SampleModel)
     registry.register(binding)
 
     assert registry.resolve("example:Sample/v1") == binding
     with pytest.raises(ValueError, match="already registered"):
-        registry.register(SchemaBinding(contract_id="example:Sample/v1", model=EnvelopeModel))
+        registry.register(SoftschemaBinding(contract_id="example:Sample/v1", model=EnvelopeModel))
 
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:

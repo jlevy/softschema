@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from softschema.compile import SOFTSCHEMA_FORMAT_VERSION, CompileResult, compile_model
 from softschema.models import (
-    ArtifactProfile,
-    DocumentMetadata,
-    SchemaBinding,
-    Status,
-    StructureStage,
-    ValidationWarning,
-    parse_document_metadata,
+    SoftschemaBinding,
+    SoftschemaMetadata,
+    SoftschemaProfile,
+    SoftschemaStage,
+    SoftschemaStatus,
+    SoftschemaWarning,
+    parse_softschema_metadata,
 )
-from softschema.registry import SchemaRegistry
+from softschema.registry import SoftschemaRegistry
 from softschema.validate import (
     ArtifactValidationResult,
     SemanticResult,
@@ -28,21 +28,21 @@ from softschema.validate import (
 
 __all__ = [
     "SOFTSCHEMA_FORMAT_VERSION",
-    "ArtifactProfile",
+    "SoftschemaProfile",
     "ArtifactValidationResult",
     "CompileResult",
-    "DocumentMetadata",
-    "SchemaBinding",
-    "SchemaRegistry",
+    "SoftschemaMetadata",
+    "SoftschemaBinding",
+    "SoftschemaRegistry",
     "SemanticResult",
-    "Status",
+    "SoftschemaStatus",
     "StructuralResult",
-    "StructureStage",
+    "SoftschemaStage",
     "ValidationResult",
-    "ValidationWarning",
+    "SoftschemaWarning",
     "ValueResolver",
     "compile_model",
-    "parse_document_metadata",
+    "parse_softschema_metadata",
     "validate",
     "validate_artifact",
     "validate_semantic",

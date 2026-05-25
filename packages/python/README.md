@@ -2,7 +2,7 @@
 
 The Python package provides:
 
-- `SchemaBinding` and `SchemaRegistry`
+- `SoftschemaBinding` and `SoftschemaRegistry`
 - `validate_artifact` for Markdown/YAML artifact validation
 - `validate_structural` for JSON Schema validation
 - `validate_semantic` for Pydantic validation

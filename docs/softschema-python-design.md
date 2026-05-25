@@ -13,7 +13,7 @@ provider adapters, and domain models.
 
 The package does not model process graphs or emit structure reports.
 A host framework may build those reports by walking its own workflows and resolving
-`SchemaBinding` objects, but that report shape is application-specific and stays outside
+`SoftschemaBinding` objects, but that report shape is application-specific and stays outside
 the core package.
 
 ## Public Modules
@@ -29,7 +29,7 @@ the core package.
 The package root re-exports the common API:
 
 ```python
-from softschema import SchemaBinding, SchemaRegistry, compile_model, validate_artifact
+from softschema import SoftschemaBinding, SoftschemaRegistry, compile_model, validate_artifact
 ```
 
 ## Documentation Structure
@@ -74,7 +74,7 @@ release.
 
 ## Binding Semantics
 
-`SchemaBinding` names one artifact contract:
+`SoftschemaBinding` names one artifact contract:
 
 - `contract_id`: stable contract ID
 - `model`: optional Pydantic model for semantic validation
@@ -114,13 +114,13 @@ JSON Schema carries the portable structural subset that another implementation c
 reuse.
 
 ```python
-from softschema import SchemaBinding, Status, validate_artifact
+from softschema import SoftschemaBinding, SoftschemaStatus, validate_artifact
 
-binding = SchemaBinding(
+binding = SoftschemaBinding(
     contract_id="example.movies:MoviePage/v1",
     model=MoviePage,
     envelope_key="movie",
-    status=Status.enforced,
+    status=SoftschemaStatus.enforced,
 )
 
 result = validate_artifact("examples/movie_page/spirited-away.md", binding=binding)
@@ -143,8 +143,9 @@ The emitted schema includes:
 
 - `$schema` for JSON Schema 2020-12
 - `$id` when a contract ID is supplied
-- `x-softschema` annotations
-- a deterministic SHA-256 hash over canonical JSON
+- an `x-softschema` annotation block with `contract`, `generated_from`,
+  `softschema_format_version`, and `schema_sha256` (a deterministic SHA-256 over the
+  canonical JSON form of the schema)
 
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
