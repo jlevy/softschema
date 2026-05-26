@@ -375,20 +375,89 @@ reference, and this plan is the time-bounded execution roadmap.
 
 ### Phase 5: P0 Capability Implementation
 
-Each item is net-new relative to the ported core.
-Designs live in v8; this phase implements them.
-Land before the first non-trivial external project depends on the package.
+Each item is net-new relative to the ported core. Designs live in v8; this phase
+implements them. Land before the first non-trivial external project depends on the
+package.
 
-- [ ] **Field-level `x-softschema` annotations** (v8 §"The Pydantic contract layer").
-  Add an `SField` helper, surface per-field `tier`/`owner`/`group`/`instruction` through
-  `softschema.compile`, document the allowed keys in `docs/softschema-python-design.md`,
-  annotate one field in the movie example, and add a round-trip test.
-- [ ] **`SchemaView` reader** (v8 §"`SchemaView`: shared schema reader"). New
-  `softschema.schema_view` module.
-  Match the v8 interface (`iter_fields`, `field`, `enum_values`, `softmeta`,
-  `fields_by_group`/`owner`/`tier`). Export from `softschema/__init__.py`. Add tests for
-  enum extraction, required-field listing, missing-key handling, and annotation
-  retrieval.
+Reuse note: the trading repo's `packages/softschema` package does *not* contain
+`SField`, `SchemaView`, or generated-sections code. Trading-repo softschema today is
+a subset of this repo's current code. The P0/P1 work is genuinely net-new here; the
+trading consumer benefits from these APIs being available *before* its Phase 3
+cutover, not from porting code.
+
+Trading consumer alignment (informs API shape, not borrowed code):
+
+- `earnings_predictions/src/earnings_predictions/qa/` reads enum values and field
+  metadata ad-hoc today. `SchemaView` becomes the API it switches to.
+- `earnings_predictions/src/earnings_predictions/schemas/*.py` are Pydantic models
+  with rich domain semantics (Direction, EpsResult, ReactionType enums; cross-field
+  validators). They are natural candidates for `SField` annotations
+  (`tier="hard_fact"` for IDs, `owner="agent"`/`"postprocess"`/`"system"` for
+  ownership, `group` for QA categorization).
+- Trading runbooks under `process/` and templates that currently list controlled
+  vocabularies by hand are the natural first consumers of generated sections.
+
+#### ss-pu9z: Field-level `x-softschema` annotations
+
+v8 reference: §"The Pydantic contract layer" → §"`SField` and `x-softschema`
+metadata".
+
+Implementation map:
+- [ ] Add `packages/python/src/softschema/sfield.py` with:
+  - Type aliases: `SoftOwner = Literal["agent", "postprocess", "system", "human"]`,
+    `SoftTier = Literal["hard_fact", "constrained", "narrative"]`,
+    `RepairKind = Literal["none", "safe_coerce", "suggest_alias"]`.
+  - `SFieldMeta(BaseModel)` with `group`, `order`, `tier`, `owner` (default `"agent"`),
+    `instruction`, `examples`, `aliases`, `repair`.
+  - `SField(*, description, group, owner=..., tier=None, aliases=None, examples=None,
+    instruction=None, repair="none", **field_kwargs)` returning a Pydantic `Field`
+    with `json_schema_extra={"x-softschema": meta.model_dump(exclude_none=True)}`.
+- [ ] Export `SField`, `SFieldMeta`, `SoftOwner`, `SoftTier`, `RepairKind` from
+  `softschema/__init__.py`.
+- [ ] Confirm `softschema.compile` already passes per-field `json_schema_extra`
+  through (Pydantic handles this natively). Add a round-trip test that compiles a
+  model using `SField` and asserts the per-property `x-softschema` block matches.
+- [ ] Document allowed keys in `docs/softschema-python-design.md` as a Field
+  Annotations section, including the `tier`/`owner`/`group`/`repair` vocabularies.
+- [ ] Annotate one field in `examples/movie_page/model.py` (recommended: `genres`
+  with `group="taxonomy"`, `tier="constrained"`, `owner="agent"`, plus a short
+  `instruction`). Re-compile the schema sidecar; the existing `compile --check`
+  drift test catches any miss.
+- [ ] Add `tests/test_sfield.py` with: round-trip preservation,
+  exclude-none-on-empty-meta, type-alias rejection at type-check (one example call
+  intentionally type-wrong, suppressed with a comment, to lock the Literal types).
+
+#### ss-9zdi: `SchemaView` reader
+
+v8 reference: §"`SchemaView`: shared schema reader".
+
+Implementation map:
+- [ ] Add `packages/python/src/softschema/schema_view.py` with:
+  - `FieldInfo` dataclass: `pointer: str`, `name: str`, `json_type: str | None`,
+    `enum: list[str] | None`, `required: bool`, `description: str | None`,
+    `softmeta: dict[str, Any]`.
+  - `SchemaView` class:
+    - `@classmethod load(cls, schema_path: Path) -> SchemaView` (reads YAML or JSON).
+    - `@property contract_id: str` (from `$id` or root `x-softschema.contract`).
+    - `@property schema_sha256: str | None` (from root `x-softschema`).
+    - `@property root_softmeta: dict[str, Any]`.
+    - `iter_fields(*, include_refs=True) -> Iterable[FieldInfo]` — flattens through
+      `$ref`s into `$defs`, yields one `FieldInfo` per leaf-ish field; pointer is
+      relative to the root schema using JSON Pointer.
+    - `field(pointer: str) -> FieldInfo` — single lookup by pointer.
+    - `enum_values(pointer: str) -> list[str] | None`.
+    - `softmeta(pointer: str) -> dict[str, Any]`.
+    - `fields_by_group(group: str)`, `fields_by_owner(owner: str)`,
+      `fields_by_tier(tier: str)` — filter helpers on the `iter_fields` stream.
+- [ ] Defer `view(name)` / `load_urn` to a follow-up. Phase 0 ships the navigator;
+  views and URN resolution land with generated sections (ss-bini) or later.
+- [ ] Export `SchemaView`, `FieldInfo` from `softschema/__init__.py`.
+- [ ] Add `tests/test_schema_view.py`: load movie-page schema, assert enum extraction
+  for `mpaa_rating`, required-field listing, missing-pointer raises, softmeta
+  retrieval after the SField annotation lands.
+- [ ] Document the public surface in `docs/softschema-python-design.md` as a Schema
+  View section.
+
 - [x] **Warning-code documentation.** `WarningCode` enum published in `softschema`,
   Warning Codes + structural error kinds tables in `docs/softschema-python-design.md`,
   and regression test (`tests/test_warning_codes.py`) pinning emitted codes to the
@@ -396,31 +465,52 @@ Land before the first non-trivial external project depends on the package.
 
 ### Phase 6: P1 Documentation Enhancements
 
-Doc-only; ships independently of Phase 5 and Phase 7.
-
-- [ ] Lifecycle / continuum walkthrough in `docs/softschema-guide.md`.
-- [ ] Inline-vs-sidecar doctrine section in the guide.
-- [ ] Migration recipe (legacy envelope → canonical) in the guide, using `ValueResolver`
-  modes.
-- [ ] CI integration recipe in `docs/development.md` (`softschema compile --check`
-  + GitHub Actions snippet + `pre-commit` example).
+- [x] Lifecycle / continuum walkthrough in `docs/softschema-guide.md` (landed as
+  the "Choose Which Values Belong In YAML" playbook in the guide restructure).
+- [x] Inline-vs-sidecar doctrine section in the guide (landed as the "Inline
+  Frontmatter Vs Data Sidecar" playbook).
+- [x] Migration recipe (envelope reshape) in the guide (landed as the "Migrate An
+  Existing Artifact" playbook; rewritten to use the canonical one-envelope shape
+  rather than the deferred `ValueResolver` modes).
+- [x] CI integration recipe in `docs/development.md` (Continuous Integration
+  section with `softschema compile --check`, GitHub Actions, and `pre-commit`).
 
 ### Phase 7: P1 Generated Schema Sections
 
-The biggest follow-on feature.
-Designed in v8 §"Generated sections" (markers, attributes, views, hash semantics,
-allowed kinds, CI integration).
-Implementation should follow v8 closely; do not redesign here.
+The biggest follow-on feature. Designed in v8 §"Generated sections" (markers,
+attributes, views, hash semantics, allowed kinds, CI integration). Implementation
+follows v8 closely; do not redesign here.
 
-- [ ] Add the marker format to `docs/softschema-spec.md` (kinds `enum_table`,
-  `field_list`, `vocab` for Phase 0; see v8 §"Allowed `kind` values (Phase 0)").
-- [ ] Add a `softschema.generate` module with one renderer per kind, reading through
-  `SchemaView`.
-- [ ] Add `softschema generate <file>` and `softschema generate <file> --check` CLI
-  subcommands.
-- [ ] Add one generated-section marker to `examples/movie_page/README.md` so the example
-  exercises the feature end-to-end.
-- [ ] Tests: renderer determinism, drift detection, marker round-trip, failure modes.
+#### ss-bini: Generated sections
+
+v8 references: §"Generated sections", §"Namespaced markers", §"Section attributes",
+§"Allowed `kind` values (Phase 0)", §"Hash semantics", §"CI integration".
+
+Phase 0 scope (this bead):
+- Marker syntax: `<!-- softschema:generated kind="..." [attrs] -->` ... `<!-- /softschema:generated -->`
+- Kinds: `enum_table`, `field_list`, `vocab`.
+- Attributes: `kind`, `contract` (schema path or `$id`), `view` (deferred), `format`
+  (default per kind), `sha256` (optional informational).
+- CLI: `softschema generate <file>` (regenerate in place), `softschema generate
+  <file> --check` (fail on drift).
+- Depends on ss-9zdi.
+
+Implementation map:
+- [ ] Add `packages/python/src/softschema/generate.py` with:
+  - Marker parser (regex over the document; finds opening + closing markers, parses
+    attributes from the opening tag).
+  - One renderer per kind that takes a `SchemaView` and returns the rendered Markdown
+    block.
+  - `regenerate(path, *, check=False) -> GenerateResult` that re-renders every
+    marker and either writes the file (in place) or returns drift information.
+- [ ] Add `softschema generate` subcommand to `cli.py` with optional `--check`.
+- [ ] Add the marker format to `docs/softschema-spec.md` as a normative section
+  (with the `Out of Scope for v0.1` note removed for this feature once it ships).
+- [ ] Add one marker to `examples/movie_page/README.md` (recommended: an
+  `enum_table` for `mpaa_rating` so the example exercises the feature end-to-end).
+- [ ] Add `tests/test_generate.py`: determinism (same schema → same output), drift
+  detection on stale section, round-trip (parse → render → parse), failure modes
+  (unknown kind, malformed attrs, missing schema).
 
 ## Tracking Beads
 
