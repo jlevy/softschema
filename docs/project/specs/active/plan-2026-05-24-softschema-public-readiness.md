@@ -389,9 +389,10 @@ Land before the first non-trivial external project depends on the package.
   `fields_by_group`/`owner`/`tier`). Export from `softschema/__init__.py`. Add tests for
   enum extraction, required-field listing, missing-key handling, and annotation
   retrieval.
-- [ ] **Warning-code documentation.** Enumerate every emitted code, publish the table in
-  `docs/softschema-python-design.md` as stable public surface, and add a regression test
-  that asserts the package only emits documented codes.
+- [x] **Warning-code documentation.** `WarningCode` enum published in `softschema`,
+  Warning Codes + structural error kinds tables in `docs/softschema-python-design.md`,
+  and regression test (`tests/test_warning_codes.py`) pinning emitted codes to the
+  documented set. Committed to the `document-*` prefix for the warning family.
 
 ### Phase 6: P1 Documentation Enhancements
 
@@ -503,6 +504,11 @@ rather than as code comments so the rationale is visible to the next reader.
   `parse_softschema_metadata`. The namespaced form is preserved so consumer code
   (host `Status`, host `Binding`) doesn't collide on import. The trading repo
   Phase 3 cutover will write `from softschema import SoftschemaBinding`.
+- **Warning codes use the `document-*` prefix family.** Codified in the public
+  `WarningCode` enum (currently `document-contract-mismatch`,
+  `document-status-mismatch`). Adding a new code requires both an enum member and a
+  Warning Codes table row in `docs/softschema-python-design.md`; a regression test
+  fails CI when the two drift.
 - **`softschema.values.location / pointer` is deferred past v0.1.** v8 prescribes
   an explicit `softschema.values: {location: frontmatter, pointer: /values}` block
   instead of inferring the envelope from the first non-`softschema` top-level key.
@@ -520,10 +526,6 @@ These should be resolved before tagging the first PyPI release.
 - Which downstream repo should be migrated first once the standalone package is ready?
   Default if unresolved: pick the smallest internal consumer to validate the published
   API surface.
-- **Warning-code prefix commitment.** Public consumers will need to filter on these
-  prefixes. Pick one (`document-*`, `meta-*`, or `softschema-*`) and freeze it before
-  v0.1; record the choice in the warning-codes subsection of the python design doc.
-  Default if unresolved: `document-*` for document-metadata warnings.
 
 ### Deferred Decisions
 

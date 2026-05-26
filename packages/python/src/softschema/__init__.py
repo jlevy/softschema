@@ -10,6 +10,7 @@ from softschema.models import (
     SoftschemaStage,
     SoftschemaStatus,
     SoftschemaWarning,
+    WarningCode,
     parse_softschema_metadata,
 )
 from softschema.registry import SoftschemaRegistry
@@ -41,6 +42,7 @@ __all__ = [
     "ValidationResult",
     "SoftschemaWarning",
     "ValueResolver",
+    "WarningCode",
     "compile_model",
     "parse_softschema_metadata",
     "validate",

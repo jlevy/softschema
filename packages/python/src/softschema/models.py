@@ -66,6 +66,19 @@ class SoftschemaBinding(BaseModel):
         return SoftschemaStage.prose
 
 
+class WarningCode(StrEnum):
+    """Stable, public identifiers for warnings emitted by validation.
+
+    Every public warning code uses the ``document-*`` prefix so downstream code
+    can filter the family with a single check (``code.startswith("document-")``).
+    Adding a new public code requires both an enum member here and a row in the
+    Warning Codes section of ``docs/softschema-python-design.md``.
+    """
+
+    DOCUMENT_CONTRACT_MISMATCH = "document-contract-mismatch"
+    DOCUMENT_STATUS_MISMATCH = "document-status-mismatch"
+
+
 class SoftschemaWarning(BaseModel):
     """Structured non-fatal warning emitted by validation."""
 

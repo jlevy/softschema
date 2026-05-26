@@ -22,6 +22,7 @@ from softschema.models import (
     SoftschemaProfile,
     SoftschemaStatus,
     SoftschemaWarning,
+    WarningCode,
     parse_softschema_metadata,
 )
 from softschema.registry import SoftschemaRegistry
@@ -121,9 +122,27 @@ def validate_semantic(values: dict[str, Any], model_cls: type[BaseModel]) -> Sem
     return SemanticResult(ok=True)
 
 
-def validate_values(values: dict[str, Any], model_cls: type[BaseModel]) -> SemanticResult:
-    """Alias for semantic validation of pre-extracted values."""
-    return validate_semantic(values, model_cls)
+def validate_values(
+    values: dict[str, Any],
+    *,
+    model: type[BaseModel] | None = None,
+    schema: Path | None = None,
+) -> ValidationResult:
+    """Validate a pre-extracted values dict against a model, a schema, or both.
+
+    Returns a ``ValidationResult`` with separate ``structural`` and ``semantic``
+    fields. Engines that were not requested are reported as ok (with no errors)
+    so callers can read either field without checking which one ran.
+
+    Use this when values come from somewhere other than a Markdown frontmatter
+    document (a body-form runtime, a structured-output adapter, a hand-written
+    fixture). For Markdown documents use ``validate_artifact`` instead.
+    """
+    if model is None and schema is None:
+        raise ValueError("validate_values() requires at least one of model= or schema=")
+    structural = validate_structural(values, schema) if schema else StructuralResult(ok=True)
+    semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
+    return ValidationResult(structural=structural, semantic=semantic)
 
 
 def validate(
@@ -322,7 +341,9 @@ def _metadata_from_frontmatter(
             f"document declares {metadata.contract_id!r}; binding uses {binding.contract_id!r}"
         )
         if metadata_mode == "advisory":
-            warnings.append(SoftschemaWarning(code="document-contract-mismatch", message=message))
+            warnings.append(
+                SoftschemaWarning(code=WarningCode.DOCUMENT_CONTRACT_MISMATCH, message=message)
+            )
         else:
             return _artifact_failure(
                 doc_path,
@@ -335,7 +356,7 @@ def _metadata_from_frontmatter(
     if metadata.status is not None and metadata.status != binding.status:
         warnings.append(
             SoftschemaWarning(
-                code="document-status-mismatch",
+                code=WarningCode.DOCUMENT_STATUS_MISMATCH,
                 message=(
                     f"document declares status {metadata.status.value!r}; binding uses "
                     f"{binding.status.value!r}"

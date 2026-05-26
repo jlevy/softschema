@@ -60,7 +60,9 @@ def test_validate_structural_and_semantic(tmp_path: Path) -> None:
 
     assert validate_structural(values, schema_path).ok
     assert validate_semantic(values, SampleModel).ok
-    assert validate_values(values, SampleModel).ok
+    combined = validate_values(values, model=SampleModel, schema=schema_path)
+    assert combined.structural.ok
+    assert combined.semantic.ok
 
 
 def test_validate_semantic_runs_cross_field_invariant() -> None:
