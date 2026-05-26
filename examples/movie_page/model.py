@@ -2,48 +2,67 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
+MpaaRating = Literal["G", "PG", "PG-13", "R", "NC-17", "NR"]
 
-class RottenTomatoesCritics(BaseModel):
+
+class CastMember(BaseModel):
+    """One billed cast member."""
+
     model_config = ConfigDict(extra="forbid")
 
-    label: str = "Tomatometer"
-    score_percent: int = Field(ge=0, le=100)
-    total_reviews: int = Field(ge=0)
+    actor: str
+    character: str
 
 
-class RottenTomatoesAudience(BaseModel):
+class RottenTomatoesRating(BaseModel):
+    """Rotten Tomatoes critic and audience scores."""
+
     model_config = ConfigDict(extra="forbid")
 
-    label: str = "Popcornmeter"
-    score_percent: int = Field(ge=0, le=100)
-    total_ratings: int = Field(ge=0)
-    total_ratings_display: str
+    critics_percent: int = Field(ge=0, le=100, description="Tomatometer score, 0-100.")
+    audience_percent: int = Field(ge=0, le=100, description="Popcornmeter score, 0-100.")
+    critic_review_count: int = Field(ge=0)
 
 
-class RottenTomatoesRatings(BaseModel):
+class ImdbRating(BaseModel):
+    """IMDb aggregate rating."""
+
     model_config = ConfigDict(extra="forbid")
 
-    critics: RottenTomatoesCritics
-    audience: RottenTomatoesAudience
+    score: float = Field(ge=0.0, le=10.0, description="IMDb rating on a 0-10 scale.")
+    total_votes: int = Field(ge=0)
 
 
 class MovieRatings(BaseModel):
+    """Aggregate ratings from external sources."""
+
     model_config = ConfigDict(extra="forbid")
 
-    rotten_tomatoes: RottenTomatoesRatings
+    rotten_tomatoes: RottenTomatoesRating | None = None
+    imdb: ImdbRating | None = None
 
 
 class MoviePage(BaseModel):
-    """Movie page fields consumed from the Markdown frontmatter."""
+    """A small movie info page, similar to a public IMDB-style listing.
+
+    The fields illustrate the structural variety a softschema artifact can carry:
+    constrained scalars, enums, lists of strings, lists of structured records, and
+    optional nested objects.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     title: str
     release_year: int = Field(ge=1888)
-    directors: list[str]
-    genres: list[str] = Field(min_length=1)
     runtime_minutes: int = Field(gt=0)
-    description: str
+    mpaa_rating: MpaaRating | None = None
+    directors: list[str] = Field(min_length=1)
+    genres: list[str] = Field(min_length=1)
+    tagline: str | None = None
+    synopsis: str
+    cast: list[CastMember] = Field(default_factory=list)
     ratings: MovieRatings

@@ -41,26 +41,46 @@ softschema:
 movie:
   title: Spirited Away
   release_year: 2001
+  runtime_minutes: 125
+  mpaa_rating: PG
+  directors:
+    - Hayao Miyazaki
+  genres:
+    - Animation
+    - Adventure
+    - Family
+  synopsis: >
+    Ten-year-old Chihiro and her parents stumble into a mysterious abandoned town
+    that turns out to be a spirit world...
+  cast:
+    - actor: Rumi Hiiragi
+      character: Chihiro / Sen
+    - actor: Miyu Irino
+      character: Haku
   ratings:
     rotten_tomatoes:
-      critics:
-        label: Tomatometer
-        score_percent: 96
-        total_reviews: 225
-      audience:
-        label: Popcornmeter
-        score_percent: 96
-        total_ratings: 250000
-        total_ratings_display: 250,000+
+      critics_percent: 96
+      audience_percent: 96
+      critic_review_count: 225
+    imdb:
+      score: 8.6
+      total_votes: 850000
 ---
 # Spirited Away (2001)
 
-Rotten Tomatoes shows a 96% Tomatometer based on 225 critic reviews and a 96%
-Popcornmeter based on 250,000+ audience ratings.
+A 1-2 paragraph prose summary suitable for human readers, followed by optional tables
+that mirror the YAML for scanning.
 ```
 
 The YAML payload is authoritative.
 Markdown body prose and tables are reader-facing projections.
+
+The example illustrates the structural variety a softschema artifact can carry:
+constrained integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`
+restricted to `G`, `PG`, `PG-13`, `R`, `NC-17`, `NR`), lists of strings (`directors`,
+`genres`), a list of structured records (`cast`), and nested objects (`ratings`). The
+full artifact, model, and generated JSON Schema live under
+[examples/movie_page/](examples/movie_page/README.md).
 
 ## Contract IDs
 
@@ -122,7 +142,7 @@ uv run softschema compile examples.movie_page.model:MoviePage \
 ## Repository Layout
 
 ```text
-docs/                  guide, spec, design, and workflow docs
+docs/                  guide, spec, Python package design, and workflow docs
 examples/movie_page/   complete example with model, host integration, artifact, schema
 packages/python/       Python implementation and tests
 packages/typescript/   future TypeScript/Zod notes only

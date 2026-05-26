@@ -153,6 +153,32 @@ or `examples.md` unless a topic grows large enough to need a separate reference.
 - **Examples should be practical, public, and few.** One complete example is better than
   a gallery of toy files.
 
+### Adjacent Approaches
+
+The space around softschema is crowded with tools that overlap on parts of the problem.
+Recording why those tools don't replace softschema keeps the design honest and guides
+both adopters and future contributors:
+
+- **Plain JSON Schema in a YAML file.** Works for pure-data artifacts. Fails for
+  artifacts that mix narrative prose with structured values, because nothing tells a
+  consumer *which* values are authoritative and where they live.
+- **Pydantic (or any source schema) alone.** Carries host-language semantics that don't
+  travel cross-language. Loses the portable structural subset that other implementations
+  could validate.
+- **Full-body form parsers** (Markform, custom Markdown body bindings). Powerful, but
+  they own a Markdown body parser and a render runtime. Softschema deliberately does
+  not. A body-form runtime can sit *above* softschema, export a values dict, and call
+  softschema for validation — no shared code required.
+- **Provider structured-output adapters.** Useful at the LLM boundary, but they
+  validate one provider's subset; softschema validates the full schema after the model
+  responds. The two compose; the adapter is not a substitute.
+- **Plain Markdown with hand-maintained convention.** The starting state for most
+  projects. Softschema is the smallest possible step up: add metadata, add a contract
+  ID, validate the values consumers actually read.
+
+When the guide grows into an operational playbook (see Phase 6), the adopter-facing
+version of this list can move into a short "When to use softschema" section there.
+
 ### Cross-Language Boundary
 
 The public artifact format is Markdown/YAML plus optional JSON Schema sidecars.
@@ -198,7 +224,7 @@ removal, not a sweeping rename.
 
 The capabilities below are the genuinely new work.
 They come from
-[research-2026-05-24-softschema-runtime-design-v8.md](../../../research/research-2026-05-24-softschema-runtime-design-v8.md)
+[research-2026-05-24-softschema-runtime-design-v8.md](../../research/research-2026-05-24-softschema-runtime-design-v8.md)
 and are not present in the internal predecessor; v8 designs them, this plan implements
 them. Read v8 first when picking up any item below.
 
@@ -253,7 +279,7 @@ Each will be revisited only when a concrete public use case earns the design cos
 
 The capability roadmap above is informed by a longer-running runtime-design research
 thread captured in
-[docs/research/research-2026-05-24-softschema-runtime-design-v8.md](../../../research/research-2026-05-24-softschema-runtime-design-v8.md).
+[docs/project/research/research-2026-05-24-softschema-runtime-design-v8.md](../../research/research-2026-05-24-softschema-runtime-design-v8.md).
 That document describes the full “hard schema, soft authoring” architecture in detail —
 including Phase 0 surface, generated-section markers, `SchemaView`, schema reference
 resolution, the `softschema:` block policy, the YAML subset, and a catalog of reserved
@@ -459,27 +485,41 @@ uv run softschema skill --brief
 5. Publish or tag the standalone package only after docs, examples, CLI resources, and
    tests pass.
 
+## Settled Pre-Release Decisions
+
+These were open in earlier revisions and are now settled. They are recorded here
+rather than as code comments so the rationale is visible to the next reader.
+
+- **Standalone `docs/softschema-design.md` is removed for v0.1.** The 2026-05-26
+  codex review (`docs/project/reviews/review-2026-05-26-softschema-docs-design.md`)
+  flagged a conflict with this plan. The guide, spec,
+  `docs/softschema-python-design.md`, the v8 research doc, and this plan are the
+  durable docs. A permanent language-neutral design doc can be revisited after the
+  first downstream migration if a need actually appears.
+- **Public API names keep the `Softschema*` namespace prefix.** Earlier drafts of
+  the trading adoption plan sketched shorter names (`SchemaBinding`, `Status`); the
+  shipped API uses `SoftschemaBinding`, `SoftschemaRegistry`, `SoftschemaStatus`,
+  `SoftschemaProfile`, `SoftschemaStage`, `SoftschemaMetadata`, `SoftschemaWarning`,
+  `parse_softschema_metadata`. The namespaced form is preserved so consumer code
+  (host `Status`, host `Binding`) doesn't collide on import. The trading repo
+  Phase 3 cutover will write `from softschema import SoftschemaBinding`.
+- **`softschema.values.location / pointer` is deferred past v0.1.** v8 prescribes
+  an explicit `softschema.values: {location: frontmatter, pointer: /values}` block
+  instead of inferring the envelope from the first non-`softschema` top-level key.
+  The current package infers; the spec documents inference as the v0.1 rule and
+  excludes the resolver shape in `Out of Scope for v0.1`. A non-breaking
+  `ValueResolver` mode for the explicit form can ship in a later release once an
+  artifact actually needs it.
+
 ## Open Questions
 
 ### Pre-Release Decisions
 
 These should be resolved before tagging the first PyPI release.
 
-- Should a permanent language-neutral `docs/softschema-design.md` exist later, or are
-  the guide, spec, `docs/softschema-python-design.md`, the v8 research doc, and this
-  plan enough? Default if unresolved: keep this plan as the home for cross-language notes
-  and revisit after the first downstream migration.
 - Which downstream repo should be migrated first once the standalone package is ready?
   Default if unresolved: pick the smallest internal consumer to validate the published
   API surface.
-- **Adopt v8’s explicit `softschema.values.location / pointer` syntax now or after
-  v0.1?** v8 prescribes an explicit
-  `softschema.values: {location: frontmatter, pointer: /values}` block instead of
-  inferring the envelope from the first non-`softschema` top-level key.
-  The current package infers.
-  Default if unresolved: keep inferring through v0.1, document the v8 explicit form as
-  the recommended shape for new templates, and ship a non-breaking `ValueResolver` mode
-  for it in a 0.2 release.
 - **Warning-code prefix commitment.** Public consumers will need to filter on these
   prefixes. Pick one (`document-*`, `meta-*`, or `softschema-*`) and freeze it before
   v0.1; record the choice in the warning-codes subsection of the python design doc.
@@ -503,7 +543,7 @@ These can wait until a TypeScript package is actually scheduled.
 - [Softschema Guide](../../../softschema-guide.md)
 - [Softschema Spec](../../../softschema-spec.md)
 - [Python Package Design](../../../softschema-python-design.md)
-- [Runtime Design v8](../../../research/research-2026-05-24-softschema-runtime-design-v8.md)
+- [Runtime Design v8](../../research/research-2026-05-24-softschema-runtime-design-v8.md)
   — the durable design reference for the full “hard schema, soft authoring”
   architecture. P0/P1/Deferred items in this plan trace back to this document.
 - [Movie Page Example](../../../../examples/movie_page/README.md)

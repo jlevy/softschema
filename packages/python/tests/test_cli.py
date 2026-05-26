@@ -147,7 +147,7 @@ def test_docs_prints_bundled_guide(capsys: pytest.CaptureFixture[str]) -> None:
     output = capsys.readouterr().out
     assert "# Softschema Guide" in output
     assert "programming-language agnostic" in output
-    assert "Automation, exactness, and structure are separate axes" in output
+    assert "## Playbook: Add Python Validation" in output
 
 
 def test_docs_prints_copyable_movie_artifact(capsys: pytest.CaptureFixture[str]) -> None:

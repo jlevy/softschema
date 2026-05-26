@@ -8,9 +8,20 @@ This example is deliberately small and complete:
 - [spirited-away.md](spirited-away.md) contains the Markdown artifact.
 - `movie-page.schema.yaml` is generated from the model.
 
-The Markdown body reads like a compact movie page on a website.
-It repeats the title, description, details table, and Rotten Tomatoes critics/audience
-ratings in a friendly format, but the YAML frontmatter is the authoritative structure.
+The Markdown body reads like a compact movie page on a website. It repeats the title,
+synopsis, details table, lead cast, and ratings in a friendly format, but the YAML
+frontmatter is the authoritative structure.
+
+The example deliberately exercises a representative mix of YAML shapes:
+
+- Strings (`title`, `synopsis`).
+- Constrained integers (`release_year` at least 1888, `runtime_minutes` positive).
+- An enum (`mpaa_rating`: one of `G`, `PG`, `PG-13`, `R`, `NC-17`, `NR`).
+- Lists of strings (`directors`, `genres`).
+- A list of structured records (`cast`, each `{actor, character}`).
+- Nested objects with their own typed fields (`ratings.rotten_tomatoes`,
+  `ratings.imdb`, which carries a 0-10 float score).
+- Optional fields (`mpaa_rating`, `tagline`, and either rating source may be omitted).
 
 The example is meant to be copied from the files in this directory or printed through
 the docs CLI:

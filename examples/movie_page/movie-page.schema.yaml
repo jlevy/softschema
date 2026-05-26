@@ -1,73 +1,89 @@
 $defs:
+  CastMember:
+    additionalProperties: false
+    description: One billed cast member.
+    properties:
+      actor:
+        title: Actor
+        type: string
+      character:
+        title: Character
+        type: string
+    required:
+    - actor
+    - character
+    title: CastMember
+    type: object
+  ImdbRating:
+    additionalProperties: false
+    description: IMDb aggregate rating.
+    properties:
+      score:
+        description: IMDb rating on a 0-10 scale.
+        maximum: 10.0
+        minimum: 0.0
+        title: Score
+        type: number
+      total_votes:
+        minimum: 0
+        title: Total Votes
+        type: integer
+    required:
+    - score
+    - total_votes
+    title: ImdbRating
+    type: object
   MovieRatings:
     additionalProperties: false
+    description: Aggregate ratings from external sources.
     properties:
       rotten_tomatoes:
-        $ref: '#/$defs/RottenTomatoesRatings'
-    required:
-    - rotten_tomatoes
+        anyOf:
+        - $ref: '#/$defs/RottenTomatoesRating'
+        - type: 'null'
+        default: null
+      imdb:
+        anyOf:
+        - $ref: '#/$defs/ImdbRating'
+        - type: 'null'
+        default: null
     title: MovieRatings
     type: object
-  RottenTomatoesAudience:
+  RottenTomatoesRating:
     additionalProperties: false
+    description: Rotten Tomatoes critic and audience scores.
     properties:
-      label:
-        default: Popcornmeter
-        title: Label
-        type: string
-      score_percent:
+      critics_percent:
+        description: Tomatometer score, 0-100.
         maximum: 100
         minimum: 0
-        title: Score Percent
+        title: Critics Percent
         type: integer
-      total_ratings:
-        minimum: 0
-        title: Total Ratings
-        type: integer
-      total_ratings_display:
-        title: Total Ratings Display
-        type: string
-    required:
-    - score_percent
-    - total_ratings
-    - total_ratings_display
-    title: RottenTomatoesAudience
-    type: object
-  RottenTomatoesCritics:
-    additionalProperties: false
-    properties:
-      label:
-        default: Tomatometer
-        title: Label
-        type: string
-      score_percent:
+      audience_percent:
+        description: Popcornmeter score, 0-100.
         maximum: 100
         minimum: 0
-        title: Score Percent
+        title: Audience Percent
         type: integer
-      total_reviews:
+      critic_review_count:
         minimum: 0
-        title: Total Reviews
+        title: Critic Review Count
         type: integer
     required:
-    - score_percent
-    - total_reviews
-    title: RottenTomatoesCritics
-    type: object
-  RottenTomatoesRatings:
-    additionalProperties: false
-    properties:
-      critics:
-        $ref: '#/$defs/RottenTomatoesCritics'
-      audience:
-        $ref: '#/$defs/RottenTomatoesAudience'
-    required:
-    - critics
-    - audience
-    title: RottenTomatoesRatings
+    - critics_percent
+    - audience_percent
+    - critic_review_count
+    title: RottenTomatoesRating
     type: object
 additionalProperties: false
-description: Movie page fields consumed from the Markdown frontmatter.
+description: 'A small movie info page, similar to a public IMDB-style listing.
+
+
+  The fields illustrate the structural variety a softschema artifact can carry:
+
+  constrained scalars, enums, lists of strings, lists of structured records, and
+
+  optional nested objects.'
 properties:
   title:
     title: Title
@@ -76,9 +92,27 @@ properties:
     minimum: 1888
     title: Release Year
     type: integer
+  runtime_minutes:
+    exclusiveMinimum: 0
+    title: Runtime Minutes
+    type: integer
+  mpaa_rating:
+    anyOf:
+    - enum:
+      - G
+      - PG
+      - PG-13
+      - R
+      - NC-17
+      - NR
+      type: string
+    - type: 'null'
+    default: null
+    title: Mpaa Rating
   directors:
     items:
       type: string
+    minItems: 1
     title: Directors
     type: array
   genres:
@@ -87,22 +121,29 @@ properties:
     minItems: 1
     title: Genres
     type: array
-  runtime_minutes:
-    exclusiveMinimum: 0
-    title: Runtime Minutes
-    type: integer
-  description:
-    title: Description
+  tagline:
+    anyOf:
+    - type: string
+    - type: 'null'
+    default: null
+    title: Tagline
+  synopsis:
+    title: Synopsis
     type: string
+  cast:
+    items:
+      $ref: '#/$defs/CastMember'
+    title: Cast
+    type: array
   ratings:
     $ref: '#/$defs/MovieRatings'
 required:
 - title
 - release_year
+- runtime_minutes
 - directors
 - genres
-- runtime_minutes
-- description
+- synopsis
 - ratings
 title: MoviePage
 type: object
@@ -112,4 +153,4 @@ x-softschema:
   contract: example.movies:MoviePage/v1
   generated_from: examples.movie_page.model:MoviePage
   softschema_format_version: 0.1.0
-  schema_sha256: 71777d0251998423497292099d5ad2c0b0fc5190cad8cc76620c5400d44b8889
+  schema_sha256: 9b79c72730f96ba598665c0f56759099f18962ff8616a84012c86f187c664487
