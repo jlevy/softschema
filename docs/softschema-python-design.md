@@ -13,8 +13,8 @@ provider adapters, and domain models.
 
 The package does not model process graphs or emit structure reports.
 A host framework may build those reports by walking its own workflows and resolving
-`SoftschemaBinding` objects, but that report shape is application-specific and stays outside
-the core package.
+`SoftschemaBinding` objects, but that report shape is application-specific and stays
+outside the core package.
 
 ## Public Modules
 

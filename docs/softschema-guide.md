@@ -4,20 +4,23 @@ Soft schemas are a practice for adding structure gradually to artifacts that mix
 context and machine-readable values.
 
 This is the standalone reference to hand to a human or coding agent that needs to
-understand the pattern. For the exact file format, metadata keys, and validation rules,
-see [Softschema Spec](softschema-spec.md). For the Python implementation, see the root
-README and package docs.
+understand the pattern.
+For the exact file format, metadata keys, and validation rules, see
+[Softschema Spec](softschema-spec.md).
+For the Python implementation, see the root README and package docs.
 
-The practice is programming-language agnostic. A softschema artifact is a Markdown/YAML
-file with a payload contract. This repository demonstrates the pattern with a Python
-package, but another project could map the same artifacts to TypeScript, Zod, JSON
-Schema, database records, or custom validators.
+The practice is programming-language agnostic.
+A softschema artifact is a Markdown/YAML file with a payload contract.
+This repository demonstrates the pattern with a Python package, but another project
+could map the same artifacts to TypeScript, Zod, JSON Schema, database records, or
+custom validators.
 
 ## Problem
 
 LLMs and agents make it easy to automate work that still looks like human reasoning:
-mixed prose, judgment calls, partial structure, and implicit context. That work may be
-automated, but not exact enough or structured enough for downstream tools.
+mixed prose, judgment calls, partial structure, and implicit context.
+That work may be automated, but not exact enough or structured enough for downstream
+tools.
 
 Soft schemas solve this by letting teams promote only the values that are consumed,
 while keeping the rest of the artifact readable.
@@ -42,8 +45,8 @@ prose
   -> pure data or deterministic code when the shape is stable
 ```
 
-Projects do not need to move all the way to pure data. Many useful artifacts remain part
-prose and part structured data.
+Projects do not need to move all the way to pure data.
+Many useful artifacts remain part prose and part structured data.
 
 ## Default Artifact Pattern
 
@@ -75,9 +78,10 @@ Rotten Tomatoes shows a 96% Tomatometer based on 225 critic reviews and a 96%
 Popcornmeter based on 250,000+ audience ratings.
 ```
 
-The YAML payload is authoritative. The Markdown body is a friendly projection for
-readers. It can include prose, headings, summaries, and tables, but structured consumers
-should not parse the body.
+The YAML payload is authoritative.
+The Markdown body is a friendly projection for readers.
+It can include prose, headings, summaries, and tables, but structured consumers should
+not parse the body.
 
 ## Contract IDs
 
@@ -108,13 +112,14 @@ record, or a hand-authored validator.
 - Use `softschema.contract` to identify the payload contract.
 - Keep resolver details, schema sidecar paths, implementation language, and migration
   state out of authored artifacts unless a project has a specific reason to expose them.
-- Distinguish data sidecars from schema sidecars. Data sidecars hold payload values;
-  schema sidecars describe validation contracts.
+- Distinguish data sidecars from schema sidecars.
+  Data sidecars hold payload values; schema sidecars describe validation contracts.
 
 The first Python package validates the default frontmatter shape, pure YAML artifacts,
-and JSON Schema sidecars. It does not implement a generic data-sidecar loader. A host
-project can still define a data-sidecar convention when payloads become too large for
-frontmatter, but that convention should be explicit and documented by the host.
+and JSON Schema sidecars.
+It does not implement a generic data-sidecar loader.
+A host project can still define a data-sidecar convention when payloads become too large
+for frontmatter, but that convention should be explicit and documented by the host.
 
 ## Adoption Path
 
@@ -148,12 +153,12 @@ softschema docs example
 softschema docs example-artifact
 ```
 
-The example commands print copyable reference files. They do not scaffold or mutate a
-target project.
+The example commands print copyable reference files.
+They do not scaffold or mutate a target project.
 
 When adding soft schemas to another project, first look for Markdown or YAML artifacts
-whose values are already consumed by code, QA, review, or aggregation. Promote those
-values into YAML. Leave the body readable.
+whose values are already consumed by code, QA, review, or aggregation.
+Promote those values into YAML. Leave the body readable.
 
 ## Relationship to the Python Package
 
@@ -170,9 +175,9 @@ The concepts do not require Python.
 
 ## Host Integration Pattern
 
-A host application owns the mapping from contract IDs to implementation schemas. In
-Python, that usually means registering complete `SoftschemaBinding` objects during startup
-or command setup, then validating artifacts at file boundaries:
+A host application owns the mapping from contract IDs to implementation schemas.
+In Python, that usually means registering complete `SoftschemaBinding` objects during
+startup or command setup, then validating artifacts at file boundaries:
 
 ```python
 from pathlib import Path
@@ -189,9 +194,9 @@ result = validate_artifact(
 assert result.ok
 ```
 
-The artifact still declares `softschema.contract` for portability and review. The host
-registry decides what that contract means in the running application: a Pydantic model,
-a JSON Schema sidecar, a future Zod schema, or another validator.
+The artifact still declares `softschema.contract` for portability and review.
+The host registry decides what that contract means in the running application: a
+Pydantic model, a JSON Schema sidecar, a future Zod schema, or another validator.
 
 ## Sidecars
 
@@ -201,22 +206,24 @@ There are two different sidecar ideas:
   as YAML.
 - Data sidecars hold artifact payload values outside the Markdown frontmatter.
 
-The Python package supports schema sidecars through `SoftschemaBinding.schema_path` and the
-`softschema compile` command. It depends on `frontmatter-format` for frontmatter and
-YAML mechanics, but `frontmatter-format` is not treated as a softschema data-sidecar
-runtime.
+The Python package supports schema sidecars through `SoftschemaBinding.schema_path` and
+the `softschema compile` command.
+It depends on `frontmatter-format` for frontmatter and YAML mechanics, but
+`frontmatter-format` is not treated as a softschema data-sidecar runtime.
 
-Use frontmatter for small consumed payloads. Consider a data sidecar only when the
-structured payload is large, machine-generated, or distracting to readers. When a host
-project uses data sidecars, keep routing fields such as `softschema.contract` and a
-short summary in frontmatter, and document exactly how consumers find and validate the
-sidecar.
+Use frontmatter for small consumed payloads.
+Consider a data sidecar only when the structured payload is large, machine-generated, or
+distracting to readers.
+When a host project uses data sidecars, keep routing fields such as
+`softschema.contract` and a short summary in frontmatter, and document exactly how
+consumers find and validate the sidecar.
 
 ## Documentation Shape
 
-The root README is a short subset of this guide. It should help a new visitor decide
-what the repo is and run the example. This guide carries the durable concept and
-adoption model. The spec carries exact artifact rules.
+The root README is a short subset of this guide.
+It should help a new visitor decide what the repo is and run the example.
+This guide carries the durable concept and adoption model.
+The spec carries exact artifact rules.
 
 When changing the pattern, update the docs in this order:
 
@@ -224,4 +231,6 @@ When changing the pattern, update the docs in this order:
 2. Update [Softschema Spec](softschema-spec.md) if the artifact format changes.
 3. Trim the README back to a short subset of the guide.
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

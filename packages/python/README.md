@@ -26,4 +26,6 @@ softschema docs example-artifact
 softschema skill --brief
 ```
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

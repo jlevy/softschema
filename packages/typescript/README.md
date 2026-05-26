@@ -21,4 +21,6 @@ Use the root [Softschema Guide](../../docs/softschema-guide.md) for the concept 
 [Softschema Spec](../../docs/softschema-spec.md) for the artifact format that a future
 TypeScript package must preserve.
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

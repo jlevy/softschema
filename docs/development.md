@@ -28,8 +28,10 @@ uv build
 
 The Python package is built from `packages/python/src/softschema`.
 
-Documentation changes should follow the tbd common documentation guidelines. Keep the
-README short, keep conceptual guidance in `docs/softschema-guide.md`, and keep exact
-format rules in `docs/softschema-spec.md`.
+Documentation changes should follow the tbd common documentation guidelines.
+Keep the README short, keep conceptual guidance in `docs/softschema-guide.md`, and keep
+exact format rules in `docs/softschema-spec.md`.
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

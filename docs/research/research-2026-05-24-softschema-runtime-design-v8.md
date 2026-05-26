@@ -5,12 +5,14 @@ author: Joshua Levy + Claude
 ---
 # Research: softschema — Clean, Simple Design (v8)
 
-**Status:** Design proposal. The current public Python package implements a subset of
-this design; the remaining surface is tracked in the public-readiness plan.
+**Status:** Design proposal.
+The current public Python package implements a subset of this design; the remaining
+surface is tracked in the public-readiness plan.
 
-This is an evolving design document. It describes the target shape of softschema as a
-schema-bundle and validation library for Markdown/YAML artifacts. Worked examples are
-generic illustrations only and not tied to any specific domain.
+This is an evolving design document.
+It describes the target shape of softschema as a schema-bundle and validation library
+for Markdown/YAML artifacts.
+Worked examples are generic illustrations only and not tied to any specific domain.
 
 ## Architecture
 
@@ -393,8 +395,9 @@ Plain Markdown narrative. The structured data lives in frontmatter; the
 body is for prose explanation, not for value capture.
 ```
 
-Frontmatter holds the values; body is plain Markdown. No body-binding tags, no
-body-binding parser, no template linter rules for body coverage.
+Frontmatter holds the values; body is plain Markdown.
+No body-binding tags, no body-binding parser, no template linter rules for body
+coverage.
 
 ### The `softschema:` block policy
 
@@ -655,8 +658,8 @@ They are reserved extension points:
   fixture-source design (`x-softschema.examples.<name>` block at schema root).
 - `python_constants` lands only as a fallback when a consumer cannot read the schema
   bundle via `SchemaView` directly, and even then prefers a fully generated standalone
-  Python module (e.g., `example_app/generated/widget_record_constants.py`)
-  rather than marker blocks inside hand-authored source.
+  Python module (e.g., `example_app/generated/widget_record_constants.py`) rather than
+  marker blocks inside hand-authored source.
   For QA in this codebase, `SchemaView` removes the need.
 
 ### Generated sections versus mirrors
@@ -1158,8 +1161,8 @@ tests/
 
 Phase 0 is done when **all** of the following are true:
 
-1. A Pydantic `WidgetRecordEnvelope` (or any equivalent model) compiles to
-   deterministic JSON Schema YAML with `x-softschema` annotations preserved verbatim.
+1. A Pydantic `WidgetRecordEnvelope` (or any equivalent model) compiles to deterministic
+   JSON Schema YAML with `x-softschema` annotations preserved verbatim.
 2. The committed sidecar has a canonical-JSON SHA-256 that is stable across YAML
    formatting choices (round-trip-safe).
 3. `softschema compile --check` fails on schema drift.
@@ -1235,28 +1238,32 @@ Generic `<!-- generated -->` is not a valid softschema marker.
 ## Open questions
 
 1. **Should new templates also forbid the legacy resolver mode?** v8 treats
-   `frontmatter_root` as a compatibility seam. Strawman: yes — new templates must use
-   `values_key`. The CLI rejects new templates that lack a `softschema:` block.
+   `frontmatter_root` as a compatibility seam.
+   Strawman: yes — new templates must use `values_key`. The CLI rejects new templates
+   that lack a `softschema:` block.
 2. **Generated-section regeneration: edit-time or CI-only?** v8 says CI `--check` fails
-   on drift; rerunning the regen command is manual. Alternative: a pre-commit hook
-   regenerates automatically. Strawman: CI-only initially; pre-commit hook lands if
-   drift complaints accumulate.
+   on drift; rerunning the regen command is manual.
+   Alternative: a pre-commit hook regenerates automatically.
+   Strawman: CI-only initially; pre-commit hook lands if drift complaints accumulate.
 3. **What does Profile A do when the schema requires a field absent from frontmatter?**
    Pydantic raises `ValidationError`. No incremental-fill repair workflow in Phase 0. If
    multi-pass fill becomes necessary, the patch protocol earns its keep.
 4. **Should `schema-info <schema.yaml>` accept a `--view` flag for previewing generated
-   sections?** Useful for debugging. Strawman: yes, it is a small addition and helps
-   when a generated section emits unexpected content.
+   sections?** Useful for debugging.
+   Strawman: yes, it is a small addition and helps when a generated section emits
+   unexpected content.
 5. **Should `softschema` ever split into separate distributions (core / pydantic /
-   generate)?** Phase 0 ships as one package. Splitting is a future refactor only if
-   the package grows non-Pydantic schema sources or the generate-sections code outgrows
-   the core.
+   generate)?** Phase 0 ships as one package.
+   Splitting is a future refactor only if the package grows non-Pydantic schema sources
+   or the generate-sections code outgrows the core.
 
 ## Appendix A: Extension point design sketches
 
-The Phase 0 surface above is intentionally minimal. This appendix preserves the design
-content for each reserved extension point so this document stands alone. None of this
-is built today; each section ends with the “earned by” condition that would unlock it.
+The Phase 0 surface above is intentionally minimal.
+This appendix preserves the design content for each reserved extension point so this
+document stands alone.
+None of this is built today; each section ends with the “earned by” condition that would
+unlock it.
 
 ### A.1 Body-form runtime integration
 
@@ -1268,9 +1275,9 @@ whose shape matches the schema.
 
 **Dependency direction.** A body-form runtime should depend on the softschema
 **schema-bundle convention** (a JSON Schema sidecar with `x-softschema` annotations and
-optional URN resolution), *not* on the Python `softschema` package. A body-form
-implementation can consume JSON Schema plus `x-softschema` metadata, export values, and
-leave Pydantic semantic validation to the host.
+optional URN resolution), *not* on the Python `softschema` package.
+A body-form implementation can consume JSON Schema plus `x-softschema` metadata, export
+values, and leave Pydantic semantic validation to the host.
 
 This way:
 
@@ -1278,9 +1285,10 @@ This way:
 - Body-form runtime = body-side authoring + patch/edit/export (language-agnostic).
 - Bridge = exported values validated by softschema or by the host’s Pydantic models.
 
-softschema does not depend on a body-form parser. The relationship is asymmetric: a
-body-form runtime optionally consumes softschema’s bundle convention; softschema remains
-usable with no body-form runtime involvement at all.
+softschema does not depend on a body-form parser.
+The relationship is asymmetric: a body-form runtime optionally consumes softschema’s
+bundle convention; softschema remains usable with no body-form runtime involvement at
+all.
 
 **Bridge sketch (illustrative):**
 
@@ -1648,4 +1656,6 @@ must be set"), regex assertions across multiple fields, set-membership operation
 - [frontmatter-format](https://github.com/jlevy/frontmatter-format) — the
   YAML-frontmatter library used for parsing Profile A documents.
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

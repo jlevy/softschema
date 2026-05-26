@@ -196,7 +196,8 @@ concept. The names of the classes, enums, and helpers (`SoftschemaBinding`,
 internal package so the downstream port is a dependency switch plus targeted feature
 removal, not a sweeping rename.
 
-The capabilities below are the genuinely new work. They come from
+The capabilities below are the genuinely new work.
+They come from
 [research-2026-05-24-softschema-runtime-design-v8.md](../../../research/research-2026-05-24-softschema-runtime-design-v8.md)
 and are not present in the internal predecessor; v8 designs them, this plan implements
 them. Read v8 first when picking up any item below.
@@ -208,75 +209,76 @@ on the package.
 - **Field-level `x-softschema` annotations** (v8 §"The Pydantic contract layer"). A
   small `SField` helper plus compiler support for per-field `tier`, `owner`, `group`,
   and `instruction` annotations carried through to the JSON Schema sidecar.
-  Annotations are advisory; they do not change validation. They are the substrate that
-  generated sections, agent prompts, and QA tooling consume.
-- **`SchemaView` reader** (v8 §"`SchemaView`: shared schema reader"). One generic
-  JSON Schema navigator that every downstream consumer (QA, agent prompts, generated
-  sections, comparison tooling) goes through. Prevents per-consumer re-parsing drift.
+  Annotations are advisory; they do not change validation.
+  They are the substrate that generated sections, agent prompts, and QA tooling consume.
+- **`SchemaView` reader** (v8 §"`SchemaView`: shared schema reader"). One generic JSON
+  Schema navigator that every downstream consumer (QA, agent prompts, generated
+  sections, comparison tooling) goes through.
+  Prevents per-consumer re-parsing drift.
 - **Stable warning-code scheme.** The package already emits codes like
-  `document-softschema-invalid`. Enumerate every code, document them as a public
-  table, and add a regression test that holds the table to the emitted codes.
+  `document-softschema-invalid`. Enumerate every code, document them as a public table,
+  and add a regression test that holds the table to the emitted codes.
 
 **P1 capabilities — make the package immediately useful for adoption-stage projects.**
 
-- **Generated schema sections** (v8 §"Generated sections"). Markers in Markdown that
-  the package regenerates deterministically from a schema. Initial kinds:
-  `enum_table`, `field_list`, `vocab`. Reads through `SchemaView`. Needs a
-  `--check` mode for CI.
+- **Generated schema sections** (v8 §"Generated sections"). Markers in Markdown that the
+  package regenerates deterministically from a schema.
+  Initial kinds: `enum_table`, `field_list`, `vocab`. Reads through `SchemaView`. Needs
+  a `--check` mode for CI.
 - **Documentation enhancements.** A lifecycle/continuum walkthrough, an
   inline-vs-sidecar doctrine, a migration recipe for projects with non-canonical
-  envelopes, and a CI-integration recipe. All doc-only; no code.
+  envelopes, and a CI-integration recipe.
+  All doc-only; no code.
 
 ### Deferred Work
 
-These appear in the design influences below but are explicitly out of scope for v0.1
-and the immediate follow-on releases. Each will be revisited only when a concrete public
-use case earns the design cost.
+These appear in the design influences below but are explicitly out of scope for v0.1 and
+the immediate follow-on releases.
+Each will be revisited only when a concrete public use case earns the design cost.
 
 - Alias-repair semantics with controlled-vocabulary single-target and multi-target
   resolution. Useful for agent-generated artifacts with typo tolerance; risky because
   repair can grow into a second validation language if not scoped carefully.
-- URN-based schema references with a repo-level `softschema.yaml` registry. Useful for
-  cross-repo schema sharing; most projects can stay path-only.
+- URN-based schema references with a repo-level `softschema.yaml` registry.
+  Useful for cross-repo schema sharing; most projects can stay path-only.
 - Patch protocol and multi-pass fill loops for agent-driven incremental authoring.
 - Provider structured-output adapters for Anthropic, OpenAI, and Vertex.
 - Body-form / Markform runtime bridges that read structured values from rendered
   Markdown forms.
 - A language-neutral invariant DSL beyond what JSON Schema already expresses.
-- Value mirrors (instance-derived doc sections), distinct from schema-derived
-  generated sections.
+- Value mirrors (instance-derived doc sections), distinct from schema-derived generated
+  sections.
 
 ### Design Influences
 
 The capability roadmap above is informed by a longer-running runtime-design research
 thread captured in
 [docs/research/research-2026-05-24-softschema-runtime-design-v8.md](../../../research/research-2026-05-24-softschema-runtime-design-v8.md).
-That document describes the full "hard schema, soft authoring" architecture in
-detail — including Phase 0 surface, generated-section markers, `SchemaView`, schema
-reference resolution, the `softschema:` block policy, the YAML subset, and a catalog
-of reserved extension points (manifest sidecars, patch protocol, mirrors,
-materialization, provider adapters, body-form bridges, language-neutral invariant
-DSL).
+That document describes the full “hard schema, soft authoring” architecture in detail —
+including Phase 0 surface, generated-section markers, `SchemaView`, schema reference
+resolution, the `softschema:` block policy, the YAML subset, and a catalog of reserved
+extension points (manifest sidecars, patch protocol, mirrors, materialization, provider
+adapters, body-form bridges, language-neutral invariant DSL).
 
 This public package is deliberately narrower than that research:
 
-- **What v8 says, this package adopts.** The core principles (Pydantic source of
-  truth in Python, JSON Schema as portable sidecar, `x-softschema` as
-  annotation-only, structural and semantic validation as independent engines,
-  language-neutral artifact format) match what v0.1 ships today.
-- **What v8 says, this package will adopt.** The P0/P1 capabilities above
-  (field-level `x-softschema` metadata, `SchemaView`, stable warning-code
-  prefixes, generated sections, lifecycle/sidecar/migration/CI documentation)
-  are the parts of v8 that are cheap to extract and broadly useful.
-- **What v8 says, this package defers.** The items in the *Deferred Work*
-  section above (alias-repair semantics, URN registry, patch protocol, provider
-  adapters, body-form bridges, value mirrors, language-neutral invariant DSL)
-  are reserved in v8 too. Each is named, scoped, and earned by a concrete
-  consumer; none are first-release work here.
+- **What v8 says, this package adopts.** The core principles (Pydantic source of truth
+  in Python, JSON Schema as portable sidecar, `x-softschema` as annotation-only,
+  structural and semantic validation as independent engines, language-neutral artifact
+  format) match what v0.1 ships today.
+- **What v8 says, this package will adopt.** The P0/P1 capabilities above (field-level
+  `x-softschema` metadata, `SchemaView`, stable warning-code prefixes, generated
+  sections, lifecycle/sidecar/migration/CI documentation) are the parts of v8 that are
+  cheap to extract and broadly useful.
+- **What v8 says, this package defers.** The items in the *Deferred Work* section above
+  (alias-repair semantics, URN registry, patch protocol, provider adapters, body-form
+  bridges, value mirrors, language-neutral invariant DSL) are reserved in v8 too.
+  Each is named, scoped, and earned by a concrete consumer; none are first-release work
+  here.
 
-Read v8 when designing any of the P0/P1/P2 items above. Update v8 when this plan's
-direction diverges from it; the v8 doc is the durable design reference, and this plan
-is the time-bounded execution roadmap.
+Read v8 when designing any of the P0/P1/P2 items above.
+Update v8 when this plan’s direction diverges from it; the v8 doc is the durable design
+reference, and this plan is the time-bounded execution roadmap.
 
 ## Implementation Plan
 
@@ -329,8 +331,8 @@ is the time-bounded execution roadmap.
 - [ ] Verify `frontmatter-format` is documented as the frontmatter/YAML mechanics
   dependency, not a generic data-sidecar runtime.
 - [ ] Record CLI topic rename in release notes: `softschema docs design` is now
-  `softschema docs python-design`, matching the
-  `docs/softschema-python-design.md` filename.
+  `softschema docs python-design`, matching the `docs/softschema-python-design.md`
+  filename.
 
 ### Phase 4: Release Readiness
 
@@ -347,23 +349,23 @@ is the time-bounded execution roadmap.
 
 ### Phase 5: P0 Capability Implementation
 
-Each item is net-new relative to the ported core. Designs live in v8; this phase
-implements them. Land before the first non-trivial external project depends on the
-package.
+Each item is net-new relative to the ported core.
+Designs live in v8; this phase implements them.
+Land before the first non-trivial external project depends on the package.
 
-- [ ] **Field-level `x-softschema` annotations** (v8 §"The Pydantic contract
-  layer"). Add an `SField` helper, surface per-field `tier`/`owner`/`group`/`instruction`
-  through `softschema.compile`, document the allowed keys in
-  `docs/softschema-python-design.md`, annotate one field in the movie example, and
-  add a round-trip test.
+- [ ] **Field-level `x-softschema` annotations** (v8 §"The Pydantic contract layer").
+  Add an `SField` helper, surface per-field `tier`/`owner`/`group`/`instruction` through
+  `softschema.compile`, document the allowed keys in `docs/softschema-python-design.md`,
+  annotate one field in the movie example, and add a round-trip test.
 - [ ] **`SchemaView` reader** (v8 §"`SchemaView`: shared schema reader"). New
-  `softschema.schema_view` module. Match the v8 interface (`iter_fields`, `field`,
-  `enum_values`, `softmeta`, `fields_by_group`/`owner`/`tier`). Export from
-  `softschema/__init__.py`. Add tests for enum extraction, required-field listing,
-  missing-key handling, and annotation retrieval.
-- [ ] **Warning-code documentation.** Enumerate every emitted code, publish the
-  table in `docs/softschema-python-design.md` as stable public surface, and add a
-  regression test that asserts the package only emits documented codes.
+  `softschema.schema_view` module.
+  Match the v8 interface (`iter_fields`, `field`, `enum_values`, `softmeta`,
+  `fields_by_group`/`owner`/`tier`). Export from `softschema/__init__.py`. Add tests for
+  enum extraction, required-field listing, missing-key handling, and annotation
+  retrieval.
+- [ ] **Warning-code documentation.** Enumerate every emitted code, publish the table in
+  `docs/softschema-python-design.md` as stable public surface, and add a regression test
+  that asserts the package only emits documented codes.
 
 ### Phase 6: P1 Documentation Enhancements
 
@@ -371,25 +373,26 @@ Doc-only; ships independently of Phase 5 and Phase 7.
 
 - [ ] Lifecycle / continuum walkthrough in `docs/softschema-guide.md`.
 - [ ] Inline-vs-sidecar doctrine section in the guide.
-- [ ] Migration recipe (legacy envelope → canonical) in the guide, using
-  `ValueResolver` modes.
+- [ ] Migration recipe (legacy envelope → canonical) in the guide, using `ValueResolver`
+  modes.
 - [ ] CI integration recipe in `docs/development.md` (`softschema compile --check`
   + GitHub Actions snippet + `pre-commit` example).
 
 ### Phase 7: P1 Generated Schema Sections
 
-The biggest follow-on feature. Designed in v8 §"Generated sections" (markers,
-attributes, views, hash semantics, allowed kinds, CI integration). Implementation
-should follow v8 closely; do not redesign here.
+The biggest follow-on feature.
+Designed in v8 §"Generated sections" (markers, attributes, views, hash semantics,
+allowed kinds, CI integration).
+Implementation should follow v8 closely; do not redesign here.
 
 - [ ] Add the marker format to `docs/softschema-spec.md` (kinds `enum_table`,
   `field_list`, `vocab` for Phase 0; see v8 §"Allowed `kind` values (Phase 0)").
 - [ ] Add a `softschema.generate` module with one renderer per kind, reading through
   `SchemaView`.
-- [ ] Add `softschema generate <file>` and `softschema generate <file> --check`
-  CLI subcommands.
-- [ ] Add one generated-section marker to `examples/movie_page/README.md` so the
-  example exercises the feature end-to-end.
+- [ ] Add `softschema generate <file>` and `softschema generate <file> --check` CLI
+  subcommands.
+- [ ] Add one generated-section marker to `examples/movie_page/README.md` so the example
+  exercises the feature end-to-end.
 - [ ] Tests: renderer determinism, drift detection, marker round-trip, failure modes.
 
 ## Tracking Beads
@@ -464,18 +467,19 @@ These should be resolved before tagging the first PyPI release.
 
 - Should a permanent language-neutral `docs/softschema-design.md` exist later, or are
   the guide, spec, `docs/softschema-python-design.md`, the v8 research doc, and this
-  plan enough? Default if unresolved: keep this plan as the home for cross-language
-  notes and revisit after the first downstream migration.
+  plan enough? Default if unresolved: keep this plan as the home for cross-language notes
+  and revisit after the first downstream migration.
 - Which downstream repo should be migrated first once the standalone package is ready?
   Default if unresolved: pick the smallest internal consumer to validate the published
   API surface.
-- **Adopt v8's explicit `softschema.values.location / pointer` syntax now or after
-  v0.1?** v8 prescribes an explicit `softschema.values: {location: frontmatter,
-  pointer: /values}` block instead of inferring the envelope from the first
-  non-`softschema` top-level key. The current package infers. Default if unresolved:
-  keep inferring through v0.1, document the v8 explicit form as the recommended shape
-  for new templates, and ship a non-breaking `ValueResolver` mode for it in a 0.2
-  release.
+- **Adopt v8’s explicit `softschema.values.location / pointer` syntax now or after
+  v0.1?** v8 prescribes an explicit
+  `softschema.values: {location: frontmatter, pointer: /values}` block instead of
+  inferring the envelope from the first non-`softschema` top-level key.
+  The current package infers.
+  Default if unresolved: keep inferring through v0.1, document the v8 explicit form as
+  the recommended shape for new templates, and ship a non-breaking `ValueResolver` mode
+  for it in a 0.2 release.
 - **Warning-code prefix commitment.** Public consumers will need to filter on these
   prefixes. Pick one (`document-*`, `meta-*`, or `softschema-*`) and freeze it before
   v0.1; record the choice in the warning-codes subsection of the python design doc.
@@ -490,9 +494,9 @@ These can wait until a TypeScript package is actually scheduled.
 - Should JSON Schema export be part of the first TypeScript package, or a later optional
   package?
 - **Should `softschema` ever split into separate distributions** (core / pydantic /
-  generate-sections)? v8 raises this as an open question. Phase 0 ships as one package;
-  splitting is a future refactor only if generate-sections grows large or non-Pydantic
-  schema sources arrive.
+  generate-sections)? v8 raises this as an open question.
+  Phase 0 ships as one package; splitting is a future refactor only if generate-sections
+  grows large or non-Pydantic schema sources arrive.
 
 ## References
 
@@ -500,8 +504,8 @@ These can wait until a TypeScript package is actually scheduled.
 - [Softschema Spec](../../../softschema-spec.md)
 - [Python Package Design](../../../softschema-python-design.md)
 - [Runtime Design v8](../../../research/research-2026-05-24-softschema-runtime-design-v8.md)
-  — the durable design reference for the full "hard schema, soft authoring" architecture.
-  P0/P1/Deferred items in this plan trace back to this document.
+  — the durable design reference for the full “hard schema, soft authoring”
+  architecture. P0/P1/Deferred items in this plan trace back to this document.
 - [Movie Page Example](../../../../examples/movie_page/README.md)
 - [Future TypeScript Notes](../../../../packages/typescript/README.md)
 

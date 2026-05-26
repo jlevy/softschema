@@ -1,0 +1,14 @@
+# Directories and files flowmark should never touch.
+# Uses gitignore syntax; lives at repo root.
+# Flowmark-rs also honors .gitignore, so paths listed there
+# (dist/, .venv/, node_modules/, __pycache__/, etc.) do not
+# need to be repeated here.
+
+# Third-party agent state vendored by `tbd setup`; managed externally
+# and overwritten on resync.
+.tbd/
+.claude/skills/tbd/
+.codex/
+
+# Beads issue store; managed by tbd, not human-authored.
+.beads/

@@ -53,7 +53,7 @@ def test_movie_page_demo_matches_structured_values() -> None:
     normalized_body = " ".join(body.split())
 
     assert f"# {movie['title']} ({movie['release_year']})" in body
-    assert "Hayao Miyazaki's 2001 animated adventure family film" in body
+    assert "Hayao Miyazaki" in body and "2001 animated adventure family film" in body
     assert (
         f"{critics['score_percent']}% {critics['label']} based on "
         f"{critics['total_reviews']} critic reviews"

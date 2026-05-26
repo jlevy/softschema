@@ -58,25 +58,27 @@ most context in readable Markdown.
   summary in frontmatter when a data sidecar is used.
 - Treat schema sidecars and data sidecars as different things: schema sidecars describe
   validation contracts; data sidecars hold payload values.
-- The first Python package supports schema sidecars. Generic data-sidecar loading is a
-  host convention, not built-in softschema behavior.
+- The first Python package supports schema sidecars.
+  Generic data-sidecar loading is a host convention, not built-in softschema behavior.
 
 ## Rules
 
 - Treat YAML/frontmatter as authoritative.
-- Do not parse Markdown tables or prose as structured values. If code needs a value,
-  fix the producer to write it into YAML, a declared data sidecar, or pure data.
-- Keep exactly one source of truth for each structured value. Body tables may mirror
-  YAML for readers, but consumers must read the YAML.
+- Do not parse Markdown tables or prose as structured values.
+  If code needs a value, fix the producer to write it into YAML, a declared data
+  sidecar, or pure data.
+- Keep exactly one source of truth for each structured value.
+  Body tables may mirror YAML for readers, but consumers must read the YAML.
 - Prefer contract IDs like `namespace:UpperCamelCaseName/v1`.
 - Remember that a contract ID can map to Pydantic, Zod, JSON Schema, or another
   validator.
-- Do not harden everything at once. Promote the fields that are actually consumed.
+- Do not harden everything at once.
+  Promote the fields that are actually consumed.
 - Keep README content as a short subset of the guide, and put exact format rules in the
   spec.
-- Keep examples copyable. Use `softschema docs example-artifact` or the files under
-  `examples/` as references; do not scaffold a target project unless the user explicitly
-  asks for that workflow.
+- Keep examples copyable.
+  Use `softschema docs example-artifact` or the files under `examples/` as references;
+  do not scaffold a target project unless the user explicitly asks for that workflow.
 
 ## Review Checklist
 
@@ -102,4 +104,6 @@ uv run softschema docs --list --json
 uv run softschema skill --brief
 ```
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

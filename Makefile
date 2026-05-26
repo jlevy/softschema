@@ -3,12 +3,31 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint lint-check test upgrade build clean
+.PHONY: default install format format-check lint lint-check test upgrade build clean
 
-default: install lint test
+# Pinned for stability — bump deliberately.
+FLOWMARK := uvx flowmark-rs@0.2.6
+
+default: install format lint test
 
 install:
 	uv sync --all-extras
+
+# Auto-format all Markdown with flowmark-rs (semantic line breaks, smart quotes,
+# safe cleanups). Pass `.` as the sole target so flowmark traverses the repo
+# and honors .flowmarkignore + .gitignore. Flowmark-rs only reads
+# .flowmarkignore relative to its target arg, so passing subdirs or globs
+# bypasses it.
+format:
+	$(FLOWMARK) --auto .
+
+# CI-mode Markdown check: run flowmark, then fail if it would change anything.
+# flowmark-rs has no native --check; we approximate via git diff. Requires a
+# clean working tree (Markdown-wise) before running.
+format-check:
+	$(FLOWMARK) --auto .
+	@git diff --exit-code -- '*.md' || \
+	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 
 lint:
 	uv run python devtools/lint.py

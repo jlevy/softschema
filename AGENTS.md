@@ -12,8 +12,8 @@ Start here:
 For implementer reference (only when changing the Python package itself):
 
 - [Python Package Design](docs/softschema-python-design.md): module layout, CLI surface,
-  validation layers, and ADR-style decisions. Skip when only authoring or validating
-  artifacts.
+  validation layers, and ADR-style decisions.
+  Skip when only authoring or validating artifacts.
 
 Key rules:
 
@@ -49,7 +49,9 @@ Documentation rules:
 - Put exact artifact-format rules in `docs/softschema-spec.md`.
 - Keep examples as copyable source files under `examples/`; the CLI may print them, but
   should not scaffold or mutate projects in the first release.
-- Include the standard documentation footer in repo docs. Do not add it to authored
-  softschema example artifacts.
+- Include the standard documentation footer in repo docs.
+  Do not add it to authored softschema example artifacts.
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

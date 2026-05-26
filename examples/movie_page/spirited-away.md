@@ -29,16 +29,17 @@ movie:
 ---
 # Spirited Away (2001)
 
-*Spirited Away* is Hayao Miyazaki's 2001 animated adventure family film about a girl who
-slips into a strange spirit world. Over its 125-minute runtime, she has to work in a
-bathhouse for supernatural visitors while searching for a way to save her parents.
+*Spirited Away* is Hayao Miyazaki’s 2001 animated adventure family film about a girl who
+slips into a strange spirit world.
+Over its 125-minute runtime, she has to work in a bathhouse for supernatural visitors
+while searching for a way to save her parents.
 
 Rotten Tomatoes shows a 96% Tomatometer based on 225 critic reviews and a 96%
 Popcornmeter based on 250,000+ audience ratings.
 
-This section reads like a small movie page on a website. It presents the same title,
-year, director, genres, runtime, description, and ratings as the YAML frontmatter, but
-in a format that is easy for people to scan.
+This section reads like a small movie page on a website.
+It presents the same title, year, director, genres, runtime, description, and ratings as
+the YAML frontmatter, but in a format that is easy for people to scan.
 
 ## Movie Details
 
@@ -58,5 +59,5 @@ in a format that is easy for people to scan.
 | Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |
 | Rotten Tomatoes Audience | 96% Popcornmeter | 250,000+ audience ratings |
 
-The paragraph and tables intentionally mirror the YAML fields for scanning. Consumers
-should read the YAML payload, not parse this body.
+The paragraph and tables intentionally mirror the YAML fields for scanning.
+Consumers should read the YAML payload, not parse this body.
