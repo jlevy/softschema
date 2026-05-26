@@ -195,6 +195,81 @@ The emitted schema includes:
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
 for a future TypeScript package.
 
+### Field Annotations (`SField`)
+
+`SField` is a thin wrapper over Pydantic's `Field` that records per-field
+authoring metadata under `json_schema_extra`. The compiler propagates that block
+verbatim into the JSON Schema sidecar as a per-property `x-softschema:` block;
+the runtime never reads it for validation.
+
+```python
+from softschema import SField
+
+genres: list[str] = SField(
+    description="Genre labels for the film.",
+    group="taxonomy",
+    owner="agent",
+    tier="constrained",
+    instruction="Pick from the standard IMDb genre vocabulary; at least one.",
+    min_length=1,
+)
+```
+
+Recognized keys:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `group` | `str` | Authoring group label; used to filter generated sections and to bucket QA. |
+| `order` | `int` | Display order within a group. |
+| `tier` | `hard_fact` / `constrained` / `narrative` | How rigorously reviewers and QA should treat the field. |
+| `owner` | `agent` / `postprocess` / `system` / `human` | Who or what produces the value at runtime. Default `agent`. |
+| `instruction` | `str` | Short directive aimed at the agent that fills the field. |
+| `examples` | `list[Any]` | Example values for prompts and documentation. Omitted from the sidecar when empty. |
+| `aliases` | `dict[str, list[str]]` | Controlled-vocabulary repair table. Omitted when empty. |
+| `repair` | `none` / `safe_coerce` / `suggest_alias` | How a future repair pass may handle near-miss values. Default `none`. |
+
+The `SoftOwner`, `SoftTier`, and `RepairKind` `Literal` aliases (also exported
+from `softschema`) make typos like `owner="agennt"` fail at type-check rather
+than at compile time.
+
+Field constraints (`ge`, `le`, `min_length`, etc.) flow through the normal
+Pydantic path; pass them as additional kwargs to `SField`.
+
+### Schema View
+
+`SchemaView` is the single read-only navigator over a compiled JSON Schema
+sidecar. Every downstream consumer (QA rules, agent prompts, comparison logic,
+generated sections) goes through this one API instead of re-parsing the schema
+in each module. That keeps drift out of the readers.
+
+```python
+from softschema import SchemaView
+
+view = SchemaView.load(Path("examples/movie_page/movie-page.schema.yaml"))
+
+view.contract_id            # "example.movies:MoviePage/v1"
+view.schema_sha256          # 64-char hex digest
+
+view.enum_values("/properties/mpaa_rating")
+# ["G", "PG", "PG-13", "R", "NC-17", "NR"]
+
+view.softmeta("/properties/genres")
+# {"group": "taxonomy", "tier": "constrained", "owner": "agent", "instruction": "..."}
+
+for field in view.fields_by_group("taxonomy"):
+    print(field.name, field.json_type, field.required)
+```
+
+`iter_fields()` flattens through `$ref`s into `$defs`, yielding one `FieldInfo`
+per leaf-ish field with its JSON Pointer, type, enum (if any), required flag,
+description, and `x-softschema` block. The reader handles Pydantic's
+`anyOf: [{$ref: ...}, {type: null}]` shape for `Foo | None` fields and the
+`anyOf: [{enum: ...}, {type: null}]` shape for `Literal[...] | None` fields.
+
+Phase 0 ships the navigator. `view(name)` (named query presets) and `load_urn`
+(repo-level URN resolution) are deferred until generated sections or a concrete
+consumer earns them.
+
 Schema sidecars are validation artifacts.
 They are distinct from data sidecars, which store artifact payload values outside the
 Markdown frontmatter.

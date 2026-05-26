@@ -23,6 +23,18 @@ The example deliberately exercises a representative mix of YAML shapes:
   `ratings.imdb`, which carries a 0-10 float score).
 - Optional fields (`mpaa_rating`, `tagline`, and either rating source may be omitted).
 
+## Schema Enums
+
+The block below is regenerated from `movie-page.schema.yaml` by
+`uv run softschema generate examples/movie_page/README.md`. CI runs the same
+command with `--check` and fails on drift.
+
+<!-- softschema:generated kind="enum_table" contract="movie-page.schema.yaml" -->
+| Field | Allowed values |
+| --- | --- |
+| `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
+<!-- /softschema:generated -->
+
 The example is meant to be copied from the files in this directory or printed through
 the docs CLI:
 

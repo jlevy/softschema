@@ -164,6 +164,36 @@ A validator must reject:
 - a JSON Schema validation failure
 - an implementation-schema validation failure
 
+## Generated Sections
+
+A conforming implementation may regenerate Markdown sections from a schema using
+HTML comment markers. The marker pair is namespaced so it does not collide with
+other code-generators:
+
+```markdown
+<!-- softschema:generated kind="enum_table" contract="path/to/schema.yaml" -->
+| Field | Allowed values |
+| --- | --- |
+| `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
+<!-- /softschema:generated -->
+```
+
+Recognized attributes:
+
+| Attribute | Required | Meaning |
+| --- | --- | --- |
+| `kind` | yes | One of `enum_table`, `field_list`, `vocab`. |
+| `contract` | yes | Path to a compiled JSON Schema sidecar (relative paths resolve from the containing file). |
+| `pointer` | yes for `vocab` | JSON Pointer (RFC 6901) to a specific field. |
+| `sha256` | no | Informational hash of the schema bundle at render time. |
+
+The body between the markers is fully owned by the generator. Authors must not
+hand-edit it; CI fails on drift. A renderer must:
+
+- Replace the body deterministically; equal inputs produce byte-equal output.
+- Reject unknown `kind` values rather than silently emit a fallback.
+- Resolve a missing or unreadable `contract` as an error.
+
 ## Out of Scope for v0.1
 
 The following are explicitly not part of v0.1. A conforming implementation must not
@@ -176,7 +206,9 @@ treat any of them as valid artifact-format rules:
   from body prose or tables.
 - A repair loop, alias resolution, patch protocol, or materialized canonical sidecar.
 - A `legacy` status value.
-- Generated section markers, `x-softschema` field-level annotations, and provider
-  structured-output adapters (planned, but not part of v0.1).
+- Provider structured-output adapters (planned, but not part of v0.1).
+- Generated-section `view` presets, instance-value mirrors, and URN-based
+  `contract` resolution (deferred extensions of the generated-section feature
+  above).
 
 <!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->

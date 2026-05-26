@@ -51,6 +51,19 @@ uv run softschema compile examples.movie_page.model:MoviePage \
 Fix on drift: re-run the same command without `--check` and commit the regenerated
 sidecar.
 
+### Generated-section drift
+
+If any Markdown file contains `softschema:generated` markers (see the guide's
+"Keep Schema Tables In Sync With Generated Sections" playbook), run the
+re-renderer in `--check` mode so CI fails when the committed section lags behind
+the schema:
+
+```bash
+uv run softschema generate examples/movie_page/README.md --check
+```
+
+Fix on drift: re-run without `--check` and commit the regenerated section.
+
 ### Artifact validation
 
 Run `softschema validate` against every artifact under version control whose contract

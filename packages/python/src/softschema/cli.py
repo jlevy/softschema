@@ -16,6 +16,7 @@ from frontmatter_format import fmf_read
 from pydantic import BaseModel, ValidationError
 
 from softschema.compile import compile_model
+from softschema.generate import regenerate
 from softschema.models import SoftschemaBinding, SoftschemaStatus, parse_softschema_metadata
 from softschema.validate import validate_artifact
 
@@ -149,6 +150,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     docs_parser.set_defaults(func=_docs_cmd)
 
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Regenerate `softschema:generated` Markdown sections from schemas.",
+    )
+    generate_parser.add_argument(
+        "paths",
+        nargs="+",
+        type=Path,
+        help="Markdown files containing softschema:generated markers.",
+    )
+    generate_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Do not write; exit 1 if any section is stale.",
+    )
+    generate_parser.set_defaults(func=_generate_cmd)
+
     skill_parser = subparsers.add_parser("skill", help="Print agent-facing guidance.")
     skill_parser.add_argument(
         "--brief",
@@ -272,6 +290,30 @@ def _docs_cmd(args: argparse.Namespace) -> int:
         )
         return 0
     _write_text(_read_resource(DOC_TOPICS[args.topic].path))
+    return 0
+
+
+def _generate_cmd(args: argparse.Namespace) -> int:
+    any_drift = False
+    summary: list[dict[str, Any]] = []
+    for path in args.paths:
+        try:
+            result = regenerate(path, check=args.check)
+        except (OSError, ValueError) as exc:
+            print(f"error: {path}: {exc}", file=sys.stderr)
+            return 1
+        any_drift = any_drift or result.drift
+        summary.append(
+            {
+                "path": str(path),
+                "sections": result.sections,
+                "drift": result.drift,
+                "drift_details": result.drift_details,
+            }
+        )
+    _write_text(_json({"check": args.check, "drift": any_drift, "files": summary}))
+    if args.check and any_drift:
+        return 1
     return 0
 
 

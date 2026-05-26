@@ -329,6 +329,46 @@ The `result` object reports `structural` (JSON Schema) and `semantic` (Pydantic)
 errors separately, so callers can distinguish "shape was wrong" from "cross-field
 invariant failed" without parsing error strings.
 
+## Playbook: Keep Schema Tables In Sync With Generated Sections
+
+When a controlled vocabulary or field list appears in two places (a schema and a
+runbook table), it will drift. Generated sections solve this by making the runbook
+table a deterministic projection of the schema.
+
+Wrap any Markdown block you want regenerated:
+
+```markdown
+<!-- softschema:generated kind="enum_table" contract="schemas/incident.schema.yaml" -->
+| Field | Allowed values |
+| --- | --- |
+| `severity` | SEV-1, SEV-2, SEV-3 |
+<!-- /softschema:generated -->
+```
+
+Then re-render in place:
+
+```bash
+uv run softschema generate path/to/runbook.md
+```
+
+CI runs the same command with `--check`, which exits non-zero if any block has
+drifted from the current schema:
+
+```bash
+uv run softschema generate path/to/runbook.md --check
+```
+
+Available `kind` values:
+
+- `enum_table` — one row per enum field in the schema (`Field`, `Allowed values`).
+- `field_list` — one bullet per top-level field (name, type, required, description).
+- `vocab` — enum values for one specific field; requires a `pointer="/properties/foo"`
+  attribute.
+
+A worked example lives in
+[examples/movie_page/README.md](../examples/movie_page/README.md) — the "Schema
+Enums" section is regenerated from the movie schema.
+
 ## Playbook: Validate In CI
 
 Two checks belong in CI:

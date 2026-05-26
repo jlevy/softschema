@@ -397,13 +397,23 @@ Trading consumer alignment (informs API shape, not borrowed code):
 - Trading runbooks under `process/` and templates that currently list controlled
   vocabularies by hand are the natural first consumers of generated sections.
 
-#### ss-pu9z: Field-level `x-softschema` annotations
+#### ss-pu9z: Field-level `x-softschema` annotations (DONE)
 
 v8 reference: §"The Pydantic contract layer" → §"`SField` and `x-softschema`
 metadata".
 
-Implementation map:
-- [ ] Add `packages/python/src/softschema/sfield.py` with:
+Shipped in commit landing this section:
+- `packages/python/src/softschema/sfield.py` with `SField()`, `SFieldMeta`, type
+  aliases (`SoftOwner`, `SoftTier`, `RepairKind`).
+- Re-exported from `softschema/__init__.py`.
+- Movie example `genres` field annotated; sidecar regenerated with the
+  `x-softschema` block.
+- `tests/test_sfield.py` (3 tests) covers round-trip, omit-empty-defaults, and
+  the committed movie sidecar.
+- Field Annotations section added to `docs/softschema-python-design.md`.
+
+Original implementation map (for reference):
+- [x] Add `packages/python/src/softschema/sfield.py` with:
   - Type aliases: `SoftOwner = Literal["agent", "postprocess", "system", "human"]`,
     `SoftTier = Literal["hard_fact", "constrained", "narrative"]`,
     `RepairKind = Literal["none", "safe_coerce", "suggest_alias"]`.
@@ -427,12 +437,22 @@ Implementation map:
   exclude-none-on-empty-meta, type-alias rejection at type-check (one example call
   intentionally type-wrong, suppressed with a comment, to lock the Literal types).
 
-#### ss-9zdi: `SchemaView` reader
+#### ss-9zdi: `SchemaView` reader (DONE)
 
 v8 reference: §"`SchemaView`: shared schema reader".
 
-Implementation map:
-- [ ] Add `packages/python/src/softschema/schema_view.py` with:
+Shipped in commit landing this section:
+- `packages/python/src/softschema/schema_view.py` with `SchemaView` and
+  `FieldInfo`. Handles Pydantic's `anyOf: [{$ref:...}, {type: null}]` shape for
+  optional refs and `anyOf: [{enum:...}, {type: null}]` for optional Literals.
+- Re-exported from `softschema/__init__.py`.
+- `tests/test_schema_view.py` (10 tests) exercise contract/hash, root softmeta,
+  nested $ref walking, enum extraction, required listing, missing-pointer raise,
+  softmeta retrieval, and group/owner/tier filters against the real movie schema.
+- Schema View section added to `docs/softschema-python-design.md`.
+
+Original implementation map (for reference):
+- [x] Add `packages/python/src/softschema/schema_view.py` with:
   - `FieldInfo` dataclass: `pointer: str`, `name: str`, `json_type: str | None`,
     `enum: list[str] | None`, `required: bool`, `description: str | None`,
     `softmeta: dict[str, Any]`.
@@ -481,10 +501,26 @@ The biggest follow-on feature. Designed in v8 §"Generated sections" (markers,
 attributes, views, hash semantics, allowed kinds, CI integration). Implementation
 follows v8 closely; do not redesign here.
 
-#### ss-bini: Generated sections
+#### ss-bini: Generated sections (DONE)
 
 v8 references: §"Generated sections", §"Namespaced markers", §"Section attributes",
 §"Allowed `kind` values (Phase 0)", §"Hash semantics", §"CI integration".
+
+Shipped in commit landing this section:
+- `packages/python/src/softschema/generate.py` with `parse_sections`,
+  `regenerate(path, *, check=False)`, `GeneratedSection`, and `RegenerateResult`.
+  Three Phase 0 renderers (`enum_table`, `field_list`, `vocab`).
+- `softschema generate <paths>` and `--check` CLI subcommand emitting structured
+  JSON output.
+- Generated Sections section added to `docs/softschema-spec.md` (normative); the
+  spec's Out of Scope list now excludes only deferred extensions (views,
+  mirrors, URN resolution).
+- "Keep Schema Tables In Sync" playbook added to `docs/softschema-guide.md`.
+- "Generated-section drift" CI section added to `docs/development.md`.
+- One marker landed in `examples/movie_page/README.md` ("Schema Enums").
+- `tests/test_generate.py` (10 tests): parser, multi-block, unterminated-marker,
+  determinism, drift detection + repair, unknown-kind, field_list, vocab pointer
+  requirement, vocab values, and the committed movie marker's no-drift contract.
 
 Phase 0 scope (this bead):
 - Marker syntax: `<!-- softschema:generated kind="..." [attrs] -->` ... `<!-- /softschema:generated -->`

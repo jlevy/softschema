@@ -116,11 +116,17 @@ properties:
     title: Directors
     type: array
   genres:
+    description: Genre labels for the film.
     items:
       type: string
     minItems: 1
     title: Genres
     type: array
+    x-softschema:
+      group: taxonomy
+      instruction: Pick from the standard IMDb genre vocabulary; at least one.
+      owner: agent
+      tier: constrained
   tagline:
     anyOf:
     - type: string
@@ -153,4 +159,4 @@ x-softschema:
   contract: example.movies:MoviePage/v1
   generated_from: examples.movie_page.model:MoviePage
   softschema_format_version: 0.1.0
-  schema_sha256: 9b79c72730f96ba598665c0f56759099f18962ff8616a84012c86f187c664487
+  schema_sha256: 7e73a4a735af026100f2f07f944b8cabf91dfc54ec338bb2ab6d51c262cd7272

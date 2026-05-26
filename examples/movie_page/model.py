@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from softschema import SField
+
 MpaaRating = Literal["G", "PG", "PG-13", "R", "NC-17", "NR"]
 
 
@@ -61,7 +63,14 @@ class MoviePage(BaseModel):
     runtime_minutes: int = Field(gt=0)
     mpaa_rating: MpaaRating | None = None
     directors: list[str] = Field(min_length=1)
-    genres: list[str] = Field(min_length=1)
+    genres: list[str] = SField(
+        description="Genre labels for the film.",
+        group="taxonomy",
+        owner="agent",
+        tier="constrained",
+        instruction="Pick from the standard IMDb genre vocabulary; at least one.",
+        min_length=1,
+    )
     tagline: str | None = None
     synopsis: str
     cast: list[CastMember] = Field(default_factory=list)
