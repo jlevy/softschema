@@ -78,12 +78,16 @@ movie:
 ---
 # Spirited Away (2001)
 
-A 1-2 paragraph prose summary suitable for human readers, followed by optional tables
-that mirror the YAML for scanning.
+Hayao Miyazaki’s animated fantasy follows ten-year-old Chihiro into a spirit world, where
+she works in a bathhouse for the gods to free her parents from a witch’s curse. It won the
+2003 Academy Award for Best Animated Feature.
+
+Critics and audiences both score it 96% on Rotten Tomatoes; IMDb users rate it 8.6/10.
 ```
 
-The YAML payload is authoritative.
-Markdown body prose and tables are reader-facing projections.
+The YAML payload is authoritative. The Markdown body overlaps with it but need not match
+it field for field: here the prose adds the film’s Oscar win and leaves out the cast and
+genres, while a consumer reads only the YAML.
 
 The example illustrates the structural variety a softschema artifact can carry:
 constrained integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`

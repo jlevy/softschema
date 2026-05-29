@@ -36,18 +36,12 @@ movie:
 ---
 # Spirited Away (2001)
 
-*Spirited Away* is Hayao Miyazaki’s 2001 animated adventure film about a young girl who
-slips into a strange spirit world.
-Over its 125-minute runtime, she takes a job in a bathhouse for supernatural visitors
-while searching for a way to save her parents and return home.
+*Spirited Away* is Hayao Miyazaki’s animated fantasy about ten-year-old Chihiro, who
+slips into a spirit world and takes a job in a bathhouse for the gods to free her parents
+from the witch Yubaba. It won the 2003 Academy Award for Best Animated Feature.
 
-Rotten Tomatoes shows a 96% Tomatometer based on 225 critic reviews and a 96%
-Popcornmeter from the audience.
-IMDb users give it 8.6 out of 10 across more than 850,000 votes.
-
-This section reads like a small movie page on a website.
-It presents the same title, year, runtime, directors, genres, synopsis, lead cast, and
-rating summary as the YAML frontmatter, but in a format that is easy for people to scan.
+Rotten Tomatoes shows a 96% Tomatometer from 225 critic reviews and a 96% Popcornmeter
+from the audience; IMDb users give it 8.6 out of 10 across more than 850,000 votes.
 
 ## Movie Details
 
@@ -75,6 +69,3 @@ rating summary as the YAML frontmatter, but in a format that is easy for people 
 | Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |
 | Rotten Tomatoes Audience | 96% Popcornmeter | — |
 | IMDb | 8.6 / 10 | 850,000+ votes |
-
-The paragraphs and tables intentionally mirror the YAML fields for scanning.
-Consumers should read the YAML payload, not parse this body.

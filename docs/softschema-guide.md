@@ -108,9 +108,13 @@ movie:
 ---
 # Spirited Away (2001)
 
-A short prose summary, optionally followed by reader-facing tables that mirror the
-YAML for scanning.
+Hayao Miyazaki’s animated fantasy follows ten-year-old Chihiro into a spirit world, where
+she works in a bathhouse for the gods to free her parents from a witch’s curse. It won the
+2003 Academy Award for Best Animated Feature.
 ```
+
+The body overlaps with the YAML without mirroring it field for field: the prose adds the
+film’s Oscar win, which no structured field carries, while a consumer reads only the YAML.
 
 The example illustrates the YAML shapes a softschema artifact can carry: constrained
 integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`), lists of strings
