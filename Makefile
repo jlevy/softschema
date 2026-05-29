@@ -18,8 +18,15 @@ install:
 # and honors .flowmarkignore + .gitignore. Flowmark-rs only reads
 # .flowmarkignore relative to its target arg, so passing subdirs or globs
 # bypasses it.
+#
+# After flowmark touches the prose, regenerate any softschema:generated
+# sections so the marker bodies stay byte-identical to the canonical output
+# (flowmark adds blank lines around block elements that the generator does
+# not emit; without this step the generate drift test would fail after a
+# format-only pass).
 format:
 	$(FLOWMARK) --auto .
+	uv run softschema generate examples/movie_page/README.md
 
 # CI-mode Markdown check: run flowmark, then fail if it would change anything.
 # flowmark-rs has no native --check; we approximate via git diff. Requires a
