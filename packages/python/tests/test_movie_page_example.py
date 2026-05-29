@@ -55,7 +55,8 @@ def test_movie_page_demo_matches_structured_values() -> None:
     imdb = movie["ratings"]["imdb"]
 
     assert f"# {movie['title']} ({movie['release_year']})" in body
-    assert "Hayao Miyazaki" in body and "2001 animated adventure film" in body
+    assert "Hayao Miyazaki" in body
+    assert ", ".join(movie["genres"]) in body
     assert f"{rt['critics_percent']}% Tomatometer" in body
     assert f"{rt['critic_review_count']} critic reviews" in body
     assert f"{rt['audience_percent']}% Popcornmeter" in body

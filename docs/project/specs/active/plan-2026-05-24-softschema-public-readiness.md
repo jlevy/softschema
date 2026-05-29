@@ -736,6 +736,6 @@ These can wait until a TypeScript package is actually scheduled.
 - [Movie Page Example](../../../../examples/movie_page/README.md)
 - [Future TypeScript Notes](../../../../packages/typescript/README.md)
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

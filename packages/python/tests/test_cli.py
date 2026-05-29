@@ -146,7 +146,7 @@ def test_docs_prints_bundled_guide(capsys: pytest.CaptureFixture[str]) -> None:
     assert exit_code == 0
     output = capsys.readouterr().out
     assert "# Softschema Guide" in output
-    assert "programming-language agnostic" in output
+    assert "language-neutral" in output
     assert "## Playbook: Add Python Validation" in output
 
 

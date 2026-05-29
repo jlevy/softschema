@@ -8,9 +8,10 @@ This example is deliberately small and complete:
 - [spirited-away.md](spirited-away.md) contains the Markdown artifact.
 - `movie-page.schema.yaml` is generated from the model.
 
-The Markdown body reads like a compact movie page on a website.
-It repeats the title, synopsis, details table, lead cast, and ratings in a friendly
-format, but the YAML frontmatter is the authoritative structure.
+The Markdown body reads like a compact movie page: a short synopsis, a details table, the
+lead cast, and a ratings summary. It overlaps with the YAML frontmatter without mirroring
+it field for field — the prose adds the film’s Academy Award, which no structured field
+carries — and the YAML frontmatter stays the authoritative source a consumer reads.
 
 The example deliberately exercises a representative mix of YAML shapes:
 
@@ -67,6 +68,6 @@ result = validate_movie_page(Path("examples/movie_page/spirited-away.md"))
 assert result.ok
 ```
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

@@ -1656,6 +1656,6 @@ must be set"), regex assertions across multiple fields, set-membership operation
 - [frontmatter-format](https://github.com/jlevy/frontmatter-format) — the
   YAML-frontmatter library used for parsing Profile A documents.
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

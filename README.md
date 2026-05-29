@@ -8,17 +8,19 @@ values from that document reliably.
 The YAML/frontmatter carries the authoritative values.
 The Markdown body stays readable.
 
-The pattern is programming-language agnostic.
-This repo also ships the first concrete implementation in Python.
+**Soft schemas** name the general practice; **softschema** is this repository’s
+implementation for the Markdown-plus-YAML case. The practice is language-neutral, and this
+repo ships the first implementation in Python.
 
 ## Core Idea
 
-Automation, exactness, and structure are separate axes.
-LLMs and agents make it easy to automate work that still has human-like failure modes:
-mixed prose, judgment calls, partial structure, and implicit context.
+A *hard* schema imposes structure up front: define a rigid contract, then reject anything
+that doesn’t fit. That suits data that is already uniform, but it is a poor fit for
+documents a human or agent writes, where most of the content is prose and only a few
+values need to be machine-readable.
 
-Soft schemas let a project promote only the values downstream tools consume, while
-keeping the rest of the artifact readable.
+A soft schema adds structure gradually instead. Structure runs along a spectrum, and each
+value moves along it only when it earns the move:
 
 ```text
 prose
@@ -27,6 +29,14 @@ prose
   -> schema validation at boundaries
   -> pure data or deterministic code when the shape is stable
 ```
+
+Promote a value into YAML when a tool reads it, validate it at the boundary when
+correctness matters, and tighten enforcement over time. Everything else stays readable
+Markdown. The structured values live in the YAML payload, the boundary a tool reads, while
+the prose body stays unconstrained. Structure has real costs, in authoring effort and
+rigidity, so add it where it pays for itself. This fits the file artifacts that pass
+between steps of an agent process, where each artifact mixes the context a step produces
+with the few values the next step consumes.
 
 ## Artifact Shape
 
@@ -68,12 +78,16 @@ movie:
 ---
 # Spirited Away (2001)
 
-A 1-2 paragraph prose summary suitable for human readers, followed by optional tables
-that mirror the YAML for scanning.
+Hayao Miyazaki’s animated fantasy follows ten-year-old Chihiro into a spirit world, where
+she works in a bathhouse for the gods to free her parents from a witch’s curse. It won the
+2003 Academy Award for Best Animated Feature.
+
+Critics and audiences both score it 96% on Rotten Tomatoes; IMDb users rate it 8.6/10.
 ```
 
-The YAML payload is authoritative.
-Markdown body prose and tables are reader-facing projections.
+The YAML payload is authoritative. The Markdown body overlaps with it but need not match
+it field for field: here the prose adds the film’s Oscar win and leaves out the cast and
+genres, while a consumer reads only the YAML.
 
 The example illustrates the structural variety a softschema artifact can carry:
 constrained integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`
@@ -163,6 +177,6 @@ for a future TypeScript package.
 - [Publishing](docs/publishing.md)
 - [Movie Page Example](examples/movie_page/README.md)
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

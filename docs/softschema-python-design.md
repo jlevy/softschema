@@ -267,9 +267,9 @@ The reader handles Pydantic’s `anyOf: [{$ref: ...}, {type: null}]` shape for
 `Foo | None` fields and the `anyOf: [{enum: ...}, {type: null}]` shape for
 `Literal[...] | None` fields.
 
-Phase 0 ships the navigator.
+The first release ships the navigator.
 `view(name)` (named query presets) and `load_urn` (repo-level URN resolution) are
-deferred until generated sections or a concrete consumer earns them.
+deferred until a concrete consumer earns them.
 
 Schema sidecars are validation artifacts.
 They are distinct from data sidecars, which store artifact payload values outside the
@@ -324,6 +324,6 @@ boundaries.
 - Making Python class names the required public contract IDs.
 - Parsing Markdown body tables as the source of structured values.
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

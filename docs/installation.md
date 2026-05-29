@@ -20,6 +20,6 @@ Install Python with uv:
 uv python install 3.13
 ```
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
