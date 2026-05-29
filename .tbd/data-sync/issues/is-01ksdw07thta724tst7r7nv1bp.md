@@ -3,9 +3,9 @@ type: is
 id: is-01ksdw07thta724tst7r7nv1bp
 title: Implement softschema public readiness plan
 kind: epic
-status: in_progress
+status: closed
 priority: 2
-version: 23
+version: 24
 spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
@@ -32,6 +32,8 @@ child_order_hints:
   - is-01ksexnats38ya22bde90w065s
   - is-01ksexndke7ysd53r3jy3e0aq0
 created_at: 2026-05-24T20:49:38.125Z
-updated_at: 2026-05-25T06:37:55.181Z
+updated_at: 2026-05-26T07:41:06.041Z
+closed_at: 2026-05-26T07:41:06.039Z
+close_reason: completed
 ---
 Track the remaining standalone softschema repo readiness work: docs review, example review, Python package review, release validation, and cleanup of accidental planning artifacts in unrelated repos.
