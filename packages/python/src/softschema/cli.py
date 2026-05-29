@@ -98,8 +98,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="softschema",
         description="Validate and explain soft schema Markdown/YAML artifacts.",
         epilog=(
-            "Agents: run 'softschema skill --brief' for operating guidance, "
-            "or 'softschema docs guide' for the full concept."
+            "IMPORTANT for agents: run `softschema skill --brief` for operating "
+            "rules, then `softschema docs --list` to discover bundled docs "
+            "(`guide`, `spec`, and `example-artifact` are the key ones)."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

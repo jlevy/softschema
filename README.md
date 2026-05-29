@@ -3,24 +3,35 @@
 Soft schemas are a practice for adding structure gradually to artifacts that mix human
 context and machine-readable values.
 
-They are useful when a human or agent writes a readable document, but code needs a few
-values from that document reliably.
-The YAML/frontmatter carries the authoritative values.
-The Markdown body stays readable.
+They are useful when a document is valuable as context for humans and agents and also
+needs a few values that downstream code or agents can read reliably.
+Keeping prose and structured values in one artifact is more context-efficient and more
+flexible than splitting them: a reader (human or agent) has only one place to look, and
+each value can stay as loose prose until a downstream consumer needs it formal.
 
-**Soft schemas** name the general practice; **softschema** is this repository’s
-implementation for the Markdown-plus-YAML case. The practice is language-neutral, and this
-repo ships the first implementation in Python.
+The practice is language-neutral.
+This repo ships a spec and an implementation in Python.
+
+It’s generally easiest to do this with Markdown and YAML frontmatter.
+The YAML carries the structured values.
+The Markdown body stays readable for humans and agents and offers additional context.
+
+**Soft schemas** name the general practice; **softschema** names both this repository’s
+Markdown-and-YAML spec and the matching `softschema` CLI that implements it.
+The CLI is a Python package usable as a command-line tool or library for formatting,
+compilation, validation, and other common workflows.
 
 ## Core Idea
 
-A *hard* schema imposes structure up front: define a rigid contract, then reject anything
-that doesn’t fit. That suits data that is already uniform, but it is a poor fit for
-documents a human or agent writes, where most of the content is prose and only a few
-values need to be machine-readable.
+A *hard* schema imposes structure up front: define a rigid contract, then reject
+anything that doesn’t fit.
+That suits data that is already uniform, but it is a poor fit for documents a human or
+agent writes, where most of the content is prose and only a few values need to be
+machine-readable.
 
-A soft schema adds structure gradually instead. Structure runs along a spectrum, and each
-value moves along it only when it earns the move:
+A soft schema adds structure gradually instead.
+Structure runs along a spectrum, and each value moves along it only when it earns the
+move:
 
 ```text
 prose
@@ -31,12 +42,21 @@ prose
 ```
 
 Promote a value into YAML when a tool reads it, validate it at the boundary when
-correctness matters, and tighten enforcement over time. Everything else stays readable
-Markdown. The structured values live in the YAML payload, the boundary a tool reads, while
-the prose body stays unconstrained. Structure has real costs, in authoring effort and
-rigidity, so add it where it pays for itself. This fits the file artifacts that pass
-between steps of an agent process, where each artifact mixes the context a step produces
-with the few values the next step consumes.
+correctness matters, and tighten enforcement over time.
+Each promotion buys efficiency for some downstream consumer, so structure and efficiency
+grow together, value by value.
+Everything else stays readable Markdown.
+The structured values live in the YAML payload, the boundary a tool reads, while the
+prose body stays unconstrained.
+Structure has real costs in authoring effort and rigidity, and adding it before a
+consumer needs it costs more than leaving it loose: a contract with consumers is harder
+to loosen than prose is to tighten.
+So add structure where it pays for itself.
+This fits the file artifacts that pass between steps of an agent process, where each
+artifact mixes the context a step produces with the few values the next step consumes.
+It works especially well in pipelines built for coding agents, which can call the
+`softschema` CLI to test and validate the code, docs, and data they produce, alongside
+the linters, tests, and type checkers they already run.
 
 ## Artifact Shape
 
@@ -85,9 +105,10 @@ she works in a bathhouse for the gods to free her parents from a witch’s curse
 Critics and audiences both score it 96% on Rotten Tomatoes; IMDb users rate it 8.6/10.
 ```
 
-The YAML payload is authoritative. The Markdown body overlaps with it but need not match
-it field for field: here the prose adds the film’s Oscar win and leaves out the cast and
-genres, while a consumer reads only the YAML.
+The YAML payload is authoritative.
+The Markdown body overlaps with it but need not match it field for field: here the prose
+adds the film’s Oscar win and leaves out the cast and genres, while a consumer reads
+only the YAML.
 
 The example illustrates the structural variety a softschema artifact can carry:
 constrained integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`

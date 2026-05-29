@@ -37,8 +37,9 @@ movie:
 # Spirited Away (2001)
 
 *Spirited Away* is Hayao Miyazaki’s animated fantasy about ten-year-old Chihiro, who
-slips into a spirit world and takes a job in a bathhouse for the gods to free her parents
-from the witch Yubaba. It won the 2003 Academy Award for Best Animated Feature.
+slips into a spirit world and takes a job in a bathhouse for the gods to free her
+parents from the witch Yubaba.
+It won the 2003 Academy Award for Best Animated Feature.
 
 Rotten Tomatoes shows a 96% Tomatometer from 225 critic reviews and a 96% Popcornmeter
 from the audience; IMDb users give it 8.6 out of 10 across more than 850,000 votes.

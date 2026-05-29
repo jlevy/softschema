@@ -16,23 +16,25 @@ once. The term is relative to a *hard* schema: instead of declaring a rigid cont
 before any data exists and rejecting anything that doesn’t fit, you start with readable
 prose and promote values into validated structure only as a consumer needs them.
 
-This matters most for artifacts that mix human context with machine-readable values, such
-as a Markdown document with a block of YAML frontmatter. The prose carries background,
-judgment, and caveats; the YAML carries the few values code reads. Either side can grow at
-any time: a human or agent can add more context to the prose, promote another value into
-YAML, or raise how strictly that value is validated, all without rewriting the artifact.
+This matters most for artifacts that mix human context with machine-readable values,
+such as a Markdown document with a block of YAML frontmatter.
+The prose carries background, judgment, and caveats; the YAML carries the few values
+code reads. Either side can grow at any time: a human or agent can add more context to
+the prose, promote another value into YAML, or raise how strictly that value is
+validated, all without rewriting the artifact.
 
-Structure is a tradeoff. It makes values reliable for code and lets validation catch
-errors at a boundary, but it costs authoring effort and can force false precision on
-content that isn’t settled. Soft schemas let a project move along that spectrum field by
-field, picking the point that fits the application instead of committing to all-prose or
-all-data up front.
+Structure is a tradeoff.
+It makes values reliable for code and lets validation catch errors at a boundary, but it
+costs authoring effort and can force false precision on content that isn’t settled.
+Soft schemas let a project move along that spectrum field by field, picking the point
+that fits the application instead of committing to all-prose or all-data up front.
 
-**Soft schemas** name the general practice. **Softschema** is the implementation in this
-repository: conventions and tools for the Markdown-plus-YAML case, with a Python package
-that validates the YAML payload against a named contract. The practice is
-language-neutral; another project could implement it with TypeScript, Zod, JSON Schema,
-database records, or hand-written validators.
+**Soft schemas** name the general practice.
+**Softschema** is the implementation in this repository: conventions and tools for the
+Markdown-plus-YAML case, with a Python package that validates the YAML payload against a
+named contract.
+The practice is language-neutral; another project could implement it with
+TypeScript, Zod, JSON Schema, database records, or hand-written validators.
 
 ## When To Use It
 
@@ -44,7 +46,8 @@ Reach for softschema when all three of these hold:
 - You want the document to stay readable as the values are formalized.
 
 A common case is the file artifacts that pass between steps of an agent process or
-pipeline. Each artifact mixes the prose context one step produces with the few structured
+pipeline.
+Each artifact mixes the prose context one step produces with the few structured
 values the next step consumes; softschema keeps both in one file and validates the
 consumed values at the handoff.
 
@@ -114,7 +117,8 @@ she works in a bathhouse for the gods to free her parents from a witch’s curse
 ```
 
 The body overlaps with the YAML without mirroring it field for field: the prose adds the
-film’s Oscar win, which no structured field carries, while a consumer reads only the YAML.
+film’s Oscar win, which no structured field carries, while a consumer reads only the
+YAML.
 
 The example illustrates the YAML shapes a softschema artifact can carry: constrained
 integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`), lists of strings

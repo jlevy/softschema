@@ -7,6 +7,10 @@ description: >-
   validation, mixed prose-and-data files, agent pipelines that produce or
   consume Markdown artifacts, or running the `softschema` CLI.
 ---
+<!-- DO NOT EDIT: copy of skills/softschema/SKILL.md.
+Update the source and re-copy this file from it.
+-->
+
 # Softschema Skill
 
 `softschema` adds and validates structure for Markdown/YAML artifacts that mix prose
