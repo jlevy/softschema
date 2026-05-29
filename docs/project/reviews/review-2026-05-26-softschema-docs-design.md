@@ -334,6 +334,6 @@ The clean model is:
 That organization matches the user’s instinct: keep the spec, move motivation and design
 rationale into the plan spec, and turn the guide into a practical operating manual.
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

@@ -43,8 +43,9 @@ as readable Markdown unless it is truly consumed as data.
 
 Documentation rules:
 
-- Follow the tbd common documentation guidelines: clear structure, concise language,
-  present-state descriptions, and enough context for a low-context reader.
+- Follow `common-doc-guidelines.md` (github.com/jlevy/practical-prose): clear structure,
+  concise language, present-state descriptions, and enough context for a low-context
+  reader.
 - Keep the README as a short subset of `docs/softschema-guide.md`.
 - Put exact artifact-format rules in `docs/softschema-spec.md`.
 - Keep examples as copyable source files under `examples/`; the CLI may print them, but
@@ -52,6 +53,6 @@ Documentation rules:
 - Include the standard documentation footer in repo docs.
   Do not add it to authored softschema example artifacts.
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

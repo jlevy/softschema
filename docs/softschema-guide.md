@@ -9,30 +9,30 @@ For the exact file format and validation rules, see
 [Softschema Spec](softschema-spec.md).
 For the Python implementation, see [Python Package Design](softschema-python-design.md).
 
-The practice is programming-language agnostic.
-A softschema artifact is a Markdown/YAML file with a payload contract.
-This repository ships a Python implementation, but another project could map the same
-artifacts to TypeScript, Zod, JSON Schema, database records, or hand-written validators.
-
 ## What Softschema Is
 
-A working definition:
+A **soft schema** is structure added to a document gradually, rather than imposed all at
+once. The term is relative to a *hard* schema: instead of declaring a rigid contract
+before any data exists and rejecting anything that doesn’t fit, you start with readable
+prose and promote values into validated structure only as a consumer needs them.
 
-> A softschema artifact is a Markdown or YAML document whose structured values live in a
-> clearly identified payload, validated against a named contract, while the rest of the
-> document stays narrative and human-readable.
+This matters most for artifacts that mix human context with machine-readable values, such
+as a Markdown document with a block of YAML frontmatter. The prose carries background,
+judgment, and caveats; the YAML carries the few values code reads. Either side can grow at
+any time: a human or agent can add more context to the prose, promote another value into
+YAML, or raise how strictly that value is validated, all without rewriting the artifact.
 
-The three things that make it “soft”:
+Structure is a tradeoff. It makes values reliable for code and lets validation catch
+errors at a boundary, but it costs authoring effort and can force false precision on
+content that isn’t settled. Soft schemas let a project move along that spectrum field by
+field, picking the point that fits the application instead of committing to all-prose or
+all-data up front.
 
-- **Authoring is soft.** Humans and agents write the document like prose, with one small
-  structured block on top.
-- **Adoption is soft.** A project can start with `status: soft` and tighten over time
-  without rewriting the artifact.
-- **The host body stays soft.** Headings, prose, and tables in the Markdown body never
-  have to become rigid.
-
-The contract itself is not soft.
-When `status: enforced` is on, validation rejects shape errors at the boundary.
+**Soft schemas** name the general practice. **Softschema** is the implementation in this
+repository: conventions and tools for the Markdown-plus-YAML case, with a Python package
+that validates the YAML payload against a named contract. The practice is
+language-neutral; another project could implement it with TypeScript, Zod, JSON Schema,
+database records, or hand-written validators.
 
 ## When To Use It
 
@@ -42,6 +42,11 @@ Reach for softschema when all three of these hold:
 - A piece of code, a QA check, or an aggregation needs to consume a few specific values
   from it.
 - You want the document to stay readable as the values are formalized.
+
+A common case is the file artifacts that pass between steps of an agent process or
+pipeline. Each artifact mixes the prose context one step produces with the few structured
+values the next step consumes; softschema keeps both in one file and validates the
+consumed values at the handoff.
 
 Skip softschema when:
 
@@ -551,10 +556,6 @@ A few patterns help agents do the right thing:
 - **Adding a `softschema:` block to artifacts no one validates.** A contract ID without
   a consumer is decoration.
   Add structure because something reads it.
-- **Treating `aliases` as a second enum language.** Aliases (when shipped) are a repair
-  hint for controlled-vocabulary fields.
-  They do not extend the JSON Schema enum; downstream validators still reject the alias
-  string until it is rewritten to a canonical value.
 - **Promoting prose that no consumer reads.** Leave background, analysis, and caveats as
   prose. Promote a value only when a code path, QA check, or aggregation reads it.
 
@@ -612,6 +613,6 @@ For Python-specific module layout, public API decisions, and dependency boundary
 - [Installation](installation.md), [Development](development.md), and
   [Publishing](publishing.md) — workflow docs.
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

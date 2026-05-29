@@ -18,9 +18,9 @@ DOC_PATHS = [
     "packages/python/README.md",
     "packages/typescript",
 ]
-DOC_FOOTERS = (
-    "<!-- This document follows std-doc-guidelines.md.\nReview guidelines before editing.\n-->\n",
-    "<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->\n",
+DOC_FOOTER = (
+    "<!-- This document follows common-doc-guidelines.md.\n"
+    "See github.com/jlevy/practical-prose and review guidelines before editing.\n-->\n"
 )
 DOC_FOOTER_PATHS = [
     Path("README.md"),
@@ -65,14 +65,13 @@ def check_doc_footers() -> int:
     missing = [path for path in iter_doc_footer_files() if not has_doc_footer(path)]
     if missing:
         for path in missing:
-            rprint(f"[bold red]Missing std-doc footer:[/bold red] {path}")
+            rprint(f"[bold red]Missing doc footer:[/bold red] {path}")
         return 1
     return 0
 
 
 def has_doc_footer(path: Path) -> bool:
-    text = path.read_text()
-    return any(text.endswith(footer) for footer in DOC_FOOTERS)
+    return path.read_text().endswith(DOC_FOOTER)
 
 
 def iter_doc_footer_files() -> list[Path]:

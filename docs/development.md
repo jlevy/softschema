@@ -28,7 +28,8 @@ uv build
 
 The Python package is built from `packages/python/src/softschema`.
 
-Documentation changes should follow the tbd common documentation guidelines.
+Documentation changes should follow `common-doc-guidelines.md`
+(github.com/jlevy/practical-prose).
 Keep the README short, keep conceptual guidance in `docs/softschema-guide.md`, and keep
 exact format rules in `docs/softschema-spec.md`.
 
@@ -128,6 +129,6 @@ repos:
 Adapt the paths and the `--model` / `--contract` / `--out` arguments to each schema in
 your repository.
 
-<!-- This document follows std-doc-guidelines.md.
-Review guidelines before editing.
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
