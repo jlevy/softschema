@@ -72,3 +72,7 @@ actions rather than telling them to run commands.
 - Track all work as beads: `tbd create`, `tbd ready`, `tbd close`, and `tbd sync`.
 
 <!-- END TBD INTEGRATION -->
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
