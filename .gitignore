@@ -209,6 +209,13 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Local scratch space
+tmp/
+trash/
+attic/
+*.bak
+*.orig
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

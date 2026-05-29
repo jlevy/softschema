@@ -1,0 +1,160 @@
+[project]
+name = "softschema"
+description = "Soft schema conventions and validation tools for Markdown/YAML artifacts"
+authors = [{ name = "Joshua Levy" }]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<4.0"
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "frontmatter-format>=0.3.0",
+    "jsonschema>=4.20",
+    "pydantic>=2",
+    "pyyaml",
+]
+
+[project.urls]
+Homepage = "https://github.com/jlevy/softschema"
+Repository = "https://github.com/jlevy/softschema"
+Issues = "https://github.com/jlevy/softschema/issues"
+
+[project.scripts]
+softschema = "softschema.cli:main"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.3",
+    "codespell>=2.4.2",
+    "pytest>=9.0.3",
+    "pytest-sugar>=1.1.1",
+    "ruff>=0.15.12",
+    "rich>=15.0.0",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["packages/python/src/softschema"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"README.md" = "softschema/resources/README.md"
+"AGENTS.md" = "softschema/resources/AGENTS.md"
+# Bundle only the public docs. Internal planning under docs/project/ (active
+# specs, reviews, research) stays out of the published wheel.
+"docs/softschema-guide.md" = "softschema/resources/docs/softschema-guide.md"
+"docs/softschema-spec.md" = "softschema/resources/docs/softschema-spec.md"
+"docs/softschema-python-design.md" = "softschema/resources/docs/softschema-python-design.md"
+"docs/installation.md" = "softschema/resources/docs/installation.md"
+"docs/development.md" = "softschema/resources/docs/development.md"
+"docs/publishing.md" = "softschema/resources/docs/publishing.md"
+"examples/movie_page/README.md" = "softschema/resources/examples/movie_page/README.md"
+"examples/movie_page/spirited-away.md" = "softschema/resources/examples/movie_page/spirited-away.md"
+"examples/movie_page/model.py" = "softschema/resources/examples/movie_page/model.py"
+"examples/movie_page/host_integration.py" = "softschema/resources/examples/movie_page/host_integration.py"
+"examples/movie_page/movie-page.schema.yaml" = "softschema/resources/examples/movie_page/movie-page.schema.yaml"
+"skills" = "softschema/resources/skills"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "README.md",
+    "AGENTS.md",
+    "LICENSE",
+    "docs",
+    "examples",
+    "packages/python/README.md",
+    "packages/python/src",
+    "packages/python/tests",
+    "packages/typescript/README.md",
+    "skills",
+]
+exclude = [
+    # Internal planning (active specs, reviews, research) is not part of the
+    # public source distribution.
+    "docs/project",
+    # Agent and tooling state directories that happen to live at the repo root.
+    ".agents",
+    ".codex",
+    ".claude",
+    ".tbd",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "I"]
+ignore = [
+    "E501",
+    "E402",
+    "E731",
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    "ISC002",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["softschema"]
+
+[tool.basedpyright]
+include = ["packages/python/src", "packages/python/tests", "devtools", "examples"]
+reportIgnoreCommentWithoutRule = false
+reportUnnecessaryTypeIgnoreComment = false
+reportMissingTypeStubs = false
+reportUnusedCallResult = false
+reportAny = false
+reportExplicitAny = false
+reportImplicitStringConcatenation = false
+reportUnreachable = false
+reportMissingParameterType = false
+reportUnknownParameterType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnannotatedClassAttribute = false
+reportUnusedParameter = false
+reportMissingTypeArgument = false
+reportPrivateUsage = false
+
+[tool.codespell]
+skip = "uv.lock,*.schema.yaml"
+ignore-words-list = "fo"
+
+[tool.pytest.ini_options]
+python_files = ["*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["packages/python/tests"]
+pythonpath = ["."]
