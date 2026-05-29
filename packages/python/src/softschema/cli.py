@@ -243,8 +243,8 @@ def _envelope_from_args(args: argparse.Namespace, frontmatter: dict[str, Any]) -
     if not envelope_keys:
         return None
     raise ValueError(
-        "missing --envelope because the document has multiple non-softschema "
-        f"frontmatter keys: {', '.join(envelope_keys)}"
+        "multiple top-level frontmatter keys; pass --envelope to designate the "
+        f"softschema payload (candidates: {', '.join(envelope_keys)})"
     )
 
 

@@ -74,7 +74,10 @@ Many useful artifacts stay in the middle indefinitely.
 
 ## The Basic Artifact Pattern
 
-Markdown with YAML frontmatter, one payload envelope key beside `softschema`:
+Markdown with YAML frontmatter containing, at minimum, a `softschema` block and one
+payload envelope key.
+Additional frontmatter keys (such as `title`, `description`, or `tags` for a static-site
+generator, indexer, or other host convention) are fine and ignored by softschema:
 
 ```markdown
 ---
@@ -420,15 +423,22 @@ Take an artifact that doesn’t fit the canonical shape and bring it in line.
 
 The canonical v0.1 shape is:
 
-- Exactly one `softschema:` block plus exactly one envelope key at the top level.
+- A `softschema:` block plus a designated envelope key at the top level.
 - All consumed values live under the envelope key.
 - Body prose is reader-facing only.
 
+Additional top-level keys (such as `title:`, `description:`, `tags:`, `pinned:`, or
+other host-specific frontmatter conventions) are allowed and are not interpreted by
+softschema.
+Only the `softschema` block and the envelope key are softschema’s concern, so
+an artifact can mix softschema with whatever metadata a static-site generator, indexer,
+or other tool already expects.
+
 Common before/after migrations:
 
-**Multiple top-level keys → single envelope.**
+**Payload values scattered at the root → values under an envelope.**
 
-Before (multiple keys at the root, no envelope):
+Before (payload fields directly at the root, no `softschema:` block, no envelope):
 
 ```yaml
 ---
@@ -439,7 +449,8 @@ ratings:
 ---
 ```
 
-After:
+After (a `softschema:` block plus an envelope key wrap the payload; unrelated keys could
+still sit alongside):
 
 ```yaml
 ---
@@ -556,8 +567,11 @@ A few patterns help agents do the right thing:
   every agent-authored slip a failure.
   Start `permissive` and graduate once the failure pattern is real bugs, not minor
   variance.
-- **Multiple top-level payload keys.** The canonical shape has exactly one envelope key
-  beside `softschema:`. Multiple keys force every caller to disambiguate.
+- **Splitting a payload across multiple envelopes.** A softschema artifact has a single
+  envelope key beside `softschema:`. Splitting payload across two envelopes forces every
+  caller to disambiguate.
+  (Unrelated top-level keys like `title:` or `tags:` are fine — the anti-pattern is
+  multiple keys that all carry payload values softschema is supposed to validate.)
 - **Putting implementation details in the artifact.** Resolver settings, sidecar paths,
   language identifiers, and migration state belong in host configuration, not in
   authored documents.

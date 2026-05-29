@@ -110,6 +110,13 @@ The Markdown body overlaps with it but need not match it field for field: here t
 adds the film’s Oscar win and leaves out the cast and genres, while a consumer reads
 only the YAML.
 
+Only the `softschema` block and the chosen envelope key (`movie:` above) are
+softschema’s concern.
+Additional top-level frontmatter keys (such as `title:`, `description:`, `tags:`, or any
+other host-specific metadata) are fine and ignored by softschema, so an artifact can
+coexist with whatever frontmatter conventions a static-site generator, doc indexer, or
+other tool already expects.
+
 The example illustrates the structural variety a softschema artifact can carry:
 constrained integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`
 restricted to `G`, `PG`, `PG-13`, `R`, `NC-17`, `NR`), lists of strings (`directors`,
@@ -149,9 +156,11 @@ uv run softschema validate examples/movie_page/spirited-away.md \
   --schema examples/movie_page/movie-page.schema.yaml
 ```
 
-`validate` reads `softschema.contract`, `softschema.status`, and the single top-level
-envelope key from the YAML by default.
-Use `--contract`, `--status`, or `--envelope` only to override or disambiguate.
+`validate` reads `softschema.contract`, `softschema.status`, and (when there is exactly
+one non-`softschema` top-level key) infers it as the envelope.
+Pass `--envelope` to designate the payload when other frontmatter keys (such as
+`title:`, `tags:`, or other host metadata) sit alongside; `--contract` and `--status`
+override the corresponding `softschema:` fields.
 
 Read the bundled docs from the CLI:
 

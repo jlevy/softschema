@@ -87,16 +87,26 @@ value is a validation error.
 
 ## Envelope Selection
 
-A normal artifact carries one top-level payload key beside `softschema`. That key is the
-envelope, and its value is the root validated against the contract.
+An artifact carries a designated top-level payload key beside `softschema`. That key is
+the envelope, and its value is the root validated against the contract.
+
+Frontmatter may carry any number of additional non-`softschema` top-level keys (for
+example `title`, `description`, `tags`, or any other host-specific metadata).
+softschema does not interpret them: only the `softschema` block and the designated
+envelope key are softschema’s concern.
+This lets a softschema artifact coexist with other frontmatter conventions (static-site
+generators, doc indexers, custom metadata) without conflict.
 
 An implementation must:
 
-- Accept exactly one non-`softschema` top-level key and treat it as the envelope.
-- Allow callers to specify the envelope explicitly when more than one non-`softschema`
-  top-level key exists.
-- Reject documents with zero or multiple non-`softschema` top-level keys when no
-  explicit envelope is supplied.
+- When exactly one non-`softschema` top-level key exists, treat it as the envelope by
+  convention (no caller action required).
+- Allow callers to designate the envelope explicitly (for example via a `--envelope`
+  flag, a registry binding, or a host convention).
+  When multiple non-`softschema` keys exist, the envelope must be designated this way;
+  auto-detection is intentionally not extended to multi-key documents.
+- Reject documents that lack the designated envelope key, or that have zero
+  non-`softschema` keys when an envelope is required.
 
 ## Contract IDs
 
@@ -157,9 +167,10 @@ A validator must reject:
 
 - malformed YAML or frontmatter
 - a `softschema` block with unknown keys, an unknown `status`, or a malformed `contract`
-- a missing envelope when the contract requires one
-- envelope ambiguity (multiple top-level non-`softschema` keys without an explicit
-  envelope choice)
+- a missing envelope when the contract requires one (zero non-`softschema` keys, or the
+  designated envelope key is absent)
+- envelope ambiguity when auto-detection is in use (multiple top-level non-`softschema`
+  keys without an explicit envelope designation)
 - a missing or unreadable schema sidecar when the binding declares one
 - a JSON Schema validation failure
 - an implementation-schema validation failure
