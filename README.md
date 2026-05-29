@@ -192,16 +192,16 @@ Pointing an agent at the CLI is enough to bootstrap its understanding of the sof
 approach: the `--help` epilog routes it to a brief and the bundled docs.
 
 ```bash
-uvx softschema@0.1.1 --help            # entry point with bootstrap pointers
-uvx softschema@0.1.1 skill --brief     # ~12-line operating brief
-uvx softschema@0.1.1 docs guide        # full mental model and adoption path
+uvx softschema@0.1.2 --help            # entry point with bootstrap pointers
+uvx softschema@0.1.2 skill --brief     # ~12-line operating brief
+uvx softschema@0.1.2 docs guide        # full mental model and adoption path
 ```
 
 Self-install the skill into a project so any agent working in the repo finds it
 natively:
 
 ```bash
-uvx softschema@0.1.1 skill --install
+uvx softschema@0.1.2 skill --install
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
