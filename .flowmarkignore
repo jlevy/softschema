@@ -10,5 +10,11 @@
 .claude/skills/tbd/
 .codex/
 
+# Skill mirrors written by `softschema skill --install`; the canonical
+# source is skills/softschema/SKILL.md, and these copies are regenerated
+# byte-deterministically by the CLI.
+.agents/skills/softschema/
+.claude/skills/softschema/
+
 # Beads issue store; managed by tbd, not human-authored.
 .beads/

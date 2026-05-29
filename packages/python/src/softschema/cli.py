@@ -9,6 +9,8 @@ import sys
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from importlib import resources
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
@@ -174,6 +176,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print compact skill guidance for constrained contexts.",
     )
+    skill_parser.add_argument(
+        "--install",
+        action="store_true",
+        help=(
+            "Write the skill into .agents/skills/softschema/SKILL.md and "
+            ".claude/skills/softschema/SKILL.md (relative to the current directory)."
+        ),
+    )
     skill_parser.set_defaults(func=_skill_cmd)
 
     args = parser.parse_args(argv)
@@ -318,11 +328,71 @@ def _generate_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
+    Path(".agents/skills/softschema/SKILL.md"),
+    Path(".claude/skills/softschema/SKILL.md"),
+)
+
+SKILL_DO_NOT_EDIT_MARKER = (
+    "<!-- DO NOT EDIT: written by `softschema skill --install`.\n"
+    "Re-run that command to update.\n"
+    "-->\n"
+)
+
+
+def _installed_version() -> str:
+    try:
+        return _pkg_version("softschema")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _rendered_skill_text() -> str:
+    raw = _read_resource(DOC_TOPICS["skill"].path)
+    return raw.replace("<version>", _installed_version())
+
+
+def _install_skill_payload(rendered: str) -> str:
+    """Insert the DO NOT EDIT marker after the closing frontmatter delimiter."""
+    lines = rendered.split("\n")
+    delimiter_count = 0
+    for i, line in enumerate(lines):
+        if line.strip() == "---":
+            delimiter_count += 1
+            if delimiter_count == 2:
+                lines.insert(i + 1, SKILL_DO_NOT_EDIT_MARKER)
+                break
+    return "\n".join(lines)
+
+
+def _install_skill(base_dir: Path) -> dict[str, Any]:
+    payload = _install_skill_payload(_rendered_skill_text())
+    files: list[dict[str, str]] = []
+    for relative in SKILL_INSTALL_TARGETS:
+        target = base_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        existing = target.read_text(encoding="utf-8") if target.exists() else None
+        if existing == payload:
+            status = "unchanged"
+        else:
+            target.write_text(payload, encoding="utf-8")
+            status = "updated" if existing is not None else "created"
+        files.append({"path": str(relative), "status": status})
+    return {
+        "version": _installed_version(),
+        "base_dir": str(base_dir),
+        "files": files,
+    }
+
+
 def _skill_cmd(args: argparse.Namespace) -> int:
+    if args.install:
+        _write_text(_json(_install_skill(Path.cwd())))
+        return 0
     if args.brief:
         _write_text(_brief_skill_text())
         return 0
-    _write_text(_read_resource(DOC_TOPICS["skill"].path))
+    _write_text(_rendered_skill_text())
     return 0
 
 

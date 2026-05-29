@@ -7,8 +7,8 @@ description: >-
   validation, mixed prose-and-data files, agent pipelines that produce or
   consume Markdown artifacts, or running the `softschema` CLI.
 ---
-<!-- DO NOT EDIT: copy of skills/softschema/SKILL.md.
-Update the source and re-copy this file from it.
+<!-- DO NOT EDIT: written by `softschema skill --install`.
+Re-run that command to update.
 -->
 
 # Softschema Skill
@@ -52,11 +52,26 @@ softschema docs --list             # full topic index
 Prefer a version-pinned zero-install runner:
 
 ```bash
-uvx softschema@<version> --help          # ephemeral; reproducible
-uv tool install softschema==<version>    # persistent; lockfile-friendly
+uvx softschema@0.1.1 --help          # ephemeral; reproducible
+uv tool install softschema==0.1.1    # persistent; lockfile-friendly
 ```
 
 In a checkout of this repo, `uv run softschema …` works without install.
+
+## Self-Install (Optional)
+
+Run once per project to install discoverable mirrors of this skill, so any agent working
+in the repo finds it natively:
+
+```bash
+softschema skill --install
+# writes:
+#   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
+#   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
+```
+
+The mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
+Re-run `softschema skill --install` to refresh after upgrading.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -195,6 +195,55 @@ def test_skill_brief_points_agents_to_docs_and_rules(
     assert "Do not parse Markdown body prose or tables" in output
 
 
+def test_skill_substitutes_version_placeholder(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from importlib.metadata import version as _pkg_version
+
+    exit_code = softschema_main(["skill"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "<version>" not in output
+    assert f"uvx softschema@{_pkg_version('softschema')}" in output
+
+
+def test_skill_install_creates_both_mirrors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = softschema_main(["skill", "--install"])
+
+    assert exit_code == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert {f["path"] for f in summary["files"]} == {
+        ".agents/skills/softschema/SKILL.md",
+        ".claude/skills/softschema/SKILL.md",
+    }
+    assert all(f["status"] == "created" for f in summary["files"])
+
+    agents = (tmp_path / ".agents/skills/softschema/SKILL.md").read_text(encoding="utf-8")
+    claude = (tmp_path / ".claude/skills/softschema/SKILL.md").read_text(encoding="utf-8")
+    assert agents == claude
+    assert "DO NOT EDIT: written by `softschema skill --install`" in agents
+    assert "<version>" not in agents
+
+
+def test_skill_install_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    softschema_main(["skill", "--install"])
+    capsys.readouterr()
+
+    exit_code = softschema_main(["skill", "--install"])
+
+    assert exit_code == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert all(f["status"] == "unchanged" for f in summary["files"])
+
+
 def test_validate_overrides_apply_when_frontmatter_lacks_metadata(
     tmp_path: Path, model_module: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

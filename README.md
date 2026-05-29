@@ -174,6 +174,33 @@ uv run softschema compile examples.movie_page.model:MoviePage \
   --out examples/movie_page/movie-page.schema.yaml
 ```
 
+## Use as an Agent Skill
+
+The `softschema` CLI ships as a [`SKILL.md`](https://agentskills.io) following the open
+Agent Skills standard discovered by Claude Code, Codex, Gemini CLI, Cursor, Copilot, and
+~20 other coding agents.
+Pointing an agent at the CLI is enough to bootstrap its understanding of the soft-schema
+approach: the `--help` epilog routes it to a brief and the bundled docs.
+
+```bash
+uvx softschema@0.1.1 --help            # entry point with bootstrap pointers
+uvx softschema@0.1.1 skill --brief     # ~12-line operating brief
+uvx softschema@0.1.1 docs guide        # full mental model and adoption path
+```
+
+Self-install the skill into a project so any agent working in the repo finds it
+natively:
+
+```bash
+uvx softschema@0.1.1 skill --install
+# writes:
+#   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
+#   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
+```
+
+Both mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
+Re-run `softschema skill --install` to refresh after upgrading the CLI.
+
 ## Repository Layout
 
 ```text

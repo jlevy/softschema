@@ -54,6 +54,21 @@ uv tool install softschema==<version>    # persistent; lockfile-friendly
 
 In a checkout of this repo, `uv run softschema …` works without install.
 
+## Self-Install (Optional)
+
+Run once per project to install discoverable mirrors of this skill, so any agent working
+in the repo finds it natively:
+
+```bash
+softschema skill --install
+# writes:
+#   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
+#   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
+```
+
+The mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
+Re-run `softschema skill --install` to refresh after upgrading.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
