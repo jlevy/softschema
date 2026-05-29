@@ -133,8 +133,8 @@ envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 
 Non-fatal advisory issues surface as `SoftschemaWarning` entries on
 `ArtifactValidationResult.warnings`. Every code is enumerated in the public
-`WarningCode` enum and uses the `document-*` prefix, so downstream consumers can
-filter the family with a single check:
+`WarningCode` enum and uses the `document-*` prefix, so downstream consumers can filter
+the family with a single check:
 
 ```python
 from softschema import WarningCode
@@ -143,18 +143,19 @@ if any(w.code.startswith("document-") for w in result.warnings):
     ...
 ```
 
-| Code | When it's emitted |
+| Code | When it’s emitted |
 | --- | --- |
-| `document-contract-mismatch` | Document declares a `softschema.contract` that doesn't match the binding's contract ID, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
-| `document-status-mismatch` | Document declares a `softschema.status` that doesn't match the binding's status. Always advisory: `status` records intent, not enforcement. |
+| `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the binding’s contract ID, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
+| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the binding’s status. Always advisory: `status` records intent, not enforcement. |
 
-A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any
-new emitted code that isn't a `WarningCode` member fails CI.
+A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
+emitted code that isn’t a `WarningCode` member fails CI.
 
 ### Structural error kinds
 
-`StructuralResult.errors[*].kind` uses a separate `snake_case` namespace because
-errors are blocking, not advisory. The current first-release kinds:
+`StructuralResult.errors[*].kind` uses a separate `snake_case` namespace because errors
+are blocking, not advisory.
+The current first-release kinds:
 
 | Kind | Meaning |
 | --- | --- |
@@ -164,14 +165,13 @@ errors are blocking, not advisory. The current first-release kinds:
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
 | `resolver_error` | `ValueResolver` could not extract values from the frontmatter (typically a missing envelope pointer). |
 | `contract_binding_missing` | No registered binding for the requested contract ID. |
-| `envelope_mismatch` | Binding's `envelope_key` is not present in the frontmatter. |
+| `envelope_mismatch` | Binding’s `envelope_key` is not present in the frontmatter. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
-| `document_contract_mismatch` | Document's `softschema.contract` does not match the binding's contract ID (enforced metadata mode). |
+| `document_contract_mismatch` | Document’s `softschema.contract` does not match the binding’s contract ID (enforced metadata mode). |
 | `schema_sidecar_missing` | Binding declared a `schema_path` but the file does not exist or is unreadable. |
 
-Structural error kinds are stable but do not currently carry a public enum; treat
-them as the documented surface and open an issue if a consumer needs a typed
-constant.
+Structural error kinds are stable but do not currently carry a public enum; treat them
+as the documented surface and open an issue if a consumer needs a typed constant.
 
 ## Schema Generation
 
@@ -197,10 +197,10 @@ for a future TypeScript package.
 
 ### Field Annotations (`SField`)
 
-`SField` is a thin wrapper over Pydantic's `Field` that records per-field
-authoring metadata under `json_schema_extra`. The compiler propagates that block
-verbatim into the JSON Schema sidecar as a per-property `x-softschema:` block;
-the runtime never reads it for validation.
+`SField` is a thin wrapper over Pydantic’s `Field` that records per-field authoring
+metadata under `json_schema_extra`. The compiler propagates that block verbatim into the
+JSON Schema sidecar as a per-property `x-softschema:` block; the runtime never reads it
+for validation.
 
 ```python
 from softschema import SField
@@ -228,19 +228,19 @@ Recognized keys:
 | `aliases` | `dict[str, list[str]]` | Controlled-vocabulary repair table. Omitted when empty. |
 | `repair` | `none` / `safe_coerce` / `suggest_alias` | How a future repair pass may handle near-miss values. Default `none`. |
 
-The `SoftOwner`, `SoftTier`, and `RepairKind` `Literal` aliases (also exported
-from `softschema`) make typos like `owner="agennt"` fail at type-check rather
-than at compile time.
+The `SoftOwner`, `SoftTier`, and `RepairKind` `Literal` aliases (also exported from
+`softschema`) make typos like `owner="agennt"` fail at type-check rather than at compile
+time.
 
-Field constraints (`ge`, `le`, `min_length`, etc.) flow through the normal
-Pydantic path; pass them as additional kwargs to `SField`.
+Field constraints (`ge`, `le`, `min_length`, etc.)
+flow through the normal Pydantic path; pass them as additional kwargs to `SField`.
 
 ### Schema View
 
-`SchemaView` is the single read-only navigator over a compiled JSON Schema
-sidecar. Every downstream consumer (QA rules, agent prompts, comparison logic,
-generated sections) goes through this one API instead of re-parsing the schema
-in each module. That keeps drift out of the readers.
+`SchemaView` is the single read-only navigator over a compiled JSON Schema sidecar.
+Every downstream consumer (QA rules, agent prompts, comparison logic, generated
+sections) goes through this one API instead of re-parsing the schema in each module.
+That keeps drift out of the readers.
 
 ```python
 from softschema import SchemaView
@@ -260,15 +260,16 @@ for field in view.fields_by_group("taxonomy"):
     print(field.name, field.json_type, field.required)
 ```
 
-`iter_fields()` flattens through `$ref`s into `$defs`, yielding one `FieldInfo`
-per leaf-ish field with its JSON Pointer, type, enum (if any), required flag,
-description, and `x-softschema` block. The reader handles Pydantic's
-`anyOf: [{$ref: ...}, {type: null}]` shape for `Foo | None` fields and the
-`anyOf: [{enum: ...}, {type: null}]` shape for `Literal[...] | None` fields.
+`iter_fields()` flattens through `$ref`s into `$defs`, yielding one `FieldInfo` per
+leaf-ish field with its JSON Pointer, type, enum (if any), required flag, description,
+and `x-softschema` block.
+The reader handles Pydantic’s `anyOf: [{$ref: ...}, {type: null}]` shape for
+`Foo | None` fields and the `anyOf: [{enum: ...}, {type: null}]` shape for
+`Literal[...] | None` fields.
 
-Phase 0 ships the navigator. `view(name)` (named query presets) and `load_urn`
-(repo-level URN resolution) are deferred until generated sections or a concrete
-consumer earns them.
+Phase 0 ships the navigator.
+`view(name)` (named query presets) and `load_urn` (repo-level URN resolution) are
+deferred until generated sections or a concrete consumer earns them.
 
 Schema sidecars are validation artifacts.
 They are distinct from data sidecars, which store artifact payload values outside the

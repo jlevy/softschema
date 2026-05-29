@@ -10,12 +10,12 @@
 
 The core design is strong: softschema has a clear center of gravity around
 human-readable Markdown, authoritative YAML/frontmatter values, contract IDs that name
-payloads rather than implementation classes, and validation at boundaries. The current
-documentation already repeats those ideas consistently enough that the repo has a real
-shape.
+payloads rather than implementation classes, and validation at boundaries.
+The current documentation already repeats those ideas consistently enough that the repo
+has a real shape.
 
-The main problem is not missing content. It is ownership. The docs currently blur four
-different jobs:
+The main problem is not missing content.
+It is ownership. The docs currently blur four different jobs:
 
 1. explaining the idea,
 2. defining the valid artifact format,
@@ -23,14 +23,15 @@ different jobs:
 4. documenting the Python package implementation.
 
 Because those jobs overlap, the same concepts appear in several places with slightly
-different levels of authority. The largest symptom is `docs/softschema-design.md`: the
-active public-readiness plan says not to add a standalone language-neutral design doc for
-now, while that file declares itself the durable language-neutral design reference.
+different levels of authority.
+The largest symptom is `docs/softschema-design.md`: the active public-readiness plan
+says not to add a standalone language-neutral design doc for now, while that file
+declares itself the durable language-neutral design reference.
 
-My recommendation is to remove `docs/softschema-design.md` from the public doc set before
-release, move its still-useful rationale into the active plan spec, and make the guide
-more operational: playbooks, common use cases, authoring rules, migration recipes, CI
-recipes, and examples of how to use the convention and tool.
+My recommendation is to remove `docs/softschema-design.md` from the public doc set
+before release, move its still-useful rationale into the active plan spec, and make the
+guide more operational: playbooks, common use cases, authoring rules, migration recipes,
+CI recipes, and examples of how to use the convention and tool.
 
 ## What Is Working
 
@@ -40,9 +41,9 @@ recipes, and examples of how to use the convention and tool.
   import path.
 - The YAML/frontmatter source-of-truth rule is clear and repeated in the right places.
 - The movie-page example is public, practical, and concrete enough to carry the docs.
-- The Python package is being kept small. The current CLI topics are focused on
-  `readme`, `guide`, `spec`, `python-design`, workflow docs, examples, skill, and agent
-  instructions.
+- The Python package is being kept small.
+  The current CLI topics are focused on `readme`, `guide`, `spec`, `python-design`,
+  workflow docs, examples, skill, and agent instructions.
 - The active public-readiness plan already contains the right instinct: keep broad
   product-design notes in the plan until a permanent public design reference is actually
   earned.
@@ -53,33 +54,35 @@ recipes, and examples of how to use the convention and tool.
 
 `docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md` says not to
 add a standalone language-neutral `docs/softschema-design.md` for now, and says broad
-product-design notes should stay in the plan. `docs/softschema-design.md` says the
-opposite: it presents itself as the durable design reference.
+product-design notes should stay in the plan.
+`docs/softschema-design.md` says the opposite: it presents itself as the durable design
+reference.
 
-That split will confuse both humans and agents. A reader cannot tell whether the plan or
-the design doc owns roadmap, rationale, future TypeScript direction, generated sections,
-value resolution, and deferred features.
+That split will confuse both humans and agents.
+A reader cannot tell whether the plan or the design doc owns roadmap, rationale, future
+TypeScript direction, generated sections, value resolution, and deferred features.
 
 Recommendation: delete `docs/softschema-design.md` after extracting any unique useful
-content, or replace it with a short tombstone that points to the guide, spec,
-Python design doc, and active plan. I prefer deletion before public release because the
-CLI does not expose it as a docs topic and the active plan already says it should not be
-there.
+content, or replace it with a short tombstone that points to the guide, spec, Python
+design doc, and active plan.
+I prefer deletion before public release because the CLI does not expose it as a docs
+topic and the active plan already says it should not be there.
 
 ### 2. Current-State And Future-State Rules Are Mixed
 
 The guide and spec currently describe the v0.1 artifact shape as one top-level payload
 envelope beside `softschema`. The design doc introduces a future `softschema.values`
-pointer shape as canonical for new documents. The plan lists that choice as a pre-release
-open question.
+pointer shape as canonical for new documents.
+The plan lists that choice as a pre-release open question.
 
-That is a normative conflict. The spec should never leave a reader wondering which
-artifact shape is valid today.
+That is a normative conflict.
+The spec should never leave a reader wondering which artifact shape is valid today.
 
 Recommendation: for v0.1, keep the spec aligned with the code and examples: one
 top-level payload envelope beside `softschema`, with envelope inference when exactly one
-non-`softschema` key exists. Keep `softschema.values.location / pointer` in the plan as a
-future design option unless the implementation and examples are updated before release.
+non-`softschema` key exists.
+Keep `softschema.values.location / pointer` in the plan as a future design option unless
+the implementation and examples are updated before release.
 
 ### 3. Roadmap Content Appears In Too Many Places
 
@@ -88,18 +91,20 @@ field-level `x-softschema`, `SchemaView`, generated sections, warning codes, URN
 references, provider adapters, body-form bridges, patch protocols, mirrors, and
 materialization.
 
-Some overlap is useful while designing, but it is too much for release docs. The public
-docs should not make future features feel shipped.
+Some overlap is useful while designing, but it is too much for release docs.
+The public docs should not make future features feel shipped.
 
-Recommendation: keep the roadmap in the active plan. Keep v8 as research/source
-material. Keep public docs focused on present behavior, with only small forward-looking
-notes where they prevent a bad choice.
+Recommendation: keep the roadmap in the active plan.
+Keep v8 as research/source material.
+Keep public docs focused on present behavior, with only small forward-looking notes
+where they prevent a bad choice.
 
 ### 4. The Guide Is Still More Concept Reference Than Playbook
 
 `docs/softschema-guide.md` explains the mental model well, but it is not yet the
-operational guide the repo needs. It has adoption steps, host integration, sidecar notes,
-and documentation-shape guidance, but not enough scenario-based help.
+operational guide the repo needs.
+It has adoption steps, host integration, sidecar notes, and documentation-shape
+guidance, but not enough scenario-based help.
 
 Recommendation: restructure the guide around common workflows:
 
@@ -113,14 +118,15 @@ Recommendation: restructure the guide around common workflows:
 - Use softschema with agents.
 - Know when to stop and leave prose as prose.
 
-The guide should carry enough rationale to help readers make decisions, but not the
-full roadmap or future architecture.
+The guide should carry enough rationale to help readers make decisions, but not the full
+roadmap or future architecture.
 
 ### 5. The Spec Should Be More Normative And Less Explanatory
 
 `docs/softschema-spec.md` is already concise, but it still carries some teaching content
-that overlaps with the guide. That is acceptable in small doses, but the spec should be
-the authority on exact artifact rules.
+that overlaps with the guide.
+That is acceptable in small doses, but the spec should be the authority on exact
+artifact rules.
 
 Recommendation: make the spec answer only these questions:
 
@@ -138,21 +144,22 @@ Recommendation: make the spec answer only these questions:
 
 Motivation, adoption strategy, and examples should mostly live outside the spec.
 
-### 6. The README Is Close, But Should Drop "Design" From Its Public Shape
+### 6. The README Is Close, But Should Drop “Design” From Its Public Shape
 
 The README is doing the right job: quick orientation, short example, quick commands, and
-links. It currently says `docs/` contains "guide, spec, design, and workflow docs", but
+links. It currently says `docs/` contains “guide, spec, design, and workflow docs”, but
 the public docs list does not include `docs/softschema-design.md`.
 
 Recommendation: after removing or tombstoning the design doc, update the README to say
-`docs/` contains guide, spec, Python design, and workflow docs. Keep the README as a
-short subset of the guide.
+`docs/` contains guide, spec, Python design, and workflow docs.
+Keep the README as a short subset of the guide.
 
 ### 7. Project-Internal Docs Need A Clearer Boundary
 
 The repo root docs currently mix public docs (`docs/softschema-guide.md`,
-`docs/softschema-spec.md`, `docs/softschema-python-design.md`) with internal planning and
-research (`docs/project/specs/...`, `docs/research/...`). The new review folder helps.
+`docs/softschema-spec.md`, `docs/softschema-python-design.md`) with internal planning
+and research (`docs/project/specs/...`, `docs/research/...`). The new review folder
+helps.
 
 Recommendation: use this boundary consistently:
 
@@ -197,7 +204,7 @@ right: public docs at `docs/` root, project-internal design history under
 
 | Current Design Doc Content | Destination |
 | --- | --- |
-| Motivation and adjacent alternatives | Active plan background/design rationale; optional short "When to use softschema" section in guide |
+| Motivation and adjacent alternatives | Active plan background/design rationale; optional short “When to use softschema” section in guide |
 | Core principles | Plan design principles; short operational restatement in guide |
 | Artifact policy, contract IDs, status, envelope inference | Spec if normative today; plan if rationale/future |
 | `softschema.values` pointer shape | Plan open question/future design unless implemented before release |
@@ -216,9 +223,9 @@ right: public docs at `docs/` root, project-internal design history under
 1. Decide the v0.1 artifact shape explicitly.
    My recommendation is to keep the current one-envelope frontmatter shape for v0.1 and
    defer `softschema.values` until a later non-breaking release.
-2. Extract unique useful rationale from `docs/softschema-design.md` into the active plan.
-   Do not move all of it. Preserve only decisions that affect v0.1 or near follow-on
-   work.
+2. Extract unique useful rationale from `docs/softschema-design.md` into the active
+   plan. Do not move all of it.
+   Preserve only decisions that affect v0.1 or near follow-on work.
 3. Delete `docs/softschema-design.md`, or replace it with a short pointer if keeping a
    compatibility breadcrumb matters.
 4. Update README wording and docs links so no public entry point advertises a generic
@@ -283,8 +290,9 @@ This would make the guide more useful without turning it into the spec or the pl
 ```
 
 If the project does not want formal RFC-style `MUST` / `SHOULD` language yet, the spec
-can still be normative through clear statements. The important part is that future
-design possibilities do not appear as current valid format rules.
+can still be normative through clear statements.
+The important part is that future design possibilities do not appear as current valid
+format rules.
 
 ## Specific Decisions I Would Make Now
 
@@ -303,12 +311,14 @@ design possibilities do not appear as current valid format rules.
 ## Residual Risks
 
 - If generated sections are likely to ship immediately after v0.1, there is a temptation
-  to document them early. Resist that in public docs until the CLI and tests exist.
+  to document them early.
+  Resist that in public docs until the CLI and tests exist.
 - If `softschema.values` is adopted before release, the guide, spec, examples, CLI
-  inference behavior, and tests should all change together. Partial adoption would make
-  the artifact format ambiguous.
+  inference behavior, and tests should all change together.
+  Partial adoption would make the artifact format ambiguous.
 - If `docs/research` stays at the docs root, readers may treat it as part of the public
-  product documentation. Link to it only from project planning docs unless it is promoted.
+  product documentation.
+  Link to it only from project planning docs unless it is promoted.
 
 ## Bottom Line
 
@@ -321,7 +331,7 @@ The clean model is:
 - Plan spec records why the current release is shaped this way and what comes next.
 - Research preserves deeper history.
 
-That organization matches the user's instinct: keep the spec, move motivation and design
+That organization matches the user’s instinct: keep the spec, move motivation and design
 rationale into the plan spec, and turn the guide into a practical operating manual.
 
 <!-- This document follows std-doc-guidelines.md.

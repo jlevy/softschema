@@ -16,7 +16,8 @@ Worked examples are generic illustrations only and not tied to any specific doma
 
 ## Architecture
 
-The name “softschema” can mislead — it is not weak schema validation.
+The name “softschema” can mislead.
+It is not weak schema validation.
 The design is the opposite: **hard schema, soft authoring**. The contract is strict
 (Pydantic + JSON Schema, both running with `extra="forbid"` semantics), but the authored
 Markdown document remains narrative, editable, and gradually migratable.
@@ -162,7 +163,7 @@ Cross-field invariants stay in Pydantic.
 
 ### Alias semantics
 
-`aliases` on a field is a controlled-vocabulary repair table — strings the agent might
+`aliases` on a field is a controlled-vocabulary repair table: strings the agent might
 plausibly emit that should map to canonical enum values.
 The runtime treats them as follows:
 
@@ -919,7 +920,7 @@ class WidgetRecord(BaseModel):
     @model_validator(mode="after")
     def _evidence_dates_before_due_date(self) -> "WidgetRecord":
         # The EvidenceSnippet description says "Must be on or before due_date,"
-        # but the snippet model alone cannot see the parent due_date — it has to
+        # but the snippet model alone cannot see the parent due_date; it has to
         # live on the parent. This is the canonical shape of a cross-field invariant
         # that JSON Schema can't express, which is why Pydantic remains canonical.
         for i, snippet in enumerate(self.qualitative.evidence_snippets):
@@ -1049,8 +1050,7 @@ It becomes required only when patches or in-place normalization land (Appendix A
 
 Value canonicalization (sorted keys, deterministic float formatting for instance values)
 is also deferred. It becomes load-bearing only when a materialized canonical sidecar
-exists.
-The schema-side canonical hashing rule, however, is Phase 0 — see §Schema hashing
+exists. The schema-side canonical hashing rule, however, is Phase 0; see §Schema hashing
 in The JSON Schema sidecar.
 
 ## Extension points (reserved)
@@ -1239,7 +1239,7 @@ Generic `<!-- generated -->` is not a valid softschema marker.
 
 1. **Should new templates also forbid the legacy resolver mode?** v8 treats
    `frontmatter_root` as a compatibility seam.
-   Strawman: yes — new templates must use `values_key`. The CLI rejects new templates
+   Strawman: yes, new templates must use `values_key`. The CLI rejects new templates
    that lack a `softschema:` block.
 2. **Generated-section regeneration: edit-time or CI-only?** v8 says CI `--check` fails
    on drift; rerunning the regen command is manual.
@@ -1445,7 +1445,7 @@ The runtime canonicalizes both forms internally.
 | `rejected` | Structural failure, or semantic failure in strict mode; document unchanged |
 
 **Fill loop** (`inspect` API): the agent never sees the full schema in its context; it
-sees a compact fill state — progress counts, next fields with their constraints and
+sees a compact fill state: progress counts, next fields with their constraints and
 instructions, and unresolved issues.
 The agent builds a patch batch, applies it, repeats until
 `progress.filled_required == total_required`.

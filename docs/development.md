@@ -38,9 +38,9 @@ Two softschema checks belong in CI for any project that depends on the package.
 
 ### Schema sidecar drift
 
-A committed `.schema.yaml` file is *generated, but committed*. Run `softschema
-compile ... --check` to fail the build when the committed sidecar drifts from the
-source model:
+A committed `.schema.yaml` file is *generated, but committed*. Run
+`softschema compile ... --check` to fail the build when the committed sidecar drifts
+from the source model:
 
 ```bash
 uv run softschema compile examples.movie_page.model:MoviePage \
@@ -53,10 +53,9 @@ sidecar.
 
 ### Generated-section drift
 
-If any Markdown file contains `softschema:generated` markers (see the guide's
-"Keep Schema Tables In Sync With Generated Sections" playbook), run the
-re-renderer in `--check` mode so CI fails when the committed section lags behind
-the schema:
+If any Markdown file contains `softschema:generated` markers (see the guide’s “Keep
+Schema Tables In Sync With Generated Sections” playbook), run the re-renderer in
+`--check` mode so CI fails when the committed section lags behind the schema:
 
 ```bash
 uv run softschema generate examples/movie_page/README.md --check
@@ -66,8 +65,8 @@ Fix on drift: re-run without `--check` and commit the regenerated section.
 
 ### Artifact validation
 
-Run `softschema validate` against every artifact under version control whose contract
-is fully defined:
+Run `softschema validate` against every artifact under version control whose contract is
+fully defined:
 
 ```bash
 uv run softschema validate examples/movie_page/spirited-away.md \
@@ -76,8 +75,8 @@ uv run softschema validate examples/movie_page/spirited-away.md \
 ```
 
 `validate` reads `softschema.contract`, `softschema.status`, and the single top-level
-envelope key from the artifact by default. `--contract`, `--status`, and `--envelope`
-are override flags.
+envelope key from the artifact by default.
+`--contract`, `--status`, and `--envelope` are override flags.
 
 ### GitHub Actions
 
@@ -126,7 +125,9 @@ repos:
         files: ^(examples/movie_page/model\.py|examples/movie_page/movie-page\.schema\.yaml)$
 ```
 
-Adapt the paths and the `--model` / `--contract` / `--out` arguments to each schema
-in your repository.
+Adapt the paths and the `--model` / `--contract` / `--out` arguments to each schema in
+your repository.
 
-<!-- This document follows std-doc-guidelines.md. Review guidelines before editing. -->
+<!-- This document follows std-doc-guidelines.md.
+Review guidelines before editing.
+-->

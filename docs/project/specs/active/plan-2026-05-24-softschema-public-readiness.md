@@ -1,10 +1,12 @@
 # Feature: Softschema Public Readiness
 
-**Date:** 2026-05-24 (last updated 2026-05-24)
+**Date:** 2026-05-24 (last updated 2026-05-28)
 
 **Author:** Codex
 
-**Status:** Draft
+**Status:** Complete.
+v0.1 release-ready, all tracked beads closed; first PyPI tag is the remaining external
+step.
 
 ## Overview
 
@@ -86,21 +88,35 @@ consumed fields, or later replace stable transformations with deterministic code
 
 ## Current State
 
-The `extract-softschema` branch already has the first standalone repo shape:
+The `extract-softschema` branch carries a v0.1-release-ready standalone repo:
 
 - Concept-first `README.md`.
-- `docs/softschema-guide.md` as the durable concept and adoption guide.
-- `docs/softschema-spec.md` as the exact language-neutral artifact format.
+- `docs/softschema-guide.md` restructured as operational playbooks.
+- `docs/softschema-spec.md` tightened to normative-only artifact-format content (now
+  includes the Generated Sections marker spec).
 - `docs/softschema-python-design.md` as the Python package and implementation design.
-- `examples/movie_page` with a practical Spirited Away artifact, model, schema, and host
-  integration example.
-- `packages/python/src/softschema` with validation, registry, schema compile, and CLI
-  code.
+  Includes Field Annotations, Schema View, and Warning Codes sections.
+- `examples/movie_page` with a practical Spirited Away artifact, model, schema, host
+  integration example, and a live generated-section marker in the README.
+- `packages/python/src/softschema` with validation, registry, schema compile, CLI, and
+  the shipped P0/P1 surface: `sfield.py`, `schema_view.py`, `generate.py`.
 - `packages/typescript/README.md` as a future TypeScript/Zod placeholder only.
 - `skills/softschema/SKILL.md` and bundled CLI docs/skill commands.
 - `softschema docs --list --json` for agent-readable docs discovery.
 - `softschema validate` requires a validation implementation via `--model`, `--schema`,
   or both.
+- `softschema generate` and `softschema generate --check` for schema-derived Markdown
+  marker sections.
+
+Release-readiness verified on 2026-05-28:
+
+- `uv run python devtools/lint.py --check` — clean (codespell, ruff, basedpyright, doc
+  footers).
+- `uv run pytest` — 63/63 tests pass across `test_cli`, `test_core`, `test_generate`,
+  `test_movie_page_example`, `test_schema_view`, `test_sfield`, `test_warning_codes`.
+- `uv build` — wheel and sdist build; bundled resources include the renamed
+  `docs/softschema-python-design.md`.
+- All 34 tracked beads closed.
 
 ## Design
 
@@ -156,28 +172,29 @@ or `examples.md` unless a topic grows large enough to need a separate reference.
 ### Adjacent Approaches
 
 The space around softschema is crowded with tools that overlap on parts of the problem.
-Recording why those tools don't replace softschema keeps the design honest and guides
+Recording why those tools don’t replace softschema keeps the design honest and guides
 both adopters and future contributors:
 
-- **Plain JSON Schema in a YAML file.** Works for pure-data artifacts. Fails for
-  artifacts that mix narrative prose with structured values, because nothing tells a
-  consumer *which* values are authoritative and where they live.
-- **Pydantic (or any source schema) alone.** Carries host-language semantics that don't
-  travel cross-language. Loses the portable structural subset that other implementations
-  could validate.
-- **Full-body form parsers** (Markform, custom Markdown body bindings). Powerful, but
-  they own a Markdown body parser and a render runtime. Softschema deliberately does
-  not. A body-form runtime can sit *above* softschema, export a values dict, and call
-  softschema for validation — no shared code required.
-- **Provider structured-output adapters.** Useful at the LLM boundary, but they
-  validate one provider's subset; softschema validates the full schema after the model
-  responds. The two compose; the adapter is not a substitute.
+- **Plain JSON Schema in a YAML file.** Works for pure-data artifacts.
+  Fails for artifacts that mix narrative prose with structured values, because nothing
+  tells a consumer *which* values are authoritative and where they live.
+- **Pydantic (or any source schema) alone.** Carries host-language semantics that don’t
+  travel cross-language.
+  Loses the portable structural subset that other implementations could validate.
+- **Full-body form parsers** (Markform, custom Markdown body bindings).
+  Powerful, but they own a Markdown body parser and a render runtime.
+  Softschema deliberately does not.
+  A body-form runtime can sit *above* softschema, export a values dict, and call
+  softschema for validation; no shared code is required.
+- **Provider structured-output adapters.** Useful at the LLM boundary, but they validate
+  one provider’s subset; softschema validates the full schema after the model responds.
+  The two compose; the adapter is not a substitute.
 - **Plain Markdown with hand-maintained convention.** The starting state for most
-  projects. Softschema is the smallest possible step up: add metadata, add a contract
-  ID, validate the values consumers actually read.
+  projects. Softschema is the smallest possible step up: add metadata, add a contract ID,
+  validate the values consumers actually read.
 
 When the guide grows into an operational playbook (see Phase 6), the adopter-facing
-version of this list can move into a short "When to use softschema" section there.
+version of this list can move into a short “When to use softschema” section there.
 
 ### Cross-Language Boundary
 
@@ -228,9 +245,9 @@ They come from
 and are not present in the internal predecessor; v8 designs them, this plan implements
 them. Read v8 first when picking up any item below.
 
-**P0 capabilities — needed for the package to feel complete to a downstream consumer
-beyond the movie example.** Land before the first non-trivial external project depends
-on the package.
+**P0 capabilities.** Needed for the package to feel complete to a downstream consumer
+beyond the movie example.
+Land before the first non-trivial external project depends on the package.
 
 - **Field-level `x-softschema` annotations** (v8 §"The Pydantic contract layer"). A
   small `SField` helper plus compiler support for per-field `tier`, `owner`, `group`,
@@ -245,7 +262,7 @@ on the package.
   `document-softschema-invalid`. Enumerate every code, document them as a public table,
   and add a regression test that holds the table to the emitted codes.
 
-**P1 capabilities — make the package immediately useful for adoption-stage projects.**
+**P1 capabilities.** Make the package immediately useful for adoption-stage projects.
 
 - **Generated schema sections** (v8 §"Generated sections"). Markers in Markdown that the
   package regenerates deterministically from a schema.
@@ -280,7 +297,7 @@ Each will be revisited only when a concrete public use case earns the design cos
 The capability roadmap above is informed by a longer-running runtime-design research
 thread captured in
 [docs/project/research/research-2026-05-24-softschema-runtime-design-v8.md](../../research/research-2026-05-24-softschema-runtime-design-v8.md).
-That document describes the full “hard schema, soft authoring” architecture in detail —
+That document describes the full “hard schema, soft authoring” architecture in detail,
 including Phase 0 surface, generated-section markers, `SchemaView`, schema reference
 resolution, the `softschema:` block policy, the YAML subset, and a catalog of reserved
 extension points (manifest sidecars, patch protocol, mirrors, materialization, provider
@@ -318,14 +335,19 @@ reference, and this plan is the time-bounded execution roadmap.
 
 ### Phase 1: Documentation Review
 
-- [ ] Review `README.md` as the first-visitor entry point.
-- [ ] Review `docs/softschema-guide.md` as the durable concept and adoption guide.
-- [ ] Review `docs/softschema-spec.md` as the exact artifact format.
-- [ ] Review `docs/softschema-python-design.md` as Python package design, not a broad
+Closed via `ss-thj8` (docs review) and `ss-rx6k` (final consistency check).
+
+- [x] Review `README.md` as the first-visitor entry point.
+- [x] Review `docs/softschema-guide.md` as the durable concept and adoption guide.
+  Restructured into operational playbooks via `ss-hyhu`.
+- [x] Review `docs/softschema-spec.md` as the exact artifact format.
+  Tightened to normative-only via `ss-u07d`.
+- [x] Review `docs/softschema-python-design.md` as Python package design, not a broad
   product manifesto.
-- [ ] Keep this plan as the temporary home for broad product-design notes unless a
-  permanent language-neutral `docs/softschema-design.md` becomes clearly useful.
-- [ ] Run a consistency pass across `README.md`, `docs/softschema-guide.md`,
+- [x] Keep this plan as the temporary home for broad product-design notes; a permanent
+  language-neutral `docs/softschema-design.md` was drafted, reviewed, and removed via
+  `ss-wut9` (see Settled Pre-Release Decisions).
+- [x] Run a consistency pass across `README.md`, `docs/softschema-guide.md`,
   `docs/softschema-spec.md`, `docs/softschema-python-design.md`, `AGENTS.md`,
   `skills/softschema/SKILL.md`, and `examples/movie_page/README.md` to confirm each
   agrees on three points:
@@ -336,80 +358,90 @@ reference, and this plan is the time-bounded execution roadmap.
 
 ### Phase 2: Example Review
 
-- [ ] Verify `examples/movie_page/spirited-away.md` is friendly, readable, and contains
+Closed via `ss-oovv`.
+
+- [x] Verify `examples/movie_page/spirited-away.md` is friendly, readable, and contains
   the same structured information as its YAML payload.
-- [ ] Verify the movie example includes title, description, structured domains, readable
+- [x] Verify the movie example includes title, description, structured domains, readable
   body prose, a table, Rotten Tomatoes critics/audience ratings, and vote/review counts.
-- [ ] Verify `examples/movie_page/model.py` remains simple enough to understand by
+- [x] Verify `examples/movie_page/model.py` remains simple enough to understand by
   reading it directly.
-- [ ] Verify the integration test uses the example code rather than duplicating hidden
+  Now also carries a representative `SField` annotation on `genres`.
+- [x] Verify the integration test uses the example code rather than duplicating hidden
   demo logic.
 
 ### Phase 3: Python Package Review
 
-- [ ] Review public API names with no backward-compatibility constraint.
-- [ ] Keep complete binding registration and avoid aliases, legacy statuses, and
+Closed via `ss-va24` and `ss-tkfe` (public API naming confirmed against the trading
+consumer seam).
+
+- [x] Review public API names with no backward-compatibility constraint.
+  Settled on the `Softschema*` namespace prefix to avoid collisions with host code (see
+  Settled Pre-Release Decisions).
+- [x] Keep complete binding registration and avoid aliases, legacy statuses, and
   compatibility projections.
-- [ ] Verify `softschema validate` reads contract/status/envelope from the artifact by
+- [x] Verify `softschema validate` reads contract/status/envelope from the artifact by
   default and treats CLI flags as overrides.
-- [ ] Verify `softschema validate` requires `--model`, `--schema`, or both.
-- [ ] Verify bundled docs and examples are included in wheel and sdist.
-- [ ] Verify `frontmatter-format` is documented as the frontmatter/YAML mechanics
+- [x] Verify `softschema validate` requires `--model`, `--schema`, or both.
+- [x] Verify bundled docs and examples are included in wheel and sdist.
+- [x] Verify `frontmatter-format` is documented as the frontmatter/YAML mechanics
   dependency, not a generic data-sidecar runtime.
-- [ ] Record CLI topic rename in release notes: `softschema docs design` is now
+- [x] Record CLI topic rename in release notes: `softschema docs design` is now
   `softschema docs python-design`, matching the `docs/softschema-python-design.md`
   filename.
 
 ### Phase 4: Release Readiness
 
-- [ ] Run `uv run python devtools/lint.py --check`.
-- [ ] Run `uv run pytest`.
-- [ ] Run `uv build`.
-- [ ] Inspect the built wheel for bundled resources, including the renamed
+Closed via `ss-szpe`. Validated on 2026-05-28.
+
+- [x] Run `uv run python devtools/lint.py --check` — clean.
+- [x] Run `uv run pytest` — 63/63 pass.
+- [x] Run `uv build` — wheel and sdist build.
+- [x] Inspect the built wheel for bundled resources, including the renamed
   `docs/softschema-python-design.md`
   (`unzip -l dist/*.whl | grep softschema-python-design`).
-- [ ] Run `softschema docs --list`, `softschema docs --list --json`,
+- [x] Run `softschema docs --list`, `softschema docs --list --json`,
   `softschema docs guide`, and `softschema skill --brief`.
-- [ ] Run the movie example validation command from the README.
-- [ ] Confirm tbd sync is healthy.
+- [x] Run the movie example validation command from the README.
+- [x] Confirm tbd sync is healthy.
 
 ### Phase 5: P0 Capability Implementation
 
-Each item is net-new relative to the ported core. Designs live in v8; this phase
-implements them. Land before the first non-trivial external project depends on the
-package.
+Each item is net-new relative to the ported core.
+Designs live in v8; this phase implements them.
+Land before the first non-trivial external project depends on the package.
 
-Reuse note: the trading repo's `packages/softschema` package does *not* contain
-`SField`, `SchemaView`, or generated-sections code. Trading-repo softschema today is
-a subset of this repo's current code. The P0/P1 work is genuinely net-new here; the
-trading consumer benefits from these APIs being available *before* its Phase 3
-cutover, not from porting code.
+Reuse note: the trading repo’s `packages/softschema` package does *not* contain
+`SField`, `SchemaView`, or generated-sections code.
+Trading-repo softschema today is a subset of this repo’s current code.
+The P0/P1 work is genuinely net-new here; the trading consumer benefits from these APIs
+being available *before* its Phase 3 cutover, not from porting code.
 
 Trading consumer alignment (informs API shape, not borrowed code):
 
 - `earnings_predictions/src/earnings_predictions/qa/` reads enum values and field
-  metadata ad-hoc today. `SchemaView` becomes the API it switches to.
-- `earnings_predictions/src/earnings_predictions/schemas/*.py` are Pydantic models
-  with rich domain semantics (Direction, EpsResult, ReactionType enums; cross-field
-  validators). They are natural candidates for `SField` annotations
-  (`tier="hard_fact"` for IDs, `owner="agent"`/`"postprocess"`/`"system"` for
-  ownership, `group` for QA categorization).
+  metadata ad-hoc today.
+  `SchemaView` becomes the API it switches to.
+- `earnings_predictions/src/earnings_predictions/schemas/*.py` are Pydantic models with
+  rich domain semantics (Direction, EpsResult, ReactionType enums; cross-field
+  validators). They are natural candidates for `SField` annotations (`tier="hard_fact"`
+  for IDs, `owner="agent"`/`"postprocess"`/`"system"` for ownership, `group` for QA
+  categorization).
 - Trading runbooks under `process/` and templates that currently list controlled
   vocabularies by hand are the natural first consumers of generated sections.
 
 #### ss-pu9z: Field-level `x-softschema` annotations (DONE)
 
-v8 reference: §"The Pydantic contract layer" → §"`SField` and `x-softschema`
-metadata".
+v8 reference: §"The Pydantic contract layer" → §"`SField` and `x-softschema` metadata".
 
 Shipped in commit landing this section:
-- `packages/python/src/softschema/sfield.py` with `SField()`, `SFieldMeta`, type
-  aliases (`SoftOwner`, `SoftTier`, `RepairKind`).
+- `packages/python/src/softschema/sfield.py` with `SField()`, `SFieldMeta`, type aliases
+  (`SoftOwner`, `SoftTier`, `RepairKind`).
 - Re-exported from `softschema/__init__.py`.
-- Movie example `genres` field annotated; sidecar regenerated with the
-  `x-softschema` block.
-- `tests/test_sfield.py` (3 tests) covers round-trip, omit-empty-defaults, and
-  the committed movie sidecar.
+- Movie example `genres` field annotated; sidecar regenerated with the `x-softschema`
+  block.
+- `tests/test_sfield.py` (3 tests) covers round-trip, omit-empty-defaults, and the
+  committed movie sidecar.
 - Field Annotations section added to `docs/softschema-python-design.md`.
 
 Original implementation map (for reference):
@@ -419,36 +451,34 @@ Original implementation map (for reference):
     `RepairKind = Literal["none", "safe_coerce", "suggest_alias"]`.
   - `SFieldMeta(BaseModel)` with `group`, `order`, `tier`, `owner` (default `"agent"`),
     `instruction`, `examples`, `aliases`, `repair`.
-  - `SField(*, description, group, owner=..., tier=None, aliases=None, examples=None,
-    instruction=None, repair="none", **field_kwargs)` returning a Pydantic `Field`
-    with `json_schema_extra={"x-softschema": meta.model_dump(exclude_none=True)}`.
-- [ ] Export `SField`, `SFieldMeta`, `SoftOwner`, `SoftTier`, `RepairKind` from
+  - `SField(*, description, group, owner=..., tier=None, aliases=None, examples=None, instruction=None, repair="none", **field_kwargs)`
+    returning a Pydantic `Field` with
+    `json_schema_extra={"x-softschema": meta.model_dump(exclude_none=True)}`.
+- [x] Export `SField`, `SFieldMeta`, `SoftOwner`, `SoftTier`, `RepairKind` from
   `softschema/__init__.py`.
-- [ ] Confirm `softschema.compile` already passes per-field `json_schema_extra`
-  through (Pydantic handles this natively). Add a round-trip test that compiles a
-  model using `SField` and asserts the per-property `x-softschema` block matches.
-- [ ] Document allowed keys in `docs/softschema-python-design.md` as a Field
-  Annotations section, including the `tier`/`owner`/`group`/`repair` vocabularies.
-- [ ] Annotate one field in `examples/movie_page/model.py` (recommended: `genres`
-  with `group="taxonomy"`, `tier="constrained"`, `owner="agent"`, plus a short
-  `instruction`). Re-compile the schema sidecar; the existing `compile --check`
-  drift test catches any miss.
-- [ ] Add `tests/test_sfield.py` with: round-trip preservation,
-  exclude-none-on-empty-meta, type-alias rejection at type-check (one example call
-  intentionally type-wrong, suppressed with a comment, to lock the Literal types).
+- [x] Confirm `softschema.compile` already passes per-field `json_schema_extra` through
+  (Pydantic handles this natively).
+  Round-trip test added.
+- [x] Document allowed keys in `docs/softschema-python-design.md` as a Field Annotations
+  section, including the `tier`/`owner`/`group`/`repair` vocabularies.
+- [x] Annotate one field in `examples/movie_page/model.py` (`genres`, with
+  `group="taxonomy"`, `tier="constrained"`, `owner="agent"`, plus a short
+  `instruction`). Sidecar re-compiled; `compile --check` drift test green.
+- [x] Add `tests/test_sfield.py` (3 tests) covering round-trip preservation,
+  exclude-none-on-empty-meta, and the committed movie sidecar.
 
 #### ss-9zdi: `SchemaView` reader (DONE)
 
 v8 reference: §"`SchemaView`: shared schema reader".
 
 Shipped in commit landing this section:
-- `packages/python/src/softschema/schema_view.py` with `SchemaView` and
-  `FieldInfo`. Handles Pydantic's `anyOf: [{$ref:...}, {type: null}]` shape for
-  optional refs and `anyOf: [{enum:...}, {type: null}]` for optional Literals.
+- `packages/python/src/softschema/schema_view.py` with `SchemaView` and `FieldInfo`.
+  Handles Pydantic’s `anyOf: [{$ref:...}, {type: null}]` shape for optional refs and
+  `anyOf: [{enum:...}, {type: null}]` for optional Literals.
 - Re-exported from `softschema/__init__.py`.
-- `tests/test_schema_view.py` (10 tests) exercise contract/hash, root softmeta,
-  nested $ref walking, enum extraction, required listing, missing-pointer raise,
-  softmeta retrieval, and group/owner/tier filters against the real movie schema.
+- `tests/test_schema_view.py` (10 tests) exercise contract/hash, root softmeta, nested
+  $ref walking, enum extraction, required listing, missing-pointer raise, softmeta
+  retrieval, and group/owner/tier filters against the real movie schema.
 - Schema View section added to `docs/softschema-python-design.md`.
 
 Original implementation map (for reference):
@@ -469,14 +499,18 @@ Original implementation map (for reference):
     - `softmeta(pointer: str) -> dict[str, Any]`.
     - `fields_by_group(group: str)`, `fields_by_owner(owner: str)`,
       `fields_by_tier(tier: str)` — filter helpers on the `iter_fields` stream.
-- [ ] Defer `view(name)` / `load_urn` to a follow-up. Phase 0 ships the navigator;
-  views and URN resolution land with generated sections (ss-bini) or later.
-- [ ] Export `SchemaView`, `FieldInfo` from `softschema/__init__.py`.
-- [ ] Add `tests/test_schema_view.py`: load movie-page schema, assert enum extraction
-  for `mpaa_rating`, required-field listing, missing-pointer raises, softmeta
-  retrieval after the SField annotation lands.
-- [ ] Document the public surface in `docs/softschema-python-design.md` as a Schema
-  View section.
+
+- [x] Defer `view(name)` / `load_urn` to a follow-up.
+  v0.1 ships the navigator only; views and URN resolution remain reserved.
+
+- [x] Export `SchemaView`, `FieldInfo` from `softschema/__init__.py`.
+
+- [x] Add `tests/test_schema_view.py` (10 tests) covering load, contract/hash, root
+  softmeta, nested $ref walking, enum extraction, required-field listing,
+  missing-pointer raise, softmeta retrieval, and group/owner/tier filters.
+
+- [x] Document the public surface in `docs/softschema-python-design.md` as a Schema View
+  section.
 
 - [x] **Warning-code documentation.** `WarningCode` enum published in `softschema`,
   Warning Codes + structural error kinds tables in `docs/softschema-python-design.md`,
@@ -485,21 +519,22 @@ Original implementation map (for reference):
 
 ### Phase 6: P1 Documentation Enhancements
 
-- [x] Lifecycle / continuum walkthrough in `docs/softschema-guide.md` (landed as
-  the "Choose Which Values Belong In YAML" playbook in the guide restructure).
-- [x] Inline-vs-sidecar doctrine section in the guide (landed as the "Inline
-  Frontmatter Vs Data Sidecar" playbook).
-- [x] Migration recipe (envelope reshape) in the guide (landed as the "Migrate An
-  Existing Artifact" playbook; rewritten to use the canonical one-envelope shape
-  rather than the deferred `ValueResolver` modes).
-- [x] CI integration recipe in `docs/development.md` (Continuous Integration
-  section with `softschema compile --check`, GitHub Actions, and `pre-commit`).
+- [x] Lifecycle / continuum walkthrough in `docs/softschema-guide.md` (landed as the
+  “Choose Which Values Belong In YAML” playbook in the guide restructure).
+- [x] Inline-vs-sidecar doctrine section in the guide (landed as the “Inline Frontmatter
+  Vs Data Sidecar” playbook).
+- [x] Migration recipe (envelope reshape) in the guide (landed as the “Migrate An
+  Existing Artifact” playbook; rewritten to use the canonical one-envelope shape rather
+  than the deferred `ValueResolver` modes).
+- [x] CI integration recipe in `docs/development.md` (Continuous Integration section
+  with `softschema compile --check`, GitHub Actions, and `pre-commit`).
 
 ### Phase 7: P1 Generated Schema Sections
 
-The biggest follow-on feature. Designed in v8 §"Generated sections" (markers,
-attributes, views, hash semantics, allowed kinds, CI integration). Implementation
-follows v8 closely; do not redesign here.
+The biggest follow-on feature.
+Designed in v8 §"Generated sections" (markers, attributes, views, hash semantics,
+allowed kinds, CI integration).
+Implementation follows v8 closely; do not redesign here.
 
 #### ss-bini: Generated sections (DONE)
 
@@ -508,56 +543,60 @@ v8 references: §"Generated sections", §"Namespaced markers", §"Section attrib
 
 Shipped in commit landing this section:
 - `packages/python/src/softschema/generate.py` with `parse_sections`,
-  `regenerate(path, *, check=False)`, `GeneratedSection`, and `RegenerateResult`.
-  Three Phase 0 renderers (`enum_table`, `field_list`, `vocab`).
-- `softschema generate <paths>` and `--check` CLI subcommand emitting structured
-  JSON output.
-- Generated Sections section added to `docs/softschema-spec.md` (normative); the
-  spec's Out of Scope list now excludes only deferred extensions (views,
-  mirrors, URN resolution).
-- "Keep Schema Tables In Sync" playbook added to `docs/softschema-guide.md`.
-- "Generated-section drift" CI section added to `docs/development.md`.
+  `regenerate(path, *, check=False)`, `GeneratedSection`, and `RegenerateResult`. Three
+  Phase 0 renderers (`enum_table`, `field_list`, `vocab`).
+- `softschema generate <paths>` and `--check` CLI subcommand emitting structured JSON
+  output.
+- Generated Sections section added to `docs/softschema-spec.md` (normative); the spec’s
+  Out of Scope list now excludes only deferred extensions (views, mirrors, URN
+  resolution).
+- “Keep Schema Tables In Sync” playbook added to `docs/softschema-guide.md`.
+- “Generated-section drift” CI section added to `docs/development.md`.
 - One marker landed in `examples/movie_page/README.md` ("Schema Enums").
 - `tests/test_generate.py` (10 tests): parser, multi-block, unterminated-marker,
   determinism, drift detection + repair, unknown-kind, field_list, vocab pointer
-  requirement, vocab values, and the committed movie marker's no-drift contract.
+  requirement, vocab values, and the committed movie marker’s no-drift contract.
 
 Phase 0 scope (this bead):
-- Marker syntax: `<!-- softschema:generated kind="..." [attrs] -->` ... `<!-- /softschema:generated -->`
+- Marker syntax: `<!-- softschema:generated kind="..." [attrs] -->` …
+  `<!-- /softschema:generated -->`
 - Kinds: `enum_table`, `field_list`, `vocab`.
 - Attributes: `kind`, `contract` (schema path or `$id`), `view` (deferred), `format`
   (default per kind), `sha256` (optional informational).
-- CLI: `softschema generate <file>` (regenerate in place), `softschema generate
-  <file> --check` (fail on drift).
+- CLI: `softschema generate <file>` (regenerate in place),
+  `softschema generate <file> --check` (fail on drift).
 - Depends on ss-9zdi.
 
 Implementation map:
-- [ ] Add `packages/python/src/softschema/generate.py` with:
-  - Marker parser (regex over the document; finds opening + closing markers, parses
-    attributes from the opening tag).
-  - One renderer per kind that takes a `SchemaView` and returns the rendered Markdown
-    block.
-  - `regenerate(path, *, check=False) -> GenerateResult` that re-renders every
-    marker and either writes the file (in place) or returns drift information.
-- [ ] Add `softschema generate` subcommand to `cli.py` with optional `--check`.
-- [ ] Add the marker format to `docs/softschema-spec.md` as a normative section
-  (with the `Out of Scope for v0.1` note removed for this feature once it ships).
-- [ ] Add one marker to `examples/movie_page/README.md` (recommended: an
-  `enum_table` for `mpaa_rating` so the example exercises the feature end-to-end).
-- [ ] Add `tests/test_generate.py`: determinism (same schema → same output), drift
-  detection on stale section, round-trip (parse → render → parse), failure modes
-  (unknown kind, malformed attrs, missing schema).
+- [x] Add `packages/python/src/softschema/generate.py` with marker parser
+  (`parse_sections`), per-kind renderers, and `regenerate(path, *, check=False)`
+  returning `RegenerateResult` with `GeneratedSection` entries.
+- [x] Add `softschema generate` subcommand to `cli.py` with optional `--check`, emitting
+  structured JSON output.
+- [x] Add the marker format to `docs/softschema-spec.md` as a normative section.
+  The `Out of Scope for v0.1` list now only excludes deferred extensions (views,
+  mirrors, URN resolution).
+- [x] Add one marker to `examples/movie_page/README.md` (the “Schema Enums” block).
+- [x] Add `tests/test_generate.py` (10 tests): parser, multi-block, unterminated-marker,
+  determinism, drift detection + repair, unknown-kind, field_list, vocab pointer
+  requirement, vocab values, committed-marker no-drift.
 
 ## Tracking Beads
 
 | Bead | Status | Role |
 | --- | --- | --- |
-| `ss-avhi` | in progress | Parent epic for the public readiness plan. |
+| All beads below are closed. The epic `ss-avhi` is closed and the public-readiness work |  |  |
+| is complete; codex-review follow-ups landed via `ss-8mt0`, `ss-wut9`, `ss-hyhu`, |  |  |
+| `ss-u07d`, `ss-68a1`, `ss-rx6k`. |  |  |
+
+| Bead | Status | Role |
+| --- | --- | --- |
+| `ss-avhi` | closed | Parent epic for the public readiness plan. |
 | `ss-h4sp` | closed | Remove accidental softschema planning artifacts from tryscript. |
-| `ss-thj8` | open | Review README, guide, spec, and docs structure. |
-| `ss-oovv` | open | Review the movie page example and integration tests. |
-| `ss-va24` | open | Review Python API, CLI behavior, and bundled resources. |
-| `ss-szpe` | open, blocked by docs/example/API review | Run final release readiness validation. |
+| `ss-thj8` | closed | Review README, guide, spec, and docs structure. |
+| `ss-oovv` | closed | Review the movie page example and integration tests. |
+| `ss-va24` | closed | Review Python API, CLI behavior, and bundled resources. |
+| `ss-szpe` | closed | Run final release readiness validation. |
 | `ss-f8in` | closed | Enumerated Phase 1 review targets in this plan. |
 | `ss-f3uw` | closed | Trimmed transient tbd sync line from Current State. |
 | `ss-1h7p` | closed | Phase 4 verifies bundled docs after rename. |
@@ -566,14 +605,26 @@ Implementation map:
 | `ss-0vrt` | closed | Named `x-softschema` fields in python design doc. |
 | `ss-7lf3` | closed | Trimmed tryscript history paragraph from plan Overview. |
 | `ss-j6fu` | closed | CLI topic rename `design` → `python-design` noted in Phase 3. |
-| `ss-pu9z` | open, P0 | Field-level `x-softschema` annotations through compile. |
-| `ss-9zdi` | open, P0 | `SchemaView` shared schema reader. |
-| `ss-befh` | open, P0 | Stable warning-code prefix scheme (documented + tested). |
-| `ss-0cz4` | open, P1 | Lifecycle / continuum walkthrough in the guide. |
-| `ss-ow97` | open, P1 | Inline-vs-sidecar doctrine in the guide. |
-| `ss-91vh` | open, P1 | Migration recipe (legacy envelope → canonical). |
-| `ss-4e4s` | open, P1 | CI integration recipe in development docs. |
-| `ss-bini` | open, P1, epic, blocked by `ss-9zdi` | Generated schema sections (markers + renderer + CLI). |
+| `ss-pu9z` | closed, P0 | Field-level `x-softschema` annotations through compile. |
+| `ss-9zdi` | closed, P0 | `SchemaView` shared schema reader. |
+| `ss-befh` | closed, P0 | Stable warning-code prefix scheme (documented + tested). |
+| `ss-0cz4` | closed, P1 | Lifecycle / continuum walkthrough in the guide. |
+| `ss-ow97` | closed, P1 | Inline-vs-sidecar doctrine in the guide. |
+| `ss-91vh` | closed, P1 | Migration recipe (envelope reshape). |
+| `ss-4e4s` | closed, P1 | CI integration recipe in development docs. |
+| `ss-bini` | closed, P1 | Generated schema sections (markers + renderer + CLI). |
+| `ss-8mt0` | closed | Addressed codex review of standalone docs+design organization. |
+| `ss-wut9` | closed | Decided fate of `docs/softschema-design.md` (removed for v0.1). |
+| `ss-hyhu` | closed | Restructured `docs/softschema-guide.md` as operational playbooks. |
+| `ss-u07d` | closed | Tightened `docs/softschema-spec.md` to normative-only content. |
+| `ss-68a1` | closed | Updated README, AGENTS.md, SKILL.md, CLI topics after design-doc decision. |
+| `ss-rx6k` | closed | Final consistency check after docs restructure. |
+| `ss-n9gm` | closed | Confirmed v0.1 keeps one-envelope inference; deferred `softschema.values` pointer. |
+| `ss-tkfe` | closed | Confirmed public API naming against the trading consumer seam. |
+| `ss-qqrj` | closed | Moved `docs/research/` under `docs/project/research/`. |
+| `ss-3epj` | closed | Bundled docs and example guidance into the softschema CLI. |
+| `ss-vnpj` | closed | Added JSON docs discovery output. |
+| `ss-roky` | closed | Required validation implementation in CLI validate. |
 
 ## Testing Strategy
 
@@ -605,43 +656,51 @@ uv run softschema skill --brief
 
 ## Rollout Plan
 
-1. Commit and push this plan spec in the softschema repo.
-2. Remove accidental softschema planning work from the unrelated tryscript repo.
-3. Work through the linked softschema beads.
-4. Keep docs changes in the softschema repo only.
-5. Publish or tag the standalone package only after docs, examples, CLI resources, and
-   tests pass.
+1. ~~Commit and push this plan spec in the softschema repo.~~ Done.
+2. ~~Remove accidental softschema planning work from the unrelated tryscript repo.~~
+   Done.
+3. ~~Work through the linked softschema beads.~~ Done — 34/34 closed.
+4. ~~Keep docs changes in the softschema repo only.~~ Maintained throughout.
+5. Publish or tag the standalone package.
+   Remaining external steps:
+   - Push the 8 unpushed commits on `extract-softschema`.
+   - Merge `extract-softschema` to `main` (or rebase, depending on history preference).
+   - Configure PyPI Trusted Publishing for `jlevy/softschema` against `publish.yml`.
+   - Tag `v0.1.0` and let the publish workflow ship the wheel to PyPI.
+   - Smoke-test the published wheel from a clean venv.
 
 ## Settled Pre-Release Decisions
 
-These were open in earlier revisions and are now settled. They are recorded here
-rather than as code comments so the rationale is visible to the next reader.
+These were open in earlier revisions and are now settled.
+They are recorded here rather than as code comments so the rationale is visible to the
+next reader.
 
-- **Standalone `docs/softschema-design.md` is removed for v0.1.** The 2026-05-26
-  codex review (`docs/project/reviews/review-2026-05-26-softschema-docs-design.md`)
-  flagged a conflict with this plan. The guide, spec,
-  `docs/softschema-python-design.md`, the v8 research doc, and this plan are the
-  durable docs. A permanent language-neutral design doc can be revisited after the
-  first downstream migration if a need actually appears.
-- **Public API names keep the `Softschema*` namespace prefix.** Earlier drafts of
-  the trading adoption plan sketched shorter names (`SchemaBinding`, `Status`); the
-  shipped API uses `SoftschemaBinding`, `SoftschemaRegistry`, `SoftschemaStatus`,
+- **Standalone `docs/softschema-design.md` is removed for v0.1.** The 2026-05-26 codex
+  review (`docs/project/reviews/review-2026-05-26-softschema-docs-design.md`) flagged a
+  conflict with this plan.
+  The guide, spec, `docs/softschema-python-design.md`, the v8 research doc, and this
+  plan are the durable docs.
+  A permanent language-neutral design doc can be revisited after the first downstream
+  migration if a need actually appears.
+- **Public API names keep the `Softschema*` namespace prefix.** Earlier drafts of the
+  trading adoption plan sketched shorter names (`SchemaBinding`, `Status`); the shipped
+  API uses `SoftschemaBinding`, `SoftschemaRegistry`, `SoftschemaStatus`,
   `SoftschemaProfile`, `SoftschemaStage`, `SoftschemaMetadata`, `SoftschemaWarning`,
-  `parse_softschema_metadata`. The namespaced form is preserved so consumer code
-  (host `Status`, host `Binding`) doesn't collide on import. The trading repo
-  Phase 3 cutover will write `from softschema import SoftschemaBinding`.
+  `parse_softschema_metadata`. The namespaced form is preserved so consumer code (host
+  `Status`, host `Binding`) doesn’t collide on import.
+  The trading repo Phase 3 cutover will write
+  `from softschema import SoftschemaBinding`.
 - **Warning codes use the `document-*` prefix family.** Codified in the public
   `WarningCode` enum (currently `document-contract-mismatch`,
   `document-status-mismatch`). Adding a new code requires both an enum member and a
-  Warning Codes table row in `docs/softschema-python-design.md`; a regression test
-  fails CI when the two drift.
-- **`softschema.values.location / pointer` is deferred past v0.1.** v8 prescribes
-  an explicit `softschema.values: {location: frontmatter, pointer: /values}` block
-  instead of inferring the envelope from the first non-`softschema` top-level key.
-  The current package infers; the spec documents inference as the v0.1 rule and
-  excludes the resolver shape in `Out of Scope for v0.1`. A non-breaking
-  `ValueResolver` mode for the explicit form can ship in a later release once an
-  artifact actually needs it.
+  Warning Codes table row in `docs/softschema-python-design.md`; a regression test fails
+  CI when the two drift.
+- **`softschema.values.location / pointer` is deferred past v0.1.** v8 prescribes an
+  explicit `softschema.values: {location: frontmatter, pointer: /values}` block instead
+  of inferring the envelope from the first non-`softschema` top-level key.
+  The current package infers; the spec documents inference as the v0.1 rule and excludes
+  the resolver shape in `Out of Scope for v0.1`. A non-breaking `ValueResolver` mode for
+  the explicit form can ship in a later release once an artifact actually needs it.
 
 ## Open Questions
 

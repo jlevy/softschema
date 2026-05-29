@@ -21,8 +21,8 @@ Key rules:
 - Do not parse Markdown body prose or tables for consumed values.
 - Use `softschema.contract`, not `schema`, in authored artifact metadata.
 - Contract IDs name artifact payload contracts, not a specific Python class.
-- Keep examples public and practical; do not introduce private trading, earnings, or
-  Metaproc-specific context.
+- Keep examples public and practical; do not introduce private business context,
+  internal project names, or proprietary domains.
 - Use `uv` for Python workflows.
 
 Common commands:
