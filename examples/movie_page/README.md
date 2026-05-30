@@ -35,7 +35,6 @@ with `--check` and fails on drift.
 | Field | Allowed values |
 | --- | --- |
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
-
 <!-- /softschema:generated -->
 
 The example is meant to be copied from the files in this directory or printed through
