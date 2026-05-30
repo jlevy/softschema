@@ -4,7 +4,7 @@ This example is deliberately small and complete:
 
 - [model.py](model.py) contains the Pydantic model.
 - [host_integration.py](host_integration.py) shows how a host application registers the
-  complete binding and validates an artifact at a file boundary.
+  complete contract and validates an artifact at a file boundary.
 - [spirited-away.md](spirited-away.md) contains the Markdown artifact.
 - `movie-page.schema.yaml` is generated from the model.
 

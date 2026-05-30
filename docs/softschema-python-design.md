@@ -13,15 +13,15 @@ provider adapters, and domain models.
 
 The package does not model process graphs or emit structure reports.
 A host framework may build those reports by walking its own workflows and resolving
-`SoftschemaBinding` objects, but that report shape is application-specific and stays
-outside the core package.
+`Contract` objects, but that report shape is application-specific and stays outside the
+core package.
 
 ## Public Modules
 
 | Module | Purpose |
 | --- | --- |
-| `softschema.models` | Binding, metadata, status, profile, stage, and warning models |
-| `softschema.registry` | Contract ID to binding resolution |
+| `softschema.models` | Contract, metadata, status, profile, stage, and warning models |
+| `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Value resolution, structural validation, semantic validation, and artifact validation |
 | `softschema.compile` | Pydantic-to-JSON-Schema sidecar compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
@@ -29,7 +29,7 @@ outside the core package.
 The package root re-exports the common API:
 
 ```python
-from softschema import SoftschemaBinding, SoftschemaRegistry, compile_model, validate_artifact
+from softschema import Contract, Contracts, compile_model, validate_artifact
 ```
 
 ## Documentation Structure
@@ -72,19 +72,19 @@ needed. Example files remain copyable references.
 The CLI does not include an `init-example` or other scaffolding command in the first
 release.
 
-## Binding Semantics
+## Contract Semantics
 
-`SoftschemaBinding` names one artifact contract:
+A `Contract` carries everything the validator needs to handle one artifact contract:
 
-- `contract_id`: stable contract ID
+- `id`: stable contract id
 - `model`: optional Pydantic model for semantic validation
 - `envelope_key`: expected top-level payload key for normal artifacts
 - `status`: `soft`, `permissive`, or `enforced`
 - `profile`: storage profile such as `frontmatter-md` or `pure-yaml`
 - `schema_path`: optional generated JSON Schema sidecar
 
-The registry registers complete bindings.
-It does not expose aliases, compatibility maps, or incremental registration helpers.
+`Contracts` holds a collection of registered contracts, keyed by `id`. It does not
+expose aliases, compatibility maps, or incremental registration helpers.
 
 ## CLI Resolution
 
@@ -114,16 +114,16 @@ JSON Schema carries the portable structural subset that another implementation c
 reuse.
 
 ```python
-from softschema import SoftschemaBinding, SoftschemaStatus, validate_artifact
+from softschema import Contract, SchemaStatus, validate_artifact
 
-binding = SoftschemaBinding(
-    contract_id="example.movies:MoviePage/v1",
+contract = Contract(
+    id="example.movies:MoviePage/v1",
     model=MoviePage,
     envelope_key="movie",
-    status=SoftschemaStatus.enforced,
+    status=SchemaStatus.enforced,
 )
 
-result = validate_artifact("examples/movie_page/spirited-away.md", binding=binding)
+result = validate_artifact("examples/movie_page/spirited-away.md", contract=contract)
 ```
 
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
@@ -131,7 +131,7 @@ envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 
 ## Warning Codes
 
-Non-fatal advisory issues surface as `SoftschemaWarning` entries on
+Non-fatal advisory issues surface as `SchemaWarning` entries on
 `ArtifactValidationResult.warnings`. Every code is enumerated in the public
 `WarningCode` enum and uses the `document-*` prefix, so downstream consumers can filter
 the family with a single check:
@@ -145,8 +145,8 @@ if any(w.code.startswith("document-") for w in result.warnings):
 
 | Code | When it’s emitted |
 | --- | --- |
-| `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the binding’s contract ID, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
-| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the binding’s status. Always advisory: `status` records intent, not enforcement. |
+| `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
+| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: `status` records intent, not enforcement. |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.
@@ -164,11 +164,11 @@ The current first-release kinds:
 | `frontmatter_not_mapping` | Frontmatter parsed but is not a mapping at the top level. |
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
 | `resolver_error` | `ValueResolver` could not extract values from the frontmatter (typically a missing envelope pointer). |
-| `contract_binding_missing` | No registered binding for the requested contract ID. |
-| `envelope_mismatch` | Binding’s `envelope_key` is not present in the frontmatter. |
+| `contract_unknown` | No contract registered for the requested contract ID. |
+| `envelope_mismatch` | The contract’s `envelope_key` is not present in the frontmatter. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
-| `document_contract_mismatch` | Document’s `softschema.contract` does not match the binding’s contract ID (enforced metadata mode). |
-| `schema_sidecar_missing` | Binding declared a `schema_path` but the file does not exist or is unreadable. |
+| `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
+| `schema_sidecar_missing` | The contract declared a `schema_path` but the file does not exist or is unreadable. |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them
 as the documented surface and open an issue if a consumer needs a typed constant.
@@ -305,7 +305,7 @@ convention.
 
 The package depends on `frontmatter-format` for Markdown frontmatter and YAML reading.
 That dependency owns frontmatter mechanics; softschema owns the contract, envelope,
-binding, and validation semantics.
+contract, and validation semantics.
 Do not treat `frontmatter-format` as a generic softschema data-sidecar runtime.
 
 ## Dependency Boundary

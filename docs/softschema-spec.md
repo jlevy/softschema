@@ -102,7 +102,7 @@ An implementation must:
 - When exactly one non-`softschema` top-level key exists, treat it as the envelope by
   convention (no caller action required).
 - Allow callers to designate the envelope explicitly (for example via a `--envelope`
-  flag, a registry binding, or a host convention).
+  flag, a registry contract, or a host convention).
   When multiple non-`softschema` keys exist, the envelope must be designated this way;
   auto-detection is intentionally not extended to multi-key documents.
 - Reject documents that lack the designated envelope key, or that have zero
@@ -171,7 +171,7 @@ A validator must reject:
   designated envelope key is absent)
 - envelope ambiguity when auto-detection is in use (multiple top-level non-`softschema`
   keys without an explicit envelope designation)
-- a missing or unreadable schema sidecar when the binding declares one
+- a missing or unreadable schema sidecar when the contract declares one
 - a JSON Schema validation failure
 - an implementation-schema validation failure
 

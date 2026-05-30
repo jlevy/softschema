@@ -1,26 +1,26 @@
-"""In-memory registry for schema bindings."""
+"""In-memory collection of registered contracts."""
 
 from __future__ import annotations
 
-from softschema.models import SoftschemaBinding
+from softschema.models import Contract
 
 
-class SoftschemaRegistry:
-    """Resolve complete bindings by public contract ID."""
+class Contracts:
+    """Resolve registered contracts by their public id."""
 
     def __init__(self) -> None:
-        self._bindings: dict[str, SoftschemaBinding] = {}
+        self._contracts: dict[str, Contract] = {}
 
-    def register(self, binding: SoftschemaBinding) -> None:
-        existing = self._bindings.get(binding.contract_id)
-        if existing is not None and existing != binding:
-            msg = f"contract {binding.contract_id!r} is already registered"
+    def register(self, contract: Contract) -> None:
+        existing = self._contracts.get(contract.id)
+        if existing is not None and existing != contract:
+            msg = f"contract {contract.id!r} is already registered"
             raise ValueError(msg)
-        self._bindings[binding.contract_id] = binding
+        self._contracts[contract.id] = contract
 
-    def resolve(self, contract_id: str) -> SoftschemaBinding | None:
-        return self._bindings.get(contract_id)
+    def resolve(self, contract_id: str) -> Contract | None:
+        return self._contracts.get(contract_id)
 
     @property
-    def bindings(self) -> dict[str, SoftschemaBinding]:
-        return dict(self._bindings)
+    def all(self) -> dict[str, Contract]:
+        return dict(self._contracts)

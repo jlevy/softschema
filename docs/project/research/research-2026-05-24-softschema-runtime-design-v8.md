@@ -52,7 +52,7 @@ other consumers compose without softschema-side changes.
    expressed in JSON Schema; that is why Pydantic remains canonical and why semantic
    validation requires the Python class.
 4. **softschema has one native document profile.** Frontmatter values plus narrative
-   Markdown body. No body-binding tags.
+   Markdown body. No body-contract tags.
    Every artifact in scope for the initial work is this shape.
 5. **softschema is consumer-agnostic at the values layer.** `validate_values` takes a
    dict; the dict can come from a frontmatter parser, a body-form runtime, a
@@ -397,7 +397,7 @@ body is for prose explanation, not for value capture.
 ```
 
 Frontmatter holds the values; body is plain Markdown.
-No body-binding tags, no body-binding parser, no template linter rules for body
+No body-contract tags, no body-contract parser, no template linter rules for body
 coverage.
 
 ### The `softschema:` block policy
@@ -1368,7 +1368,7 @@ humans:
 ```python
 class Issue(BaseModel):
     path: str                     # JSON Pointer: "/record/delta_pct"
-    field_id: str | None = None   # binding id if known
+    field_id: str | None = None   # contract id if known
     code: str                     # "enum_alias_ambiguous", "missing_required", ...
     message: str                  # human-readable
     severity: Literal["blocker", "error", "warning", "info"]

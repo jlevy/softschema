@@ -182,7 +182,7 @@ both adopters and future contributors:
 - **Pydantic (or any source schema) alone.** Carries host-language semantics that don’t
   travel cross-language.
   Loses the portable structural subset that other implementations could validate.
-- **Full-body form parsers** (Markform, custom Markdown body bindings).
+- **Full-body form parsers** (Markform, custom Markdown body contracts).
   Powerful, but they own a Markdown body parser and a render runtime.
   Softschema deliberately does not.
   A body-form runtime can sit *above* softschema, export a values dict, and call
@@ -232,13 +232,12 @@ a Python translation:
 ### Capability Roadmap Beyond v0.1
 
 Most of the v0.1 surface is a **port of an existing internal package** with deliberate
-trims: legacy status, alias resolution, value-path bindings, gzip-on-read, and a few
+trims: legacy status, alias resolution, value-path contracts, gzip-on-read, and a few
 unused profiles were removed because they served private-history shapes, not the public
-concept. The names of the classes, enums, and helpers (`SoftschemaBinding`,
-`SoftschemaStatus`, `SoftschemaProfile`, `SoftschemaStage`, `SoftschemaMetadata`,
-`SoftschemaRegistry`, `SoftschemaWarning`, `parse_softschema_metadata`) match the
-internal package so the downstream port is a dependency switch plus targeted feature
-removal, not a sweeping rename.
+concept. The names of the classes, enums, and helpers (`Contract`, `SchemaStatus`,
+`SchemaProfile`, `SchemaStage`, `SchemaMetadata`, `Contracts`, `SchemaWarning`,
+`parse_schema_metadata`) match the internal package so the downstream port is a
+dependency switch plus targeted feature removal, not a sweeping rename.
 
 The capabilities below are the genuinely new work.
 They come from
@@ -379,7 +378,7 @@ consumer seam).
 - [x] Review public API names with no backward-compatibility constraint.
   Settled on the `Softschema*` namespace prefix to avoid collisions with host code (see
   Settled Pre-Release Decisions).
-- [x] Keep complete binding registration and avoid aliases, legacy statuses, and
+- [x] Keep complete contract registration and avoid aliases, legacy statuses, and
   compatibility projections.
 - [x] Verify `softschema validate` reads contract/status/envelope from the artifact by
   default and treats CLI flags as overrides.
@@ -684,14 +683,13 @@ next reader.
   plan are the durable docs.
   A permanent language-neutral design doc can be revisited after the first downstream
   migration if a need actually appears.
-- **Public API names keep the `Softschema*` namespace prefix.** Earlier drafts of the
-  trading adoption plan sketched shorter names (`SchemaBinding`, `Status`); the shipped
-  API uses `SoftschemaBinding`, `SoftschemaRegistry`, `SoftschemaStatus`,
-  `SoftschemaProfile`, `SoftschemaStage`, `SoftschemaMetadata`, `SoftschemaWarning`,
-  `parse_softschema_metadata`. The namespaced form is preserved so consumer code (host
-  `Status`, host `Binding`) doesn’t collide on import.
-  The trading repo Phase 3 cutover will write
-  `from softschema import SoftschemaBinding`.
+- **Public API names follow a two-prefix convention.** `Soft*` for field-level authoring
+  metadata (`SoftField`, `SoftFieldMeta`, `SoftOwner`, `SoftTier`). `Schema*` for
+  schema-side concepts (`SchemaStatus`, `SchemaProfile`, `SchemaStage`,
+  `SchemaMetadata`, `SchemaWarning`). `Contract` and `Contracts` for the contract record
+  and its collection. No prefix where neither fits (`WarningCode`, `RepairKind`,
+  `compile_model`, `validate_artifact`). The trading repo Phase 3 cutover will write
+  `from softschema import Contract`.
 - **Warning codes use the `document-*` prefix family.** Codified in the public
   `WarningCode` enum (currently `document-contract-mismatch`,
   `document-status-mismatch`). Adding a new code requires both an enum member and a

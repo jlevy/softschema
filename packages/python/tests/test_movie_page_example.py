@@ -81,7 +81,7 @@ def test_validate_cli_reads_contract_status_and_envelope_from_demo_yaml(capsys) 
     output = json.loads(capsys.readouterr().out)
     assert output["contract_id"] == "example.movies:MoviePage/v1"
     assert output["status"] == "enforced"
-    assert output["binding"]["envelope_key"] == "movie"
+    assert output["contract"]["envelope_key"] == "movie"
     assert output["values"]["mpaa_rating"] == "PG"
     assert output["values"]["ratings"]["rotten_tomatoes"] == {
         "critics_percent": 96,

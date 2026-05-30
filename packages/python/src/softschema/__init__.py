@@ -5,16 +5,16 @@ from __future__ import annotations
 from softschema.compile import SOFTSCHEMA_FORMAT_VERSION, CompileResult, compile_model
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
 from softschema.models import (
-    SoftschemaBinding,
-    SoftschemaMetadata,
-    SoftschemaProfile,
-    SoftschemaStage,
-    SoftschemaStatus,
-    SoftschemaWarning,
+    Contract,
+    SchemaMetadata,
+    SchemaProfile,
+    SchemaStage,
+    SchemaStatus,
+    SchemaWarning,
     WarningCode,
-    parse_softschema_metadata,
+    parse_schema_metadata,
 )
-from softschema.registry import SoftschemaRegistry
+from softschema.registry import Contracts
 from softschema.schema_view import FieldInfo, SchemaView
 from softschema.soft_field import (
     RepairKind,
@@ -38,18 +38,18 @@ from softschema.validate import (
 
 __all__ = [
     "SOFTSCHEMA_FORMAT_VERSION",
-    "SoftschemaProfile",
+    "SchemaProfile",
     "ArtifactValidationResult",
     "CompileResult",
-    "SoftschemaMetadata",
-    "SoftschemaBinding",
-    "SoftschemaRegistry",
+    "SchemaMetadata",
+    "Contract",
+    "Contracts",
     "SemanticResult",
-    "SoftschemaStatus",
+    "SchemaStatus",
     "StructuralResult",
-    "SoftschemaStage",
+    "SchemaStage",
     "ValidationResult",
-    "SoftschemaWarning",
+    "SchemaWarning",
     "FieldInfo",
     "GeneratedSection",
     "RegenerateResult",
@@ -62,7 +62,7 @@ __all__ = [
     "ValueResolver",
     "WarningCode",
     "compile_model",
-    "parse_softschema_metadata",
+    "parse_schema_metadata",
     "regenerate",
     "validate",
     "validate_artifact",

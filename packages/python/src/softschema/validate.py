@@ -17,15 +17,15 @@ from jsonschema.exceptions import ValidationError as JsonSchemaError
 from pydantic import BaseModel, ValidationError
 
 from softschema.models import (
-    SoftschemaBinding,
-    SoftschemaMetadata,
-    SoftschemaProfile,
-    SoftschemaStatus,
-    SoftschemaWarning,
+    Contract,
+    SchemaMetadata,
+    SchemaProfile,
+    SchemaStatus,
+    SchemaWarning,
     WarningCode,
-    parse_softschema_metadata,
+    parse_schema_metadata,
 )
-from softschema.registry import SoftschemaRegistry
+from softschema.registry import Contracts
 
 
 @dataclass(frozen=True)
@@ -54,18 +54,18 @@ class ValidationResult:
 
 @dataclass(frozen=True)
 class ArtifactValidationResult:
-    """Validation result enriched with binding and document metadata."""
+    """Validation result enriched with contract and document metadata."""
 
     path: Path
     contract_id: str
-    status: SoftschemaStatus
-    profile: SoftschemaProfile
+    status: SchemaStatus
+    profile: SchemaProfile
     structural: StructuralResult
     semantic: SemanticResult
-    binding: SoftschemaBinding | None = None
-    document_metadata: SoftschemaMetadata | None = None
+    contract: Contract | None = None
+    document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
-    warnings: list[SoftschemaWarning] = field(default_factory=list)
+    warnings: list[SchemaWarning] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -196,78 +196,78 @@ def validate(
 def validate_artifact(
     doc_path: Path,
     *,
-    binding: SoftschemaBinding | None = None,
+    contract: Contract | None = None,
     contract_id: str | None = None,
-    registry: SoftschemaRegistry | None = None,
+    registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
 ) -> ArtifactValidationResult:
-    """Validate an artifact using a complete schema binding."""
-    if binding is None and contract_id is not None and registry is not None:
-        binding = registry.resolve(contract_id)
-    if binding is None:
+    """Validate an artifact using a complete schema contract."""
+    if contract is None and contract_id is not None and registry is not None:
+        contract = registry.resolve(contract_id)
+    if contract is None:
         resolved_contract_id = contract_id or "<unknown>"
         return ArtifactValidationResult(
             path=doc_path,
             contract_id=resolved_contract_id,
-            status=SoftschemaStatus.soft,
-            profile=SoftschemaProfile.frontmatter_md,
-            binding=None,
+            status=SchemaStatus.soft,
+            profile=SchemaProfile.frontmatter_md,
+            contract=None,
             structural=StructuralResult(
                 ok=False,
                 errors=[
                     _error(
-                        "contract_binding_missing",
-                        f"no softschema binding registered for {resolved_contract_id!r}",
+                        "contract_unknown",
+                        f"no softschema contract registered for {resolved_contract_id!r}",
                         contract_id=resolved_contract_id,
                     )
                 ],
             ),
-            semantic=SemanticResult(ok=False, skipped_reason="contract_binding_missing"),
+            semantic=SemanticResult(ok=False, skipped_reason="contract_unknown"),
         )
 
-    warnings: list[SoftschemaWarning] = []
-    if binding.profile == SoftschemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, binding, warnings)
-    return _validate_frontmatter_artifact(doc_path, binding, warnings, metadata_mode)
+    warnings: list[SchemaWarning] = []
+    if contract.profile == SchemaProfile.pure_yaml:
+        return _validate_pure_yaml_artifact(doc_path, contract, warnings)
+    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode)
 
 
 def _validate_frontmatter_artifact(
     doc_path: Path,
-    binding: SoftschemaBinding,
-    warnings: list[SoftschemaWarning],
+    contract: Contract,
+    warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
 ) -> ArtifactValidationResult:
     try:
         _content, frontmatter = _read_frontmatter_doc(doc_path)
     except (FmFormatError, yaml.YAMLError) as exc:
-        return _artifact_failure(doc_path, binding, "parse_error", str(exc))
+        return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if frontmatter is None:
         return _artifact_failure(
-            doc_path, binding, "no_frontmatter", f"no frontmatter in {doc_path}"
+            doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"
         )
     if not isinstance(frontmatter, dict):
         return _artifact_failure(
             doc_path,
-            binding,
+            contract,
             "frontmatter_not_mapping",
             "frontmatter is not a mapping",
         )
 
     metadata_result = _metadata_from_frontmatter(
-        doc_path, frontmatter, binding, warnings, metadata_mode
+        doc_path, frontmatter, contract, warnings, metadata_mode
     )
     if isinstance(metadata_result, ArtifactValidationResult):
         return metadata_result
     metadata = metadata_result
 
-    if binding.envelope_key is not None and binding.envelope_key not in frontmatter:
+    if contract.envelope_key is not None and contract.envelope_key not in frontmatter:
         actual_keys = [str(key) for key in frontmatter if key != "softschema"]
         return ArtifactValidationResult(
             path=doc_path,
-            contract_id=binding.contract_id,
-            status=binding.status,
-            profile=binding.profile,
-            binding=binding,
+            contract_id=contract.id,
+            status=contract.status,
+            profile=contract.profile,
+            contract=contract,
             document_metadata=metadata,
             warnings=warnings,
             structural=StructuralResult(
@@ -275,8 +275,8 @@ def _validate_frontmatter_artifact(
                 errors=[
                     _error(
                         "envelope_mismatch",
-                        f"contract {binding.contract_id!r} expects {binding.envelope_key!r}",
-                        expected_key=binding.envelope_key,
+                        f"contract {contract.id!r} expects {contract.envelope_key!r}",
+                        expected_key=contract.envelope_key,
                         actual_keys=actual_keys,
                     )
                 ],
@@ -284,14 +284,14 @@ def _validate_frontmatter_artifact(
             semantic=SemanticResult(ok=False, skipped_reason="envelope_mismatch"),
         )
 
-    resolver = _resolver_for_binding(binding)
+    resolver = _resolver_for_binding(contract)
     try:
         values = resolver.resolve(frontmatter)
     except Exception as exc:
-        return _resolver_failure(doc_path, binding, metadata, warnings, resolver, exc)
+        return _resolver_failure(doc_path, contract, metadata, warnings, resolver, exc)
     return _validate_extracted_values(
         doc_path,
-        binding,
+        contract,
         values,
         metadata=metadata,
         warnings=warnings,
@@ -300,119 +300,117 @@ def _validate_frontmatter_artifact(
 
 def _validate_pure_yaml_artifact(
     doc_path: Path,
-    binding: SoftschemaBinding,
-    warnings: list[SoftschemaWarning],
+    contract: Contract,
+    warnings: list[SchemaWarning],
 ) -> ArtifactValidationResult:
     try:
         raw = _read_yaml(doc_path)
     except yaml.YAMLError as exc:
-        return _artifact_failure(doc_path, binding, "parse_error", str(exc))
+        return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(
             doc_path,
-            binding,
+            contract,
             "yaml_not_mapping",
             f"YAML root is {type(raw).__name__}, expected mapping",
         )
-    return _validate_extracted_values(doc_path, binding, raw, metadata=None, warnings=warnings)
+    return _validate_extracted_values(doc_path, contract, raw, metadata=None, warnings=warnings)
 
 
 def _metadata_from_frontmatter(
     doc_path: Path,
     frontmatter: dict[str, Any],
-    binding: SoftschemaBinding,
-    warnings: list[SoftschemaWarning],
+    contract: Contract,
+    warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
-) -> SoftschemaMetadata | ArtifactValidationResult | None:
+) -> SchemaMetadata | ArtifactValidationResult | None:
     try:
-        metadata = parse_softschema_metadata(frontmatter.get("softschema"))
+        metadata = parse_schema_metadata(frontmatter.get("softschema"))
     except (TypeError, ValidationError) as exc:
         return _artifact_failure(
             doc_path,
-            binding,
+            contract,
             "document_softschema_invalid",
             str(exc),
             warnings=warnings,
         )
     if metadata is None:
         return None
-    if metadata.contract_id != binding.contract_id:
-        message = (
-            f"document declares {metadata.contract_id!r}; binding uses {binding.contract_id!r}"
-        )
+    if metadata.contract_id != contract.id:
+        message = f"document declares {metadata.contract_id!r}; contract uses {contract.id!r}"
         if metadata_mode == "advisory":
             warnings.append(
-                SoftschemaWarning(code=WarningCode.DOCUMENT_CONTRACT_MISMATCH, message=message)
+                SchemaWarning(code=WarningCode.DOCUMENT_CONTRACT_MISMATCH, message=message)
             )
         else:
             return _artifact_failure(
                 doc_path,
-                binding,
+                contract,
                 "document_contract_mismatch",
                 message,
                 metadata=metadata,
                 warnings=warnings,
             )
-    if metadata.status is not None and metadata.status != binding.status:
+    if metadata.status is not None and metadata.status != contract.status:
         warnings.append(
-            SoftschemaWarning(
+            SchemaWarning(
                 code=WarningCode.DOCUMENT_STATUS_MISMATCH,
                 message=(
-                    f"document declares status {metadata.status.value!r}; binding uses "
-                    f"{binding.status.value!r}"
+                    f"document declares status {metadata.status.value!r}; contract uses "
+                    f"{contract.status.value!r}"
                 ),
             )
         )
     return metadata
 
 
-def _resolver_for_binding(binding: SoftschemaBinding) -> ValueResolver:
-    if binding.envelope_key is not None:
+def _resolver_for_binding(contract: Contract) -> ValueResolver:
+    if contract.envelope_key is not None:
         return ValueResolver(
-            kind="values_key", pointer=f"/{_encode_json_pointer(binding.envelope_key)}"
+            kind="values_key", pointer=f"/{_encode_json_pointer(contract.envelope_key)}"
         )
     return ValueResolver(kind="frontmatter_root", exclude_keys=("softschema",))
 
 
 def _validate_extracted_values(
     doc_path: Path,
-    binding: SoftschemaBinding,
+    contract: Contract,
     values: dict[str, Any],
     *,
-    metadata: SoftschemaMetadata | None,
-    warnings: list[SoftschemaWarning],
+    metadata: SchemaMetadata | None,
+    warnings: list[SchemaWarning],
 ) -> ArtifactValidationResult:
-    schema_path = _resolve_schema_path(binding.schema_path, doc_path)
-    if binding.schema_path is not None:
+    schema_path = _resolve_schema_path(contract.schema_path, doc_path)
+    if contract.schema_path is not None:
         if schema_path is None:
             structural = StructuralResult(
                 ok=False,
                 errors=[
                     _error(
                         "schema_sidecar_missing",
-                        f"schema sidecar not found: {binding.schema_path}",
-                        path=str(binding.schema_path),
+                        f"schema sidecar not found: {contract.schema_path}",
+                        path=str(contract.schema_path),
                     )
                 ],
             )
         else:
             structural = validate_structural(values, schema_path)
-    elif binding.model is not None:
+    elif contract.model is not None:
         structural = StructuralResult(ok=True, engine="skipped_inferred_via_model")
     else:
         structural = StructuralResult(ok=True, engine="skipped_no_schema")
 
     semantic = (
-        validate_semantic(values, binding.model)
-        if binding.model is not None
+        validate_semantic(values, contract.model)
+        if contract.model is not None
         else SemanticResult(ok=True, skipped_reason="no_pydantic_model")
     )
     return ArtifactValidationResult(
         path=doc_path,
-        contract_id=binding.contract_id,
-        status=binding.status,
-        profile=binding.profile,
-        binding=binding,
+        contract_id=contract.id,
+        status=contract.status,
+        profile=contract.profile,
+        contract=contract,
         document_metadata=metadata,
         values=values,
         warnings=warnings,
@@ -437,19 +435,19 @@ def _resolve_schema_path(path: Path | None, doc_path: Path) -> Path | None:
 
 def _artifact_failure(
     doc_path: Path,
-    binding: SoftschemaBinding,
+    contract: Contract,
     kind: str,
     message: str,
     *,
-    metadata: SoftschemaMetadata | None = None,
-    warnings: list[SoftschemaWarning] | None = None,
+    metadata: SchemaMetadata | None = None,
+    warnings: list[SchemaWarning] | None = None,
 ) -> ArtifactValidationResult:
     return ArtifactValidationResult(
         path=doc_path,
-        contract_id=binding.contract_id,
-        status=binding.status,
-        profile=binding.profile,
-        binding=binding,
+        contract_id=contract.id,
+        status=contract.status,
+        profile=contract.profile,
+        contract=contract,
         document_metadata=metadata,
         warnings=warnings or [],
         structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
@@ -459,18 +457,18 @@ def _artifact_failure(
 
 def _resolver_failure(
     doc_path: Path,
-    binding: SoftschemaBinding,
-    metadata: SoftschemaMetadata | None,
-    warnings: list[SoftschemaWarning],
+    contract: Contract,
+    metadata: SchemaMetadata | None,
+    warnings: list[SchemaWarning],
     resolver: ValueResolver,
     exc: Exception,
 ) -> ArtifactValidationResult:
     return ArtifactValidationResult(
         path=doc_path,
-        contract_id=binding.contract_id,
-        status=binding.status,
-        profile=binding.profile,
-        binding=binding,
+        contract_id=contract.id,
+        status=contract.status,
+        profile=contract.profile,
+        contract=contract,
         document_metadata=metadata,
         warnings=warnings,
         structural=StructuralResult(ok=False, errors=[_resolver_error(resolver, exc)]),

@@ -13,9 +13,9 @@ import pytest
 from pydantic import BaseModel
 
 from softschema import (
-    SoftschemaBinding,
-    SoftschemaRegistry,
-    SoftschemaStatus,
+    Contract,
+    Contracts,
+    SchemaStatus,
     WarningCode,
     validate_artifact,
 )
@@ -33,11 +33,11 @@ def _make_artifact(tmp_path: Path, frontmatter: str) -> Path:
     return path
 
 
-def _make_registry(contract: str, status: SoftschemaStatus) -> SoftschemaRegistry:
-    registry = SoftschemaRegistry()
+def _make_registry(contract: str, status: SchemaStatus) -> Contracts:
+    registry = Contracts()
     registry.register(
-        SoftschemaBinding(
-            contract_id=contract,
+        Contract(
+            id=contract,
             model=_MoviePage,
             envelope_key="movie",
             status=status,
@@ -67,7 +67,7 @@ def test_document_contract_mismatch_emitted_in_advisory_mode(tmp_path: Path) -> 
         tmp_path,
         "softschema:\n  contract: example.movies:OtherContract/v1\nmovie:\n  title: x",
     )
-    registry = _make_registry("example.movies:MoviePage/v1", SoftschemaStatus.soft)
+    registry = _make_registry("example.movies:MoviePage/v1", SchemaStatus.soft)
     result = validate_artifact(
         artifact,
         contract_id="example.movies:MoviePage/v1",
@@ -84,7 +84,7 @@ def test_document_status_mismatch_emitted(tmp_path: Path) -> None:
         "softschema:\n  contract: example.movies:MoviePage/v1\n  status: enforced\n"
         "movie:\n  title: x",
     )
-    registry = _make_registry("example.movies:MoviePage/v1", SoftschemaStatus.permissive)
+    registry = _make_registry("example.movies:MoviePage/v1", SchemaStatus.permissive)
     result = validate_artifact(
         artifact,
         contract_id="example.movies:MoviePage/v1",
@@ -102,7 +102,7 @@ def test_no_undocumented_codes_emitted_in_smoke_run(tmp_path: Path) -> None:
         tmp_path,
         "softschema:\n  contract: example.movies:OtherContract/v1\nmovie:\n  title: x",
     )
-    registry = _make_registry("example.movies:MoviePage/v1", SoftschemaStatus.soft)
+    registry = _make_registry("example.movies:MoviePage/v1", SchemaStatus.soft)
     advisory_result = validate_artifact(
         contract_mismatch_artifact,
         contract_id="example.movies:MoviePage/v1",
@@ -118,7 +118,7 @@ def test_no_undocumented_codes_emitted_in_smoke_run(tmp_path: Path) -> None:
     enforced_result = validate_artifact(
         status_mismatch_artifact,
         contract_id="example.movies:MoviePage/v1",
-        registry=_make_registry("example.movies:MoviePage/v1", SoftschemaStatus.permissive),
+        registry=_make_registry("example.movies:MoviePage/v1", SchemaStatus.permissive),
     )
 
     emitted = {w.code for w in advisory_result.warnings} | {

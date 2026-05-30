@@ -315,19 +315,19 @@ Wire a Pydantic model to a contract and validate at file boundaries:
      --out schemas/incident-review.v1.schema.yaml
    ```
 
-3. **Register a `SoftschemaBinding`** in your host startup:
+3. **Register a `Contract`** in your host startup:
 
    ```python
-   from softschema import SoftschemaBinding, SoftschemaRegistry, SoftschemaStatus
+   from softschema import Contract, Contracts, SchemaStatus
 
-   def build_registry() -> SoftschemaRegistry:
-       registry = SoftschemaRegistry()
+   def build_registry() -> Contracts:
+       registry = Contracts()
        registry.register(
-           SoftschemaBinding(
-               contract_id="mycorp.docs:IncidentReview/v1",
+           Contract(
+               id="mycorp.docs:IncidentReview/v1",
                model=IncidentReview,
                envelope_key="incident",
-               status=SoftschemaStatus.permissive,
+               status=SchemaStatus.permissive,
                schema_path=Path("schemas/incident-review.v1.schema.yaml"),
            )
        )
@@ -624,9 +624,8 @@ A few patterns help agents do the right thing:
 The Python package is one convenience implementation of the language-neutral pattern.
 Public surface:
 
-- `SoftschemaBinding` — maps a contract ID to a Pydantic model and optional JSON Schema
-  sidecar.
-- `SoftschemaRegistry` — host-owned mapping from contract IDs to bindings.
+- `Contract` — maps a contract ID to a Pydantic model and optional JSON Schema sidecar.
+- `Contracts` — host-owned mapping from contract IDs to contracts.
 - `validate_artifact(path, contract_id=..., registry=...)` — validates a file at a
   boundary; returns a structured `ArtifactValidationResult` with separate `structural`
   and `semantic` reports.
@@ -639,7 +638,7 @@ Public surface:
 The CLI mirrors the library: `softschema validate`, `softschema compile`,
 `softschema inspect`, `softschema docs`, `softschema skill`.
 
-A host application typically registers complete bindings during startup and validates
+A host application typically registers complete contracts during startup and validates
 artifacts at file boundaries:
 
 ```python
