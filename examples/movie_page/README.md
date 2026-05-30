@@ -35,6 +35,7 @@ with `--check` and fails on drift.
 | Field | Allowed values |
 | --- | --- |
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
+
 <!-- /softschema:generated -->
 
 The example is meant to be copied from the files in this directory or printed through
@@ -52,11 +53,16 @@ Validate it with:
 ```bash
 uv run softschema validate examples/movie_page/spirited-away.md \
   --model examples.movie_page.model:MoviePage \
-  --schema examples/movie_page/movie-page.schema.yaml
+  --schema examples/movie_page/movie-page.schema.yaml \
+  --envelope movie
 ```
 
-The command reads `softschema.contract`, `softschema.status`, and the `movie` envelope
-from the artifact. Override flags are available for callers that need them.
+The command reads `softschema.contract` and `softschema.status` from the artifact.
+`--envelope movie` is required here because the artifact also carries a top-level
+`title:` key (a host-specific concern that softschema does not interpret), so the
+envelope can no longer be inferred automatically.
+Override flags are also available for `--contract` and `--status` when callers want to
+override the artifact’s declared values.
 
 A host application usually builds a registry once, then validates files by contract ID:
 

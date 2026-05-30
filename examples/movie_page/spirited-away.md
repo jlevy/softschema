@@ -1,4 +1,5 @@
 ---
+title: Spirited Away (2001)
 softschema:
   contract: example.movies:MoviePage/v1
   status: enforced

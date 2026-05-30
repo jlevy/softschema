@@ -65,7 +65,14 @@ def test_movie_page_demo_matches_structured_values() -> None:
     assert "| MPAA rating | PG |" in body
 
 
-def test_validate_cli_reads_contract_status_and_envelope_from_demo_yaml(capsys) -> None:
+def test_validate_cli_reads_contract_status_from_demo_yaml(capsys) -> None:
+    """`softschema validate` reads contract and status from the document.
+
+    The demo artifact carries a top-level `title:` alongside `movie:`, so the
+    envelope cannot be inferred automatically. ``--envelope movie`` designates
+    it explicitly; that is the documented escape hatch for any artifact that
+    coexists with host-specific metadata softschema does not interpret.
+    """
     exit_code = softschema_main(
         [
             "validate",
@@ -74,6 +81,8 @@ def test_validate_cli_reads_contract_status_and_envelope_from_demo_yaml(capsys) 
             "examples.movie_page.model:MoviePage",
             "--schema",
             str(MOVIE_SCHEMA),
+            "--envelope",
+            "movie",
         ]
     )
 
@@ -89,3 +98,59 @@ def test_validate_cli_reads_contract_status_and_envelope_from_demo_yaml(capsys) 
         "critic_review_count": 225,
     }
     assert output["values"]["ratings"]["imdb"]["score"] == 8.6
+    # `values` carries the movie payload (whose own `title` is "Spirited Away"); the
+    # unrelated top-level `title:` ("Spirited Away (2001)") sits outside the envelope
+    # and never reaches the validator.
+    assert output["values"]["title"] == "Spirited Away"
+
+
+def test_validate_cli_ignores_unrelated_top_level_keys(capsys) -> None:
+    """Extra top-level frontmatter keys do not cause validation to fail.
+
+    softschema must neither forbid nor interpret keys outside the
+    `softschema:` block and the designated envelope, so a `title:` alongside
+    `movie:` is a no-op from the validator's perspective once the envelope is
+    pointed at `movie` via ``--envelope``.
+    """
+    _content, frontmatter = fmf_read(MOVIE_PAGE)
+    assert isinstance(frontmatter, dict)
+    assert frontmatter.get("title") == "Spirited Away (2001)"
+    assert "softschema" in frontmatter and "movie" in frontmatter
+
+    exit_code = softschema_main(
+        [
+            "validate",
+            str(MOVIE_PAGE),
+            "--model",
+            "examples.movie_page.model:MoviePage",
+            "--schema",
+            str(MOVIE_SCHEMA),
+            "--envelope",
+            "movie",
+        ]
+    )
+    assert exit_code == 0
+
+
+def test_validate_cli_errors_when_envelope_is_ambiguous(capsys) -> None:
+    """Without ``--envelope`` the CLI must refuse to guess between multiple keys.
+
+    The spec says the envelope must be designated explicitly when multiple
+    non-`softschema` top-level keys exist; auto-detection is intentionally not
+    extended to multi-key documents. The error message lists the candidates.
+    """
+    exit_code = softschema_main(
+        [
+            "validate",
+            str(MOVIE_PAGE),
+            "--model",
+            "examples.movie_page.model:MoviePage",
+            "--schema",
+            str(MOVIE_SCHEMA),
+        ]
+    )
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "multiple top-level frontmatter keys" in captured.err
+    assert "movie" in captured.err
+    assert "title" in captured.err
