@@ -1,5 +1,8 @@
 # Development
 
+First-time setup of `uv` and Python is covered in [Installation](installation.md).
+Release workflow and PyPI steps are covered in [Publishing](publishing.md).
+
 Set up the repo:
 
 ```bash

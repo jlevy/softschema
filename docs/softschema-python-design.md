@@ -5,7 +5,7 @@ and specified in [Softschema Spec](softschema-spec.md).
 
 This document covers the Python package that implements the Markdown/YAML validation
 slice of that practice.
-It is the Python-specific design reference; the guide and spec remain language-neutral.
+It is the Python-specific design reference; the guide and spec remain language neutral.
 
 `softschema` owns Python contracts for schema-bound Markdown and YAML artifacts.
 Host packages own process orchestration, plugin loading, browser views, repair loops,
@@ -103,7 +103,7 @@ structured data for automation.
 
 ## Validation
 
-The artifact format is language-neutral.
+The artifact format is language neutral.
 The Python package validates at two layers:
 
 - Structural validation with a JSON Schema YAML sidecar

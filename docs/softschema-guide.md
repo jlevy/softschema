@@ -33,7 +33,7 @@ that fits the application instead of committing to all-prose or all-data up fron
 **Softschema** is the implementation in this repository: conventions and tools for the
 Markdown-plus-YAML case, with a Python package that validates the YAML payload against a
 named contract.
-The practice is language-neutral; another project could implement it with
+The practice is language neutral; another project could implement it with
 TypeScript, Zod, JSON Schema, database records, or hand-written validators.
 
 ## When To Use It

@@ -19,7 +19,7 @@ scientific or financial analyses, and many similar applications.
 
 ## How Do Soft Schemas Work?
 
-The practice is very simple and language-neutral.
+The practice is very simple and language neutral.
 The simplest approach is to use artifacts in a process or pipeline that are Markdown
 documents with YAML frontmatter.
 The YAML carries selected structured values.
@@ -100,13 +100,17 @@ can stay as loose prose until a downstream consumer needs it in more formal sche
 
 This repo is simply:
 
-- A few documents for use by agents, including a spec defining soft schema file format
-  conventions for Markdown documents with YAML frontmatter.
+- A few documents for use by agents, including a [spec](docs/softschema-spec.md)
+  defining soft schema file format conventions for Markdown documents with YAML
+  frontmatter.
 
-- A simple Python CLI that handles formatting, compilation, validation, and other common
-  workflows on soft schema-style documents.
+- A simple [Python CLI](docs/softschema-python-design.md) that handles formatting,
+  compilation, validation, and other common workflows on soft schema-style documents.
 
 The CLI can be used directly, as a library, or installed as a skill.
+
+For the full conceptual reference and adoption playbooks, see the
+[Softschema Guide](docs/softschema-guide.md).
 
 ## Example Artifact Shape
 
@@ -230,7 +234,7 @@ The ID names an artifact payload contract, not a required class or import path.
 
 ## Try the Python Package
 
-Install dependencies:
+Install dependencies (see [Installation](docs/installation.md) for uv and Python setup):
 
 ```bash
 uv sync --all-extras
@@ -314,15 +318,10 @@ The root `pyproject.toml` builds the Python package from
 `packages/python/src/softschema`. This keeps the first release simple while leaving room
 for a future TypeScript package.
 
-## Docs
+## Development and Contributing
 
-- [Softschema Guide](docs/softschema-guide.md)
-- [Softschema Spec](docs/softschema-spec.md)
-- [Python Package Design](docs/softschema-python-design.md)
-- [Installing uv and Python](docs/installation.md)
-- [Development](docs/development.md)
-- [Publishing](docs/publishing.md)
-- [Movie Page Example](examples/movie_page/README.md)
+See [Development](docs/development.md) for repo setup, common commands, CI checks,
+release workflow, and pointers to the installation and publishing docs.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
