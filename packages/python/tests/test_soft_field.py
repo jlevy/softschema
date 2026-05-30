@@ -1,4 +1,4 @@
-"""SField round-trip tests: Pydantic annotation → JSON Schema sidecar."""
+"""SoftField round-trip tests: Pydantic annotation → JSON Schema sidecar."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from softschema import SField, compile_model
+from softschema import SoftField, compile_model
 
 
 def _read_yaml(path: Path) -> dict:
@@ -18,20 +18,20 @@ def _read_yaml(path: Path) -> dict:
 class _AnnotatedModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str = SField(
+    title: str = SoftField(
         description="Display title.",
         group="identity",
         owner="agent",
         tier="hard_fact",
     )
-    summary: str = SField(
+    summary: str = SoftField(
         description="One-sentence summary.",
         group="narrative",
         owner="postprocess",
         tier="narrative",
         instruction="Keep under 200 chars.",
     )
-    score: int = SField(
+    score: int = SoftField(
         description="Score 0-100.",
         group="metrics",
         owner="system",
@@ -41,7 +41,7 @@ class _AnnotatedModel(BaseModel):
     )
 
 
-def test_sfield_propagates_x_softschema_into_compiled_schema(tmp_path: Path) -> None:
+def test_soft_field_propagates_x_softschema_into_compiled_schema(tmp_path: Path) -> None:
     out = tmp_path / "annotated.schema.yaml"
     compile_model(_AnnotatedModel, out, contract_id="example:Annotated/v1")
 
@@ -69,7 +69,7 @@ def test_sfield_propagates_x_softschema_into_compiled_schema(tmp_path: Path) -> 
     assert props["score"]["maximum"] == 100
 
 
-def test_sfield_omits_empty_optional_metadata(tmp_path: Path) -> None:
+def test_soft_field_omits_empty_optional_metadata(tmp_path: Path) -> None:
     """Defaults (empty examples/aliases, repair=none) stay out of the sidecar."""
     out = tmp_path / "minimal.schema.yaml"
     compile_model(_AnnotatedModel, out, contract_id="example:Annotated/v1")
@@ -82,7 +82,7 @@ def test_sfield_omits_empty_optional_metadata(tmp_path: Path) -> None:
         assert "repair" not in meta
 
 
-def test_sfield_movie_example_genres_block_present() -> None:
+def test_soft_field_movie_example_genres_block_present() -> None:
     """The movie example annotates `genres`; the committed sidecar must show it."""
     repo_root = Path(__file__).resolve().parents[3]
     schema_path = repo_root / "examples/movie_page/movie-page.schema.yaml"

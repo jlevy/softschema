@@ -77,7 +77,7 @@ def test_required_fields_match_schema(view: SchemaView) -> None:
     } <= required
 
 
-def test_softmeta_retrieval_picks_up_sfield_annotation(view: SchemaView) -> None:
+def test_softmeta_retrieval_picks_up_soft_field_annotation(view: SchemaView) -> None:
     meta = view.softmeta("/properties/genres")
     assert meta["group"] == "taxonomy"
     assert meta["tier"] == "constrained"

@@ -195,17 +195,25 @@ The emitted schema includes:
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
 for a future TypeScript package.
 
-### Field Annotations (`SField`)
+### Field Annotations (`SoftField`)
 
-`SField` is a thin wrapper over Pydantic’s `Field` that records per-field authoring
+`SoftField` is a thin wrapper over Pydantic’s `Field` that records per-field authoring
 metadata under `json_schema_extra`. The compiler propagates that block verbatim into the
 JSON Schema sidecar as a per-property `x-softschema:` block; the runtime never reads it
 for validation.
 
-```python
-from softschema import SField
+`SoftField` is optional.
+Reach for it per field, only when a specific downstream consumer reads a specific
+metadata key. A model whose only consumer is `validate_artifact()` should stay on plain
+`Field`; the metadata would land in the sidecar with no reader.
+Blanket-annotating every field with `SoftField` ahead of any consumer is per-field
+clutter that never pays back.
+The movie example annotates only `genres` (one field of ten) for that reason.
 
-genres: list[str] = SField(
+```python
+from softschema import SoftField
+
+genres: list[str] = SoftField(
     description="Genre labels for the film.",
     group="taxonomy",
     owner="agent",
@@ -233,7 +241,24 @@ The `SoftOwner`, `SoftTier`, and `RepairKind` `Literal` aliases (also exported f
 time.
 
 Field constraints (`ge`, `le`, `min_length`, etc.)
-flow through the normal Pydantic path; pass them as additional kwargs to `SField`.
+flow through the normal Pydantic path; pass them as additional kwargs to `SoftField`.
+
+**When `SoftField` pays off.** Reach for `SoftField` on a field when one of these
+consumers exists or is about to be wired:
+
+- A **template generator** that emits section headers from `group` and inline format
+  hints from `instruction` and `examples`. Eliminates drift between a hand-maintained
+  authoring template and the Pydantic source.
+- An **agent prompt builder** that filters by `owner`, so the agent only sees fields it
+  owns, with `instruction` text rendered as guidance.
+  Postprocess- and system-filled fields stay out of the prompt.
+- A **tier-aware QA harness** that routes checks by `tier`: strict equality on
+  `hard_fact`, enum or range on `constrained`, LLM-judged review on `narrative`.
+- **Generated runbook sections** (`softschema generate`) keyed by `group` for
+  `enum_table` and `field_list`, or by a specific pointer for `kind="vocab"`.
+
+When none of those consumers exists or is on the roadmap, leave `Field` alone.
+Add `SoftField` annotations field by field as the consumer that reads them lands.
 
 ### Schema View
 

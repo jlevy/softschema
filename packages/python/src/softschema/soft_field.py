@@ -1,14 +1,28 @@
 """Per-field ``x-softschema`` annotations for Pydantic source models.
 
-`SField` is a thin wrapper around Pydantic's ``Field`` that records authoring
+`SoftField` is a thin wrapper around Pydantic's ``Field`` that records authoring
 metadata (group, tier, owner, instruction, examples, aliases, repair) under the
 field's ``json_schema_extra``. The compiler propagates it verbatim into the
 generated JSON Schema sidecar as a per-property ``x-softschema:`` block; the
 runtime never uses it for validation.
 
-The metadata is consumed by `SchemaView`, generated sections, agent-facing
-prompt builders, and QA tooling. Adding a field that downstream code only needs
-to read (not validate) is the typical use case.
+`SoftField` is optional. Reach for it per field, only when a specific downstream
+consumer reads a specific metadata key. A model whose only consumer is
+``validate_artifact()`` does not need it; plain ``Field`` is enough.
+
+The consumers that earn `SoftField` annotations are:
+
+- A template generator that emits section headers from ``group`` and inline
+  hints from ``instruction`` / ``examples``.
+- An agent prompt builder that filters by ``owner`` to hide system- or
+  postprocess-filled fields.
+- A tier-aware QA harness that routes checks by ``tier``.
+- Generated runbook sections (``softschema generate``) keyed by ``group`` or a
+  specific pointer.
+
+Blanket-annotating every field without a consumer in mind is per-field clutter
+that never pays back. Add `SoftField` field by field as the consumer that reads it
+lands.
 """
 
 from __future__ import annotations
@@ -27,7 +41,7 @@ RepairKind: TypeAlias = Literal["none", "safe_coerce", "suggest_alias"]
 """How a future repair pass may treat near-miss values for the field."""
 
 
-class SFieldMeta(BaseModel):
+class SoftFieldMeta(BaseModel):
     """Structured metadata block written under ``x-softschema`` on each field."""
 
     model_config = ConfigDict(extra="forbid")
@@ -42,7 +56,7 @@ class SFieldMeta(BaseModel):
     repair: RepairKind = "none"
 
 
-def SField(
+def SoftField(
     *,
     description: str,
     group: str,
@@ -57,6 +71,9 @@ def SField(
 ) -> Any:
     """Return a Pydantic ``Field`` carrying an ``x-softschema`` annotation.
 
+    See the module docstring for when `SoftField` is worth reaching for over plain
+    ``Field``.
+
     Pass any additional Pydantic ``Field`` kwargs (such as ``default``,
     ``ge``, ``min_length``) via ``**field_kwargs``. The annotation lands under
     ``json_schema_extra`` so the standard ``model_json_schema()`` flow (and the
@@ -66,7 +83,7 @@ def SField(
     Empty optional values are omitted from the emitted metadata so the sidecar
     stays minimal.
     """
-    meta = SFieldMeta(
+    meta = SoftFieldMeta(
         group=group,
         order=order,
         tier=tier,

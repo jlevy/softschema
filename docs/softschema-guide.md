@@ -351,6 +351,44 @@ The `result` object reports `structural` (JSON Schema) and `semantic` (Pydantic)
 separately, so callers can distinguish “shape was wrong” from “cross-field invariant
 failed” without parsing error strings.
 
+## Playbook: Annotate Fields With SoftField
+
+`SoftField` is an optional wrapper over Pydantic’s `Field` that records per-field
+authoring metadata (`group`, `owner`, `tier`, `instruction`, `examples`, `aliases`,
+`repair`). The compiler propagates the metadata verbatim into the JSON Schema sidecar as
+a per-property `x-softschema:` block.
+The runtime never reads it for validation.
+
+`SoftField` follows the same gradual-adoption rule as the rest of softschema: opt in per
+field, only when a specific downstream consumer reads a specific metadata key.
+The default is plain `Field`. A model whose only consumer is `validate_artifact()` does
+not earn `SoftField`; the metadata would land in the sidecar with no reader.
+
+Consumers that earn an `SoftField` annotation:
+
+- **Template generator.** Emits section headers from `group` and inline format hints
+  from `instruction` and `examples`. Useful when authors fill a Markdown or YAML
+  template by hand and the template currently carries those hints in comments that drift
+  from the model.
+- **Agent prompt builder.** Filters by `owner` so the agent only sees fields it owns,
+  with `instruction` text rendered as guidance.
+  Postprocess- and system-filled fields stay out of the prompt entirely.
+- **Tier-aware QA.** Routes checks by `tier`: strict equality on `hard_fact`, enum or
+  range on `constrained`, LLM-judged review on `narrative`. Lets a single QA harness
+  scale without one rule per field.
+- **Generated runbook sections.** `softschema generate` reads `group` for `enum_table`
+  and `field_list`, and a specific pointer for `kind="vocab"`.
+
+The light-touch end of the spectrum is plain `Field` everywhere, with no `SoftField` at
+all. The structured end is `SoftField` on every field, justified by several wired
+readers. Most projects sit in the middle, with a handful of `SoftField` annotations on
+the fields that one or two consumers care about and plain `Field` everywhere else.
+The movie example sits near the light-touch end, annotating only `genres` for the
+controlled-vocabulary case.
+
+The recognized keys and the full call shape are documented in
+[Python Package Design](softschema-python-design.md).
+
 ## Playbook: Keep Schema Tables In Sync With Generated Sections
 
 When a controlled vocabulary or field list appears in two places (a schema and a runbook

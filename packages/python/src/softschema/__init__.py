@@ -16,10 +16,10 @@ from softschema.models import (
 )
 from softschema.registry import SoftschemaRegistry
 from softschema.schema_view import FieldInfo, SchemaView
-from softschema.sfield import (
+from softschema.soft_field import (
     RepairKind,
-    SField,
-    SFieldMeta,
+    SoftField,
+    SoftFieldMeta,
     SoftOwner,
     SoftTier,
 )
@@ -55,8 +55,8 @@ __all__ = [
     "RegenerateResult",
     "RepairKind",
     "SchemaView",
-    "SField",
-    "SFieldMeta",
+    "SoftField",
+    "SoftFieldMeta",
     "SoftOwner",
     "SoftTier",
     "ValueResolver",

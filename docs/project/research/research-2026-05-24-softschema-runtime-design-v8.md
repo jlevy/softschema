@@ -97,7 +97,7 @@ metadata. None of those are Phase 0 needs.
 Each field carries metadata that drives prompts, runbook tables, judge prompts, JSON
 Schema export, and lifecycle policies.
 
-### `SField` and `x-softschema` metadata
+### `SoftField` and `x-softschema` metadata
 
 ```python
 from typing import Any, Literal, TypeAlias
@@ -109,7 +109,7 @@ SoftTier: TypeAlias = Literal["hard_fact", "constrained", "narrative"]
 RepairKind: TypeAlias = Literal["none", "safe_coerce", "suggest_alias"]
 
 
-class SFieldMeta(BaseModel):
+class SoftFieldMeta(BaseModel):
     group: str
     order: int | None = None
     tier: SoftTier | None = None
@@ -120,7 +120,7 @@ class SFieldMeta(BaseModel):
     repair: RepairKind = "none"
 
 
-def SField(
+def SoftField(
     *,
     description: str,
     group: str,
@@ -132,7 +132,7 @@ def SField(
     repair: RepairKind = "none",
     **field_kwargs,
 ):
-    meta = SFieldMeta(
+    meta = SoftFieldMeta(
         group=group,
         owner=owner,
         tier=tier,
@@ -149,7 +149,7 @@ def SField(
 ```
 
 The shared `TypeAlias`es prevent bad metadata from reaching the schema sidecar and make
-`SField` itself self-documenting: an editor that types-checks the call site catches
+`SoftField` itself self-documenting: an editor that types-checks the call site catches
 typos like `owner="agennt"` or `tier="hardfact"` at author time, not at compile time.
 
 Constraints, instructions, enum values, ownership, tiering, and aliases live in one
@@ -845,7 +845,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, model_validator
-from softschema import SField
+from softschema import SoftField
 
 
 class Outcome(StrEnum):
@@ -866,19 +866,19 @@ class Direction(StrEnum):
 
 class EvidenceSnippet(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    source_date: date = SField(
+    source_date: date = SoftField(
         description="Source publication date. Must be on or before due_date.",
         group="qualitative",
         owner="agent",
         tier="hard_fact",
     )
-    source_type: Literal["report", "interview", "news", "dataset", "other"] = SField(
+    source_type: Literal["report", "interview", "news", "dataset", "other"] = SoftField(
         description="Source category for the snippet.",
         group="qualitative",
         owner="agent",
         tier="constrained",
     )
-    observation: str = SField(
+    observation: str = SoftField(
         description="One-sentence observation grounded in the source.",
         group="qualitative",
         owner="agent",
@@ -889,10 +889,10 @@ class EvidenceSnippet(BaseModel):
 
 class Qualitative(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    expected_summary: str = SField(description="...", group="qualitative", min_length=1)
-    observed_summary: str = SField(description="...", group="qualitative", min_length=1)
-    counterfactual: str = SField(description="...", group="qualitative", min_length=1)
-    evidence_snippets: list[EvidenceSnippet] = SField(
+    expected_summary: str = SoftField(description="...", group="qualitative", min_length=1)
+    observed_summary: str = SoftField(description="...", group="qualitative", min_length=1)
+    counterfactual: str = SoftField(description="...", group="qualitative", min_length=1)
+    evidence_snippets: list[EvidenceSnippet] = SoftField(
         description="Pre-event evidence with source dates and observations.",
         group="qualitative",
         min_length=1,
@@ -901,13 +901,13 @@ class Qualitative(BaseModel):
 
 class WidgetRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    record_id: str = SField(description="Record identifier.", group="identity", tier="hard_fact")
-    period: str = SField(description="YYYY-QN.", group="identity", tier="hard_fact")
-    due_date: date = SField(description="...", group="identity", tier="hard_fact")
-    outcome: Outcome = SField(description="...", group="outcomes")
-    direction: Direction = SField(description="...", group="outcomes")
-    delta_pct: float = SField(description="...", group="outcomes")
-    qualitative: Qualitative = SField(description="...", group="qualitative")
+    record_id: str = SoftField(description="Record identifier.", group="identity", tier="hard_fact")
+    period: str = SoftField(description="YYYY-QN.", group="identity", tier="hard_fact")
+    due_date: date = SoftField(description="...", group="identity", tier="hard_fact")
+    outcome: Outcome = SoftField(description="...", group="outcomes")
+    direction: Direction = SoftField(description="...", group="outcomes")
+    delta_pct: float = SoftField(description="...", group="outcomes")
+    qualitative: Qualitative = SoftField(description="...", group="qualitative")
 
     @model_validator(mode="after")
     def _direction_matches_delta(self) -> "WidgetRecord":

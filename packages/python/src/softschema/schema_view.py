@@ -26,7 +26,7 @@ class FieldInfo:
 
     `pointer` is a JSON Pointer (RFC 6901) relative to the root schema document.
     `softmeta` is the field's per-property `x-softschema` block (empty dict when
-    the field was not annotated with `SField`).
+    the field was not annotated with `SoftField`).
     """
 
     pointer: JsonPointer

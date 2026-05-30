@@ -99,7 +99,7 @@ The `extract-softschema` branch carries a v0.1-release-ready standalone repo:
 - `examples/movie_page` with a practical Spirited Away artifact, model, schema, host
   integration example, and a live generated-section marker in the README.
 - `packages/python/src/softschema` with validation, registry, schema compile, CLI, and
-  the shipped P0/P1 surface: `sfield.py`, `schema_view.py`, `generate.py`.
+  the shipped P0/P1 surface: `soft_field.py`, `schema_view.py`, `generate.py`.
 - `packages/typescript/README.md` as a future TypeScript/Zod placeholder only.
 - `skills/softschema/SKILL.md` and bundled CLI docs/skill commands.
 - `softschema docs --list --json` for agent-readable docs discovery.
@@ -113,7 +113,8 @@ Release-readiness verified on 2026-05-28:
 - `uv run python devtools/lint.py --check` — clean (codespell, ruff, basedpyright, doc
   footers).
 - `uv run pytest` — 63/63 tests pass across `test_cli`, `test_core`, `test_generate`,
-  `test_movie_page_example`, `test_schema_view`, `test_sfield`, `test_warning_codes`.
+  `test_movie_page_example`, `test_schema_view`, `test_soft_field`,
+  `test_warning_codes`.
 - `uv build` — wheel and sdist build; bundled resources include the renamed
   `docs/softschema-python-design.md`.
 - All 34 tracked beads closed.
@@ -250,7 +251,7 @@ beyond the movie example.
 Land before the first non-trivial external project depends on the package.
 
 - **Field-level `x-softschema` annotations** (v8 §"The Pydantic contract layer"). A
-  small `SField` helper plus compiler support for per-field `tier`, `owner`, `group`,
+  small `SoftField` helper plus compiler support for per-field `tier`, `owner`, `group`,
   and `instruction` annotations carried through to the JSON Schema sidecar.
   Annotations are advisory; they do not change validation.
   They are the substrate that generated sections, agent prompts, and QA tooling consume.
@@ -366,7 +367,7 @@ Closed via `ss-oovv`.
   body prose, a table, Rotten Tomatoes critics/audience ratings, and vote/review counts.
 - [x] Verify `examples/movie_page/model.py` remains simple enough to understand by
   reading it directly.
-  Now also carries a representative `SField` annotation on `genres`.
+  Now also carries a representative `SoftField` annotation on `genres`.
 - [x] Verify the integration test uses the example code rather than duplicating hidden
   demo logic.
 
@@ -412,7 +413,7 @@ Designs live in v8; this phase implements them.
 Land before the first non-trivial external project depends on the package.
 
 Reuse note: the trading repo’s `packages/softschema` package does *not* contain
-`SField`, `SchemaView`, or generated-sections code.
+`SoftField`, `SchemaView`, or generated-sections code.
 Trading-repo softschema today is a subset of this repo’s current code.
 The P0/P1 work is genuinely net-new here; the trading consumer benefits from these APIs
 being available *before* its Phase 3 cutover, not from porting code.
@@ -424,37 +425,38 @@ Trading consumer alignment (informs API shape, not borrowed code):
   `SchemaView` becomes the API it switches to.
 - `earnings_predictions/src/earnings_predictions/schemas/*.py` are Pydantic models with
   rich domain semantics (Direction, EpsResult, ReactionType enums; cross-field
-  validators). They are natural candidates for `SField` annotations (`tier="hard_fact"`
-  for IDs, `owner="agent"`/`"postprocess"`/`"system"` for ownership, `group` for QA
-  categorization).
+  validators). They are natural candidates for `SoftField` annotations
+  (`tier="hard_fact"` for IDs, `owner="agent"`/`"postprocess"`/`"system"` for ownership,
+  `group` for QA categorization).
 - Trading runbooks under `process/` and templates that currently list controlled
   vocabularies by hand are the natural first consumers of generated sections.
 
 #### ss-pu9z: Field-level `x-softschema` annotations (DONE)
 
-v8 reference: §"The Pydantic contract layer" → §"`SField` and `x-softschema` metadata".
+v8 reference: §"The Pydantic contract layer" → §"`SoftField` and `x-softschema`
+metadata".
 
 Shipped in commit landing this section:
-- `packages/python/src/softschema/sfield.py` with `SField()`, `SFieldMeta`, type aliases
-  (`SoftOwner`, `SoftTier`, `RepairKind`).
+- `packages/python/src/softschema/soft_field.py` with `SoftField()`, `SoftFieldMeta`,
+  type aliases (`SoftOwner`, `SoftTier`, `RepairKind`).
 - Re-exported from `softschema/__init__.py`.
 - Movie example `genres` field annotated; sidecar regenerated with the `x-softschema`
   block.
-- `tests/test_sfield.py` (3 tests) covers round-trip, omit-empty-defaults, and the
+- `tests/test_soft_field.py` (3 tests) covers round-trip, omit-empty-defaults, and the
   committed movie sidecar.
 - Field Annotations section added to `docs/softschema-python-design.md`.
 
 Original implementation map (for reference):
-- [x] Add `packages/python/src/softschema/sfield.py` with:
+- [x] Add `packages/python/src/softschema/soft_field.py` with:
   - Type aliases: `SoftOwner = Literal["agent", "postprocess", "system", "human"]`,
     `SoftTier = Literal["hard_fact", "constrained", "narrative"]`,
     `RepairKind = Literal["none", "safe_coerce", "suggest_alias"]`.
-  - `SFieldMeta(BaseModel)` with `group`, `order`, `tier`, `owner` (default `"agent"`),
-    `instruction`, `examples`, `aliases`, `repair`.
-  - `SField(*, description, group, owner=..., tier=None, aliases=None, examples=None, instruction=None, repair="none", **field_kwargs)`
+  - `SoftFieldMeta(BaseModel)` with `group`, `order`, `tier`, `owner` (default
+    `"agent"`), `instruction`, `examples`, `aliases`, `repair`.
+  - `SoftField(*, description, group, owner=..., tier=None, aliases=None, examples=None, instruction=None, repair="none", **field_kwargs)`
     returning a Pydantic `Field` with
     `json_schema_extra={"x-softschema": meta.model_dump(exclude_none=True)}`.
-- [x] Export `SField`, `SFieldMeta`, `SoftOwner`, `SoftTier`, `RepairKind` from
+- [x] Export `SoftField`, `SoftFieldMeta`, `SoftOwner`, `SoftTier`, `RepairKind` from
   `softschema/__init__.py`.
 - [x] Confirm `softschema.compile` already passes per-field `json_schema_extra` through
   (Pydantic handles this natively).
@@ -464,7 +466,7 @@ Original implementation map (for reference):
 - [x] Annotate one field in `examples/movie_page/model.py` (`genres`, with
   `group="taxonomy"`, `tier="constrained"`, `owner="agent"`, plus a short
   `instruction`). Sidecar re-compiled; `compile --check` drift test green.
-- [x] Add `tests/test_sfield.py` (3 tests) covering round-trip preservation,
+- [x] Add `tests/test_soft_field.py` (3 tests) covering round-trip preservation,
   exclude-none-on-empty-meta, and the committed movie sidecar.
 
 #### ss-9zdi: `SchemaView` reader (DONE)
