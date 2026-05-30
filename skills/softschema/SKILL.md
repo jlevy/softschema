@@ -52,8 +52,6 @@ uvx softschema@<version> --help          # ephemeral; reproducible
 uv tool install softschema==<version>    # persistent; lockfile-friendly
 ```
 
-In a checkout of this repo, `uv run softschema …` works without install.
-
 ## Self-Install (Optional)
 
 Run once per project to install discoverable mirrors of this skill, so any agent working
