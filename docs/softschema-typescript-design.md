@@ -72,7 +72,8 @@ Python's `json.dumps(..., indent=2, sort_keys=True, ensure_ascii=False)`; exit c
 
 bun (runtime + package manager), `bunup` (build), `bun test` (unit), `biome` (lint +
 format), `tsc --noEmit` (types). Dependencies: `zod`, `yaml`, `commander`, `ajv`
-(`ajv/dist/2020`) + `ajv-formats`, `picocolors`, `atomically`. The shared `tests/golden/`
+(`ajv/dist/2020`) + `ajv-formats`, `atomically` (the CLI emits only JSON, so no color
+dependency). The shared `tests/golden/`
 corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
 
 <!-- This document follows common-doc-guidelines.md.

@@ -127,7 +127,7 @@ sync at the boundary.
 | YAML | (via `frontmatter-format>=0.3`, PyYAML) | `yaml` **^2.8** | Centralized stringify options, sorted keys. |
 | Frontmatter | `frontmatter-format` | `gray-matter` **or** thin custom splitter | Pick whichever round-trips to identical YAML for the corpus. |
 | CLI framework | `argparse` (stdlib) | `commander` **^15** | Commander 15 is ESM-only, Node ≥22.12. Commander 14 is security-maintenance only — not for new projects. |
-| Color | n/a (JSON output) | `picocolors` **^1.1.1** | Help/diagnostic color only; JSON stays uncolored; honor `NO_COLOR`/`--color`. tryscript runs non-TTY ⇒ auto-disabled. |
+| Color | n/a (JSON output) | none (dropped `picocolors`) | The CLI emits only deterministic JSON (golden-tested), so no color dependency is used. Re-add `picocolors` only if human-facing colored help is added later. |
 | Atomic writes | stdlib tempfile+replace (`compile.py`) | `atomically` **^2.1.1** | Matches Python `_write_atomic`; apply to sidecar + generated-section writes. |
 | Tests | `pytest` | **`bun test`** (built-in) + the shared `tryscript` **^0.1.6** corpus | bun test has Jest-compatible matchers and built-in `--coverage`. |
 | Build | `uv build` | **`bunup` ^0.16** | ESM (+ optional CJS) + `.d.ts`; `bin` → `dist/cli.js`. |
