@@ -30,7 +30,7 @@ Each command prints material the agent should read and follow:
 
 ```bash
 softschema --help                  # command listing + entry-point pointers
-softschema skill --brief           # ~12-line operating brief
+softschema skill --brief           # compact operating brief
 softschema docs guide              # mental model and adoption path
 softschema docs spec               # exact artifact format
 softschema docs example-artifact   # a copyable example
@@ -44,8 +44,8 @@ softschema docs --list             # full topic index
 - Use `softschema.contract` (not `schema`) to name the payload contract.
 - Promote a value into YAML only when something consumes it; leave exploratory or
   judgment-heavy content as prose.
-- Validate at the boundary with `softschema validate <file> --model pkg.mod:Model` or
-  `--schema sidecar.yaml`.
+- Validate at the boundary with `softschema validate` — `--model` for a Pydantic/Zod
+  model, `--schema` for a sidecar. Run `softschema validate --help` for exact syntax.
 
 ## Install
 
