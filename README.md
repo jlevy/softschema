@@ -358,7 +358,7 @@ uvx softschema@latest skill --install
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
 ```
 
-Both mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
+Both mirrors carry a `DO NOT EDIT` marker.
 Re-run `skill --install` to refresh after upgrading the CLI.
 
 ## Repository Layout

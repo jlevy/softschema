@@ -46,15 +46,15 @@ softschema docs --list             # full topic index
 ## Install
 
 softschema ships two interchangeable implementations with the same CLI surface — pick
-the runtime you already have. Prefer a version-pinned zero-install runner:
+the runtime you already have. Use a zero-install runner:
 
 ```bash
 # Python (Pydantic):
-uvx softschema@<version> --help            # ephemeral; reproducible
-uv tool install softschema==<version>      # persistent; lockfile-friendly
+uvx softschema@latest --help            # ephemeral
+uv tool install softschema             # persistent
 
 # TypeScript (Zod):
-npx softschema@<version> --help      # ephemeral; reproducible
+npx softschema@latest --help            # ephemeral
 ```
 
 Both expose the same commands and flags and validate against the same canonical schema;
@@ -72,7 +72,7 @@ softschema skill --install
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
 ```
 
-The mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
+The mirrors carry a `DO NOT EDIT` marker.
 Re-run `softschema skill --install` to refresh after upgrading.
 
 <!-- This document follows common-doc-guidelines.md.

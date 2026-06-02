@@ -797,9 +797,9 @@ Full feature parity; passes scenarios 3, 5, 6.
   unscoped `softschema` on npm** (same name as PyPI), with bins `softschema` and
   `softschema-ts`.
 - ~~**TS publishing:** deferred to a follow-up.~~ **Decided: ship now.** The npm package
-  publishes from the same `vX.Y.Z` tag as PyPI via a `publish-npm` job in `publish.yml`
-  (provenance + `NPM_TOKEN`), under the **same version number**. See
-  [docs/publishing.md](../../../publishing.md).
+  publishes from the same `vX.Y.Z` tag as PyPI via a `publish-npm` job in `publish.yml`,
+  using **npm trusted publishing (OIDC, no token)** with automatic provenance, under the
+  **same version number**. See [docs/publishing.md](../../../publishing.md).
 - **Frontmatter library:** `gray-matter` vs a thin custom splitter — pick whichever
   round-trips to identical YAML to Python's `frontmatter-format` for the corpus.
 - **`default: null` canonicalization (rule 4):** confirm the final rule against real outputs

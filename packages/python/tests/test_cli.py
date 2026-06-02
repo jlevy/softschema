@@ -195,17 +195,18 @@ def test_skill_brief_points_agents_to_docs_and_rules(
     assert "Do not parse Markdown body prose or tables" in output
 
 
-def test_skill_substitutes_version_placeholder(
+def test_skill_uses_latest_runner(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from importlib.metadata import version as _pkg_version
-
     exit_code = softschema_main(["skill"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
+    # The skill references @latest (safe under the repo's supply-chain cool-off), so no
+    # version placeholder survives and no per-release pin is baked in.
     assert "<version>" not in output
-    assert f"uvx softschema@{_pkg_version('softschema')}" in output
+    assert "uvx softschema@latest" in output
+    assert "npx softschema@latest" in output
 
 
 def test_skill_install_creates_both_mirrors(
