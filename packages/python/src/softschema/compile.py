@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +11,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
+from softschema.atomic import write_atomic
 from softschema.canonicalize import canonicalize_json_schema
 
 # Version of the `x-softschema` block format emitted into compiled sidecars,
@@ -72,7 +72,7 @@ def compile_model(
             schema_sha256=schema_sha256,
         )
 
-    _write_atomic(out_path, rendered)
+    write_atomic(out_path, rendered)
     return CompileResult(
         out_path=out_path,
         schema_yaml=rendered,
@@ -109,17 +109,3 @@ def _schema_sha256(schema: dict[str, Any]) -> str:
 def _yaml_dump(schema: dict[str, Any]) -> str:
     # Canonical profile: keys sorted for deterministic, cross-language byte output.
     return yaml.safe_dump(schema, sort_keys=True, default_flow_style=False, allow_unicode=True)
-
-
-def _write_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        delete=False,
-        dir=path.parent,
-        prefix=f".{path.name}.",
-    ) as tmp:
-        tmp.write(text)
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)

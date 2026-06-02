@@ -32,6 +32,7 @@ Issues = "https://github.com/jlevy/softschema/issues"
 
 [project.scripts]
 softschema = "softschema.cli:main"
+softschema-py = "softschema.cli:main"
 
 [dependency-groups]
 dev = [
