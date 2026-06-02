@@ -603,6 +603,9 @@ Smallest vertical slice that passes scenarios 1, 2, 4 under `SOFTSCHEMA_IMPL=ts`
 - [ ] **Conformance test:** compile movie schema via both binaries; assert byte-equal sidecar
   + equal `schema_sha256`. Run scenarios 1, 2, 4 with `SOFTSCHEMA_IMPL=ts`; add the TS golden
   CI job.
+- [ ] **Phase 1 conformance gate (`ss-o72d`):** `biome ci`, `tsc --noEmit` (strict, clean),
+  `bun test --coverage` meets thresholds, no `any`, docstrings on public types — run before
+  starting Phase 2.
 
 ### Phase 2: TypeScript schema-view, soft-field, generated sections
 
@@ -632,6 +635,14 @@ Full feature parity; passes scenarios 3, 5, 6.
   Python design doc; a "Two reference implementations / canonical sidecar / golden corpus"
   note in the guide/spec.
 - [ ] Update `AGENTS.md` / `SKILL.md` to mention the TS implementation and `softschema-ts`.
+- [ ] **TypeScript guideline conformance review (`ss-4o98`):** run
+  `tbd shortcut review-code-typescript` on the branch diff and confirm the mechanical gates
+  against every TS guideline — `typescript-rules` (no `any`, lowerCamelCase, docstrings on
+  public types, field docs on type defs), `typescript-yaml-handling-rules` (`yaml@2`,
+  centralized sorted-key stringify), `typescript-cli-tool-rules` (Commander 15, picocolors,
+  `--color`/`NO_COLOR`/`FORCE_COLOR` precedence), `typescript-code-coverage` (coverage
+  thresholds, branch focus on union types), and `bun-monorepo-patterns` (`biome ci`, `bunup`
+  build, `publint`, publish-ready `package.json`, 14-day cool-off). Fix findings before merge.
 
 ## Testing Strategy
 
