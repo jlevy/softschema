@@ -26,4 +26,11 @@ describe("Contracts", () => {
     registry.register(contract("a:B/v1"));
     expect(() => registry.register(contract("a:B/v1", "envelope"))).toThrow("already registered");
   });
+
+  test("all returns a snapshot of registered contracts", () => {
+    const registry = new Contracts();
+    registry.register(contract("a:B/v1"));
+    registry.register(contract("c:D/v1"));
+    expect(Object.keys(registry.all).sort()).toEqual(["a:B/v1", "c:D/v1"]);
+  });
 });

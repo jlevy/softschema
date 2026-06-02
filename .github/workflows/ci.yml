@@ -109,8 +109,8 @@ jobs:
       - name: Lint
         run: bunx biome ci .
 
-      - name: Unit tests
-        run: bun test
+      - name: Unit tests + coverage gate
+        run: bun test --coverage
 
       - name: Build
         run: bunx bunup
