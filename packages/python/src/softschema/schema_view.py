@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+from frontmatter_format import read_yaml_file
 
 JsonPointer = str
 
@@ -47,8 +47,7 @@ class SchemaView:
     @classmethod
     def load(cls, schema_path: Path) -> SchemaView:
         """Load a YAML or JSON schema sidecar from disk."""
-        text = schema_path.read_text(encoding="utf-8")
-        data = yaml.safe_load(text)
+        data = read_yaml_file(schema_path)
         if not isinstance(data, dict):
             msg = f"schema at {schema_path} is not a mapping at the root"
             raise ValueError(msg)

@@ -25,7 +25,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from softschema.atomic import write_atomic
+from strif import atomic_write_text
+
 from softschema.schema_view import SchemaView
 
 _MARKER_OPEN = re.compile(
@@ -129,7 +130,7 @@ def regenerate(
     new_text += text[cursor:]
 
     if not check and result.drift:
-        write_atomic(path, new_text)
+        atomic_write_text(path, new_text)
     return result
 
 

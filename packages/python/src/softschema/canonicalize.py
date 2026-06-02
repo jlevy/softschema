@@ -23,8 +23,8 @@ The transforms are intentionally minimal and semantic:
    Non-null defaults are preserved.
 
 Key ordering (rule 5 in the design) is handled at serialization time
-(``yaml.safe_dump(..., sort_keys=True)`` and ``json.dumps(..., sort_keys=True)``
-for the hash), so it is not a transform here.
+(frontmatter-format's YAML writer with ``key_sort`` and ``json.dumps(...,
+sort_keys=True)`` for the hash), so it is not a transform here.
 """
 
 from __future__ import annotations

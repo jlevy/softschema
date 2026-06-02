@@ -65,14 +65,12 @@ $defs:
 $id: example.movies:MoviePage/v1
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
-description: 'A small movie info page, similar to a public IMDB-style listing.
-
+description: |-
+  A small movie info page, similar to a public IMDB-style listing.
 
   The fields illustrate the structural variety a softschema artifact can carry:
-
   constrained scalars, enums, lists of strings, lists of structured records, and
-
-  optional nested objects.'
+  optional nested objects.
 properties:
   cast:
     items:

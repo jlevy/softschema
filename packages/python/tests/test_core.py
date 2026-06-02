@@ -189,6 +189,17 @@ def test_validate_artifact_rejects_invalid_metadata(tmp_path: Path) -> None:
     assert result.structural.errors[0]["kind"] == "document_softschema_invalid"
 
 
+def test_validate_artifact_reports_parse_error_for_malformed_pure_yaml(tmp_path: Path) -> None:
+    doc = tmp_path / "bad.yaml"
+    doc.write_text("key: [unclosed\n  : : :\n")
+    contract = Contract(id="example:Sample/v1", profile=SchemaProfile.pure_yaml)
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "parse_error"
+
+
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(doc, "wrong:\n  name: hello\n  direction: up\n  delta: 1.5\n")

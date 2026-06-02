@@ -18,10 +18,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
 from frontmatter_format import FmFormatError, fmf_read, read_yaml_file
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
+from ruamel.yaml import YAMLError
 
 from softschema.errors import structural_error_record
 from softschema.models import (
@@ -182,7 +182,7 @@ def _validate_frontmatter_artifact(
 ) -> ArtifactValidationResult:
     try:
         _content, frontmatter = _read_frontmatter_doc(doc_path)
-    except (FmFormatError, yaml.YAMLError) as exc:
+    except (FmFormatError, YAMLError) as exc:
         return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if frontmatter is None:
         return _artifact_failure(
@@ -264,7 +264,7 @@ def _validate_pure_yaml_artifact(
 ) -> ArtifactValidationResult:
     try:
         raw = _read_yaml(doc_path)
-    except yaml.YAMLError as exc:
+    except YAMLError as exc:
         return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(

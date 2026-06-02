@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+from frontmatter_format import new_yaml
 from pydantic import BaseModel
+from strif import atomic_write_text
 
-from softschema.atomic import write_atomic
 from softschema.canonicalize import canonicalize_json_schema
 
 # Version of the `x-softschema` block format emitted into compiled sidecars,
@@ -72,7 +73,7 @@ def compile_model(
             schema_sha256=schema_sha256,
         )
 
-    write_atomic(out_path, rendered)
+    atomic_write_text(out_path, rendered, make_parents=True)
     return CompileResult(
         out_path=out_path,
         schema_yaml=rendered,
@@ -107,5 +108,15 @@ def _schema_sha256(schema: dict[str, Any]) -> str:
 
 
 def _yaml_dump(schema: dict[str, Any]) -> str:
-    # Canonical profile: keys sorted for deterministic, cross-language byte output.
-    return yaml.safe_dump(schema, sort_keys=True, default_flow_style=False, allow_unicode=True)
+    # Canonical profile: keys sorted for deterministic byte output. Use
+    # frontmatter-format's YAML (block style, clean multi-line scalars). Disable
+    # its default empty/None suppression — a schema serializer must never drop a
+    # field (e.g. an empty `properties` or a `null` enum member).
+    writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
+    # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
+    # wrapped onto continuation lines — keeps the sidecar clean and the byte
+    # output reproducible across implementations.
+    writer.width = 4096
+    buffer = io.StringIO()
+    writer.dump(schema, buffer)
+    return buffer.getvalue()
