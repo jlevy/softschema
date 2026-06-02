@@ -98,6 +98,9 @@ def validate_structural(values: Any, schema_yaml_path: Path) -> StructuralResult
         )
         for error in validator.iter_errors(values)
     ]
+    # Sort for a deterministic, engine-independent order (jsonschema and ajv do
+    # not guarantee the same iteration order), so golden output is stable.
+    errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
     return StructuralResult(ok=not errors, errors=errors)
 
 
