@@ -19,13 +19,9 @@ def test_render_structural_message_is_engine_neutral() -> None:
     # The wording is the cross-language contract; pin a few keywords exactly.
     assert render_structural_message("minimum", 0, -1) == "value -1 is less than the minimum of 0"
     assert (
-        render_structural_message("enum", ["G", "PG"], "X")
-        == "value 'X' is not one of ['G', 'PG']"
+        render_structural_message("enum", ["G", "PG"], "X") == "value 'X' is not one of ['G', 'PG']"
     )
-    assert (
-        render_structural_message("type", "integer", "x")
-        == "value 'x' is not of type 'integer'"
-    )
+    assert render_structural_message("type", "integer", "x") == "value 'x' is not of type 'integer'"
 
 
 def test_structural_error_record_shape() -> None:

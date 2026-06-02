@@ -22,7 +22,9 @@ core package.
 | --- | --- |
 | `softschema.models` | Contract, metadata, status, profile, stage, and warning models |
 | `softschema.registry` | In-memory collection that resolves contracts by id |
-| `softschema.validate` | Value resolution, structural validation, semantic validation, and artifact validation |
+| `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
+| `softschema.canonicalize` | Canonical JSON Schema profile shared with the future TypeScript port |
+| `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema sidecar compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
 
@@ -129,6 +131,33 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 
+There are two public entry points: `validate_artifact` (above) for Markdown/YAML
+documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
+a structured-output adapter, a fixture). The envelope is resolved directly from the
+document — an explicit `envelope_key`, or the single non-`softschema` top-level key when
+none is given. There is no separate value-path resolver. A relative `schema_path` is
+resolved against only the document directory and the current working directory, so
+resolution is predictable and never binds to an unrelated sidecar in a parent directory.
+
+### Engine-neutral structural errors
+
+Structural validation runs through `jsonschema`, but the error records it returns are
+synthesized by softschema, not passed through from the library. Each violation becomes
+`{kind: "schema_violation", path, validator, validator_value, value, message}` where
+`message` comes from a shared template keyed on the JSON Schema keyword (`softschema.errors`).
+Records are sorted by `(path, validator)`. This keeps structural errors byte-identical to
+the future TypeScript port (which validates the same canonical sidecar through `ajv`).
+Semantic errors stay implementation-specific (raw Pydantic errors) and are not part of the
+cross-language contract.
+
+### Alignment with `python-cli-patterns`
+
+The CLI follows the house Python-CLI conventions: exit codes `0` success / `1` validation
+failure or drift / `2` usage error; structured data to stdout and diagnostics to stderr;
+the package version comes from `importlib.metadata` via `uv-dynamic-versioning`. The
+package installs two console scripts, `softschema` and `softschema-py` (the latter pairs
+with a future `softschema-ts` for the shared golden corpus).
+
 ## Warning Codes
 
 Non-fatal advisory issues surface as `SchemaWarning` entries on
@@ -163,12 +192,13 @@ The current first-release kinds:
 | `no_frontmatter` | Frontmatter block is missing in a Markdown artifact. |
 | `frontmatter_not_mapping` | Frontmatter parsed but is not a mapping at the top level. |
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
-| `resolver_error` | `ValueResolver` could not extract values from the frontmatter (typically a missing envelope pointer). |
 | `contract_unknown` | No contract registered for the requested contract ID. |
 | `envelope_mismatch` | The contract’s `envelope_key` is not present in the frontmatter. |
+| `envelope_not_mapping` | The resolved envelope value is present but is not a mapping. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
 | `schema_sidecar_missing` | The contract declared a `schema_path` but the file does not exist or is unreadable. |
+| `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them
 as the documented surface and open an issue if a consumer needs a typed constant.
@@ -190,6 +220,14 @@ The emitted schema includes:
 - an `x-softschema` annotation block with `contract`, `generated_from`,
   `softschema_format_version`, and `schema_sha256` (a deterministic SHA-256 over the
   canonical JSON form of the schema)
+
+Before hashing and serialization, the raw `model_json_schema()` output is run through
+`softschema.canonicalize.canonicalize_json_schema`, which applies a small set of semantic
+transforms (drop auto-generated `title` keywords, strip the implicit `default: null` of
+optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`) and serializes with
+sorted keys. This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic
+model and one compiled from the equivalent Zod schema converge to byte-identical output
+with the same `schema_sha256`.
 
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
