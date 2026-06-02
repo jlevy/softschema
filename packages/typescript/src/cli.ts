@@ -4,8 +4,11 @@
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Command } from "commander";
+import type { z } from "zod";
 import { parse as yamlParse } from "yaml";
+import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
 import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
 import { stableStringify } from "./settings.js";
@@ -146,6 +149,42 @@ function runInspect(path: string): number {
   return 0;
 }
 
+async function runCompile(
+  spec: string,
+  opts: { contract?: string; out: string; check?: boolean },
+): Promise<number> {
+  try {
+    const idx = spec.lastIndexOf(":");
+    if (idx <= 0) {
+      throw new UsageError(`model spec must be path:export, got ${JSON.stringify(spec)}`);
+    }
+    const modulePath = spec.slice(0, idx);
+    const exportName = spec.slice(idx + 1);
+    const mod = (await import(resolve(modulePath))) as Record<string, unknown>;
+    const schema = mod[exportName];
+    if (schema === undefined) {
+      throw new UsageError(`${JSON.stringify(spec)} has no export ${JSON.stringify(exportName)}`);
+    }
+    const result = compileSchema(schema as z.ZodType, opts.out, {
+      contractId: opts.contract ?? null,
+      checkOnly: opts.check,
+    });
+    writeText(
+      stableStringify({
+        drift: result.drift,
+        drift_diff: result.driftDiff,
+        out_path: result.outPath,
+        schema_sha256: result.schemaSha256,
+        schema_yaml: result.schemaYaml,
+      }),
+    );
+    return result.drift ? 1 : 0;
+  } catch (err) {
+    process.stderr.write(`softschema compile: ${(err as Error).message}\n`);
+    return 2;
+  }
+}
+
 function runGenerate(paths: string[], opts: { check?: boolean }): number {
   let anyDrift = false;
   const files: Record<string, unknown>[] = [];
@@ -184,10 +223,20 @@ function runDocsList(): number {
   return 0;
 }
 
-export function main(argv: string[] = process.argv): number {
+export async function main(argv: string[] = process.argv): Promise<number> {
   const program = new Command();
   program.name("softschema").description("Validate and explain soft schema Markdown/YAML artifacts.");
   let exitCode = 0;
+
+  program
+    .command("compile")
+    .argument("<model>", "Zod schema as module:export")
+    .requiredOption("--out <path>")
+    .option("--contract <id>")
+    .option("--check", "do not write; exit 1 on drift")
+    .action(async (model: string, opts: { out: string; contract?: string; check?: boolean }) => {
+      exitCode = await runCompile(model, opts);
+    });
 
   program
     .command("validate")
@@ -236,11 +285,11 @@ export function main(argv: string[] = process.argv): number {
       exitCode = 0;
     });
 
-  program.parse(argv);
+  await program.parseAsync(argv);
   return exitCode;
 }
 
 const isMain = import.meta.main ?? process.argv[1]?.endsWith("cli.js");
 if (isMain) {
-  process.exit(main());
+  main().then((code) => process.exit(code));
 }

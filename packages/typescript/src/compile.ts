@@ -8,12 +8,11 @@
  * provenance string; that reconciliation is Phase 2. The content hash is independent of
  * YAML formatting.
  */
-import { writeFileSync } from "node:fs";
-import { existsSync, readFileSync } from "node:fs";
-import { stringify as yamlStringify } from "yaml";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
-import { schemaSha256 } from "./settings.js";
+import { canonicalJson, schemaSha256 } from "./settings.js";
 
 export const SOFTSCHEMA_FORMAT_VERSION = "0.1.0";
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -93,8 +92,10 @@ export function compileSchema(
         schemaSha256: sha,
       };
     }
-    const existing = readFileSync(outPath, "utf8");
-    const drift = existing.trim() !== rendered.trim();
+    // Compare parsed content, not raw bytes, so YAML formatting (a different writer than
+    // Python's) is not treated as drift; only a genuine schema change is.
+    const existing = yamlParse(readFileSync(outPath, "utf8")) as unknown;
+    const drift = canonicalJson(existing) !== canonicalJson(schema);
     return {
       outPath,
       schemaYaml: rendered,

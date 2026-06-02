@@ -39,18 +39,18 @@ export function parseSections(text: string): GeneratedSection[] {
   MARKER_OPEN.lastIndex = 0;
   let openMatch: RegExpExecArray | null = MARKER_OPEN.exec(text);
   while (openMatch !== null) {
-    const openEnd = openMatch.index + openMatch[0].length;
-    const closeIndex = text.indexOf(MARKER_CLOSE, openEnd);
+    const contentStart = openMatch.index + openMatch[0].length;
+    const closeIndex = text.indexOf(MARKER_CLOSE, contentStart);
     if (closeIndex === -1) {
       throw new Error(
         `unterminated softschema:generated marker starting at offset ${openMatch.index}`,
       );
     }
     sections.push({
-      start: openEnd,
+      start: contentStart,
       end: closeIndex,
       attrs: parseAttrs(openMatch[1] as string),
-      existingContent: text.slice(openEnd, closeIndex),
+      existingContent: text.slice(contentStart, closeIndex),
     });
     MARKER_OPEN.lastIndex = closeIndex + MARKER_CLOSE.length;
     openMatch = MARKER_OPEN.exec(text);

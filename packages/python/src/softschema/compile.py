@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from frontmatter_format import new_yaml
+from frontmatter_format import new_yaml, read_yaml_file
 from pydantic import BaseModel
 from strif import atomic_write_text
 
@@ -55,8 +55,11 @@ def compile_model(
                 drift_diff=f"missing committed schema sidecar at {out_path}",
                 schema_sha256=schema_sha256,
             )
-        existing = out_path.read_text()
-        if existing.strip() == rendered.strip():
+        # Compare parsed content, not raw bytes, so YAML formatting differences (e.g.
+        # a different writer in another implementation) are not treated as drift; only a
+        # genuine schema change is.
+        existing = read_yaml_file(out_path)
+        if existing == schema:
             return CompileResult(
                 out_path=out_path,
                 schema_yaml=rendered,
