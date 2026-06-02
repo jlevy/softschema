@@ -14,21 +14,31 @@ import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } 
 import { stableStringify } from "./settings.js";
 import { validateArtifact } from "./validate.js";
 
-const DOC_TOPICS: [string, string][] = [
-  ["agents", "Repo-level agent instructions."],
-  ["development", "Local development workflow."],
-  ["example", "Copyable example overview."],
-  ["example-artifact", "Copyable Markdown/YAML artifact."],
-  ["example-host", "Host registry and validation helper."],
-  ["example-model", "Pydantic model used by the example."],
-  ["guide", "Concepts, mental model, and adoption path."],
-  ["installation", "Installing uv and Python."],
-  ["publishing", "Release and PyPI workflow."],
-  ["python-design", "Python package design decisions."],
-  ["readme", "Short first-visitor overview."],
-  ["skill", "Portable agent skill instructions."],
-  ["spec", "Language-neutral artifact format."],
+interface DocTopic {
+  name: string;
+  title: string;
+  path: string;
+  summary: string;
+}
+
+// Sorted by name to match the Python CLI's `sorted(DOC_TOPICS)` output.
+const DOC_TOPICS: DocTopic[] = [
+  { name: "agents", title: "Agent Instructions", path: "AGENTS.md", summary: "Repo-level agent instructions." },
+  { name: "development", title: "Development", path: "docs/development.md", summary: "Local development workflow." },
+  { name: "example", title: "Movie Page Example", path: "examples/movie_page/README.md", summary: "Copyable example overview." },
+  { name: "example-artifact", title: "Movie Page Artifact", path: "examples/movie_page/spirited-away.md", summary: "Copyable Markdown/YAML artifact." },
+  { name: "example-host", title: "Movie Page Host Integration", path: "examples/movie_page/host_integration.py", summary: "Host registry and validation helper." },
+  { name: "example-model", title: "Movie Page Model", path: "examples/movie_page/model.py", summary: "Pydantic model used by the example." },
+  { name: "guide", title: "Softschema Guide", path: "docs/softschema-guide.md", summary: "Concepts, mental model, and adoption path." },
+  { name: "installation", title: "Installation", path: "docs/installation.md", summary: "Installing uv and Python." },
+  { name: "publishing", title: "Publishing", path: "docs/publishing.md", summary: "Release and PyPI workflow." },
+  { name: "python-design", title: "Python Package Design", path: "docs/softschema-python-design.md", summary: "Python package design decisions." },
+  { name: "readme", title: "README", path: "README.md", summary: "Short first-visitor overview." },
+  { name: "skill", title: "Softschema Skill", path: "skills/softschema/SKILL.md", summary: "Portable agent skill instructions." },
+  { name: "spec", title: "Softschema Spec", path: "docs/softschema-spec.md", summary: "Language-neutral artifact format." },
 ];
+
+const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
 
 const SKILL_BRIEF = `# Softschema Skill Brief
 
@@ -221,10 +231,10 @@ function runGenerate(paths: string[], opts: { check?: boolean }): number {
 }
 
 function runDocsList(): number {
-  const width = Math.max(...DOC_TOPICS.map(([name]) => name.length));
+  const width = Math.max(...DOC_TOPICS.map((t) => t.name.length));
   const lines = ["Available softschema docs:", ""];
-  for (const [name, summary] of DOC_TOPICS) {
-    lines.push(`  ${name.padEnd(width)}  ${summary}`);
+  for (const t of DOC_TOPICS) {
+    lines.push(`  ${t.name.padEnd(width)}  ${t.summary}`);
   }
   lines.push(
     "",
@@ -232,6 +242,45 @@ function runDocsList(): number {
     "Copy examples from the printed docs or from the repository files; the CLI does not scaffold or mutate projects.",
   );
   writeText(lines.join("\n"));
+  return 0;
+}
+
+function runDocsListJson(): number {
+  writeText(
+    stableStringify({
+      topics: DOC_TOPICS.map((t) => ({
+        name: t.name,
+        title: t.title,
+        path: t.path,
+        summary: t.summary,
+      })),
+      copyable_examples: COPYABLE_EXAMPLES,
+      scaffolding: false,
+    }),
+  );
+  return 0;
+}
+
+function runDocsTopic(topic: string, asJson: boolean): number {
+  const found = DOC_TOPICS.find((t) => t.name === topic);
+  if (found === undefined) {
+    process.stderr.write(`softschema docs: unknown topic ${JSON.stringify(topic)}\n`);
+    return 2;
+  }
+  let content: string;
+  try {
+    content = readFileSync(resolve(found.path), "utf8");
+  } catch {
+    process.stderr.write(`softschema docs: resource not found: ${found.path}\n`);
+    return 2;
+  }
+  if (asJson) {
+    writeText(
+      stableStringify({ name: found.name, title: found.title, path: found.path, summary: found.summary, content }),
+    );
+  } else {
+    writeText(content);
+  }
   return 0;
 }
 
@@ -269,15 +318,16 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       exitCode = runInspect(path);
     });
 
-  const docs = program.command("docs");
-  docs
+  program
+    .command("docs")
     .argument("[topic]", "topic to print")
     .option("--list", "list bundled documentation topics")
-    .action((_topic: string | undefined, opts: { list?: boolean }) => {
-      if (opts.list) {
-        exitCode = runDocsList();
+    .option("--json", "emit topic metadata (and content when a topic is selected) as JSON")
+    .action((topic: string | undefined, opts: { list?: boolean; json?: boolean }) => {
+      if (opts.list || topic === undefined) {
+        exitCode = opts.json ? runDocsListJson() : runDocsList();
       } else {
-        exitCode = runDocsList();
+        exitCode = runDocsTopic(topic, Boolean(opts.json));
       }
     });
 

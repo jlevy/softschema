@@ -16,6 +16,7 @@ export {
   type WarningCode,
   parseSchemaMetadata,
 } from "./models.js";
+export { Contracts } from "./registry.js";
 export { stableStringify, canonicalJson, schemaSha256 } from "./settings.js";
 export {
   validateArtifact,

@@ -70,3 +70,99 @@ consume some values reliably.
   explicitly asks for that workflow.
 ? 0
 ```
+
+# Test: docs --list --json emits structured topic metadata
+
+```console
+$ softschema docs --list --json
+{
+  "copyable_examples": [
+    "example",
+    "example-artifact",
+    "example-model",
+    "example-host"
+  ],
+  "scaffolding": false,
+  "topics": [
+    {
+      "name": "agents",
+      "path": "AGENTS.md",
+      "summary": "Repo-level agent instructions.",
+      "title": "Agent Instructions"
+    },
+    {
+      "name": "development",
+      "path": "docs/development.md",
+      "summary": "Local development workflow.",
+      "title": "Development"
+    },
+    {
+      "name": "example",
+      "path": "examples/movie_page/README.md",
+      "summary": "Copyable example overview.",
+      "title": "Movie Page Example"
+    },
+    {
+      "name": "example-artifact",
+      "path": "examples/movie_page/spirited-away.md",
+      "summary": "Copyable Markdown/YAML artifact.",
+      "title": "Movie Page Artifact"
+    },
+    {
+      "name": "example-host",
+      "path": "examples/movie_page/host_integration.py",
+      "summary": "Host registry and validation helper.",
+      "title": "Movie Page Host Integration"
+    },
+    {
+      "name": "example-model",
+      "path": "examples/movie_page/model.py",
+      "summary": "Pydantic model used by the example.",
+      "title": "Movie Page Model"
+    },
+    {
+      "name": "guide",
+      "path": "docs/softschema-guide.md",
+      "summary": "Concepts, mental model, and adoption path.",
+      "title": "Softschema Guide"
+    },
+    {
+      "name": "installation",
+      "path": "docs/installation.md",
+      "summary": "Installing uv and Python.",
+      "title": "Installation"
+    },
+    {
+      "name": "publishing",
+      "path": "docs/publishing.md",
+      "summary": "Release and PyPI workflow.",
+      "title": "Publishing"
+    },
+    {
+      "name": "python-design",
+      "path": "docs/softschema-python-design.md",
+      "summary": "Python package design decisions.",
+      "title": "Python Package Design"
+    },
+    {
+      "name": "readme",
+      "path": "README.md",
+      "summary": "Short first-visitor overview.",
+      "title": "README"
+    },
+    {
+      "name": "skill",
+      "path": "skills/softschema/SKILL.md",
+      "summary": "Portable agent skill instructions.",
+      "title": "Softschema Skill"
+    },
+    {
+      "name": "spec",
+      "path": "docs/softschema-spec.md",
+      "summary": "Language-neutral artifact format.",
+      "title": "Softschema Spec"
+    }
+  ]
+}
+? 0
+```
