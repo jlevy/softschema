@@ -47,10 +47,11 @@ export SOFTSCHEMA_BIN_DIR="$SHIM"
 echo "Running golden corpus against SOFTSCHEMA_IMPL=$IMPL ($target)"
 # Shared neutral scenarios run on both implementations; scenarios-$IMPL/ holds
 # the per-implementation scenarios (e.g. compile, whose invocation differs by
-# language even though its output is identical).
-shared="$REPO"/tests/golden/scenarios/*.md
-specific="$REPO"/tests/golden/scenarios-"$IMPL"/*.md
+# language even though its output is identical). nullglob so an empty per-impl
+# directory simply contributes no files.
+shopt -s nullglob
+files=("$REPO"/tests/golden/scenarios/*.md "$REPO"/tests/golden/scenarios-"$IMPL"/*.md)
 if command -v bunx >/dev/null 2>&1; then
-  exec bunx tryscript@latest run $shared $specific
+  exec bunx tryscript@latest run "${files[@]}"
 fi
-exec npx -y tryscript@latest run $shared $specific
+exec npx -y tryscript@latest run "${files[@]}"
