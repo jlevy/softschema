@@ -12,8 +12,11 @@ import { main } from "../src/cli.ts";
 const REPO = resolve(import.meta.dir, "../../..");
 const MOVIE_DOC = resolve(REPO, "examples/movie_page/spirited-away.md");
 const MOVIE_SCHEMA = resolve(REPO, "examples/movie_page/movie-page.schema.yaml");
+const MOVIE_README = resolve(REPO, "examples/movie_page/README.md");
 const BAD_DOC = resolve(REPO, "tests/golden/fixtures/bad-error-norm.md");
 const ERR_SCHEMA = resolve(REPO, "tests/golden/fixtures/error-norm.schema.yaml");
+const PARITY_MODEL = resolve(REPO, "packages/typescript/test/fixtures/parity.ts");
+const PARITY_SIDECAR = resolve(REPO, "examples/parity/parity.schema.yaml");
 
 const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
@@ -69,5 +72,33 @@ describe("cli main() in-process", () => {
 
   test("validate with no implementation exits 2 (usage error)", async () => {
     expect(await main(argv("validate", MOVIE_DOC, "--contract", "x:Y/v1"))).toBe(2);
+  });
+
+  test("generate --check on the committed example exits 0 (no drift)", async () => {
+    expect(await main(argv("generate", MOVIE_README, "--check"))).toBe(0);
+  });
+
+  test("compile --check matches the committed canonical sidecar (exit 0)", async () => {
+    expect(
+      await main(
+        argv(
+          "compile",
+          `${PARITY_MODEL}:KitchenSink`,
+          "--contract",
+          "example.parity:KitchenSink/v1",
+          "--out",
+          PARITY_SIDECAR,
+          "--check",
+        ),
+      ),
+    ).toBe(0);
+  });
+
+  test("compile --check reports drift for a different contract id (exit 1)", async () => {
+    expect(
+      await main(
+        argv("compile", `${PARITY_MODEL}:KitchenSink`, "--contract", "wrong:Sink/v1", "--out", PARITY_SIDECAR, "--check"),
+      ),
+    ).toBe(1);
   });
 });
