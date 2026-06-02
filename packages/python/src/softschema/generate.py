@@ -25,7 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from strif import atomic_write_text
+from strif import atomic_output_file
 
 from softschema.schema_view import SchemaView
 
@@ -130,7 +130,8 @@ def regenerate(
     new_text += text[cursor:]
 
     if not check and result.drift:
-        atomic_write_text(path, new_text)
+        with atomic_output_file(path) as tmp_path:
+            tmp_path.write_text(new_text, encoding="utf-8")
     return result
 
 
