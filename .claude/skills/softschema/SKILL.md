@@ -52,8 +52,8 @@ softschema docs --list             # full topic index
 Prefer a version-pinned zero-install runner:
 
 ```bash
-uvx softschema@0.1.1 --help          # ephemeral; reproducible
-uv tool install softschema==0.1.1    # persistent; lockfile-friendly
+uvx softschema@0.1.3 --help          # ephemeral; reproducible
+uv tool install softschema==0.1.3    # persistent; lockfile-friendly
 ```
 
 ## Self-Install (Optional)
