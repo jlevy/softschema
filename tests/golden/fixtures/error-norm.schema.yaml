@@ -1,0 +1,30 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+additionalProperties: false
+required:
+  - title
+  - year
+properties:
+  title:
+    type: string
+    minLength: 3
+  year:
+    type: integer
+    minimum: 1900
+  step:
+    type: integer
+    multipleOf: 5
+  scale:
+    type: number
+    multipleOf: 0.5
+  count:
+    type: integer
+  rating:
+    type: string
+    enum:
+      - G
+      - PG
+      - R
+  tags:
+    type: array
+    minItems: 2

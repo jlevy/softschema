@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
-import { normalizeAjvError, renderStructuralMessage, structuralErrorRecord } from "./errors.js";
+import {
+  collapseAdditionalProperties,
+  normalizeAjvError,
+  renderStructuralMessage,
+  structuralErrorRecord,
+} from "./errors.js";
 import {
   type Contract,
   contractToOutput,
@@ -97,11 +102,14 @@ describe("errors: every message template", () => {
       "value \"a'b\" does not match pattern 'x'",
     );
   });
-  test("normalizeAjvError maps fields + resolves the value", () => {
-    const rec = normalizeAjvError(
-      { instancePath: "/release_year", keyword: "minimum", params: { limit: 1888 } } as never,
-      { release_year: 1500 },
-    );
+  test("normalizeAjvError reads validator_value from error.schema and value from error.data", () => {
+    const rec = normalizeAjvError({
+      instancePath: "/release_year",
+      keyword: "minimum",
+      params: { limit: 1888 },
+      schema: 1888,
+      data: 1500,
+    } as never);
     expect(rec).toEqual(
       structuralErrorRecord({
         path: ["release_year"],
@@ -110,6 +118,52 @@ describe("errors: every message template", () => {
         value: 1500,
       }),
     );
+  });
+
+  test("normalizeAjvError uses error.schema for multipleOf (not params.limit)", () => {
+    // Regression for ss-f4sc: multipleOf lived in params.multipleOf, not params.limit,
+    // so the old mapping produced validator_value undefined and "multiple of None".
+    const rec = normalizeAjvError({
+      instancePath: "/step",
+      keyword: "multipleOf",
+      params: { multipleOf: 5 },
+      schema: 5,
+      data: 7,
+    } as never);
+    expect(rec.validator_value).toBe(5);
+    expect(rec.message).toBe("value 7 is not a multiple of 5");
+  });
+
+  test("normalizeAjvError uses the full required list for required (matching jsonschema)", () => {
+    // Regression for ss-l9ng: Python's validator_value is the whole required array.
+    const rec = normalizeAjvError({
+      instancePath: "",
+      keyword: "required",
+      params: { missingProperty: "title" },
+      schema: ["title", "year"],
+      data: { year: 2000 },
+    } as never);
+    expect(rec.validator_value).toEqual(["title", "year"]);
+    expect(rec.message).toBe("required property ['title', 'year'] is missing");
+  });
+
+  test("collapseAdditionalProperties keeps one record per object path", () => {
+    // Regression for ss-b1l9: ajv emits one additionalProperties error per extra key.
+    const base = structuralErrorRecord({
+      path: [],
+      validator: "additionalProperties",
+      validatorValue: false,
+      value: { a: 1, b: 2 },
+    });
+    expect(collapseAdditionalProperties([base, { ...base }])).toEqual([base]);
+    const req = structuralErrorRecord({
+      path: [],
+      validator: "required",
+      validatorValue: ["x"],
+      value: {},
+    });
+    // required duplicates are preserved (jsonschema also emits one per missing key).
+    expect(collapseAdditionalProperties([req, { ...req }])).toHaveLength(2);
   });
 });
 

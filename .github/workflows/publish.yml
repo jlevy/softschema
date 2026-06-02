@@ -32,7 +32,10 @@ jobs:
         run: echo "UV_EXCLUDE_NEWER=$(date -u -d '14 days ago' +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        # strif is a reviewed, zero-dependency, first-party package; exempt it from the
+        # global 14-day cool-off so the latest release is allowed (mirrors ci.yml). Bump
+        # the date to adopt a newer strif. See pyproject [tool.uv] exclude-newer-package.
+        run: uv sync --all-extras --exclude-newer-package strif=2026-06-03
 
       - name: Run linting
         run: uv run python devtools/lint.py --check
@@ -42,6 +45,22 @@ jobs:
 
       - name: Build package
         run: uv build
+
+      - name: Verify built version matches the release tag
+        if: github.event_name == 'release'
+        # The Python version is derived from git via uv-dynamic-versioning. Confirm it
+        # equals the tag so PyPI and npm publish the same number (the "share one version"
+        # invariant). A dirty tree or commits after the tag would derive a dev/post
+        # version and is caught here before upload.
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          WHEEL="$(ls dist/softschema-*.whl)"
+          BUILT="$(basename "$WHEEL" | sed -E 's/^softschema-([^-]+)-.*/\1/')"
+          echo "tag=$TAG built=$BUILT"
+          test "$TAG" = "$BUILT" || {
+            echo "::error::release tag v$TAG does not match the built Python version $BUILT"
+            exit 1
+          }
 
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always

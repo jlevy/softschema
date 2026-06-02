@@ -10,6 +10,7 @@ import addFormats from "ajv-formats";
 import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
 import {
+  collapseAdditionalProperties,
   compareStructuralRecords,
   normalizeAjvError,
   type StructuralErrorRecord,
@@ -123,13 +124,15 @@ export function validateStructural(
   const schema = { ...schemaObject };
   // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
   delete schema.$id;
-  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  // `verbose` makes each error carry `schema`/`data`, which `normalizeAjvError` maps
+  // onto jsonschema's `validator_value`/`instance` for cross-language byte parity.
+  const ajv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
   addFormats(ajv);
   const validateFn = ajv.compile(schema);
   const ok = validateFn(values);
   const errors: StructuralErrorRecord[] = ok
     ? []
-    : (validateFn.errors ?? []).map((e) => normalizeAjvError(e, values));
+    : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
   errors.sort(compareStructuralRecords);
   return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
 }
@@ -353,6 +356,7 @@ export function validateArtifact(
   }
 
   if (contract.envelopeKey !== null && !(contract.envelopeKey in frontmatter)) {
+    const actualKeys = Object.keys(frontmatter).filter((key) => key !== "softschema");
     return failure(
       docPath,
       contract,
@@ -360,6 +364,7 @@ export function validateArtifact(
       "envelope_mismatch",
       `contract '${contract.id}' expects '${contract.envelopeKey}'`,
       warnings,
+      { expected_key: contract.envelopeKey, actual_keys: actualKeys },
     );
   }
 

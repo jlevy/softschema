@@ -50,7 +50,15 @@ echo "Running golden corpus against SOFTSCHEMA_IMPL=$IMPL ($target)"
 # language even though its output is identical). nullglob so an empty per-impl
 # directory simply contributes no files.
 shopt -s nullglob
-files=("$REPO"/tests/golden/scenarios/*.md "$REPO"/tests/golden/scenarios-"$IMPL"/*.md)
+neutral=("$REPO"/tests/golden/scenarios/*.md)
+perimpl=("$REPO"/tests/golden/scenarios-"$IMPL"/*.md)
+# Guard against a per-impl scenario set silently vanishing: the always-present neutral
+# glob would otherwise keep the run non-empty and pass, hiding lost per-impl coverage.
+if [ ${#perimpl[@]} -eq 0 ]; then
+  echo "error: no scenarios found in tests/golden/scenarios-$IMPL/ (expected at least one)" >&2
+  exit 1
+fi
+files=("${neutral[@]}" "${perimpl[@]}")
 if command -v bunx >/dev/null 2>&1; then
   exec bunx tryscript@0.1.7 run "${files[@]}"
 fi

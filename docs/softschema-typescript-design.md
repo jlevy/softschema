@@ -68,6 +68,13 @@ messages, sorted by `(path, validator)`. CLI JSON uses a `stableStringify` that 
 Python's `json.dumps(..., indent=2, sort_keys=True, ensure_ascii=False)`; exit codes are
 `0` ok / `1` validation failure or drift / `2` usage error.
 
+`normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
+the analogues of jsonschema's `validator_value`/`instance`, so records match Python for
+every keyword; ajv's per-key `additionalProperties` errors are collapsed to one. One known
+divergence remains (`ss-wbnm`): JS loses the int/float distinction at parse, so a
+whole-number float renders `2` where Python renders `2.0`. See the parity plan (epic
+`ss-jgkf`) for the full analysis.
+
 ## Toolchain
 
 bun (runtime + package manager), `bunup` (build), `bun test` (unit), `biome` (lint +

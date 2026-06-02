@@ -418,6 +418,19 @@ empty errors and are fully byte-equal.
   and **warning codes** (`document-contract-mismatch`, `document-status-mismatch`) are
   string-level contracts shared verbatim by both languages and pinned by the corpus.
 
+**Error-normalization parity (epic `ss-jgkf`).** The TS-side `normalizeAjvError()` reads
+`error.schema`/`error.data` (ajv `verbose: true`) — the exact analogues of jsonschema's
+`error.validator_value`/`error.instance` — rather than hand-mapping per-keyword `params`,
+which had diverged from Python (`multipleOf`, `required`, `type`). ajv's one-error-per-key
+`additionalProperties` is collapsed to jsonschema's single record. The
+`tests/golden/scenarios/error-normalization.md` corpus scenario now pins `required`,
+`multipleOf`, `type`, `enum`, and `additionalProperties` byte-for-byte across both CLIs.
+**Known limitation (`ss-wbnm`):** Python preserves the int/float distinction from the
+source token (`repr(2.0) == "2.0"`); JS collapses `2.0` to `2` at parse time, so a
+whole-number float instance value renders `2` where Python renders `2.0`. Closing it
+requires a float-aware number type threaded through parse → validate → serialize; the
+corpus deliberately avoids whole-number floats until that is justified.
+
 ### CLI naming and the dual-CLI golden mechanism
 
 Per the requested design, each implementation ships an explicitly-named binary, with a

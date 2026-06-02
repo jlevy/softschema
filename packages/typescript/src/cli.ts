@@ -8,13 +8,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
 import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
 import { stableStringify } from "./settings.js";
-import { validateArtifact } from "./validate.js";
+import { readFrontmatter, validateArtifact, YamlParseError } from "./validate.js";
 
 // The package root holds the bundled `resources/` dir (copied at build, shipped via the
 // package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
@@ -209,23 +208,18 @@ function writeText(text: string): void {
 }
 
 function readFrontmatterRaw(path: string): Record<string, unknown> | null {
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return null;
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      end = i;
-      break;
-    }
-  }
-  if (end === -1) return null;
-  // Surface a malformed-frontmatter parse failure as a usage error (exit 2) with the
-  // YAML message, mirroring the Python CLI's FmFormatError handling, rather than letting
-  // the raw exception escape as a stack trace.
+  // Reuse the single frontmatter parser from validate.ts so the fence-scanning and
+  // empty-frontmatter handling cannot drift between the two entry points. Surface a
+  // malformed-YAML failure as a usage error (exit 2) with the message, mirroring the
+  // Python CLI's FmFormatError handling, rather than letting it escape as a stack trace.
   try {
-    return (yamlParse(lines.slice(1, end).join("\n")) ?? {}) as Record<string, unknown>;
+    const fm = readFrontmatter(path);
+    return fm.hasFence ? (fm.value as Record<string, unknown>) : null;
   } catch (err) {
-    throw new UsageError(`Error parsing YAML metadata: ${(err as Error).message}`);
+    if (err instanceof YamlParseError) {
+      throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
+    }
+    throw err;
   }
 }
 

@@ -10,8 +10,10 @@ The transforms are intentionally minimal and semantic:
 
 1. **Named-object extraction into ``$defs``** is a *precondition*, not a
    transform here: Pydantic already extracts nested models into ``$defs`` and
-   the Zod compiler must request the same (``reused: "ref"``). This function
-   asserts nothing about it and simply preserves whatever ``$defs`` exist.
+   the Zod compiler must request the matching shape with ``reused: "inline"``
+   (which extracts only id-registered named objects into ``$defs`` rather than
+   any repeated subschema). This function asserts nothing about it and simply
+   preserves whatever ``$defs`` exist.
 2. **Nullable unions are ``anyOf``.** A ``oneOf``/``anyOf`` that is exactly a
    type plus ``{"type": "null"}`` is normalized to ``anyOf`` (Pydantic's form;
    Zod emits ``oneOf`` for ``.nullable()``).

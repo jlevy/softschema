@@ -109,45 +109,46 @@ function decodePointerToken(token: string): string {
   return token.replace(/~1/g, "/").replace(/~0/g, "~");
 }
 
-function resolvePointer(data: unknown, path: string[]): unknown {
-  let current: unknown = data;
-  for (const key of path) {
-    if (current !== null && typeof current === "object") {
-      current = (current as Record<string, unknown>)[key];
-    } else {
-      return undefined;
-    }
-  }
-  return current;
-}
-
-function validatorValueFor(error: ErrorObject): unknown {
-  const params = error.params as Record<string, unknown>;
-  switch (error.keyword) {
-    case "enum":
-      return params.allowedValues;
-    case "type":
-      return params.type;
-    case "required":
-      return params.missingProperty;
-    case "additionalProperties":
-      return false;
-    case "pattern":
-      return params.pattern;
-    default:
-      // minimum/maximum/exclusive*/minItems/maxItems/minLength/maxLength/multipleOf
-      return "limit" in params ? params.limit : undefined;
-  }
-}
-
-/** Normalize one ajv error into the engine-neutral record (matching jsonschema's). */
-export function normalizeAjvError(error: ErrorObject, data: unknown): StructuralErrorRecord {
+/**
+ * Normalize one ajv error into the engine-neutral record (matching jsonschema's).
+ *
+ * ajv must run with `verbose: true` so each error carries `schema` (the value of the
+ * failing keyword) and `data` (the offending instance value). Those map exactly onto
+ * Python jsonschema's `error.validator_value` and `error.instance`, so reading them
+ * directly keeps the record byte-identical across implementations for every keyword.
+ * The previous per-keyword `params` mapping diverged from Python (e.g. `multipleOf`
+ * lives in `params.multipleOf`, not `params.limit`, and `required` is the missing key,
+ * not the required list); `schema`/`data` sidestep all of that.
+ */
+export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
   const path = error.instancePath.split("/").slice(1).map(decodePointerToken);
   return structuralErrorRecord({
     path,
     validator: error.keyword,
-    validatorValue: validatorValueFor(error),
-    value: resolvePointer(data, path),
+    validatorValue: error.schema,
+    value: error.data,
+  });
+}
+
+/**
+ * Collapse `additionalProperties` errors to one record per object path.
+ *
+ * ajv (with `allErrors`) reports one `additionalProperties` error per disallowed key,
+ * whereas Python jsonschema reports a single error for the whole object. After
+ * normalization the ajv records for the same object are byte-identical, so keeping the
+ * first per path reproduces jsonschema's one-record shape. Other keywords (e.g.
+ * `required`, which jsonschema also reports once per missing key) are left untouched.
+ */
+export function collapseAdditionalProperties(
+  records: StructuralErrorRecord[],
+): StructuralErrorRecord[] {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    if (record.validator !== "additionalProperties") return true;
+    const key = JSON.stringify(record.path);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 

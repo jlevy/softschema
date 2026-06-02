@@ -56,11 +56,19 @@ npm's trusted publisher can only be configured on a package that **already exist
 the very first publish of `softschema` is a chicken-and-egg case: the automated
 `publish-npm` job cannot run until the package is on the registry and the trusted
 publisher is set. Bootstrap it once, by hand, from a maintainer's machine — this is an
-interactive login, **not** a stored `NPM_TOKEN`:
+interactive login, **not** a stored `NPM_TOKEN`.
+
+**Bootstrap at the version already on PyPI**, so the two registries start in sync and the
+next tagged release exercises the automated dual-publish path for both. PyPI is at
+`0.1.2` and npm is unclaimed, so bootstrap npm `0.1.2`, then cut `0.1.3` for the first
+fully-automated synchronized release. Do **not** bootstrap npm at `0.1.3`: PyPI does not
+have `0.1.3` yet, so that would leave the registries mismatched and then collide with the
+workflow's own npm publish of `0.1.3`.
 
 1. **Confirm the name is free and the version matches PyPI.** `npm view softschema`
    should 404, and `packages/typescript/package.json` `"version"` must equal the version
-   already on PyPI (currently `0.1.3`).
+   already on PyPI (currently `0.1.2`; verify with `uvx pip index versions softschema` or
+   on pypi.org, do not assume).
 
 2. **Build and inspect the exact tarball that will publish:**
 
@@ -96,9 +104,11 @@ interactive login, **not** a stored `NPM_TOKEN`:
    (`npm logout`). From here on, every release publishes automatically through the
    workflow over OIDC, with provenance and no token.
 
-After the bootstrap, the version just published is taken: do **not** re-trigger the
-release workflow for that same `X.Y.Z` (npm rejects a duplicate version). The automated
-dual publish takes over from the next release (`X.Y.(Z+1)`).
+After the bootstrap, npm and PyPI both sit at the bootstrap version (`0.1.2`) and the
+version just published is taken: do **not** re-trigger the release workflow for that same
+`X.Y.Z` (npm rejects a duplicate version). The automated dual publish takes over from the
+next release (`0.1.3`), which bumps `packages/typescript/package.json` to `0.1.3`, tags
+`v0.1.3`, and publishes both packages in one workflow run.
 
 ## Release Checklist
 
