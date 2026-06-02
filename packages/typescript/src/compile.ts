@@ -8,7 +8,8 @@
  * provenance string; that reconciliation is Phase 2. The content hash is independent of
  * YAML formatting.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { writeFileSync } from "atomically";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
@@ -105,6 +106,6 @@ export function compileSchema(
     };
   }
 
-  writeFileSync(outPath, rendered, "utf8");
+  writeFileSync(outPath, rendered, { encoding: "utf8" });
   return { outPath, schemaYaml: rendered, drift: false, driftDiff: null, schemaSha256: sha };
 }
