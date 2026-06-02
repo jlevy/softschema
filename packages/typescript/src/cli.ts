@@ -6,7 +6,8 @@
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { parse as yamlParse } from "yaml";
-import { type Contract, parseSchemaMetadata, metadataToOutput, isSchemaStatus } from "./models.js";
+import { regenerate } from "./generate.js";
+import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
 import { stableStringify } from "./settings.js";
 import { validateArtifact } from "./validate.js";
 
@@ -145,6 +146,29 @@ function runInspect(path: string): number {
   return 0;
 }
 
+function runGenerate(paths: string[], opts: { check?: boolean }): number {
+  let anyDrift = false;
+  const files: Record<string, unknown>[] = [];
+  for (const path of paths) {
+    let result: ReturnType<typeof regenerate>;
+    try {
+      result = regenerate(path, { check: opts.check });
+    } catch (err) {
+      process.stderr.write(`error: ${path}: ${(err as Error).message}\n`);
+      return 1;
+    }
+    anyDrift = anyDrift || result.drift;
+    files.push({
+      path,
+      sections: result.sections,
+      drift: result.drift,
+      drift_details: result.driftDetails,
+    });
+  }
+  writeText(stableStringify({ check: Boolean(opts.check), drift: anyDrift, files }));
+  return opts.check && anyDrift ? 1 : 0;
+}
+
 function runDocsList(): number {
   const width = Math.max(...DOC_TOPICS.map(([name]) => name.length));
   const lines = ["Available softschema docs:", ""];
@@ -194,6 +218,14 @@ export function main(argv: string[] = process.argv): number {
       } else {
         exitCode = runDocsList();
       }
+    });
+
+  program
+    .command("generate")
+    .argument("<paths...>")
+    .option("--check", "do not write; exit 1 if any section is stale")
+    .action((paths: string[], opts: { check?: boolean }) => {
+      exitCode = runGenerate(paths, opts);
     });
 
   program

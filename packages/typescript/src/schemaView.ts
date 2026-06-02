@@ -1,0 +1,211 @@
+/**
+ * Read-only navigation over a compiled JSON Schema sidecar — the idiomatic mirror of the
+ * Python `SchemaView`. One reader for every downstream consumer (generated sections, QA,
+ * agent prompts) so $ref resolution and x-softschema lookup never diverge.
+ */
+import { readFileSync } from "node:fs";
+import { parse as yamlParse } from "yaml";
+
+const X_SOFTSCHEMA = "x-softschema";
+
+type SchemaNode = Record<string, unknown>;
+
+/** One leaf-ish property in a compiled JSON Schema bundle. */
+export interface FieldInfo {
+  /** JSON Pointer (RFC 6901) relative to the root schema document. */
+  pointer: string;
+  name: string;
+  jsonType: string | null;
+  enum: string[] | null;
+  required: boolean;
+  description: string | null;
+  /** The field's per-property `x-softschema` block (empty when unannotated). */
+  softmeta: Record<string, unknown>;
+}
+
+function isObject(value: unknown): value is SchemaNode {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function escapePointerSegment(segment: string): string {
+  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function unescapePointerSegment(segment: string): string {
+  return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+function refFromAnyOf(prop: SchemaNode): string | null {
+  const anyOf = prop.anyOf;
+  if (!Array.isArray(anyOf)) return null;
+  for (const entry of anyOf) {
+    if (isObject(entry) && typeof entry.$ref === "string") return entry.$ref;
+  }
+  return null;
+}
+
+function resolveRef(schema: SchemaNode, ref: string): SchemaNode | null {
+  if (!ref.startsWith("#/")) return null;
+  let cur: unknown = schema;
+  for (const rawSegment of ref.slice(2).split("/")) {
+    const segment = unescapePointerSegment(rawSegment);
+    if (isObject(cur) && segment in cur) {
+      cur = cur[segment];
+    } else {
+      return null;
+    }
+  }
+  return isObject(cur) ? cur : null;
+}
+
+function extractType(prop: SchemaNode): string | null {
+  const t = prop.type;
+  if (typeof t === "string") return t;
+  if (Array.isArray(t)) {
+    const nonNull = t.filter((e) => e !== "null");
+    if (nonNull.length === 1 && typeof nonNull[0] === "string") return nonNull[0];
+  }
+  const anyOf = prop.anyOf;
+  if (Array.isArray(anyOf)) {
+    for (const entry of anyOf) {
+      if (isObject(entry) && typeof entry.type === "string" && entry.type !== "null") {
+        return entry.type;
+      }
+    }
+  }
+  return null;
+}
+
+function extractEnum(prop: SchemaNode): string[] | null {
+  const enumValue = prop.enum;
+  if (Array.isArray(enumValue) && enumValue.every((v) => typeof v === "string")) {
+    return [...(enumValue as string[])];
+  }
+  const anyOf = prop.anyOf;
+  if (Array.isArray(anyOf)) {
+    for (const entry of anyOf) {
+      if (isObject(entry) && Array.isArray(entry.enum) && entry.enum.every((v) => typeof v === "string")) {
+        return [...(entry.enum as string[])];
+      }
+    }
+  }
+  return null;
+}
+
+function extractSoftmeta(prop: SchemaNode): Record<string, unknown> {
+  const meta = prop[X_SOFTSCHEMA];
+  return isObject(meta) ? { ...meta } : {};
+}
+
+export class SchemaView {
+  private readonly schema: SchemaNode;
+
+  constructor(schema: SchemaNode) {
+    this.schema = schema;
+  }
+
+  /** Load a YAML or JSON schema sidecar from disk. */
+  static load(schemaPath: string): SchemaView {
+    const data = yamlParse(readFileSync(schemaPath, "utf8")) as unknown;
+    if (!isObject(data)) {
+      throw new Error(`schema at ${schemaPath} is not a mapping at the root`);
+    }
+    return new SchemaView(data);
+  }
+
+  get raw(): SchemaNode {
+    return this.schema;
+  }
+
+  get rootSoftmeta(): Record<string, unknown> {
+    const meta = this.schema[X_SOFTSCHEMA];
+    return isObject(meta) ? { ...meta } : {};
+  }
+
+  get contractId(): string | null {
+    const metaContract = this.rootSoftmeta.contract;
+    if (typeof metaContract === "string") return metaContract;
+    return typeof this.schema.$id === "string" ? this.schema.$id : null;
+  }
+
+  get schemaSha256(): string | null {
+    const value = this.rootSoftmeta.schema_sha256;
+    return typeof value === "string" ? value : null;
+  }
+
+  iterFields(includeRefs = true): FieldInfo[] {
+    const out: FieldInfo[] = [];
+    this.walk(this.schema, "", new Set(), includeRefs, out);
+    return out;
+  }
+
+  field(pointer: string): FieldInfo {
+    const found = this.iterFields().find((info) => info.pointer === pointer);
+    if (found === undefined) throw new Error(`no field at pointer ${JSON.stringify(pointer)}`);
+    return found;
+  }
+
+  enumValues(pointer: string): string[] | null {
+    return this.field(pointer).enum;
+  }
+
+  softmeta(pointer: string): Record<string, unknown> {
+    return { ...this.field(pointer).softmeta };
+  }
+
+  fieldsByGroup(group: string): FieldInfo[] {
+    return this.iterFields().filter((f) => f.softmeta.group === group);
+  }
+
+  fieldsByOwner(owner: string): FieldInfo[] {
+    return this.iterFields().filter((f) => f.softmeta.owner === owner);
+  }
+
+  fieldsByTier(tier: string): FieldInfo[] {
+    return this.iterFields().filter((f) => f.softmeta.tier === tier);
+  }
+
+  private walk(
+    node: SchemaNode,
+    basePointer: string,
+    seenRefs: Set<string>,
+    includeRefs: boolean,
+    out: FieldInfo[],
+  ): void {
+    const properties = node.properties;
+    if (!isObject(properties)) return;
+    const requiredSet = new Set(Array.isArray(node.required) ? (node.required as string[]) : []);
+    for (const [name, rawProp] of Object.entries(properties)) {
+      if (!isObject(rawProp)) continue;
+      const prop = this.maybeResolveRef(rawProp, seenRefs, includeRefs);
+      const pointer = `${basePointer}/properties/${escapePointerSegment(name)}`;
+      out.push({
+        pointer,
+        name,
+        jsonType: extractType(prop),
+        enum: extractEnum(prop),
+        required: requiredSet.has(name),
+        description: typeof prop.description === "string" ? prop.description : null,
+        softmeta: extractSoftmeta(prop),
+      });
+      if (includeRefs && isObject(prop.properties)) {
+        this.walk(prop, pointer, seenRefs, includeRefs, out);
+      }
+    }
+  }
+
+  private maybeResolveRef(
+    prop: SchemaNode,
+    seenRefs: Set<string>,
+    includeRefs: boolean,
+  ): SchemaNode {
+    if (!includeRefs) return prop;
+    let ref = typeof prop.$ref === "string" ? prop.$ref : null;
+    if (ref === null) ref = refFromAnyOf(prop);
+    if (ref === null || seenRefs.has(ref)) return prop;
+    const target = resolveRef(this.schema, ref);
+    // Like the Python reader, resolution is not tracked across sibling branches, so a
+    // $def reused by multiple fields (e.g. Address) expands under each of them.
+    return target ?? prop;
+  }
+}
