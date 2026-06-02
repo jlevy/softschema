@@ -3,7 +3,7 @@
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -77,6 +77,64 @@ consume some values reliably.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.
 `;
+
+const SKILL_INSTALL_TARGETS = [
+  ".agents/skills/softschema/SKILL.md",
+  ".claude/skills/softschema/SKILL.md",
+];
+
+const SKILL_DO_NOT_EDIT_MARKER =
+  "<!-- DO NOT EDIT: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
+
+function packageVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as {
+      version?: string;
+    };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function renderedSkill(): string {
+  return readResource("skills/softschema/SKILL.md").replaceAll("<version>", packageVersion());
+}
+
+/** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
+function installSkillPayload(rendered: string): string {
+  const lines = rendered.split("\n");
+  let delimiters = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]?.trim() === "---") {
+      delimiters += 1;
+      if (delimiters === 2) {
+        lines.splice(i + 1, 0, SKILL_DO_NOT_EDIT_MARKER);
+        break;
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
+function runSkillInstall(): number {
+  const payload = installSkillPayload(renderedSkill());
+  const files = SKILL_INSTALL_TARGETS.map((relative) => {
+    const target = join(process.cwd(), relative);
+    const existing = existsSync(target) ? readFileSync(target, "utf8") : null;
+    let status: string;
+    if (existing === payload) {
+      status = "unchanged";
+    } else {
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, payload);
+      status = existing !== null ? "updated" : "created";
+    }
+    return { path: relative, status };
+  });
+  writeText(stableStringify({ version: packageVersion(), base_dir: process.cwd(), files }));
+  return 0;
+}
 
 function writeText(text: string): void {
   process.stdout.write(text);
@@ -364,9 +422,17 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   program
     .command("skill")
     .option("--brief", "print compact skill guidance")
-    .action((opts: { brief?: boolean }) => {
-      writeText(opts.brief ? SKILL_BRIEF : SKILL_BRIEF);
-      exitCode = 0;
+    .option("--install", "write discoverable skill mirrors into .agents and .claude")
+    .action((opts: { brief?: boolean; install?: boolean }) => {
+      if (opts.install) {
+        exitCode = runSkillInstall();
+      } else if (opts.brief) {
+        writeText(SKILL_BRIEF);
+        exitCode = 0;
+      } else {
+        writeText(renderedSkill());
+        exitCode = 0;
+      }
     });
 
   await program.parseAsync(argv);

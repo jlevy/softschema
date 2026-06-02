@@ -49,12 +49,20 @@ softschema docs --list             # full topic index
 
 ## Install
 
-Prefer a version-pinned zero-install runner:
+softschema ships two interchangeable implementations with the same CLI surface — pick
+the runtime you already have. Prefer a version-pinned zero-install runner:
 
 ```bash
-uvx softschema@0.1.3 --help          # ephemeral; reproducible
-uv tool install softschema==0.1.3    # persistent; lockfile-friendly
+# Python (Pydantic):
+uvx softschema@0.1.3 --help            # ephemeral; reproducible
+uv tool install softschema==0.1.3      # persistent; lockfile-friendly
+
+# TypeScript (Zod):
+npx @softschema/core@0.1.3 --help      # ephemeral; reproducible
 ```
+
+Both expose the same commands and flags and validate against the same canonical schema;
+the only difference is whether models are written as Pydantic or Zod.
 
 ## Self-Install (Optional)
 
