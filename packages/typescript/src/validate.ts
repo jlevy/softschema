@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { parse as yamlParse } from "yaml";
+import type { z } from "zod";
 import {
   compareStructuralRecords,
   normalizeAjvError,
@@ -87,6 +88,24 @@ export function validateStructural(values: unknown, schemaObject: Record<string,
   return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
 }
 
+/**
+ * Semantic validation via Zod `safeParse` — the idiomatic mirror of the Python Pydantic
+ * layer. Errors are implementation-specific (Zod issues) and are not part of the
+ * cross-language byte contract; only pass/fail and the field path are portable.
+ */
+export function validateSemantic(values: unknown, model: z.ZodType): SemanticResult {
+  const result = model.safeParse(values);
+  if (result.success) {
+    return { ok: true, errors: [], skipped_reason: null };
+  }
+  const errors = result.error.issues.map((issue) => ({
+    code: issue.code,
+    path: issue.path,
+    message: issue.message,
+  }));
+  return { ok: false, errors, skipped_reason: null };
+}
+
 export interface ArtifactValidationResult {
   ok: boolean;
   output: Record<string, unknown>;
@@ -142,8 +161,12 @@ function failure(
   });
 }
 
-/** Validate a frontmatter-md artifact against a contract (structural layer only). */
-export function validateArtifact(docPath: string, contract: Contract): ArtifactValidationResult {
+/** Validate a frontmatter-md artifact against a contract (structural + optional semantic). */
+export function validateArtifact(
+  docPath: string,
+  contract: Contract,
+  options: { semanticModel?: z.ZodType } = {},
+): ArtifactValidationResult {
   const { frontmatter } = readFrontmatter(docPath);
   if (frontmatter === null) {
     return failure(docPath, contract, null, "no_frontmatter", `no frontmatter in ${docPath}`);
@@ -218,9 +241,10 @@ export function validateArtifact(docPath: string, contract: Contract): ArtifactV
     structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
   }
 
-  // The semantic (Zod) layer is not wired in the neutral path; it is skipped identically
-  // to the Python side when no model is supplied.
-  const semantic: SemanticResult = { ok: true, errors: [], skipped_reason: "no_semantic_model" };
+  const semantic: SemanticResult =
+    options.semanticModel !== undefined
+      ? validateSemantic(values, options.semanticModel)
+      : { ok: true, errors: [], skipped_reason: "no_semantic_model" };
 
   return buildResult({
     docPath,

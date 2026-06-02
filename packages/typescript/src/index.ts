@@ -20,7 +20,11 @@ export { stableStringify, canonicalJson, schemaSha256 } from "./settings.js";
 export {
   validateArtifact,
   validateStructural,
+  validateSemantic,
   type ArtifactValidationResult,
   type StructuralResult,
   type SemanticResult,
 } from "./validate.js";
+export { softField, softFieldMeta, type SoftFieldOptions } from "./softField.js";
+export { SchemaView, type FieldInfo } from "./schemaView.js";
+export { regenerate, parseSections, type RegenerateResult } from "./generate.js";

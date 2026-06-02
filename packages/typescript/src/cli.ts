@@ -92,11 +92,23 @@ interface ValidateOptions {
   status?: string;
 }
 
-function runValidate(path: string, opts: ValidateOptions): number {
+async function loadZodModel(spec: string): Promise<z.ZodType> {
+  const idx = spec.lastIndexOf(":");
+  if (idx <= 0) throw new UsageError(`model spec must be path:export, got ${JSON.stringify(spec)}`);
+  const mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
+  const schema = mod[spec.slice(idx + 1)];
+  if (schema === undefined) {
+    throw new UsageError(`${JSON.stringify(spec)} has no export ${JSON.stringify(spec.slice(idx + 1))}`);
+  }
+  return schema as z.ZodType;
+}
+
+async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
     if (opts.model === undefined && opts.schema === undefined) {
       throw new UsageError("missing validation implementation; pass --model, --schema, or both");
     }
+    const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     const frontmatter = readFrontmatterRaw(path);
     if (frontmatter === null) {
       if (opts.contract === undefined) {
@@ -124,7 +136,7 @@ function runValidate(path: string, opts: ValidateOptions): number {
       profile: "frontmatter-md",
       schemaPath: opts.schema ?? null,
     };
-    const result = validateArtifact(path, contract);
+    const result = validateArtifact(path, contract, { semanticModel });
     writeText(stableStringify(result.output));
     return result.ok ? 0 : 1;
   } catch (err) {
@@ -246,8 +258,8 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .option("--model <spec>")
     .option("--schema <path>")
     .option("--status <status>")
-    .action((path: string, opts: ValidateOptions) => {
-      exitCode = runValidate(path, opts);
+    .action(async (path: string, opts: ValidateOptions) => {
+      exitCode = await runValidate(path, opts);
     });
 
   program
