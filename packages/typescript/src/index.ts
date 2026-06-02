@@ -22,10 +22,20 @@ export {
   validateArtifact,
   validateStructural,
   validateSemantic,
+  validateValues,
   type ArtifactValidationResult,
   type StructuralResult,
   type SemanticResult,
+  type ValidationResult,
+  type MetadataMode,
 } from "./validate.js";
-export { softField, softFieldMeta, type SoftFieldOptions } from "./softField.js";
+export {
+  softField,
+  softFieldMeta,
+  type SoftFieldOptions,
+  type SoftOwner,
+  type SoftTier,
+  type RepairKind,
+} from "./softField.js";
 export { SchemaView, type FieldInfo } from "./schemaView.js";
 export { regenerate, parseSections, type RegenerateResult } from "./generate.js";
