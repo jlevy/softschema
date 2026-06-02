@@ -244,6 +244,68 @@ cross-language. (See Canonical Error Records.)
 
 ## Design
 
+### Cross-language parity standard (the bar)
+
+The two implementations must be **equivalent**, not merely similar. Concretely:
+
+- **CLI inputs/flags are equivalent.** Same subcommands (`validate`, `compile`, `inspect`,
+  `docs`, `generate`, `skill`) and same flags (`--contract`, `--envelope`, `--model`,
+  `--schema`, `--status`, `--check`, `--list`, `--json`, `--brief`). The one idiomatic
+  difference: `--model`/`compile`'s *source* is a Pydantic `module:Class` on Python and a
+  Zod module export on TypeScript — equivalent role, idiomatic per language.
+- **CLI outputs are equivalent**, and for the shared neutral corpus, **byte-identical**.
+  Only genuinely incidental, non-semantic formatting may differ; we hold the stronger
+  byte-identical bar wherever practical (the corpus enforces it).
+- **Library APIs are equivalent.** `validate_artifact`/`validateArtifact`,
+  `validate_values`/`validateValues`, `compile_model`/`compileSchema`,
+  `Contracts`, `SchemaView`, `SoftField`/`softField`, `parse_schema_metadata`/
+  `parseSchemaMetadata`, `regenerate`. Names are idiomatic (snake_case ↔ camelCase);
+  shapes, semantics, error `kind`s, and warning codes are identical.
+- **The canonical JSON Schema sidecar is exact.** A Pydantic model and the equivalent Zod
+  schema compile to a **byte-identical** sidecar with the same `schema_sha256`. This is the
+  hardest guarantee and is proven by the comprehensive fixture below.
+- **Semantic invariants are impl-specific by design** (Pydantic validators ↔ Zod
+  refinements) and tested per-language; only the portable structural subset is exact.
+
+### Pydantic ↔ Zod reconciliation matrix
+
+Raw `model_json_schema()` and `z.toJSONSchema()` differ; `canonicalize_json_schema` (run
+by both compilers) normalizes every divergence to one canonical form. Each row is a
+reconciliation rule; "status" tracks whether it is implemented and fixture-covered.
+
+| Aspect | Pydantic raw | Zod raw | Canonical rule | Status |
+| --- | --- | --- | --- | --- |
+| Auto `title` | on every property/$def | none | drop all `title` keywords (never names) | done |
+| Optional+nullable | `anyOf:[X,{null}]` + `default:null` | `oneOf:[X,{null}]` | `anyOf:[X,{null}]`, strip implicit `default:null` | done |
+| Nullable union form | `anyOf` | `oneOf` | rewrite type-or-null `oneOf`→`anyOf` | done |
+| `required` order | field-definition order | field order | sort (set semantics) | done |
+| Provenance | `generated_from: module:Class` | n/a | omit `generated_from` (language leak) | done |
+| Key order | insertion | insertion | sort keys at serialization | done |
+| Named-object reuse | always `$defs/<ClassName>` | `reused:"inline"` default | Zod compiles with `reused:"ref"`; register each nested object with `id=<ClassName>` so `$defs` keys match | **todo (ts)** |
+| Bounded int/number | `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum` | `z.number().min()/.gt()` → verify same keywords | verify Zod emits identical keywords (incl. number vs integer `type`) | **todo (verify)** |
+| `multipleOf` | `multipleOf` | `z.number().multipleOf()` | verify identical | **todo (verify)** |
+| String constraints | `minLength`/`maxLength`/`pattern` | `z.string().min()/.max()/.regex()` | verify identical (esp. `pattern` source) | **todo (verify)** |
+| Enum | `enum:[...]` + `type:string` | `z.enum([...])` → `enum` (verify `type` emitted) | preserve authored order; ensure `type` present | **todo (verify)** |
+| Mapping | `dict[str,int]` → `type:object`+`additionalProperties:{type:integer}` | `z.record(z.string(), z.int())` | verify identical `additionalProperties` shape | **todo (verify)** |
+| Non-nullable union | `anyOf:[{integer},{string}]` | `z.union([...])` → `anyOf` (verify order) | author union members in same order | **todo (verify)** |
+| Object closure | `extra="forbid"`→`additionalProperties:false` | `z.strictObject()` | both emit `false` | **todo (verify)** |
+| Per-property `x-softschema` | `SoftField` `json_schema_extra` | `softField()` `.meta()` | identical block + omit-empty rules | **todo (ts)** |
+
+The comprehensive fixture is what turns every "verify" into "done": features that prove
+irreconcilable get removed from the **portable subset** and documented as
+not-cross-language (authors avoid them in shared contracts).
+
+### Comprehensive parity fixture
+
+`examples/parity/` is the conformance fixture (not a teaching example). `model.py`
+(Pydantic `KitchenSink`) and `packages/typescript/test/fixtures/parity.ts` (the
+equivalent Zod schema) must both compile to the **committed** `parity.schema.yaml`. The
+fixture exercises the portable matrix above (scalars+constraints, enums, optional/nullable
+±default, defaults, nested objects with reuse, mapping, union, full `x-softschema`).
+`test_parity.py` (Python) and a TS conformance test each assert no-drift against the
+committed reference; a cross-implementation test asserts the two compiled sidecars are
+byte-equal with the same `schema_sha256`.
+
 ### Cross-language architecture
 
 ```text
