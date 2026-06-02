@@ -166,3 +166,12 @@ $ softschema docs --list --json
 }
 ? 0
 ```
+
+# Test: docs <topic> prints the bundled document (both CLIs, from bundled resources)
+
+```console
+$ softschema docs spec
+# Softschema Spec
+...
+? 0
+```

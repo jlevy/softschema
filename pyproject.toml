@@ -159,7 +159,7 @@ reportMissingTypeArgument = false
 reportPrivateUsage = false
 
 [tool.codespell]
-skip = "uv.lock,bun.lock,*.schema.yaml,*/node_modules/*,*/dist/*"
+skip = "uv.lock,bun.lock,*.schema.yaml,*/node_modules/*,*/dist/*,*/resources/*"
 ignore-words-list = "fo"
 
 [tool.pytest.ini_options]

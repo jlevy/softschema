@@ -226,3 +226,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# TS bundled doc/skill resources (generated at build by copy-resources)
+packages/typescript/resources/

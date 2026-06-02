@@ -3,8 +3,9 @@
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import type { z } from "zod";
 import { parse as yamlParse } from "yaml";
@@ -13,6 +14,27 @@ import { regenerate } from "./generate.js";
 import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
 import { stableStringify } from "./settings.js";
 import { validateArtifact } from "./validate.js";
+
+// The package root holds the bundled `resources/` dir (copied at build, shipped via the
+// package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Read a bundled doc/skill resource by its repo-relative path. Resolves from the package's
+ * bundled `resources/` first (so it never depends on the working directory), with a
+ * walk-up repo fallback for local development before the resources are built.
+ */
+function readResource(relPath: string): string {
+  const bundled = join(PACKAGE_ROOT, "resources", relPath);
+  if (existsSync(bundled)) return readFileSync(bundled, "utf8");
+  let dir = PACKAGE_ROOT;
+  for (let i = 0; i < 6; i++) {
+    const candidate = join(dir, relPath);
+    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
+    dir = resolve(dir, "..");
+  }
+  throw new Error(`bundled softschema resource not found: ${relPath}`);
+}
 
 interface DocTopic {
   name: string;
@@ -269,7 +291,7 @@ function runDocsTopic(topic: string, asJson: boolean): number {
   }
   let content: string;
   try {
-    content = readFileSync(resolve(found.path), "utf8");
+    content = readResource(found.path);
   } catch {
     process.stderr.write(`softschema docs: resource not found: ${found.path}\n`);
     return 2;

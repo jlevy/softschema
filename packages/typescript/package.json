@@ -13,9 +13,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "resources"],
   "scripts": {
-    "build": "bunup",
+    "copy-resources": "bun scripts/copy-resources.ts",
+    "build": "bun scripts/copy-resources.ts && bunup",
     "test": "bun test",
     "test:cov": "bun test --coverage",
     "lint": "biome check .",
