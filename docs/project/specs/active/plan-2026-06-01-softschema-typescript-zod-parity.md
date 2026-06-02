@@ -604,6 +604,41 @@ with two patterns handling all nondeterminism. No mocks needed (no network/clock
 - Keep `pytest` and add `bun test` for per-language edge cases (including semantic-only
   refinements), which golden tests supplement rather than replace.
 
+### Docs embedding equivalence
+
+Both CLIs must **embed** the same documentation set the same way — the Python wheel
+already force-includes the guide/spec/design/examples/skill as bundled resources
+(`softschema docs <topic>` reads them via `importlib.resources`). The TypeScript package
+must do the equivalent: bundle the doc/skill text into `@softschema/core` (at `bunup`
+build) so `docs <topic>`, `docs <topic> --json`, and `skill --install`/`--brief` work
+when the package is installed standalone from npm — not only inside this monorepo where
+the repo files happen to be on disk. Resolution order mirrors Python: bundled resource
+first, repo file as a dev fallback. Equivalence is **tested**, not assumed: `docs --list
+--json` is already in the golden corpus; `docs <topic>` content is added there too
+(byte-identical py↔ts), plus a standalone smoke test that runs `softschema-ts` with only
+the bundled resources. The doc **topic set** is identical across CLIs (every doc is a
+registered topic in both), including `typescript-design` and the parity-process doc.
+
+### Parity development process (keep the two in sync)
+
+A short, enforced loop documented in `docs/development.md` (and referenced from
+`AGENTS.md`/`SKILL.md`) so the two implementations never drift:
+
+1. **Golden first** — for any behavior change, write or update the shared `tests/golden/`
+   scenario (or per-impl scenario) before touching code.
+2. **Implement in Python**, run `pytest` + `SOFTSCHEMA_IMPL=py` golden.
+3. **Port to TypeScript**, run `bun test` + `SOFTSCHEMA_IMPL=ts` golden.
+4. **Both green + conformance** — the cross-impl conformance test (KitchenSink sha) and
+   both golden runs pass in CI.
+
+The parity invariants and where each is enforced: the **canonical schema** (equal
+`schema_sha256`, conformance test), **engine-neutral structural errors** (shared message
+templates, golden), **byte-identical neutral CLI output** (golden corpus), and **equal
+flag/command surface** (per-impl + neutral scenarios). Skill/agent install follows
+`cli-agent-skill-patterns`: a thin dual-runner `SKILL.md` (uvx + npx), copied to
+`.agents/` and `.claude/` mirrors, with a **drift test** (commit-and-dogfood) so the
+committed mirrors can never go stale.
+
 ## Implementation Plan
 
 ### Phase 0: Python cleanup + canonical profile + Python-side golden corpus
