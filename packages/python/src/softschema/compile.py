@@ -11,7 +11,7 @@ from typing import Any
 
 from frontmatter_format import new_yaml
 from pydantic import BaseModel
-from strif import atomic_output_file
+from strif import atomic_write_text
 
 from softschema.canonicalize import canonicalize_json_schema
 
@@ -73,8 +73,7 @@ def compile_model(
             schema_sha256=schema_sha256,
         )
 
-    with atomic_output_file(out_path, make_parents=True) as tmp_path:
-        tmp_path.write_text(rendered, encoding="utf-8")
+    atomic_write_text(out_path, rendered, make_parents=True)
     return CompileResult(
         out_path=out_path,
         schema_yaml=rendered,

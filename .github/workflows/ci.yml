@@ -37,7 +37,10 @@ jobs:
         run: echo "UV_EXCLUDE_NEWER=$(date -u -d '14 days ago' +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        # strif is a reviewed, zero-dependency, first-party package; exempt it from the
+        # global 14-day cool-off so the latest release is allowed. Bump the date to adopt
+        # a newer strif. See pyproject [tool.uv] exclude-newer-package.
+        run: uv sync --all-extras --exclude-newer-package strif=2026-06-03
 
       - name: Run linting
         run: uv run python devtools/lint.py --check
@@ -70,7 +73,10 @@ jobs:
         run: echo "UV_EXCLUDE_NEWER=$(date -u -d '14 days ago' +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        # strif is a reviewed, zero-dependency, first-party package; exempt it from the
+        # global 14-day cool-off so the latest release is allowed. Bump the date to adopt
+        # a newer strif. See pyproject [tool.uv] exclude-newer-package.
+        run: uv sync --all-extras --exclude-newer-package strif=2026-06-03
 
       - name: Set up Node
         uses: actions/setup-node@v6
