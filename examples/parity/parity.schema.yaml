@@ -143,5 +143,5 @@ required:
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 4b6cc1cd66fb102a00c629efd5fddeebe3b14c8ce63395e6149cade4ebedbe08
+  schema_sha256: 04b43f93b81acbc068fa91f9c6b6c11c1c73a70bffdcd3efe7065b7a26e7cfad
   softschema_format_version: 0.1.0

@@ -102,7 +102,11 @@ def _augment_schema(
 
 
 def _schema_sha256(schema: dict[str, Any]) -> str:
-    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"), default=str)
+    # ensure_ascii=False so the hash is over literal UTF-8 (matching the TypeScript
+    # JSON.stringify); otherwise non-ASCII in descriptions would hash differently.
+    canonical = json.dumps(
+        schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

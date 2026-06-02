@@ -52,21 +52,35 @@ function renderYaml(schema: Record<string, unknown>): string {
   return yamlStringify(schema, { sortMapEntries: true, lineWidth: 0 });
 }
 
-export function compileSchema(
+/**
+ * Build the canonical schema object (with schema_sha256 set), without serializing or
+ * writing. Exposed so conformance tests can compare the content directly to the
+ * committed reference, independent of YAML formatting.
+ */
+export function buildCanonicalSchema(
   zodSchema: z.ZodType,
-  outPath: string,
-  options: CompileOptions = {},
-): CompileResult {
-  const contractId = options.contractId ?? null;
+  contractId: string | null = null,
+): { schema: Record<string, unknown>; sha: string } {
   const raw = z.toJSONSchema(zodSchema, {
     target: "draft-2020-12",
     io: "input",
-    reused: "ref",
+    // Only id-registered named objects (Address, Event) belong in $defs; primitives stay
+    // inline. "inline" extracts by id, not by repetition, matching Pydantic's $defs shape.
+    reused: "inline",
     unrepresentable: "throw",
   }) as Record<string, unknown>;
   const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId));
   const sha = schemaSha256(schema);
   (schema["x-softschema"] as Record<string, unknown>).schema_sha256 = sha;
+  return { schema, sha };
+}
+
+export function compileSchema(
+  zodSchema: z.ZodType,
+  outPath: string,
+  options: CompileOptions = {},
+): CompileResult {
+  const { schema, sha } = buildCanonicalSchema(zodSchema, options.contractId ?? null);
   const rendered = renderYaml(schema);
 
   if (options.checkOnly) {

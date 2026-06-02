@@ -31,6 +31,17 @@ function isPlainObject(value: Json): value is Record<string, Json> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isEmptyDefault(value: Json): boolean {
+  if (value === null) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (isPlainObject(value)) return Object.keys(value).length === 0;
+  return false;
+}
+
+function isStringKeyConstraint(value: Json): boolean {
+  return isPlainObject(value) && Object.keys(value).length === 1 && value.type === "string";
+}
+
 function canonicalizeSchema(node: Json): Json {
   if (!isPlainObject(node)) {
     return node;
@@ -39,7 +50,13 @@ function canonicalizeSchema(node: Json): Json {
   const out: Record<string, Json> = {};
   for (const [key, value] of Object.entries(normalized)) {
     if (key === "title") continue;
-    if (key === "default" && value === null) continue;
+    // Drop implicit/empty defaults (null, [], {}); Pydantic omits these, Zod emits them.
+    if (key === "default" && isEmptyDefault(value)) continue;
+    // Drop Zod's JS safe-integer sentinel bounds (z.int() adds these for unbounded sides).
+    if (key === "minimum" && value === Number.MIN_SAFE_INTEGER) continue;
+    if (key === "maximum" && value === Number.MAX_SAFE_INTEGER) continue;
+    // Drop the redundant string-key constraint z.record emits; JSON keys are always strings.
+    if (key === "propertyNames" && isStringKeyConstraint(value)) continue;
     if (key === "required" && Array.isArray(value)) {
       // `required` is a set; sort it so cross-language field order is irrelevant.
       out[key] = [...(value as string[])].sort();

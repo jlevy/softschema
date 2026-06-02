@@ -31,6 +31,21 @@ from __future__ import annotations
 
 from typing import Any
 
+# JavaScript Number.MIN_SAFE_INTEGER / MAX_SAFE_INTEGER, which Zod's z.int() emits as
+# minimum/maximum for otherwise-unbounded integers. Stripped so the canonical form is
+# free of language-specific integer bounds.
+_JS_MIN_SAFE_INTEGER = -9007199254740991
+_JS_MAX_SAFE_INTEGER = 9007199254740991
+
+
+def _is_empty_default(value: Any) -> bool:
+    return value is None or value == [] or value == {}
+
+
+def _is_string_key_constraint(value: Any) -> bool:
+    return isinstance(value, dict) and list(value.keys()) == ["type"] and value["type"] == "string"
+
+
 # Keywords whose value is a mapping of arbitrary *names* to subschemas. Their
 # keys are field/definition names (which may legitimately be "title" or
 # "default") and must be preserved; only their values are subschemas.
@@ -63,7 +78,17 @@ def _canonicalize_schema(node: Any) -> Any:
     for key, value in node.items():
         if key == "title":
             continue
-        if key == "default" and value is None:
+        # Drop implicit/empty defaults (null, [], {}); these are no-ops on Pydantic output
+        # but normalize Zod's `.default([])`/`.default({})`/nullable defaults.
+        if key == "default" and _is_empty_default(value):
+            continue
+        # Drop JS safe-integer sentinel bounds that Zod's int() adds for unbounded sides.
+        if key == "minimum" and value == _JS_MIN_SAFE_INTEGER:
+            continue
+        if key == "maximum" and value == _JS_MAX_SAFE_INTEGER:
+            continue
+        # Drop the redundant string-key constraint (z.record); JSON keys are always strings.
+        if key == "propertyNames" and _is_string_key_constraint(value):
             continue
         if key == "required" and isinstance(value, list):
             # `required` is a set; sort it so cross-language field-definition order

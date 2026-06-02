@@ -281,19 +281,24 @@ reconciliation rule; "status" tracks whether it is implemented and fixture-cover
 | `required` order | field-definition order | field order | sort (set semantics) | done |
 | Provenance | `generated_from: module:Class` | n/a | omit `generated_from` (language leak) | done |
 | Key order | insertion | insertion | sort keys at serialization | done |
-| Named-object reuse | always `$defs/<ClassName>` | `reused:"inline"` default | Zod compiles with `reused:"ref"`; register each nested object with `id=<ClassName>` so `$defs` keys match | **todo (ts)** |
-| Bounded int/number | `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum` | `z.number().min()/.gt()` → verify same keywords | verify Zod emits identical keywords (incl. number vs integer `type`) | **todo (verify)** |
-| `multipleOf` | `multipleOf` | `z.number().multipleOf()` | verify identical | **todo (verify)** |
-| String constraints | `minLength`/`maxLength`/`pattern` | `z.string().min()/.max()/.regex()` | verify identical (esp. `pattern` source) | **todo (verify)** |
-| Enum | `enum:[...]` + `type:string` | `z.enum([...])` → `enum` (verify `type` emitted) | preserve authored order; ensure `type` present | **todo (verify)** |
-| Mapping | `dict[str,int]` → `type:object`+`additionalProperties:{type:integer}` | `z.record(z.string(), z.int())` | verify identical `additionalProperties` shape | **todo (verify)** |
-| Non-nullable union | `anyOf:[{integer},{string}]` | `z.union([...])` → `anyOf` (verify order) | author union members in same order | **todo (verify)** |
-| Object closure | `extra="forbid"`→`additionalProperties:false` | `z.strictObject()` | both emit `false` | **todo (verify)** |
-| Per-property `x-softschema` | `SoftField` `json_schema_extra` | `softField()` `.meta()` | identical block + omit-empty rules | **todo (ts)** |
+| Named-object reuse | always `$defs/<ClassName>` | `reused:"inline"` extracts only `id`-registered | Zod compiles with `reused:"inline"`; register each nested object with `.meta({id:<ClassName>})` so `$defs` keys match | done |
+| Bounded int/number | `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum` | `z.number().min()/.gt()` emits same keywords | identical | done |
+| Integer safe-bounds | none | `z.int()` adds `minimum:-9007199254740991`/`maximum:9007199254740991` for unbounded sides | strip the JS safe-integer sentinel bounds | done |
+| `multipleOf` | `multipleOf` | `z.number().multipleOf()` | identical | done |
+| String constraints | `minLength`/`maxLength`/`pattern` | `z.string().min()/.max()/.regex()` | identical | done |
+| Enum | `enum:[...]` + `type:string` | `z.enum([...])` → `enum` + `type` | identical (authored order preserved) | done |
+| Mapping | `dict[str,int]` → `additionalProperties:{type:integer}` | `z.record(z.string(),z.int())` adds `propertyNames:{type:string}` | strip the redundant `propertyNames:{type:string}` | done |
+| Empty-collection default | `default_factory` → no `default` emitted | `.default([])`/`.default({})` emit `default:[]`/`{}` | strip empty-collection defaults (`[]`,`{}`) like `null` | done |
+| Non-nullable union | `anyOf:[{integer},{string}]` | `z.union([...])` → `anyOf` (same order) | author union members in same order | done |
+| Object closure | `extra="forbid"`→`additionalProperties:false` | `z.strictObject()`→`false` | identical | done |
+| Per-property `x-softschema` | `SoftField` `json_schema_extra` | `softField()` `.meta()` | identical block + omit-empty rules | done |
+| Hash encoding | `json.dumps` (was `ensure_ascii=True`) | `JSON.stringify` (literal UTF-8) | hash literal UTF-8 both sides (`ensure_ascii=False`) | done |
 
-The comprehensive fixture is what turns every "verify" into "done": features that prove
-irreconcilable get removed from the **portable subset** and documented as
-not-cross-language (authors avoid them in shared contracts).
+All rows are reconciled and proven by the comprehensive fixture: the Zod `KitchenSink`
+compiles to the **byte-identical canonical schema and equal `schema_sha256`** as the
+committed Pydantic `parity.schema.yaml` (TS `test/conformance.test.ts`). Any future
+feature that proves irreconcilable would be removed from the **portable subset** and
+documented as not-cross-language.
 
 ### Comprehensive parity fixture
 
