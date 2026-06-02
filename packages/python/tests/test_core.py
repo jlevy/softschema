@@ -256,7 +256,7 @@ def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> Non
 
     assert not result.ok
     assert result.structural.errors[0]["kind"] == "schema_sidecar_missing"
-    assert result.semantic.skipped_reason == "no_pydantic_model"
+    assert result.semantic.skipped_reason == "no_semantic_model"
 
 
 def test_registry_registers_complete_bindings_only() -> None:

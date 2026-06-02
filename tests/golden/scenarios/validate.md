@@ -6,19 +6,22 @@ path:
   - $SOFTSCHEMA_BIN_DIR
 ---
 
-# Test: validate the movie example (structural + semantic ok)
+# Test: validate the movie example against the schema (structural ok)
 
 The neutral `softschema` command resolves to `softschema-py` or `softschema-ts`
 depending on `SOFTSCHEMA_IMPL` (see `tests/golden/run.sh`). Both implementations
-must produce byte-identical output.
+must produce byte-identical output. Validation uses only the language-neutral
+JSON Schema sidecar (`--schema`); the semantic layer (Pydantic / Zod) is
+implementation-specific and is exercised per-language, not here, so the semantic
+block is skipped identically.
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --model examples.movie_page.model:MoviePage --schema examples/movie_page/movie-page.schema.yaml --envelope movie
+$ softschema validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml --envelope movie
 {
   "contract": {
     "envelope_key": "movie",
     "id": "example.movies:MoviePage/v1",
-    "model": "examples.movie_page.model:MoviePage",
+    "model": null,
     "profile": "frontmatter-md",
     "schema_path": "examples/movie_page/movie-page.schema.yaml",
     "status": "enforced"
@@ -33,7 +36,7 @@ $ softschema validate examples/movie_page/spirited-away.md --model examples.movi
   "semantic": {
     "errors": [],
     "ok": true,
-    "skipped_reason": null
+    "skipped_reason": "no_semantic_model"
   },
   "status": "enforced",
   "structural": {
@@ -87,11 +90,11 @@ $ softschema validate examples/movie_page/spirited-away.md --model examples.movi
 ? 0
 ```
 
-# Test: structural validation failure (schema only, engine-neutral records)
+# Test: structural validation failure (engine-neutral, sorted records)
 
-Validating against only the schema (no `--model`) keeps the output free of
-implementation-specific semantic errors, so the structural error records are
-identical across implementations. Errors are sorted by (path, validator).
+A bad fixture fails structural validation. Errors are engine-neutral records
+(softschema-synthesized messages) sorted by (path, validator), so `jsonschema`
+and `ajv` produce identical output.
 
 ```console
 $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie
@@ -114,7 +117,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
   "semantic": {
     "errors": [],
     "ok": true,
-    "skipped_reason": "no_pydantic_model"
+    "skipped_reason": "no_semantic_model"
   },
   "status": "enforced",
   "structural": {

@@ -366,7 +366,7 @@ def _validate_extracted_values(
     semantic = (
         validate_semantic(values, contract.model)
         if contract.model is not None
-        else SemanticResult(ok=True, skipped_reason="no_pydantic_model")
+        else SemanticResult(ok=True, skipped_reason="no_semantic_model")
     )
     return ArtifactValidationResult(
         path=doc_path,

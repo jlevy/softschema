@@ -45,8 +45,12 @@ chmod +x "$SHIM/softschema"
 
 export SOFTSCHEMA_BIN_DIR="$SHIM"
 echo "Running golden corpus against SOFTSCHEMA_IMPL=$IMPL ($target)"
-# Prefer bunx (the chosen toolchain); fall back to npx where only Node is present.
+# Shared neutral scenarios run on both implementations; scenarios-$IMPL/ holds
+# the per-implementation scenarios (e.g. compile, whose invocation differs by
+# language even though its output is identical).
+shared="$REPO"/tests/golden/scenarios/*.md
+specific="$REPO"/tests/golden/scenarios-"$IMPL"/*.md
 if command -v bunx >/dev/null 2>&1; then
-  exec bunx tryscript@latest run "$REPO"/tests/golden/scenarios/*.md
+  exec bunx tryscript@latest run $shared $specific
 fi
-exec npx -y tryscript@latest run "$REPO"/tests/golden/scenarios/*.md
+exec npx -y tryscript@latest run $shared $specific

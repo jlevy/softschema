@@ -501,16 +501,24 @@ becoming the executable spec the TS CLI must satisfy unchanged.
   `TMPPATH: '...'`). Show everything else literally — contract IDs, statuses, error kinds,
   enum tables, etc. (per the guideline's anti-patterns). Semantic `errors` arrays in
   failing scenarios are patterned (impl-specific).
-- **Scenarios (few, end-to-end, <100ms each):**
-  1. `validate-happy` — movie example: structural + semantic `ok`.
-  2. `validate-structural-fail` — bad enum / out-of-range / missing required → exit 1; full
-     `structural.errors` shown (canonical), `semantic.ok:false` with errors patterned.
-  3. `validate-envelope-errors` — missing envelope, ambiguous multi-key (needs `--envelope`),
-     no `softschema.contract` (needs `--contract`), invalid `softschema:` block.
-  4. `compile-and-check` — compile model→sidecar; `--check` clean; mutate model → drift exit 1
-     (SHA-256 patterned).
-  5. `generate-sections` — render `enum_table`/`field_list`/`vocab`; `--check` drift.
-  6. `inspect-and-docs` — `inspect`; `docs --list --json`; `skill --brief` smoke.
+- **Neutral inputs only in the shared set.** The CLI's language-neutral surface is
+  `validate --schema`, `inspect`, `docs`, `skill`, `generate`. The semantic layer
+  (`--model`: Pydantic vs Zod) and `compile` (source is a Pydantic class vs a Zod module)
+  are language-specific *invocations* and live in `scenarios-py/` / `scenarios-ts/`
+  (identical expected output, different command). `run.sh` runs `scenarios/` +
+  `scenarios-$IMPL/`. Output strings are neutralized (e.g. `skipped_reason:
+  no_semantic_model`, not `no_pydantic_model`).
+- **Shared `scenarios/` (run on both):**
+  1. `validate.md` — schema-only validate of the movie example (structural ok, semantic
+     skipped `no_semantic_model`); plus a structural failure with full canonical,
+     engine-neutral, sorted `structural.errors` (exit 1).
+  2. `inspect-and-docs.md` — `inspect`; `docs --list`; `skill --brief`.
+  3. `envelope-errors.md` — ambiguous multi-key envelope (needs `--envelope`); missing
+     validation implementation (exit 2, stderr).
+  4. (Phase 2) `generate.md` — render `enum_table`/`field_list`/`vocab`; `--check` drift.
+- **Per-impl `scenarios-{py,ts}/`:** `compile.md` — `compile --check` no-drift (literal
+  `schema_sha256`) and drift; Python source is `module:Class`, TS source is a Zod module;
+  identical output otherwise.
 - **Cross-implementation conformance test** (separate from tryscript, runs both binaries at
   once): compile the movie schema via `softschema-py` and `softschema-ts`, assert
   byte-equal canonical sidecars and equal `schema_sha256`.

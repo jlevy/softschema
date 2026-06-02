@@ -38,13 +38,24 @@ there are **no unstable fields** and no patterns are needed. Note in particular:
 3. Review the diff in `scenarios/` as a behavioral change.
 4. Commit the scenario files alongside the code.
 
-## Scenarios
+## Layout
 
-| File | Covers |
-| --- | --- |
-| `validate.md` | happy path (structural + semantic ok); structural failure with engine-neutral, sorted error records |
-| `compile.md` | `compile --check` no-drift (literal digest) and drift (different contract id) |
-| `inspect-and-docs.md` | `inspect`; `docs --list`; `skill --brief` |
-| `envelope-errors.md` | ambiguous envelope and missing validation implementation (exit 2, stderr) |
+- `scenarios/` — **neutral** scenarios that run on **both** implementations. They use
+  only language-neutral inputs (the JSON Schema sidecar via `--schema`, `inspect`,
+  `docs`, `skill`). The semantic layer (`--model`: Pydantic vs Zod) and `compile` (whose
+  source is a Pydantic class vs a Zod module) are language-specific and are **not** here.
+- `scenarios-py/` and `scenarios-ts/` — per-implementation scenarios whose *invocation*
+  differs by language even though the *output* is identical (e.g. `compile`). `run.sh`
+  runs `scenarios/` plus `scenarios-$IMPL/`.
+- `fixtures/` — shared input artifacts.
 
-Fixtures live in `fixtures/`.
+| File | Scope | Covers |
+| --- | --- | --- |
+| `scenarios/validate.md` | both | schema-only validate: structural ok; structural failure with engine-neutral, sorted error records |
+| `scenarios/inspect-and-docs.md` | both | `inspect`; `docs --list`; `skill --brief` |
+| `scenarios/envelope-errors.md` | both | ambiguous envelope and missing validation implementation (exit 2, stderr) |
+| `scenarios-py/compile.md` | py | `compile --check` no-drift (literal digest) and drift; source is a Pydantic class |
+| `scenarios-ts/compile.md` | ts | same output; source is a Zod module |
+
+Compile parity (byte-identical sidecar, equal digest) across languages is additionally
+asserted by the cross-implementation conformance test.
