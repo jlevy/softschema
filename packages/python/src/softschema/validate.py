@@ -1,11 +1,19 @@
-"""Softschema validation for Markdown frontmatter and YAML artifacts."""
+"""Softschema validation for Markdown frontmatter and YAML artifacts.
+
+Two public entry points:
+
+- :func:`validate_artifact` validates a Markdown/YAML document against a
+  :class:`~softschema.models.Contract` (reads ``softschema:`` metadata, resolves
+  the envelope, runs structural and semantic validation).
+- :func:`validate_values` validates an already-extracted values mapping against
+  a model, a JSON Schema sidecar, or both.
+
+Lower-level helpers (:func:`validate_structural`, :func:`validate_semantic`) are
+public for callers that need a single layer.
+"""
 
 from __future__ import annotations
 
-import gzip
-import tempfile
-from collections.abc import Callable
-from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -13,9 +21,9 @@ from typing import Any, Literal
 import yaml
 from frontmatter_format import FmFormatError, fmf_read, read_yaml_file
 from jsonschema import Draft202012Validator
-from jsonschema.exceptions import ValidationError as JsonSchemaError
 from pydantic import BaseModel, ValidationError
 
+from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
     SchemaMetadata,
@@ -33,6 +41,7 @@ class StructuralResult:
     ok: bool
     errors: list[dict[str, Any]] = field(default_factory=list)
     engine: str = "json_schema"
+    skipped_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,44 +85,23 @@ class ArtifactValidationResult:
         return [warning.code for warning in self.warnings]
 
 
-HostAdapter = Callable[[dict[str, Any]], dict[str, Any]]
-
-
-@dataclass(frozen=True)
-class ValueResolver:
-    """Project frontmatter into the values dict a schema validates."""
-
-    kind: Literal["values_key", "frontmatter_root", "host_adapter"] = "values_key"
-    pointer: str = "/values"
-    exclude_keys: tuple[str, ...] = ()
-    host_adapter: HostAdapter | None = None
-
-    def resolve(self, frontmatter: dict[str, Any]) -> dict[str, Any]:
-        if self.kind == "values_key":
-            value = _walk_pointer(frontmatter, self.pointer)
-        elif self.kind == "frontmatter_root":
-            value = {k: v for k, v in frontmatter.items() if k not in self.exclude_keys}
-        elif self.kind == "host_adapter":
-            if self.host_adapter is None:
-                raise ValueError("host_adapter mode requires a callable")
-            value = self.host_adapter(frontmatter)
-        else:
-            raise ValueError(f"unknown ValueResolver kind: {self.kind}")
-        if not isinstance(value, dict):
-            msg = f"resolved value is {type(value).__name__}, expected dict"
-            raise TypeError(msg)
-        return value
-
-
-def validate_structural(values: dict[str, Any], schema_yaml_path: Path) -> StructuralResult:
+def validate_structural(values: Any, schema_yaml_path: Path) -> StructuralResult:
     """Validate values against a JSON Schema YAML or JSON sidecar."""
     schema = _read_yaml(schema_yaml_path)
     validator = Draft202012Validator(schema)
-    errors = [_describe_jsonschema_error(error) for error in validator.iter_errors(values)]
+    errors = [
+        structural_error_record(
+            path=list(error.absolute_path),
+            validator=str(error.validator),
+            validator_value=error.validator_value,
+            value=error.instance,
+        )
+        for error in validator.iter_errors(values)
+    ]
     return StructuralResult(ok=not errors, errors=errors)
 
 
-def validate_semantic(values: dict[str, Any], model_cls: type[BaseModel]) -> SemanticResult:
+def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult:
     """Validate values by calling ``model_cls.model_validate``."""
     try:
         model_cls.model_validate(values)
@@ -123,12 +111,12 @@ def validate_semantic(values: dict[str, Any], model_cls: type[BaseModel]) -> Sem
 
 
 def validate_values(
-    values: dict[str, Any],
+    values: Any,
     *,
     model: type[BaseModel] | None = None,
     schema: Path | None = None,
 ) -> ValidationResult:
-    """Validate a pre-extracted values dict against a model, a schema, or both.
+    """Validate a pre-extracted values mapping against a model, a schema, or both.
 
     Returns a ``ValidationResult`` with separate ``structural`` and ``semantic``
     fields. Engines that were not requested are reported as ok (with no errors)
@@ -140,54 +128,6 @@ def validate_values(
     """
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")
-    structural = validate_structural(values, schema) if schema else StructuralResult(ok=True)
-    semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
-    return ValidationResult(structural=structural, semantic=semantic)
-
-
-def validate(
-    doc_path: Path,
-    *,
-    model: type[BaseModel] | None = None,
-    schema: Path | None = None,
-    resolver: ValueResolver | None = None,
-) -> ValidationResult:
-    """Run structural and semantic validation against a frontmatter Markdown document."""
-    if model is None and schema is None:
-        raise ValueError("validate() requires at least one of model= or schema=")
-    resolver = resolver or ValueResolver(kind="frontmatter_root", exclude_keys=("softschema",))
-
-    try:
-        _content, frontmatter = _read_frontmatter_doc(doc_path)
-    except (FmFormatError, yaml.YAMLError) as exc:
-        return ValidationResult(
-            structural=StructuralResult(ok=False, errors=[_error("parse_error", str(exc))]),
-            semantic=SemanticResult(ok=False, skipped_reason="parse_error"),
-        )
-    if frontmatter is None:
-        return ValidationResult(
-            structural=StructuralResult(
-                ok=False,
-                errors=[_error("no_frontmatter", f"no frontmatter in {doc_path}")],
-            ),
-            semantic=SemanticResult(ok=False, skipped_reason="no_frontmatter"),
-        )
-    if not isinstance(frontmatter, dict):
-        return ValidationResult(
-            structural=StructuralResult(
-                ok=False,
-                errors=[_error("frontmatter_not_mapping", "frontmatter is not a mapping")],
-            ),
-            semantic=SemanticResult(ok=False, skipped_reason="frontmatter_not_mapping"),
-        )
-    try:
-        values = resolver.resolve(dict(frontmatter))
-    except Exception as exc:
-        return ValidationResult(
-            structural=StructuralResult(ok=False, errors=[_resolver_error(resolver, exc)]),
-            semantic=SemanticResult(ok=False, skipped_reason="resolver_error"),
-        )
-
     structural = validate_structural(values, schema) if schema else StructuralResult(ok=True)
     semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
     return ValidationResult(structural=structural, semantic=semantic)
@@ -284,11 +224,27 @@ def _validate_frontmatter_artifact(
             semantic=SemanticResult(ok=False, skipped_reason="envelope_mismatch"),
         )
 
-    resolver = _resolver_for_binding(contract)
-    try:
-        values = resolver.resolve(frontmatter)
-    except Exception as exc:
-        return _resolver_failure(doc_path, contract, metadata, warnings, resolver, exc)
+    values = _extract_envelope_values(frontmatter, contract)
+    if not isinstance(values, dict):
+        return ArtifactValidationResult(
+            path=doc_path,
+            contract_id=contract.id,
+            status=contract.status,
+            profile=contract.profile,
+            contract=contract,
+            document_metadata=metadata,
+            warnings=warnings,
+            structural=StructuralResult(
+                ok=False,
+                errors=[
+                    _error(
+                        "envelope_not_mapping",
+                        f"envelope value is {type(values).__name__}, expected mapping",
+                    )
+                ],
+            ),
+            semantic=SemanticResult(ok=False, skipped_reason="envelope_not_mapping"),
+        )
     return _validate_extracted_values(
         doc_path,
         contract,
@@ -315,6 +271,18 @@ def _validate_pure_yaml_artifact(
             f"YAML root is {type(raw).__name__}, expected mapping",
         )
     return _validate_extracted_values(doc_path, contract, raw, metadata=None, warnings=warnings)
+
+
+def _extract_envelope_values(frontmatter: dict[str, Any], contract: Contract) -> Any:
+    """Project frontmatter to the values the contract validates.
+
+    With an explicit ``envelope_key`` the named mapping is the payload. Without
+    one, the payload is every top-level key except ``softschema``. This is the
+    spec's single-envelope rule; there is no value-path resolver.
+    """
+    if contract.envelope_key is not None:
+        return frontmatter[contract.envelope_key]
+    return {key: value for key, value in frontmatter.items() if key != "softschema"}
 
 
 def _metadata_from_frontmatter(
@@ -364,14 +332,6 @@ def _metadata_from_frontmatter(
     return metadata
 
 
-def _resolver_for_binding(contract: Contract) -> ValueResolver:
-    if contract.envelope_key is not None:
-        return ValueResolver(
-            kind="values_key", pointer=f"/{_encode_json_pointer(contract.envelope_key)}"
-        )
-    return ValueResolver(kind="frontmatter_root", exclude_keys=("softschema",))
-
-
 def _validate_extracted_values(
     doc_path: Path,
     contract: Contract,
@@ -396,9 +356,9 @@ def _validate_extracted_values(
         else:
             structural = validate_structural(values, schema_path)
     elif contract.model is not None:
-        structural = StructuralResult(ok=True, engine="skipped_inferred_via_model")
+        structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
     else:
-        structural = StructuralResult(ok=True, engine="skipped_no_schema")
+        structural = StructuralResult(ok=True, skipped_reason="no_schema")
 
     semantic = (
         validate_semantic(values, contract.model)
@@ -420,13 +380,19 @@ def _validate_extracted_values(
 
 
 def _resolve_schema_path(path: Path | None, doc_path: Path) -> Path | None:
+    """Resolve a sidecar path, searching only the document directory and cwd.
+
+    The search is intentionally bounded to two locations so resolution is
+    predictable and cannot silently bind to an unrelated ``*.schema.yaml`` in a
+    parent directory.
+    """
     if path is None:
         return None
     if path.exists():
         return path
     if path.is_absolute():
         return None
-    for base in (doc_path.parent, Path.cwd(), *Path.cwd().parents):
+    for base in (doc_path.parent, Path.cwd()):
         candidate = base / path
         if candidate.exists():
             return candidate
@@ -455,101 +421,13 @@ def _artifact_failure(
     )
 
 
-def _resolver_failure(
-    doc_path: Path,
-    contract: Contract,
-    metadata: SchemaMetadata | None,
-    warnings: list[SchemaWarning],
-    resolver: ValueResolver,
-    exc: Exception,
-) -> ArtifactValidationResult:
-    return ArtifactValidationResult(
-        path=doc_path,
-        contract_id=contract.id,
-        status=contract.status,
-        profile=contract.profile,
-        contract=contract,
-        document_metadata=metadata,
-        warnings=warnings,
-        structural=StructuralResult(ok=False, errors=[_resolver_error(resolver, exc)]),
-        semantic=SemanticResult(ok=False, skipped_reason="resolver_error"),
-    )
-
-
 def _read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
-    if path.suffix != ".gz":
-        return fmf_read(path)
-    with _temporary_text_artifact(path) as temp_path:
-        return fmf_read(temp_path)
+    return fmf_read(path)
 
 
 def _read_yaml(path: Path) -> Any:
-    if path.suffix != ".gz":
-        return read_yaml_file(path)
-    with gzip.open(path, "rt", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
-
-
-def _describe_jsonschema_error(err: JsonSchemaError) -> dict[str, Any]:
-    return {
-        "path": list(err.absolute_path),
-        "message": err.message,
-        "validator": err.validator,
-        "validator_value": err.validator_value,
-        "value": err.instance,
-    }
-
-
-def _walk_pointer(obj: Any, pointer: str) -> Any:
-    if not pointer or pointer == "/":
-        return obj
-    cur = obj
-    for raw_segment in pointer.lstrip("/").split("/"):
-        segment = _decode_json_pointer(raw_segment)
-        if isinstance(cur, dict):
-            if segment not in cur:
-                raise KeyError(f"pointer segment {segment!r} missing in dict")
-            cur = cur[segment]
-        elif isinstance(cur, list):
-            cur = cur[int(segment)]
-        else:
-            raise TypeError(f"cannot walk pointer into {type(cur).__name__}")
-    return cur
-
-
-def _encode_json_pointer(segment: str) -> str:
-    return segment.replace("~", "~0").replace("/", "~1")
-
-
-def _decode_json_pointer(segment: str) -> str:
-    return segment.replace("~1", "/").replace("~0", "~")
+    return read_yaml_file(path)
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:
     return {"kind": kind, "message": message, **details}
-
-
-def _resolver_error(resolver: ValueResolver, exc: Exception) -> dict[str, Any]:
-    return _error(
-        "resolver_error",
-        str(exc),
-        resolver_kind=resolver.kind,
-        resolver_pointer=resolver.pointer,
-        exception_type=type(exc).__name__,
-    )
-
-
-@contextmanager
-def _temporary_text_artifact(path: Path):
-    suffix = path.with_suffix("").suffix
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, suffix=suffix) as tmp:
-            with gzip.open(path, "rt", encoding="utf-8") as src:
-                tmp.write(src.read())
-            temp_path = Path(tmp.name)
-        yield temp_path
-    finally:
-        if temp_path is not None:
-            with suppress(OSError):
-                temp_path.unlink()

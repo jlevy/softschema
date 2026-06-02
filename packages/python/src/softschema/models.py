@@ -24,15 +24,6 @@ class SchemaProfile(StrEnum):
     pure_yaml = "pure-yaml"
 
 
-class SchemaStage(StrEnum):
-    """Coarse position on the structure continuum."""
-
-    prose = "prose"
-    frontmatter = "frontmatter"
-    validated_frontmatter = "validated_frontmatter"
-    pure_data = "pure_data"
-
-
 class SchemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata."""
 
@@ -51,19 +42,8 @@ class Contract(BaseModel):
     model: type[BaseModel] | None = None
     envelope_key: str | None = None
     status: SchemaStatus = SchemaStatus.soft
-    owner: str | None = None
     profile: SchemaProfile = SchemaProfile.frontmatter_md
     schema_path: Path | None = None
-
-    @property
-    def stage(self) -> SchemaStage:
-        if self.profile == SchemaProfile.pure_yaml:
-            return SchemaStage.pure_data
-        if self.model is not None or self.schema_path is not None:
-            return SchemaStage.validated_frontmatter
-        if self.envelope_key is not None:
-            return SchemaStage.frontmatter
-        return SchemaStage.prose
 
 
 class WarningCode(StrEnum):
