@@ -132,6 +132,41 @@ repos:
 Adapt the paths and the `--model` / `--contract` / `--out` arguments to each schema in
 your repository.
 
+## Keeping Python and TypeScript in Parity
+
+softschema ships two implementations — Python/Pydantic (`softschema`) and TypeScript/Zod
+(`@softschema/core`, `softschema-ts`) — held to **exact behavioral parity**: equivalent
+CLI inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
+(byte-identical, equal `schema_sha256`), and the same engine-neutral validation results.
+Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
+
+When you change any behavior, follow this loop so the two never drift:
+
+1. **Golden first.** Write or update the shared scenario in `tests/golden/scenarios/`
+   (neutral, runs on both) or `tests/golden/scenarios-{py,ts}/` (per-language invocation,
+   identical output) **before** touching code.
+2. **Implement in Python**, then `uv run pytest` and
+   `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
+3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and
+   `SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh`.
+4. **Both green + conformance.** Both golden runs and the cross-implementation conformance
+   test (the Zod and Pydantic compilers produce an identical canonical sidecar) pass in CI.
+
+The parity invariants, and where each is enforced:
+
+| Invariant | Enforced by |
+| --- | --- |
+| Canonical schema (equal `schema_sha256`) | `compile` + the KitchenSink conformance test (`packages/typescript/test/conformance.test.ts`) and `examples/parity/` |
+| Engine-neutral structural errors | shared message templates (`errors`), the golden corpus |
+| Byte-identical neutral CLI output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
+| Equal flag/command surface | per-impl + neutral golden scenarios |
+| Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
+| Skill mirrors never go stale | the mirror drift test (`tests/test_skill_mirror_drift.py`) |
+
+Semantic invariants that JSON Schema cannot express (Pydantic validators ↔ Zod
+refinements) are implementation-specific by design and tested per-language, not in the
+shared corpus.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

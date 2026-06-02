@@ -47,6 +47,11 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "docs/softschema-python-design.md",
         "Python package design decisions.",
     ),
+    "typescript-design": ResourceTopic(
+        "TypeScript Package Design",
+        "docs/softschema-typescript-design.md",
+        "TypeScript package design decisions.",
+    ),
     "development": ResourceTopic(
         "Development",
         "docs/development.md",

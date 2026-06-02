@@ -17,6 +17,7 @@ const RESOURCES = [
   "docs/softschema-guide.md",
   "docs/softschema-spec.md",
   "docs/softschema-python-design.md",
+  "docs/softschema-typescript-design.md",
   "docs/development.md",
   "docs/installation.md",
   "docs/publishing.md",

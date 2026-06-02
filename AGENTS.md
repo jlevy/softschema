@@ -9,11 +9,21 @@ Start here:
 - [Softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
 - [Movie page example](examples/movie_page/README.md): complete Python-backed example.
 
-For implementer reference (only when changing the Python package itself):
+softschema ships two interchangeable implementations with the same CLI and library
+surface: Python/Pydantic (`softschema`, `softschema-py`) and TypeScript/Zod
+(`@softschema/core`, `softschema-ts`). They are held to exact behavioral parity — same
+flags, same canonical JSON Schema sidecar, same validation results — so authoring an
+artifact is identical regardless of which you run.
+
+For implementer reference (only when changing a package itself):
 
 - [Python Package Design](docs/softschema-python-design.md): module layout, CLI surface,
   validation layers, and ADR-style decisions.
-  Skip when only authoring or validating artifacts.
+- [TypeScript Package Design](docs/softschema-typescript-design.md): the Zod port and the
+  Python↔TypeScript API parity table.
+- When changing behavior, follow the parity development process (golden-first, then port
+  to both) in [docs/development.md](docs/development.md).
+  Skip all of this when only authoring or validating artifacts.
 
 Key rules:
 

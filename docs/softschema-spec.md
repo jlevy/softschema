@@ -3,7 +3,8 @@
 Softschema is a file convention for Markdown/YAML artifacts that are readable by humans
 and structured enough for tools.
 The spec is programming-language agnostic.
-The Python package in this repository is one implementation.
+This repository ships two interchangeable implementations of the spec — a Python/Pydantic
+package and a TypeScript/Zod package — held to exact behavioral parity.
 
 For the adoption guide, examples, and tutorials, see
 [Softschema Guide](softschema-guide.md).

@@ -7,7 +7,9 @@ pattern.
 
 For the exact file format and validation rules, see
 [Softschema Spec](softschema-spec.md).
-For the Python implementation, see [Python Package Design](softschema-python-design.md).
+Two interchangeable implementations ship here, at exact behavioral parity: see
+[Python Package Design](softschema-python-design.md) and
+[TypeScript Package Design](softschema-typescript-design.md).
 
 ## What Softschema Is
 

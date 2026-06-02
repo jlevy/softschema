@@ -31,19 +31,20 @@ $ softschema inspect examples/movie_page/spirited-away.md
 $ softschema docs --list
 Available softschema docs:
 
-  agents            Repo-level agent instructions.
-  development       Local development workflow.
-  example           Copyable example overview.
-  example-artifact  Copyable Markdown/YAML artifact.
-  example-host      Host registry and validation helper.
-  example-model     Pydantic model used by the example.
-  guide             Concepts, mental model, and adoption path.
-  installation      Installing uv and Python.
-  publishing        Release and PyPI workflow.
-  python-design     Python package design decisions.
-  readme            Short first-visitor overview.
-  skill             Portable agent skill instructions.
-  spec              Language-neutral artifact format.
+  agents             Repo-level agent instructions.
+  development        Local development workflow.
+  example            Copyable example overview.
+  example-artifact   Copyable Markdown/YAML artifact.
+  example-host       Host registry and validation helper.
+  example-model      Pydantic model used by the example.
+  guide              Concepts, mental model, and adoption path.
+  installation       Installing uv and Python.
+  publishing         Release and PyPI workflow.
+  python-design      Python package design decisions.
+  readme             Short first-visitor overview.
+  skill              Portable agent skill instructions.
+  spec               Language-neutral artifact format.
+  typescript-design  TypeScript package design decisions.
 
 Run `softschema docs <topic>` to print a document.
 Copy examples from the printed docs or from the repository files; the CLI does not scaffold or mutate projects.
@@ -161,6 +162,12 @@ $ softschema docs --list --json
       "path": "docs/softschema-spec.md",
       "summary": "Language-neutral artifact format.",
       "title": "Softschema Spec"
+    },
+    {
+      "name": "typescript-design",
+      "path": "docs/softschema-typescript-design.md",
+      "summary": "TypeScript package design decisions.",
+      "title": "TypeScript Package Design"
     }
   ]
 }

@@ -58,6 +58,7 @@ const DOC_TOPICS: DocTopic[] = [
   { name: "readme", title: "README", path: "README.md", summary: "Short first-visitor overview." },
   { name: "skill", title: "Softschema Skill", path: "skills/softschema/SKILL.md", summary: "Portable agent skill instructions." },
   { name: "spec", title: "Softschema Spec", path: "docs/softschema-spec.md", summary: "Language-neutral artifact format." },
+  { name: "typescript-design", title: "TypeScript Package Design", path: "docs/softschema-typescript-design.md", summary: "TypeScript package design decisions." },
 ];
 
 const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
