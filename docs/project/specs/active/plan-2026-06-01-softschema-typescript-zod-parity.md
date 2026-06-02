@@ -95,9 +95,24 @@ into the neutral surface.
 - **TypeScript house rules** (`tbd guidelines typescript-rules`,
   `typescript-yaml-handling-rules`, `typescript-cli-tool-rules`): Zod 4.x; `yaml@2.x`
   (not `js-yaml`), centralized stringify options with sorted keys for deterministic diffs;
-  `commander` for CLIs; `vitest` for tests; no `any`; lowerCamelCase (not `LLM`-style
-  all-caps); document fields on the type, not at usage sites; 14-day supply-chain cool-off
-  on every dependency.
+  no `any`; lowerCamelCase (not `LLM`-style all-caps); document fields on the type, not at
+  usage sites; 14-day supply-chain cool-off on every dependency. **CLI tooling**:
+  **Commander 15+** (ESM-only, Node ≥22.12; Commander 14 is security-maintenance only —
+  do not start new projects on it); `picocolors` for color (never raw ANSI), honoring
+  `NO_COLOR`/`FORCE_COLOR`/`--color`; global options `--json`/`--color`/`--quiet`.
+- **Python CLI patterns** (`tbd guidelines python-cli-patterns`,
+  `python-modern-guidelines`): uv for everything (already adopted); exit codes
+  `0` success / `1` error / `2` validation; data→stdout, errors→stderr (softschema already
+  does both); `uv-dynamic-versioning` (tag is the version — already adopted); **atomic
+  output files**; tag-triggered OIDC publish, no changesets (already adopted via
+  `publish.yml` + PyPI Trusted Publishing).
+- **Monorepo patterns** (`tbd guidelines pnpm-monorepo-patterns`,
+  `bun-monorepo-patterns`): this is a polyglot monorepo — Python under `packages/python`
+  (uv), TypeScript under `packages/typescript`. Single TS package ⇒ tag-triggered OIDC
+  npm publish (no changesets), `publint` for publishability, **Node 24 LTS**, the 14-day
+  cool-off enforced in the package manager. The **pnpm vs bun** toolchain choice is an
+  open decision (see Toolchain Alignment and Open Questions); both guidelines list
+  `tryscript` and `flowmark`, which this repo already uses.
 
 ### Verified Versions (June 2026)
 
@@ -110,11 +125,42 @@ sync at the boundary.
 | Structural validator | `jsonschema` **4.26.0** (pin `>=4.26`), `Draft202012Validator` | `ajv` **^8** via `import Ajv2020 from "ajv/dist/2020"` + `ajv-formats@^3` | Ajv cannot mix dialects in one instance; use the 2020 entry point. |
 | YAML | (via `frontmatter-format>=0.3`, PyYAML) | `yaml` **^2.8** | Centralized stringify options, sorted keys. |
 | Frontmatter | `frontmatter-format` | `gray-matter` **or** thin custom splitter | Pick whichever round-trips to identical YAML for the corpus. |
-| CLI | `argparse` (stdlib) | `commander` **^14** | |
-| Tests | `pytest` | `vitest` + `tsx` | Plus the shared tryscript corpus. |
+| CLI framework | `argparse` (stdlib) | `commander` **^15** | Commander 15 is ESM-only, Node ≥22.12. Commander 14 is security-maintenance only — not for new projects. |
+| Color | n/a (JSON output) | `picocolors` **^1.1.1** | Help/diagnostic color only; JSON stays uncolored; honor `NO_COLOR`/`--color`. tryscript runs non-TTY ⇒ auto-disabled. |
+| Atomic writes | stdlib tempfile+replace (`compile.py`) | `atomically` **^2.1.1** | Matches Python `_write_atomic`; apply to sidecar + generated-section writes. |
+| Tests | `pytest` | `vitest` **^4.1.5** + `tsx` **^4.21** | Plus the shared `tryscript` **^0.1.6** corpus. |
+| Build | `uv build` | `tsdown` **^0.22** (pnpm) / `bunup` **^0.16** (bun) | ESM (+ optional CJS) + `.d.ts`; `bin` → `dist/cli.js`. |
+| Lint/format | `ruff` + `basedpyright` | `eslint` **^10** (flat) + `prettier` **^3.8** (pnpm) / `biome` **^2.4** (bun) | Plus `publint` **^0.3.20** for publishability. |
+| Runtime / PM | Python 3.11–3.14 (uv) | **Node 24 LTS**; `pnpm` **^11** *or* `bun` **1.3.x** | `pnpm/action-setup@v6` / `oven-sh/setup-bun@v2`; `actions/checkout@v6`, `setup-node@v6`. |
 
 All TypeScript dependencies are subject to the 14-day supply-chain cool-off
-(`typescript-rules` supply-chain section).
+(`typescript-rules` supply-chain section): with pnpm via `minimumReleaseAge: 20160`
+(14 days, overriding pnpm 11's 1-day default) and `npm-check-updates --cooldown 14`; with
+bun via the equivalent install gating. Mirrors the Python side's `UV_EXCLUDE_NEWER`
+14-days-ago cutoff already set in CI.
+
+### Toolchain Alignment (pnpm vs bun — open decision)
+
+The monorepo guidelines document two complete, equivalent stacks. The TS package is a
+single CLI library, so either works; the choice is a team preference that does not change
+the parity design (the canonical sidecar, error records, and golden corpus are
+toolchain-agnostic). It only affects the Phase 1 scaffolding bead.
+
+| Concern | pnpm stack | bun stack |
+| --- | --- | --- |
+| Package manager / runtime | pnpm ^11 + Node 24 | bun 1.3.x |
+| Build | tsdown ^0.22 | bunup ^0.16 |
+| Test runner | vitest ^4.1.5 (+ tsx) | `bun test` |
+| Lint + format | eslint ^10 (flat) + prettier ^3.8 | biome ^2.4 |
+| CI setup action | `pnpm/action-setup@v6` | `oven-sh/setup-bun@v2` |
+| Shared by both | `commander@^15`, `zod@^4.4`, `yaml@^2.8`, `ajv@^8`, `picocolors`, `atomically`, `publint`, `tryscript`, tag-triggered OIDC publish (no changesets), `flowmark` for Markdown | — |
+
+**Default recommendation: pnpm** (the more comprehensive "recommended stack" in the
+guidelines and the one `typescript-rules`/`typescript-yaml-handling-rules` reference).
+**Bun is a reasonable alternative** given that it bundles runtime+build+test and the
+`bun-monorepo-patterns` table already lists `tryscript`+`flowmark` (this repo's tools).
+Confirm before Phase 1 scaffolding (`ss-d0id`); the Verified Versions rows above carry
+both columns so neither choice is blocked.
 
 ## Senior Engineering Review (informs Phase 0)
 
@@ -441,9 +487,10 @@ with two patterns handling all nondeterminism. No mocks needed (no network/clock
 
 - Phase 0: add a `golden` job running `SOFTSCHEMA_IMPL=py npx tryscript@latest tests/golden`
   on the existing Python matrix. Locks behavior before the port.
-- Phases 1–2: add a job (or matrix dimension) that builds the TS package and runs
-  `SOFTSCHEMA_IMPL=ts npx tryscript@latest tests/golden` + the conformance test. Green on
-  both = parity.
+- Phases 1–2: add a job that sets up the TS toolchain (`pnpm/action-setup@v6` +
+  `actions/setup-node@v6` **or** `oven-sh/setup-bun@v2`; `actions/checkout@v6`), builds the
+  TS package, and runs `SOFTSCHEMA_IMPL=ts npx tryscript@latest tests/golden` + the
+  conformance test. Green on both = parity.
 - Keep `pytest` and add `vitest` for per-language edge cases (including semantic-only
   refinements), which golden tests supplement rather than replace.
 
@@ -475,6 +522,14 @@ One PR. Cleans the parity target and locks observable behavior.
   bytes. Verify `SchemaView` still reads it (it already handles `$ref`/`anyOf`-null).
 - [ ] **CLI output:** set `_json` to `ensure_ascii=False`; add `softschema-py` console script
   and keep `softschema` as alias (`pyproject [project.scripts]`).
+- [ ] **F9 — atomic generated-section writes (guideline alignment):** `generate.regenerate`
+  currently does `path.write_text` (`generate.py:131`); make it atomic (temp-file +
+  `os.replace`, as `compile._write_atomic` already does) so a crash can't truncate a doc.
+  Matches `python-modern-guidelines` "Atomic Output Files" and the TS `atomically` plan.
+- [ ] **Python-CLI alignment check (no code expected):** confirm against
+  `python-cli-patterns` that exit codes are `0`/`1`/`2`, data goes to stdout and errors to
+  stderr, and the version comes from `importlib.metadata` (`uv-dynamic-versioning`). These
+  already hold; record the audit in the design doc so the TS CLI mirrors them.
 - [ ] **Golden corpus (Python):** create `tests/golden/` with scenarios 1–6 (tryscript),
   `tests/golden/README.md` (workflow), and the run parameterization
   (`SOFTSCHEMA_IMPL=py|ts`). Author/commit expected output against `softschema-py`. Wire the
@@ -487,9 +542,13 @@ One PR. Cleans the parity target and locks observable behavior.
 
 Smallest vertical slice that passes scenarios 1, 2, 4 under `SOFTSCHEMA_IMPL=ts`.
 
-- [ ] **Scaffold** `packages/typescript` (pnpm, `type: module`, strict tsconfig, `vitest`,
-  `tsx`). Pin `zod@^4.4`, `yaml@^2.8`, `commander@^14`, `ajv@^8`, `ajv-formats@^3` under the
-  14-day cool-off. Replace the stub README.
+- [ ] **Scaffold** `packages/typescript` per the chosen toolchain (pnpm+tsdown+vitest or
+  bun+bunup+`bun test`; default pnpm — confirm first). `type: module`, strict tsconfig
+  (`target` matching Node 24), `bin: { "softschema-ts": "dist/cli.js" }`. Pin under the
+  14-day cool-off: `zod@^4.4`, `yaml@^2.8`, `commander@^15`, `ajv@^8`, `ajv-formats@^3`,
+  `picocolors@^1.1.1`, `atomically@^2.1.1`; dev: `tsdown@^0.22`, `vitest@^4.1.5`,
+  `tsx@^4.21`, `publint@^0.3.20`, `eslint@^10`(flat) + `prettier@^3.8` (or `biome@^2.4`).
+  Configure the package-manager cool-off gate. Replace the stub README.
 - [ ] **`settings.ts`:** YAML stringify options (sorted keys, no forced quoting);
   `stableStringify(value, indent)` matching Python `json.dumps(sort_keys=True)`;
   `canonicalJson(value)` matching `separators=(",",":")` for SHA-256.
@@ -572,8 +631,15 @@ Full feature parity; passes scenarios 3, 5, 6.
 
 ## Open Questions
 
+- **TS toolchain — pnpm vs bun (decide before Phase 1 `ss-d0id`).** See Toolchain
+  Alignment. Default recommendation **pnpm + tsdown + vitest + eslint/prettier**; bun is a
+  reasonable alternative. Does not affect the parity design.
 - **TS package name:** `@softschema/core` (assumed) vs unscoped `softschema` on npm. The
   binary is `softschema-ts` regardless; the unscoped global name stays Python's.
+- **TS publishing:** tag-triggered OIDC npm publish with `publint` preflight (mirrors the
+  Python `publish.yml` + PyPI Trusted Publishing), **no changesets** for a single package.
+  Deferred to a follow-up; flagged here so the package.json `exports`/`files`/`bin` are set
+  up publish-ready from the start.
 - **Frontmatter library:** `gray-matter` vs a thin custom splitter — pick whichever
   round-trips to identical YAML to Python's `frontmatter-format` for the corpus.
 - **`default: null` canonicalization (rule 4):** confirm the final rule against real outputs
@@ -595,7 +661,14 @@ Full feature parity; passes scenarios 3, 5, 6.
 - `tbd guidelines golden-testing-guidelines` — tryscript, stable/unstable fields,
   transparent-box testing, anti-patterns. `npx tryscript@latest docs` for syntax.
 - `tbd guidelines typescript-rules` / `typescript-yaml-handling-rules` /
-  `typescript-cli-tool-rules` — Zod 4, `yaml@2`, commander, vitest, supply-chain.
+  `typescript-cli-tool-rules` — Zod 4, `yaml@2`, **Commander 15**, picocolors, vitest,
+  supply-chain.
+- `tbd guidelines python-cli-patterns` / `python-modern-guidelines` — exit codes,
+  stdout/stderr split, uv-dynamic-versioning, atomic output files, tag-triggered OIDC
+  publish.
+- `tbd guidelines pnpm-monorepo-patterns` / `bun-monorepo-patterns` — version table
+  (Node 24, pnpm ^11 / bun 1.3, tsdown/bunup, publint, vitest, tryscript), supply-chain
+  cool-off, single-package OIDC publishing.
 - Zod JSON Schema: <https://zod.dev/json-schema> — `z.toJSONSchema` options
   (`target`/`io`/`reused`/`cycles`/`unrepresentable`/`override`), `.meta()` passthrough,
   `oneOf`-for-nullable, `additionalProperties` for strict/loose objects. Zod **4.4.3**.
