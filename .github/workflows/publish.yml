@@ -97,5 +97,7 @@ jobs:
 
       - name: Publish to npm (trusted publishing, OIDC)
         # No NODE_AUTH_TOKEN: authentication is via the OIDC id-token above, configured as a
-        # trusted publisher on npmjs.com. Provenance is generated automatically.
-        run: npm publish --access public
+        # trusted publisher on npmjs.com. --provenance attaches a build attestation (also
+        # OIDC-based). Requires the package to already exist with a trusted publisher set up
+        # (see the one-time bootstrap in docs/publishing.md).
+        run: npm publish --access public --provenance

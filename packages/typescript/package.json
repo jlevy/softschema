@@ -42,8 +42,7 @@
   },
   "sideEffects": false,
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "copy-resources": "bun scripts/copy-resources.ts",
