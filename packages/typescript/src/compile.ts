@@ -28,23 +28,21 @@ export interface CompileResult {
 
 export interface CompileOptions {
   contractId?: string | null;
-  generatedFrom?: string | null;
   checkOnly?: boolean;
 }
 
 function augmentSchema(
   schema: Record<string, unknown>,
   contractId: string | null,
-  generatedFrom: string | null,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...schema };
   out.$schema ??= JSON_SCHEMA_DRAFT;
   if (contractId !== null) {
     out.$id ??= contractId;
   }
+  // Language-neutral: no `generated_from` provenance (would leak the implementation).
   out["x-softschema"] = {
     contract: contractId,
-    generated_from: generatedFrom,
     softschema_format_version: SOFTSCHEMA_FORMAT_VERSION,
   };
   return out;
@@ -66,9 +64,7 @@ export function compileSchema(
     reused: "ref",
     unrepresentable: "throw",
   }) as Record<string, unknown>;
-  const schema = canonicalizeJsonSchema(
-    augmentSchema(raw, contractId, options.generatedFrom ?? null),
-  );
+  const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId));
   const sha = schemaSha256(schema);
   (schema["x-softschema"] as Record<string, unknown>).schema_sha256 = sha;
   const rendered = renderYaml(schema);

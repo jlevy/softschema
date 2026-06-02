@@ -58,9 +58,9 @@ $defs:
         minimum: 0
         type: integer
     required:
-    - critics_percent
     - audience_percent
     - critic_review_count
+    - critics_percent
     type: object
 $id: example.movies:MoviePage/v1
 $schema: https://json-schema.org/draft/2020-12/schema
@@ -120,16 +120,15 @@ properties:
   title:
     type: string
 required:
-- title
-- release_year
-- runtime_minutes
 - directors
 - genres
-- synopsis
 - ratings
+- release_year
+- runtime_minutes
+- synopsis
+- title
 type: object
 x-softschema:
   contract: example.movies:MoviePage/v1
-  generated_from: examples.movie_page.model:MoviePage
-  schema_sha256: cec94a3b39888e66b7daf18b47700c3c2f97da1cfc7475062b2a4a7df86bb701
+  schema_sha256: b537ea5b1a5e36febe5feaa8f8536fc500ff25c912013b8961bdcde0cb6f7dd3
   softschema_format_version: 0.1.0

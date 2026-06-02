@@ -65,6 +65,11 @@ def _canonicalize_schema(node: Any) -> Any:
             continue
         if key == "default" and value is None:
             continue
+        if key == "required" and isinstance(value, list):
+            # `required` is a set; sort it so cross-language field-definition order
+            # does not affect the canonical bytes.
+            out[key] = sorted(value)
+            continue
         if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
             out[key] = {name: _canonicalize_schema(sub) for name, sub in value.items()}
         elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):

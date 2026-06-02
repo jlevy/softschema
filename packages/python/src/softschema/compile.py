@@ -41,9 +41,7 @@ def compile_model(
     check_only: bool = False,
 ) -> CompileResult:
     """Compile ``model_cls`` to a JSON Schema YAML sidecar at ``out_path``."""
-    schema = canonicalize_json_schema(
-        _augment_schema(model_cls.model_json_schema(), model_cls, contract_id)
-    )
+    schema = canonicalize_json_schema(_augment_schema(model_cls.model_json_schema(), contract_id))
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
@@ -84,18 +82,19 @@ def compile_model(
 
 def _augment_schema(
     schema: dict[str, Any],
-    model_cls: type[BaseModel],
     contract_id: str | None,
 ) -> dict[str, Any]:
     out = dict(schema)
     out.setdefault("$schema", JSON_SCHEMA_DRAFT)
     if contract_id is not None:
         out.setdefault("$id", contract_id)
+    # The root x-softschema block is language-neutral on purpose: no `generated_from`
+    # provenance (a Pydantic/Zod-specific import path would leak the implementation and
+    # prevent a byte-identical sidecar across languages).
     out.setdefault("x-softschema", {})
     out["x-softschema"].update(
         {
             "contract": contract_id,
-            "generated_from": f"{model_cls.__module__}:{model_cls.__name__}",
             "softschema_format_version": SOFTSCHEMA_FORMAT_VERSION,
         }
     )

@@ -217,9 +217,11 @@ The emitted schema includes:
 
 - `$schema` for JSON Schema 2020-12
 - `$id` when a contract ID is supplied
-- an `x-softschema` annotation block with `contract`, `generated_from`,
-  `softschema_format_version`, and `schema_sha256` (a deterministic SHA-256 over the
-  canonical JSON form of the schema)
+- an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
+  `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
+  The block is deliberately language-neutral — it carries no `generated_from` provenance,
+  since a Pydantic/Zod import path would leak the implementation and prevent a
+  byte-identical sidecar across languages.
 
 Before hashing and serialization, the raw `model_json_schema()` output is run through
 `softschema.canonicalize.canonicalize_json_schema`, which applies a small set of semantic

@@ -23,11 +23,12 @@ def test_load_exposes_contract_and_hash(view: SchemaView) -> None:
     assert len(view.schema_sha256) == 64  # SHA-256 hex digest
 
 
-def test_root_softmeta_carries_compiler_provenance(view: SchemaView) -> None:
+def test_root_softmeta_is_language_neutral(view: SchemaView) -> None:
     meta = view.root_softmeta
     assert meta["contract"] == "example.movies:MoviePage/v1"
-    assert meta["generated_from"] == "examples.movie_page.model:MoviePage"
     assert "softschema_format_version" in meta
+    # No language-specific provenance (e.g. generated_from) leaks into the sidecar.
+    assert "generated_from" not in meta
 
 
 def test_iter_fields_includes_root_and_nested(view: SchemaView) -> None:

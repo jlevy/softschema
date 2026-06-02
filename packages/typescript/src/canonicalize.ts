@@ -40,6 +40,11 @@ function canonicalizeSchema(node: Json): Json {
   for (const [key, value] of Object.entries(normalized)) {
     if (key === "title") continue;
     if (key === "default" && value === null) continue;
+    if (key === "required" && Array.isArray(value)) {
+      // `required` is a set; sort it so cross-language field order is irrelevant.
+      out[key] = [...(value as string[])].sort();
+      continue;
+    }
     if (NAME_MAP_KEYWORDS.has(key) && isPlainObject(value)) {
       const mapped: Record<string, Json> = {};
       for (const [name, sub] of Object.entries(value)) {
