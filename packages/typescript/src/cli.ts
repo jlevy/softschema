@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Command-line interface for the TypeScript softschema implementation. Mirrors the
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output

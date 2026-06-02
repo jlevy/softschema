@@ -1,4 +1,4 @@
-# @softschema/core
+# softschema
 
 The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softschema) —
 validate and structure Markdown/YAML artifacts with frontmatter contracts. It is the
@@ -7,9 +7,9 @@ parity with it: the same CLI inputs/outputs/flags, the same library surface, and
 canonical JSON Schema sidecar (byte-identical, equal `schema_sha256`).
 
 ```bash
-npx @softschema/core@<version> --help            # zero-install
+npx softschema@latest --help            # zero-install
 # or
-bun add @softschema/core
+bun add softschema
 ```
 
 ## CLI
@@ -29,7 +29,7 @@ softschema-ts skill --brief | softschema-ts skill --install
 
 ```ts
 import { z } from "zod";
-import { compileSchema, validateArtifact, validateValues, SchemaView, softField } from "@softschema/core";
+import { compileSchema, validateArtifact, validateValues, SchemaView, softField } from "softschema";
 ```
 
 Source schemas are Zod (`z.strictObject(...)`); validation uses `safeParse`; per-field

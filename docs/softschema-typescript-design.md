@@ -2,7 +2,7 @@
 
 The soft schema practice is language-neutral (see [Softschema Guide](softschema-guide.md)
 and [Softschema Spec](softschema-spec.md)). This document covers the TypeScript package,
-`@softschema/core`, which implements the same Markdown/YAML validation slice as the
+`softschema`, which implements the same Markdown/YAML validation slice as the
 [Python package](softschema-python-design.md) using Zod instead of Pydantic.
 
 The two implementations are held to **exact behavioral parity**: equivalent CLI

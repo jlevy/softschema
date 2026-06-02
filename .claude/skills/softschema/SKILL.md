@@ -58,7 +58,7 @@ uvx softschema@0.1.3 --help            # ephemeral; reproducible
 uv tool install softschema==0.1.3      # persistent; lockfile-friendly
 
 # TypeScript (Zod):
-npx @softschema/core@0.1.3 --help      # ephemeral; reproducible
+npx softschema@0.1.3 --help      # ephemeral; reproducible
 ```
 
 Both expose the same commands and flags and validate against the same canonical schema;

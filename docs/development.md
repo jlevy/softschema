@@ -31,6 +31,22 @@ uv build
 
 The Python package is built from `packages/python/src/softschema`.
 
+## TypeScript Package
+
+The TypeScript/Zod package lives in `packages/typescript` and builds with bun (bunup +
+biome). Set it up and run its checks:
+
+```bash
+cd packages/typescript
+bun install --frozen-lockfile
+bun run check       # biome lint, tsc --noEmit, bun test (+ coverage gate)
+bun run build       # copy-resources + bunup → dist/
+```
+
+It publishes to npm as `softschema` (the same name as the PyPI package) and exposes the
+CLI as both `softschema` and `softschema-ts`. The two packages **release together under
+one version number**; see [Publishing](publishing.md).
+
 Documentation changes should follow `common-doc-guidelines.md`
 (github.com/jlevy/practical-prose).
 Keep the README short, keep conceptual guidance in `docs/softschema-guide.md`, and keep
@@ -135,7 +151,7 @@ your repository.
 ## Keeping Python and TypeScript in Parity
 
 softschema ships two implementations — Python/Pydantic (`softschema`) and TypeScript/Zod
-(`@softschema/core`, `softschema-ts`) — held to **exact behavioral parity**: equivalent
+(`softschema`, `softschema-ts`) — held to **exact behavioral parity**: equivalent
 CLI inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
 (byte-identical, equal `schema_sha256`), and the same engine-neutral validation results.
 Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).

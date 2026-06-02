@@ -1,10 +1,33 @@
 {
-  "name": "@softschema/core",
-  "version": "0.0.0",
+  "name": "softschema",
+  "version": "0.1.3",
   "description": "Soft schema conventions and validation for Markdown/YAML artifacts (TypeScript/Zod).",
   "license": "MIT",
+  "author": "Joshua Levy (https://github.com/jlevy)",
+  "homepage": "https://github.com/jlevy/softschema",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jlevy/softschema.git",
+    "directory": "packages/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/jlevy/softschema/issues"
+  },
+  "keywords": [
+    "softschema",
+    "soft schema",
+    "frontmatter",
+    "yaml",
+    "markdown",
+    "json-schema",
+    "zod",
+    "validation",
+    "agent",
+    "cli"
+  ],
   "type": "module",
   "bin": {
+    "softschema": "dist/cli.js",
     "softschema-ts": "dist/cli.js"
   },
   "exports": {
@@ -13,7 +36,15 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "resources"],
+  "files": ["dist", "resources", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "copy-resources": "bun scripts/copy-resources.ts",
     "build": "bun scripts/copy-resources.ts && bunup",
@@ -23,7 +54,8 @@
     "lint:ci": "biome ci .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
-    "check": "biome check . && tsc --noEmit && bun test"
+    "check": "biome check . && tsc --noEmit && bun test",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "ajv": "^8.17.1",

@@ -38,7 +38,7 @@ into the neutral surface.
 
 - Land a clean Phase 0: remove every undocumented/dead surface and the structural-error
   engine leakage so "parity" has an honest, minimal target.
-- Ship `@softschema/core` (TypeScript) with feature parity to the documented Python
+- Ship `softschema` (TypeScript) with feature parity to the documented Python
   public surface: validation, JSON Schema compile, schema-view reader, soft-field
   annotations, generated sections, and the CLI.
 - Keep the TypeScript port **idiomatic Zod/TS**, not a transliteration of Python.
@@ -66,8 +66,10 @@ into the neutral surface.
   and Zod refinements stay implementation-specific; only the canonical JSON Schema
   structural subset travels. Semantic-only failures are tested per-language, not in the
   shared corpus (see Validation Layering).
-- No npm publish of the TypeScript package in this plan (tagging is a follow-up once the
-  API is proven against the corpus).
+- (Resolved) The TypeScript package now publishes to npm as `softschema`, from the same
+  `vX.Y.Z` tag as PyPI and under the same version number (see docs/publishing.md). It was
+  initially deferred until parity was proven against the corpus; parity is proven, so it
+  ships with the release.
 
 ## Background
 
@@ -460,7 +462,7 @@ Both CLIs must emit identical bytes for shared scenarios:
 ### TypeScript package shape
 
 `packages/typescript/`, a self-contained **bun** package, later published as
-`@softschema/core` with a `softschema-ts` bin.
+`softschema` with a `softschema-ts` bin.
 
 ```text
 packages/typescript/
@@ -609,7 +611,7 @@ with two patterns handling all nondeterminism. No mocks needed (no network/clock
 Both CLIs must **embed** the same documentation set the same way — the Python wheel
 already force-includes the guide/spec/design/examples/skill as bundled resources
 (`softschema docs <topic>` reads them via `importlib.resources`). The TypeScript package
-must do the equivalent: bundle the doc/skill text into `@softschema/core` (at `bunup`
+must do the equivalent: bundle the doc/skill text into `softschema` (at `bunup`
 build) so `docs <topic>`, `docs <topic> --json`, and `skill --install`/`--brief` work
 when the package is installed standalone from npm — not only inside this monorepo where
 the repo files happen to be on disk. Resolution order mirrors Python: bundled resource
@@ -783,19 +785,21 @@ Full feature parity; passes scenarios 3, 5, 6.
 3. Phase 3 docs + hardening.
 4. Down-migrate the trading-repo consumer to the new release (API renames from Phase 0:
    `validate()`/`ValueResolver` gone; `StructuralResult.skipped_reason`; new error records;
-   regenerated sidecars). Defer npm publish of `@softschema/core` to a follow-up.
+   regenerated sidecars). Publish npm `softschema` and PyPI `softschema` together from one
+   tag (see docs/publishing.md).
 
 ## Open Questions
 
 - ~~**TS toolchain — pnpm vs bun.**~~ **Decided: bun + biome** (see Toolchain Alignment).
   Leanest house-approved stack for a focused small CLI/library; does not affect the parity
   design. pnpm remains a documented fallback.
-- **TS package name:** `@softschema/core` (assumed) vs unscoped `softschema` on npm. The
-  binary is `softschema-ts` regardless; the unscoped global name stays Python's.
-- **TS publishing:** tag-triggered OIDC npm publish with `publint` preflight (mirrors the
-  Python `publish.yml` + PyPI Trusted Publishing), **no changesets** for a single package.
-  Deferred to a follow-up; flagged here so the package.json `exports`/`files`/`bin` are set
-  up publish-ready from the start.
+- ~~**TS package name:** `softschema` vs unscoped `softschema`.~~ **Decided:
+  unscoped `softschema` on npm** (same name as PyPI), with bins `softschema` and
+  `softschema-ts`.
+- ~~**TS publishing:** deferred to a follow-up.~~ **Decided: ship now.** The npm package
+  publishes from the same `vX.Y.Z` tag as PyPI via a `publish-npm` job in `publish.yml`
+  (provenance + `NPM_TOKEN`), under the **same version number**. See
+  [docs/publishing.md](../../../publishing.md).
 - **Frontmatter library:** `gray-matter` vs a thin custom splitter — pick whichever
   round-trips to identical YAML to Python's `frontmatter-format` for the corpus.
 - **`default: null` canonicalization (rule 4):** confirm the final rule against real outputs

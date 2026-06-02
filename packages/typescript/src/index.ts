@@ -1,4 +1,4 @@
-/** Public API for @softschema/core. */
+/** Public API for softschema. */
 export { canonicalizeJsonSchema } from "./canonicalize.js";
 export { type CompileOptions, type CompileResult, compileSchema } from "./compile.js";
 export {
