@@ -30,16 +30,19 @@ describe("renderStructuralMessage", () => {
     expect(renderStructuralMessage("minItems", 1, [])).toBe(
       "array is shorter than the minimum of 1 items",
     );
-    expect(renderStructuralMessage("exclusiveMinimum", 0, 0)).toBe(
-      "value 0 is not greater than 0",
-    );
+    expect(renderStructuralMessage("exclusiveMinimum", 0, 0)).toBe("value 0 is not greater than 0");
     expect(renderStructuralMessage("enum", ["G", "PG"], "X")).toBe(
       "value 'X' is not one of ['G', 'PG']",
     );
   });
   test("record shape matches the neutral contract", () => {
     expect(
-      structuralErrorRecord({ path: ["count"], validator: "maximum", validatorValue: 10, value: 11 }),
+      structuralErrorRecord({
+        path: ["count"],
+        validator: "maximum",
+        validatorValue: 10,
+        value: 11,
+      }),
     ).toEqual({
       kind: "schema_violation",
       path: ["count"],

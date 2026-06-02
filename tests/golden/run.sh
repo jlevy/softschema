@@ -52,6 +52,6 @@ echo "Running golden corpus against SOFTSCHEMA_IMPL=$IMPL ($target)"
 shopt -s nullglob
 files=("$REPO"/tests/golden/scenarios/*.md "$REPO"/tests/golden/scenarios-"$IMPL"/*.md)
 if command -v bunx >/dev/null 2>&1; then
-  exec bunx tryscript@latest run "${files[@]}"
+  exec bunx tryscript@0.1.7 run "${files[@]}"
 fi
-exec npx -y tryscript@latest run "${files[@]}"
+exec npx -y tryscript@0.1.7 run "${files[@]}"

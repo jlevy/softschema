@@ -131,7 +131,7 @@ class SchemaView:
         for name, raw_prop in properties.items():
             if not isinstance(raw_prop, dict):
                 continue
-            prop = self._maybe_resolve_ref(raw_prop, seen_refs, include_refs=include_refs)
+            prop, ref = self._maybe_resolve_ref(raw_prop, seen_refs, include_refs=include_refs)
             pointer = f"{base_pointer}/properties/{_escape_pointer_segment(name)}"
             yield FieldInfo(
                 pointer=pointer,
@@ -142,9 +142,13 @@ class SchemaView:
                 description=prop.get("description"),
                 softmeta=_extract_softmeta(prop),
             )
-            # Recurse into nested objects (after the ref is resolved).
+            # Recurse into nested objects (after the ref is resolved). Carry the
+            # just-followed $ref down the recursion path so a cyclic schema
+            # (A -> B -> A) terminates. The augmented set is scoped to this path only,
+            # so a $def reused by sibling fields (e.g. Address) still expands under each.
             if include_refs and prop.get("properties"):
-                yield from self._walk(prop, pointer, seen_refs, include_refs=include_refs)
+                next_seen = seen_refs | {ref} if ref is not None else seen_refs
+                yield from self._walk(prop, pointer, next_seen, include_refs=include_refs)
 
     def _maybe_resolve_ref(
         self,
@@ -152,21 +156,20 @@ class SchemaView:
         seen_refs: set[str],
         *,
         include_refs: bool,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str | None]:
         if not include_refs:
-            return prop
+            return prop, None
         ref = prop.get("$ref")
         # JSON Schema 2020-12 also allows `anyOf: [{$ref: ...}, {type: null}]` for
         # optional refs (which Pydantic emits). Handle both.
         if not isinstance(ref, str):
             ref = _ref_from_anyof(prop)
         if not isinstance(ref, str) or ref in seen_refs:
-            return prop
+            return prop, None
         target = _resolve_ref(self._schema, ref)
         if target is None:
-            return prop
-        seen_refs = seen_refs | {ref}
-        return target
+            return prop, None
+        return target, ref
 
 
 def _ref_from_anyof(prop: dict[str, Any]) -> str | None:

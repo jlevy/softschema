@@ -84,7 +84,11 @@ function extractEnum(prop: SchemaNode): string[] | null {
   const anyOf = prop.anyOf;
   if (Array.isArray(anyOf)) {
     for (const entry of anyOf) {
-      if (isObject(entry) && Array.isArray(entry.enum) && entry.enum.every((v) => typeof v === "string")) {
+      if (
+        isObject(entry) &&
+        Array.isArray(entry.enum) &&
+        entry.enum.every((v) => typeof v === "string")
+      ) {
         return [...(entry.enum as string[])];
       }
     }
@@ -177,7 +181,7 @@ export class SchemaView {
     const requiredSet = new Set(Array.isArray(node.required) ? (node.required as string[]) : []);
     for (const [name, rawProp] of Object.entries(properties)) {
       if (!isObject(rawProp)) continue;
-      const prop = this.maybeResolveRef(rawProp, seenRefs, includeRefs);
+      const { node: prop, ref } = this.maybeResolveRef(rawProp, seenRefs, includeRefs);
       const pointer = `${basePointer}/properties/${escapePointerSegment(name)}`;
       out.push({
         pointer,
@@ -189,7 +193,11 @@ export class SchemaView {
         softmeta: extractSoftmeta(prop),
       });
       if (includeRefs && isObject(prop.properties)) {
-        this.walk(prop, pointer, seenRefs, includeRefs, out);
+        // Carry the just-followed $ref down the recursion path so a cyclic schema
+        // (A -> B -> A) terminates. The augmented set is scoped to this path only, so
+        // a $def reused by sibling fields (e.g. Address) still expands under each.
+        const nextSeen = ref !== null ? new Set(seenRefs).add(ref) : seenRefs;
+        this.walk(prop, pointer, nextSeen, includeRefs, out);
       }
     }
   }
@@ -198,14 +206,12 @@ export class SchemaView {
     prop: SchemaNode,
     seenRefs: Set<string>,
     includeRefs: boolean,
-  ): SchemaNode {
-    if (!includeRefs) return prop;
+  ): { node: SchemaNode; ref: string | null } {
+    if (!includeRefs) return { node: prop, ref: null };
     let ref = typeof prop.$ref === "string" ? prop.$ref : null;
     if (ref === null) ref = refFromAnyOf(prop);
-    if (ref === null || seenRefs.has(ref)) return prop;
+    if (ref === null || seenRefs.has(ref)) return { node: prop, ref: null };
     const target = resolveRef(this.schema, ref);
-    // Like the Python reader, resolution is not tracked across sibling branches, so a
-    // $def reused by multiple fields (e.g. Address) expands under each of them.
-    return target ?? prop;
+    return target !== null ? { node: target, ref } : { node: prop, ref: null };
   }
 }

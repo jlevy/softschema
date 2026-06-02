@@ -1,41 +1,41 @@
 /** Public API for @softschema/core. */
 export { canonicalizeJsonSchema } from "./canonicalize.js";
-export { compileSchema, type CompileResult, type CompileOptions } from "./compile.js";
+export { type CompileOptions, type CompileResult, compileSchema } from "./compile.js";
 export {
+  normalizeAjvError,
+  renderStructuralMessage,
   type StructuralErrorRecord,
   structuralErrorRecord,
-  renderStructuralMessage,
-  normalizeAjvError,
 } from "./errors.js";
+export { parseSections, type RegenerateResult, regenerate } from "./generate.js";
 export {
   type Contract,
-  type SchemaStatus,
-  type SchemaProfile,
+  parseSchemaMetadata,
   type SchemaMetadata,
+  type SchemaProfile,
+  type SchemaStatus,
   type SchemaWarning,
   type WarningCode,
-  parseSchemaMetadata,
 } from "./models.js";
 export { Contracts } from "./registry.js";
-export { stableStringify, canonicalJson, schemaSha256 } from "./settings.js";
+export { type FieldInfo, SchemaView } from "./schemaView.js";
+export { canonicalJson, schemaSha256, stableStringify } from "./settings.js";
 export {
-  validateArtifact,
-  validateStructural,
-  validateSemantic,
-  validateValues,
-  type ArtifactValidationResult,
-  type StructuralResult,
-  type SemanticResult,
-  type ValidationResult,
-  type MetadataMode,
-} from "./validate.js";
-export {
-  softField,
-  softFieldMeta,
+  type RepairKind,
   type SoftFieldOptions,
   type SoftOwner,
   type SoftTier,
-  type RepairKind,
+  softField,
+  softFieldMeta,
 } from "./softField.js";
-export { SchemaView, type FieldInfo } from "./schemaView.js";
-export { regenerate, parseSections, type RegenerateResult } from "./generate.js";
+export {
+  type ArtifactValidationResult,
+  type MetadataMode,
+  type SemanticResult,
+  type StructuralResult,
+  type ValidationResult,
+  validateArtifact,
+  validateSemantic,
+  validateStructural,
+  validateValues,
+} from "./validate.js";

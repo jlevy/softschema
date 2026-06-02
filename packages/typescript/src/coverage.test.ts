@@ -1,7 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import { normalizeAjvError, renderStructuralMessage, structuralErrorRecord } from "./errors.js";
@@ -43,14 +43,19 @@ describe("models", () => {
       status: "enforced",
     });
     expect(() => parseSchemaMetadata({ status: "enforced" })).toThrow(SchemaMetadataError);
-    expect(() => parseSchemaMetadata({ contract: "a", status: "nope" })).toThrow(SchemaMetadataError);
+    expect(() => parseSchemaMetadata({ contract: "a", status: "nope" })).toThrow(
+      SchemaMetadataError,
+    );
     expect(() => parseSchemaMetadata(42)).toThrow(SchemaMetadataError);
   });
   test("status guard + output helpers", () => {
     expect(isSchemaStatus("enforced")).toBe(true);
     expect(isSchemaStatus("x")).toBe(false);
     expect(metadataToOutput(null)).toBeNull();
-    expect(metadataToOutput({ contractId: "a", status: null })).toEqual({ contract: "a", status: null });
+    expect(metadataToOutput({ contractId: "a", status: null })).toEqual({
+      contract: "a",
+      status: null,
+    });
     expect(contractToOutput(contract({ envelopeKey: "movie", schemaPath: "s.yaml" }))).toEqual({
       envelope_key: "movie",
       id: "x:S/v1",
@@ -84,9 +89,13 @@ describe("errors: every message template", () => {
     test(validator, () => expect(renderStructuralMessage(validator, vv, value)).toBe(expected));
   }
   test("pyRepr edge cases (bool/null/string-with-quote)", () => {
-    expect(renderStructuralMessage("type", "boolean", true)).toBe("value True is not of type 'boolean'");
+    expect(renderStructuralMessage("type", "boolean", true)).toBe(
+      "value True is not of type 'boolean'",
+    );
     expect(renderStructuralMessage("type", "null", null)).toBe("value None is not of type 'null'");
-    expect(renderStructuralMessage("pattern", "x", "a'b")).toBe('value "a\'b" does not match pattern \'x\'');
+    expect(renderStructuralMessage("pattern", "x", "a'b")).toBe(
+      "value \"a'b\" does not match pattern 'x'",
+    );
   });
   test("normalizeAjvError maps fields + resolves the value", () => {
     const rec = normalizeAjvError(
@@ -94,7 +103,12 @@ describe("errors: every message template", () => {
       { release_year: 1500 },
     );
     expect(rec).toEqual(
-      structuralErrorRecord({ path: ["release_year"], validator: "minimum", validatorValue: 1888, value: 1500 }),
+      structuralErrorRecord({
+        path: ["release_year"],
+        validator: "minimum",
+        validatorValue: 1888,
+        value: 1500,
+      }),
     );
   });
 });
@@ -121,28 +135,46 @@ describe("compile: write mode + build", () => {
 describe("validate: artifact error kinds + advisory warning", () => {
   test("no_frontmatter", () => {
     const r = validateArtifact(tmp("d.md", "no fence here\n"), contract());
-    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("no_frontmatter");
+    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "no_frontmatter",
+    );
   });
   test("document_softschema_invalid", () => {
-    const r = validateArtifact(tmp("d.md", "---\nsoftschema:\n  status: enforced\nx: 1\n---\n"), contract());
-    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("document_softschema_invalid");
+    const r = validateArtifact(
+      tmp("d.md", "---\nsoftschema:\n  status: enforced\nx: 1\n---\n"),
+      contract(),
+    );
+    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "document_softschema_invalid",
+    );
   });
   test("document_contract_mismatch (enforced) vs warning (advisory)", () => {
     const doc = tmp("d.md", "---\nsoftschema:\n  contract: other:Z/v1\nmovie:\n  a: 1\n---\n");
     const enforced = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }));
-    expect((enforced.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("document_contract_mismatch");
+    expect((enforced.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "document_contract_mismatch",
+    );
     const advisory = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }), {
       metadataMode: "advisory",
     });
-    expect((advisory.output.warnings as { code: string }[])[0]?.code).toBe("document-contract-mismatch");
+    expect((advisory.output.warnings as { code: string }[])[0]?.code).toBe(
+      "document-contract-mismatch",
+    );
   });
   test("envelope_mismatch + schema_sidecar_missing", () => {
-    const em = validateArtifact(tmp("d.md", "---\nwrong:\n  a: 1\n---\n"), contract({ envelopeKey: "movie" }));
-    expect((em.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("envelope_mismatch");
+    const em = validateArtifact(
+      tmp("d.md", "---\nwrong:\n  a: 1\n---\n"),
+      contract({ envelopeKey: "movie" }),
+    );
+    expect((em.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "envelope_mismatch",
+    );
     const sm = validateArtifact(
       tmp("d.md", "---\nmovie:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie", schemaPath: "/no/such/sidecar.yaml" }),
     );
-    expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("schema_sidecar_missing");
+    expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "schema_sidecar_missing",
+    );
   });
 });

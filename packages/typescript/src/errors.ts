@@ -142,10 +142,7 @@ function validatorValueFor(error: ErrorObject): unknown {
 
 /** Normalize one ajv error into the engine-neutral record (matching jsonschema's). */
 export function normalizeAjvError(error: ErrorObject, data: unknown): StructuralErrorRecord {
-  const path = error.instancePath
-    .split("/")
-    .slice(1)
-    .map(decodePointerToken);
+  const path = error.instancePath.split("/").slice(1).map(decodePointerToken);
   return structuralErrorRecord({
     path,
     validator: error.keyword,

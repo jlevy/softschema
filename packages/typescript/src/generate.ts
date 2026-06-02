@@ -125,7 +125,12 @@ export function regenerate(
 ): RegenerateResult {
   const text = readFileSync(path, "utf8");
   const sections = parseSections(text);
-  const result: RegenerateResult = { path, sections: sections.length, drift: false, driftDetails: [] };
+  const result: RegenerateResult = {
+    path,
+    sections: sections.length,
+    drift: false,
+    driftDetails: [],
+  };
   if (sections.length === 0) return result;
 
   const base = options.contractRoot ?? dirname(path);

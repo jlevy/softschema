@@ -3,7 +3,14 @@ import type { Contract } from "./models.js";
 import { Contracts } from "./registry.js";
 
 function contract(id: string, envelopeKey: string | null = null): Contract {
-  return { id, model: null, envelopeKey, status: "soft", profile: "frontmatter-md", schemaPath: null };
+  return {
+    id,
+    model: null,
+    envelopeKey,
+    status: "soft",
+    profile: "frontmatter-md",
+    schemaPath: null,
+  };
 }
 
 describe("Contracts", () => {

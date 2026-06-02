@@ -9,7 +9,11 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
-import { compareStructuralRecords, normalizeAjvError, type StructuralErrorRecord } from "./errors.js";
+import {
+  compareStructuralRecords,
+  normalizeAjvError,
+  type StructuralErrorRecord,
+} from "./errors.js";
 import {
   type Contract,
   contractToOutput,
@@ -65,6 +69,21 @@ interface RawFrontmatter {
   value: unknown;
 }
 
+/**
+ * Raised when YAML fails to parse. Mirrors the Python `YAMLError`/`FmFormatError`
+ * branch so a malformed document becomes a `parse_error` validation result (exit 1)
+ * instead of an uncaught exception.
+ */
+export class YamlParseError extends Error {}
+
+function parseYaml(text: string): unknown {
+  try {
+    return yamlParse(text);
+  } catch (err) {
+    throw new YamlParseError((err as Error).message);
+  }
+}
+
 function readFrontmatter(path: string): RawFrontmatter {
   const text = readFileSync(path, "utf8");
   const lines = text.split(/\r?\n/);
@@ -77,7 +96,7 @@ function readFrontmatter(path: string): RawFrontmatter {
     }
   }
   if (end === -1) return { hasFence: false, value: null };
-  return { hasFence: true, value: yamlParse(lines.slice(1, end).join("\n")) ?? {} };
+  return { hasFence: true, value: parseYaml(lines.slice(1, end).join("\n")) ?? {} };
 }
 
 function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
@@ -97,7 +116,10 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
   return { code, message, severity: "warning" };
 }
 
-export function validateStructural(values: unknown, schemaObject: Record<string, unknown>): StructuralResult {
+export function validateStructural(
+  values: unknown,
+  schemaObject: Record<string, unknown>,
+): StructuralResult {
   const schema = { ...schemaObject };
   // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
   delete schema.$id;
@@ -211,15 +233,22 @@ function structuralForValues(
       return {
         ok: false,
         errors: [
-          structuralError("schema_sidecar_missing", `schema sidecar not found: ${contract.schemaPath}`, {
-            path: contract.schemaPath,
-          }),
+          structuralError(
+            "schema_sidecar_missing",
+            `schema sidecar not found: ${contract.schemaPath}`,
+            {
+              path: contract.schemaPath,
+            },
+          ),
         ],
         engine: "json_schema",
         skipped_reason: null,
       };
     }
-    return validateStructural(values, yamlParse(readFileSync(resolved, "utf8")) as Record<string, unknown>);
+    return validateStructural(
+      values,
+      yamlParse(readFileSync(resolved, "utf8")) as Record<string, unknown>,
+    );
   }
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
@@ -251,7 +280,15 @@ export function validateArtifact(
 ): ArtifactValidationResult {
   const warnings: SchemaWarning[] = [];
   if (contract.profile === "pure-yaml") {
-    const raw = yamlParse(readFileSync(docPath, "utf8")) as unknown;
+    let raw: unknown;
+    try {
+      raw = parseYaml(readFileSync(docPath, "utf8"));
+    } catch (err) {
+      if (err instanceof YamlParseError) {
+        return failure(docPath, contract, null, "parse_error", err.message);
+      }
+      throw err;
+    }
     if (!isMapping(raw)) {
       return failure(
         docPath,
@@ -265,12 +302,27 @@ export function validateArtifact(
   }
 
   const metadataMode = options.metadataMode ?? "enforced";
-  const { hasFence, value: frontmatter } = readFrontmatter(docPath);
+  let parsed: RawFrontmatter;
+  try {
+    parsed = readFrontmatter(docPath);
+  } catch (err) {
+    if (err instanceof YamlParseError) {
+      return failure(docPath, contract, null, "parse_error", err.message);
+    }
+    throw err;
+  }
+  const { hasFence, value: frontmatter } = parsed;
   if (!hasFence) {
     return failure(docPath, contract, null, "no_frontmatter", `no frontmatter in ${docPath}`);
   }
   if (!isMapping(frontmatter)) {
-    return failure(docPath, contract, null, "frontmatter_not_mapping", "frontmatter is not a mapping");
+    return failure(
+      docPath,
+      contract,
+      null,
+      "frontmatter_not_mapping",
+      "frontmatter is not a mapping",
+    );
   }
 
   let metadata: SchemaMetadata | null;

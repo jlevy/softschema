@@ -1,7 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { Contract } from "./models.js";
 import { validateArtifact, validateValues } from "./validate.js";
@@ -56,7 +56,9 @@ describe("validateArtifact: pure-yaml profile", () => {
   });
   test("non-mapping YAML root is yaml_not_mapping", () => {
     const doc = tmpFile("bad.yaml", "- a\n- b\n");
-    const result = validateArtifact(doc, contract({ profile: "pure-yaml" }), { semanticModel: Sample });
+    const result = validateArtifact(doc, contract({ profile: "pure-yaml" }), {
+      semanticModel: Sample,
+    });
     expect(result.ok).toBe(false);
     const err = result.output.structural as { errors: { kind: string }[] };
     expect(err.errors[0]?.kind).toBe("yaml_not_mapping");

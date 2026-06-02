@@ -66,3 +66,34 @@ describe("SchemaView (movie sidecar)", () => {
     );
   });
 });
+
+describe("SchemaView ($ref cycle detection)", () => {
+  // A self-referential $def (Node.child -> Node). iter_fields must terminate by
+  // tracking the followed $ref on the recursion path. This is a shared parity case
+  // with the Python test in test_schema_view.py.
+  const cyclic = {
+    type: "object",
+    properties: { root: { $ref: "#/$defs/Node" } },
+    $defs: {
+      Node: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          child: { $ref: "#/$defs/Node" },
+        },
+      },
+    },
+  };
+
+  test("terminates and expands one level before the cycle stops", () => {
+    const view = new SchemaView(cyclic);
+    const pointers = view.iterFields().map((f) => f.pointer);
+    expect(pointers).toEqual([
+      "/properties/root",
+      "/properties/root/properties/name",
+      "/properties/root/properties/child",
+    ]);
+    // The cyclic `child` is surfaced as an unresolved leaf (no further recursion).
+    expect(view.field("/properties/root/properties/child").jsonType).toBeNull();
+  });
+});

@@ -7,8 +7,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import type { z } from "zod";
 import { parse as yamlParse } from "yaml";
+import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
 import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
@@ -45,20 +45,85 @@ interface DocTopic {
 
 // Sorted by name to match the Python CLI's `sorted(DOC_TOPICS)` output.
 const DOC_TOPICS: DocTopic[] = [
-  { name: "agents", title: "Agent Instructions", path: "AGENTS.md", summary: "Repo-level agent instructions." },
-  { name: "development", title: "Development", path: "docs/development.md", summary: "Local development workflow." },
-  { name: "example", title: "Movie Page Example", path: "examples/movie_page/README.md", summary: "Copyable example overview." },
-  { name: "example-artifact", title: "Movie Page Artifact", path: "examples/movie_page/spirited-away.md", summary: "Copyable Markdown/YAML artifact." },
-  { name: "example-host", title: "Movie Page Host Integration", path: "examples/movie_page/host_integration.py", summary: "Host registry and validation helper." },
-  { name: "example-model", title: "Movie Page Model", path: "examples/movie_page/model.py", summary: "Pydantic model used by the example." },
-  { name: "guide", title: "Softschema Guide", path: "docs/softschema-guide.md", summary: "Concepts, mental model, and adoption path." },
-  { name: "installation", title: "Installation", path: "docs/installation.md", summary: "Installing uv and Python." },
-  { name: "publishing", title: "Publishing", path: "docs/publishing.md", summary: "Release and PyPI workflow." },
-  { name: "python-design", title: "Python Package Design", path: "docs/softschema-python-design.md", summary: "Python package design decisions." },
+  {
+    name: "agents",
+    title: "Agent Instructions",
+    path: "AGENTS.md",
+    summary: "Repo-level agent instructions.",
+  },
+  {
+    name: "development",
+    title: "Development",
+    path: "docs/development.md",
+    summary: "Local development workflow.",
+  },
+  {
+    name: "example",
+    title: "Movie Page Example",
+    path: "examples/movie_page/README.md",
+    summary: "Copyable example overview.",
+  },
+  {
+    name: "example-artifact",
+    title: "Movie Page Artifact",
+    path: "examples/movie_page/spirited-away.md",
+    summary: "Copyable Markdown/YAML artifact.",
+  },
+  {
+    name: "example-host",
+    title: "Movie Page Host Integration",
+    path: "examples/movie_page/host_integration.py",
+    summary: "Host registry and validation helper.",
+  },
+  {
+    name: "example-model",
+    title: "Movie Page Model",
+    path: "examples/movie_page/model.py",
+    summary: "Pydantic model used by the example.",
+  },
+  {
+    name: "guide",
+    title: "Softschema Guide",
+    path: "docs/softschema-guide.md",
+    summary: "Concepts, mental model, and adoption path.",
+  },
+  {
+    name: "installation",
+    title: "Installation",
+    path: "docs/installation.md",
+    summary: "Installing uv and Python.",
+  },
+  {
+    name: "publishing",
+    title: "Publishing",
+    path: "docs/publishing.md",
+    summary: "Release and PyPI workflow.",
+  },
+  {
+    name: "python-design",
+    title: "Python Package Design",
+    path: "docs/softschema-python-design.md",
+    summary: "Python package design decisions.",
+  },
   { name: "readme", title: "README", path: "README.md", summary: "Short first-visitor overview." },
-  { name: "skill", title: "Softschema Skill", path: "skills/softschema/SKILL.md", summary: "Portable agent skill instructions." },
-  { name: "spec", title: "Softschema Spec", path: "docs/softschema-spec.md", summary: "Language-neutral artifact format." },
-  { name: "typescript-design", title: "TypeScript Package Design", path: "docs/softschema-typescript-design.md", summary: "TypeScript package design decisions." },
+  {
+    name: "skill",
+    title: "Softschema Skill",
+    path: "skills/softschema/SKILL.md",
+    summary: "Portable agent skill instructions.",
+  },
+  {
+    name: "spec",
+    title: "Softschema Spec",
+    path: "docs/softschema-spec.md",
+    summary: "Language-neutral artifact format.",
+  },
+  {
+    name: "typescript-design",
+    title: "TypeScript Package Design",
+    path: "docs/softschema-typescript-design.md",
+    summary: "TypeScript package design decisions.",
+  },
 ];
 
 const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
@@ -153,7 +218,14 @@ function readFrontmatterRaw(path: string): Record<string, unknown> | null {
     }
   }
   if (end === -1) return null;
-  return (yamlParse(lines.slice(1, end).join("\n")) ?? {}) as Record<string, unknown>;
+  // Surface a malformed-frontmatter parse failure as a usage error (exit 2) with the
+  // YAML message, mirroring the Python CLI's FmFormatError handling, rather than letting
+  // the raw exception escape as a stack trace.
+  try {
+    return (yamlParse(lines.slice(1, end).join("\n")) ?? {}) as Record<string, unknown>;
+  } catch (err) {
+    throw new UsageError(`Error parsing YAML metadata: ${(err as Error).message}`);
+  }
 }
 
 function envelopeKeys(frontmatter: Record<string, unknown>): string[] {
@@ -183,15 +255,25 @@ interface ValidateOptions {
   status?: string;
 }
 
+/** Import `path:export` and confirm the export is a Zod schema before use. */
 async function loadZodModel(spec: string): Promise<z.ZodType> {
   const idx = spec.lastIndexOf(":");
   if (idx <= 0) throw new UsageError(`model spec must be path:export, got ${JSON.stringify(spec)}`);
-  const mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
-  const schema = mod[spec.slice(idx + 1)];
-  if (schema === undefined) {
-    throw new UsageError(`${JSON.stringify(spec)} has no export ${JSON.stringify(spec.slice(idx + 1))}`);
+  const exportName = spec.slice(idx + 1);
+  let mod: Record<string, unknown>;
+  try {
+    mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
+  } catch (err) {
+    throw new UsageError(`cannot import ${JSON.stringify(spec)}: ${(err as Error).message}`);
   }
-  return schema as z.ZodType;
+  const schema = mod[exportName];
+  if (schema === undefined) {
+    throw new UsageError(`${JSON.stringify(spec)} has no export ${JSON.stringify(exportName)}`);
+  }
+  if (!(schema instanceof z.ZodType)) {
+    throw new UsageError(`${JSON.stringify(spec)} is not a Zod schema`);
+  }
+  return schema;
 }
 
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
@@ -235,12 +317,24 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       process.stderr.write(`softschema validate: ${err.message}\n`);
       return 2;
     }
-    throw err;
+    // Any other failure (e.g. an unreadable or malformed schema sidecar) is reported as a
+    // stable error line with exit 1, never an uncaught stack trace.
+    process.stderr.write(`softschema validate: ${(err as Error).message}\n`);
+    return 1;
   }
 }
 
 function runInspect(path: string): number {
-  const frontmatter = readFrontmatterRaw(path);
+  let frontmatter: Record<string, unknown> | null;
+  try {
+    frontmatter = readFrontmatterRaw(path);
+  } catch (err) {
+    if (err instanceof UsageError) {
+      process.stderr.write(`softschema inspect: ${err.message}\n`);
+      return 2;
+    }
+    throw err;
+  }
   const metadata = frontmatter ? parseSchemaMetadata(frontmatter.softschema ?? null) : null;
   const output = {
     envelope_keys: frontmatter ? envelopeKeys(frontmatter) : [],
@@ -257,18 +351,8 @@ async function runCompile(
   opts: { contract?: string; out: string; check?: boolean },
 ): Promise<number> {
   try {
-    const idx = spec.lastIndexOf(":");
-    if (idx <= 0) {
-      throw new UsageError(`model spec must be path:export, got ${JSON.stringify(spec)}`);
-    }
-    const modulePath = spec.slice(0, idx);
-    const exportName = spec.slice(idx + 1);
-    const mod = (await import(resolve(modulePath))) as Record<string, unknown>;
-    const schema = mod[exportName];
-    if (schema === undefined) {
-      throw new UsageError(`${JSON.stringify(spec)} has no export ${JSON.stringify(exportName)}`);
-    }
-    const result = compileSchema(schema as z.ZodType, opts.out, {
+    const schema = await loadZodModel(spec);
+    const result = compileSchema(schema, opts.out, {
       contractId: opts.contract ?? null,
       checkOnly: opts.check,
     });
@@ -357,7 +441,13 @@ function runDocsTopic(topic: string, asJson: boolean): number {
   }
   if (asJson) {
     writeText(
-      stableStringify({ name: found.name, title: found.title, path: found.path, summary: found.summary, content }),
+      stableStringify({
+        name: found.name,
+        title: found.title,
+        path: found.path,
+        summary: found.summary,
+        content,
+      }),
     );
   } else {
     writeText(content);
@@ -367,7 +457,9 @@ function runDocsTopic(topic: string, asJson: boolean): number {
 
 export async function main(argv: string[] = process.argv): Promise<number> {
   const program = new Command();
-  program.name("softschema").description("Validate and explain soft schema Markdown/YAML artifacts.");
+  program
+    .name("softschema")
+    .description("Validate and explain soft schema Markdown/YAML artifacts.");
   let exitCode = 0;
 
   program
