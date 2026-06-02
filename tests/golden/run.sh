@@ -25,9 +25,9 @@ case "$IMPL" in
     fi
     ;;
   ts)
-    target="node $REPO/packages/typescript/dist/cli.js"
+    target="bun $REPO/packages/typescript/dist/cli.js"
     if [ ! -f "$REPO/packages/typescript/dist/cli.js" ]; then
-      echo "error: TypeScript CLI not built; run the package build first" >&2
+      echo "error: TypeScript CLI not built; run 'bunup' in packages/typescript first" >&2
       exit 1
     fi
     ;;
@@ -45,4 +45,8 @@ chmod +x "$SHIM/softschema"
 
 export SOFTSCHEMA_BIN_DIR="$SHIM"
 echo "Running golden corpus against SOFTSCHEMA_IMPL=$IMPL ($target)"
+# Prefer bunx (the chosen toolchain); fall back to npx where only Node is present.
+if command -v bunx >/dev/null 2>&1; then
+  exec bunx tryscript@latest run "$REPO"/tests/golden/scenarios/*.md
+fi
 exec npx -y tryscript@latest run "$REPO"/tests/golden/scenarios/*.md

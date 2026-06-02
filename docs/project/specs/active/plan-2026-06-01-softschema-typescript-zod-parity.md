@@ -60,7 +60,7 @@ into the neutral surface.
   alias resolution, URN registry, provider adapters, body-form bridges — all remain
   deferred for both languages, per the public-readiness plan's Deferred Work).
 - No monorepo tooling overhaul. Python stays uv-driven; TypeScript adds a self-contained
-  pnpm package under `packages/typescript`. They share test corpora and CI, not build
+  bun package under `packages/typescript`. They share test corpora and CI, not build
   systems.
 - **No attempt to make cross-field semantic invariants portable.** Pydantic validators
   and Zod refinements stay implementation-specific; only the canonical JSON Schema
@@ -106,13 +106,14 @@ into the neutral surface.
   does both); `uv-dynamic-versioning` (tag is the version — already adopted); **atomic
   output files**; tag-triggered OIDC publish, no changesets (already adopted via
   `publish.yml` + PyPI Trusted Publishing).
-- **Monorepo patterns** (`tbd guidelines pnpm-monorepo-patterns`,
-  `bun-monorepo-patterns`): this is a polyglot monorepo — Python under `packages/python`
+- **Monorepo patterns** (`tbd guidelines bun-monorepo-patterns`,
+  `pnpm-monorepo-patterns`): this is a polyglot monorepo — Python under `packages/python`
   (uv), TypeScript under `packages/typescript`. Single TS package ⇒ tag-triggered OIDC
-  npm publish (no changesets), `publint` for publishability, **Node 24 LTS**, the 14-day
-  cool-off enforced in the package manager. The **pnpm vs bun** toolchain choice is an
-  open decision (see Toolchain Alignment and Open Questions); both guidelines list
-  `tryscript` and `flowmark`, which this repo already uses.
+  npm publish (no changesets), `publint` for publishability, the 14-day cool-off enforced
+  in the package manager. **Toolchain decided: the bun stack** (bun + bunup + `bun test` +
+  biome) — the leanest house-approved option for a small focused CLI/library; both
+  guidelines list `tryscript` and `flowmark`, which this repo already uses. See Toolchain
+  Alignment.
 
 ### Verified Versions (June 2026)
 
@@ -128,37 +129,43 @@ sync at the boundary.
 | CLI framework | `argparse` (stdlib) | `commander` **^15** | Commander 15 is ESM-only, Node ≥22.12. Commander 14 is security-maintenance only — not for new projects. |
 | Color | n/a (JSON output) | `picocolors` **^1.1.1** | Help/diagnostic color only; JSON stays uncolored; honor `NO_COLOR`/`--color`. tryscript runs non-TTY ⇒ auto-disabled. |
 | Atomic writes | stdlib tempfile+replace (`compile.py`) | `atomically` **^2.1.1** | Matches Python `_write_atomic`; apply to sidecar + generated-section writes. |
-| Tests | `pytest` | `vitest` **^4.1.5** + `tsx` **^4.21** | Plus the shared `tryscript` **^0.1.6** corpus. |
-| Build | `uv build` | `tsdown` **^0.22** (pnpm) / `bunup` **^0.16** (bun) | ESM (+ optional CJS) + `.d.ts`; `bin` → `dist/cli.js`. |
-| Lint/format | `ruff` + `basedpyright` | `eslint` **^10** (flat) + `prettier` **^3.8** (pnpm) / `biome` **^2.4** (bun) | Plus `publint` **^0.3.20** for publishability. |
-| Runtime / PM | Python 3.11–3.14 (uv) | **Node 24 LTS**; `pnpm` **^11** *or* `bun` **1.3.x** | `pnpm/action-setup@v6` / `oven-sh/setup-bun@v2`; `actions/checkout@v6`, `setup-node@v6`. |
+| Tests | `pytest` | **`bun test`** (built-in) + the shared `tryscript` **^0.1.6** corpus | bun test has Jest-compatible matchers and built-in `--coverage`. |
+| Build | `uv build` | **`bunup` ^0.16** | ESM (+ optional CJS) + `.d.ts`; `bin` → `dist/cli.js`. |
+| Lint/format | `ruff` + `basedpyright` | **`biome` ^2.4** + `tsc --noEmit` for types | One tool for lint + format; `publint` **^0.3.20** for publishability. |
+| Runtime / PM | Python 3.11–3.14 (uv) | **`bun` 1.3.x** (runtime + package manager) | `oven-sh/setup-bun@v2`; `actions/checkout@v6`. Node available on runners for `npx` fallbacks. |
+| Types | `basedpyright` | **`typescript` ^6.0.3** (`tsc --noEmit`), `bun-types` **^1.3** | TS 6.0 (strict default); do not adopt `tsgo`/TS 7 beta. |
 
 All TypeScript dependencies are subject to the 14-day supply-chain cool-off
-(`typescript-rules` supply-chain section): with pnpm via `minimumReleaseAge: 20160`
-(14 days, overriding pnpm 11's 1-day default) and `npm-check-updates --cooldown 14`; with
-bun via the equivalent install gating. Mirrors the Python side's `UV_EXCLUDE_NEWER`
+(`typescript-rules` supply-chain section), enforced with `npm-check-updates --cooldown 14`
+when bumping and bun's install gating. Mirrors the Python side's `UV_EXCLUDE_NEWER`
 14-days-ago cutoff already set in CI.
 
-### Toolchain Alignment (pnpm vs bun — open decision)
+### Toolchain Alignment — decided: bun + biome
 
-The monorepo guidelines document two complete, equivalent stacks. The TS package is a
-single CLI library, so either works; the choice is a team preference that does not change
-the parity design (the canonical sidecar, error records, and golden corpus are
-toolchain-agnostic). It only affects the Phase 1 scaffolding bead.
+**Decision: the bun stack** (`bun-monorepo-patterns`). For a focused single-package CLI
+that is also a small npm library, bun is the leanest house-approved choice — one tool for
+the package manager, runtime, test runner, and (via `bunup`) the library build — paired
+with `biome` as a single lint+format tool. This minimizes config and dependencies versus
+the pnpm stack's `pnpm + tsdown + vitest + eslint + prettier`. The pnpm stack remains a
+valid alternative; the choice does not change the parity design (canonical sidecar, error
+records, and the golden corpus are toolchain-agnostic).
 
-| Concern | pnpm stack | bun stack |
+| Concern | Chosen (bun) | Alternative (pnpm) |
 | --- | --- | --- |
-| Package manager / runtime | pnpm ^11 + Node 24 | bun 1.3.x |
-| Build | tsdown ^0.22 | bunup ^0.16 |
-| Test runner | vitest ^4.1.5 (+ tsx) | `bun test` |
-| Lint + format | eslint ^10 (flat) + prettier ^3.8 | biome ^2.4 |
-| CI setup action | `pnpm/action-setup@v6` | `oven-sh/setup-bun@v2` |
-| Shared by both | `commander@^15`, `zod@^4.4`, `yaml@^2.8`, `ajv@^8`, `picocolors`, `atomically`, `publint`, `tryscript`, tag-triggered OIDC publish (no changesets), `flowmark` for Markdown | — |
+| Package manager / runtime | **bun 1.3.x** | pnpm ^11 + Node 24 |
+| Build | **bunup ^0.16** | tsdown ^0.22 |
+| Test runner | **`bun test` + `--coverage`** | vitest ^4.1.5 + @vitest/coverage-v8 |
+| Lint + format | **biome ^2.4** | eslint ^10 (flat) + prettier ^3.8 |
+| Type check | **`tsc --noEmit`** (TS ^6.0.3) | same |
+| CI setup action | **`oven-sh/setup-bun@v2`** | `pnpm/action-setup@v6` |
+| Shared by both | `commander@^15`, `zod@^4.4`, `yaml@^2.8`, `ajv@^8` (+`ajv-formats`), `picocolors`, `atomically`, `publint`, `tryscript`, tag-triggered OIDC publish (no changesets), `flowmark` for Markdown | — |
 
-**Default recommendation: pnpm** (the more comprehensive "recommended stack" in the
-guidelines and the one `typescript-rules`/`typescript-yaml-handling-rules` reference).
-**Bun is a reasonable alternative** given that it bundles runtime+build+test and the
-`bun-monorepo-patterns` table already lists `tryscript`+`flowmark` (this repo's tools).
+**Conformance note on coverage.** `typescript-code-coverage` is written for Vitest +
+`@vitest/coverage-v8`. With bun we use `bun test --coverage` (lcov), but we hold to the
+**same thresholds** from that guideline — statements ≥ 80%, branches ≥ 75%, functions ≥
+80%, lines ≥ 80% as targets (starting floors 70/65/70/70) — and the same include/exclude
+rules (exclude `dist/`, `*.d.ts`, test files, fixtures). Branch coverage matters most
+here given the union types in the result/error records.
 Confirm before Phase 1 scaffolding (`ss-d0id`); the Verified Versions rows above carry
 both columns so neither choice is blocked.
 
@@ -315,7 +322,7 @@ The clean rule that makes "the same golden tests run on both CLIs" actually achi
 - **Non-portable invariants live in Pydantic validators / Zod refinements** and are checked
   by the **semantic** layer. Cross-field rules (e.g. "audience ≤ critics") cannot be
   expressed in JSON Schema. These are impl-specific by design and are tested **per-language**
-  (pytest / vitest), never in the shared corpus.
+  (pytest / `bun test`), never in the shared corpus.
 
 Consequence for the corpus: failing scenarios are chosen to fail **structurally** (the
 canonical, identical path). Their CLI output asserts the full `structural.errors` block
@@ -385,28 +392,56 @@ Both CLIs must emit identical bytes for shared scenarios:
 
 ### TypeScript package shape
 
-`packages/typescript/`, a self-contained pnpm package, later published as `@softschema/core`
-with a `softschema-ts` bin.
+`packages/typescript/`, a self-contained **bun** package, later published as
+`@softschema/core` with a `softschema-ts` bin.
 
 ```text
 packages/typescript/
-  package.json            # type: module; bin: { "softschema-ts": "dist/cli.js" }
-  tsconfig.json           # strict
+  package.json            # type: module; bin: {"softschema-ts":"dist/cli.js"}; exports/files publish-ready
+  bunfig.toml             # bun config (test, install)
+  bunup.config.ts         # library build → dist/ (ESM + .d.ts), CLI bin
+  biome.json              # lint + format (extends house config)
+  tsconfig.json           # strict; tsc --noEmit for type checking
   src/
     settings.ts           # YAML stringify opts (sorted keys); stableStringify(); canonicalJson()
     models.ts             # Contract, SchemaStatus, SchemaProfile, SchemaMetadata, WarningCode, SchemaWarning, parseSchemaMetadata
     registry.ts           # Contracts (register/resolve/all, dup-id error)
-    canonicalize.ts       # canonicalize_json_schema() rules 1-6
+    canonicalize.ts       # canonicalizeJsonSchema(): drop titles, strip null default, oneOf→anyOf
     compile.ts            # compileSchema(zod, out, {contractId, checkOnly}) -> sidecar + sha256 + --check
-    errors.ts             # structural error record + normalizeStructuralError(ajvError); message templates
+    errors.ts             # structuralErrorRecord + renderStructuralMessage + normalizeAjvError; templates
     validate.ts           # validateValues, validateArtifact; result types; ajv/2020 structural + safeParse semantic
     schemaView.ts         # SchemaView, FieldInfo (reader over canonical sidecar)
     softField.ts          # softField(); SoftFieldMeta; SoftOwner/SoftTier/RepairKind
     generate.ts           # parseSections, regenerate (enum_table, field_list, vocab)
     cli.ts                # commander program: validate, compile, inspect, generate, docs, skill
-  test/                   # vitest unit tests (per-module, incl. semantic-only refinements)
+  src/*.test.ts           # bun test unit tests (co-located), incl. semantic-only refinements
+  test/fixtures/
+    moviePage.ts          # the movie model in Zod — cross-language fixture
   README.md               # replaces the stub
 ```
+
+`package.json` scripts mirror the Python `Makefile` targets so the two packages feel the
+same: `build` (`bunup`), `test` (`bun test`), `test:cov` (`bun test --coverage`),
+`lint`/`format` (`biome`), `typecheck` (`tsc --noEmit`), `check` (lint + typecheck + test).
+
+### Testing the TypeScript package (guideline conformance)
+
+Three layers, per `general-testing-rules`, `typescript-code-coverage`, and
+`golden-testing-guidelines`:
+
+- **Shared golden corpus (primary parity gate).** The same `tests/golden/` scenarios run
+  against `softschema-ts` via `SOFTSCHEMA_IMPL=ts`. This is the cross-language behavioral
+  contract and the highest-value coverage; it is language-agnostic (tryscript), so no
+  per-language duplication.
+- **`bun test` unit tests (co-located `*.test.ts`).** Per-module edge cases that the corpus
+  should *supplement*, not duplicate: canonicalize transforms, `stableStringify`/`canonicalJson`
+  byte-equality against Python fixtures, `SchemaView` `$ref`/`anyOf`-null walking, ajv error
+  normalization, and at least one **semantic-only** cross-field `.refine()` (impl-specific
+  by design). Coverage via `bun test --coverage` (lcov), holding the
+  `typescript-code-coverage` thresholds (statements ≥ 80, **branches ≥ 75**, functions ≥ 80,
+  lines ≥ 80; floors 70/65/70/70), excluding `dist/`, `*.d.ts`, `*.test.ts`, and fixtures.
+- **Cross-implementation conformance.** Compile the movie schema via both binaries and
+  assert byte-equal canonical sidecar + equal `schema_sha256`.
 
 ### Idiomatic Zod choices (not transliteration)
 
@@ -487,11 +522,11 @@ with two patterns handling all nondeterminism. No mocks needed (no network/clock
 
 - Phase 0: add a `golden` job running `SOFTSCHEMA_IMPL=py npx tryscript@latest tests/golden`
   on the existing Python matrix. Locks behavior before the port.
-- Phases 1–2: add a job that sets up the TS toolchain (`pnpm/action-setup@v6` +
-  `actions/setup-node@v6` **or** `oven-sh/setup-bun@v2`; `actions/checkout@v6`), builds the
-  TS package, and runs `SOFTSCHEMA_IMPL=ts npx tryscript@latest tests/golden` + the
-  conformance test. Green on both = parity.
-- Keep `pytest` and add `vitest` for per-language edge cases (including semantic-only
+- Phases 1–2: add a job that sets up the TS toolchain (`oven-sh/setup-bun@v2`,
+  `actions/checkout@v6`), runs `bun install`, `biome ci`, `tsc --noEmit`, `bun test
+  --coverage`, builds with `bunup`, then runs `SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh`
+  + the conformance test. Green on both = parity.
+- Keep `pytest` and add `bun test` for per-language edge cases (including semantic-only
   refinements), which golden tests supplement rather than replace.
 
 ## Implementation Plan
@@ -542,13 +577,13 @@ One PR. Cleans the parity target and locks observable behavior.
 
 Smallest vertical slice that passes scenarios 1, 2, 4 under `SOFTSCHEMA_IMPL=ts`.
 
-- [ ] **Scaffold** `packages/typescript` per the chosen toolchain (pnpm+tsdown+vitest or
-  bun+bunup+`bun test`; default pnpm — confirm first). `type: module`, strict tsconfig
-  (`target` matching Node 24), `bin: { "softschema-ts": "dist/cli.js" }`. Pin under the
-  14-day cool-off: `zod@^4.4`, `yaml@^2.8`, `commander@^15`, `ajv@^8`, `ajv-formats@^3`,
-  `picocolors@^1.1.1`, `atomically@^2.1.1`; dev: `tsdown@^0.22`, `vitest@^4.1.5`,
-  `tsx@^4.21`, `publint@^0.3.20`, `eslint@^10`(flat) + `prettier@^3.8` (or `biome@^2.4`).
-  Configure the package-manager cool-off gate. Replace the stub README.
+- [ ] **Scaffold** `packages/typescript` on the bun stack: `package.json`
+  (`type: module`, `bin: {"softschema-ts":"dist/cli.js"}`, publish-ready `exports`/`files`,
+  scripts build/test/test:cov/lint/format/typecheck/check), `bunfig.toml`, `bunup.config.ts`,
+  `biome.json`, strict `tsconfig.json`. Pin under the 14-day cool-off: `zod@^4.4`,
+  `yaml@^2.8`, `commander@^15`, `ajv@^8`, `ajv-formats@^3`, `picocolors@^1.1.1`,
+  `atomically@^2.1.1`; dev: `bunup@^0.16`, `biome@^2.4`, `typescript@^6.0.3`,
+  `bun-types@^1.3`, `publint@^0.3.20`. Replace the stub README.
 - [ ] **`settings.ts`:** YAML stringify options (sorted keys, no forced quoting);
   `stableStringify(value, indent)` matching Python `json.dumps(sort_keys=True)`;
   `canonicalJson(value)` matching `separators=(",",":")` for SHA-256.
@@ -589,7 +624,7 @@ Full feature parity; passes scenarios 3, 5, 6.
 
 - [ ] Cross-implementation conformance test in CI (Pydantic vs Zod canonical sidecar) green
   on every push.
-- [ ] `vitest` unit tests for TS-specific edge cases: Zod-vs-Pydantic raw quirks the
+- [ ] `bun test` unit tests for TS-specific edge cases: Zod-vs-Pydantic raw quirks the
   canonicalizer must absorb, YAML round-tripping, and **semantic-only refinements** (a
   cross-field Zod `.refine()` mirroring a Pydantic validator) proving the impl-specific layer
   works per-language.
@@ -605,17 +640,17 @@ Full feature parity; passes scenarios 3, 5, 6.
   full output capture, only `schema_sha256` + paths patterned, fully hermetic, <100ms each.
 - **Cross-implementation conformance:** compile the movie schema via both binaries; compare
   canonical sidecars byte-for-byte and `schema_sha256`.
-- **Unit tests (secondary, per-language):** pytest (extended for Phase 0) + vitest (incl.
-  semantic-only refinements that are impl-specific by design).
+- **Unit tests (secondary, per-language):** pytest (extended for Phase 0) + `bun test`
+  with `--coverage` (incl. semantic-only refinements that are impl-specific by design).
 - **Commands:**
   ```bash
   # Python
   uv run python devtools/lint.py --check && uv run pytest && uv build
-  # Golden, Python side (works from Phase 0)
-  SOFTSCHEMA_IMPL=py npx tryscript@latest tests/golden
+  # Golden, Python side (works today)
+  SOFTSCHEMA_IMPL=py bash tests/golden/run.sh
   # TypeScript (from Phase 1)
-  pnpm -C packages/typescript build && pnpm -C packages/typescript test
-  SOFTSCHEMA_IMPL=ts npx tryscript@latest tests/golden
+  cd packages/typescript && bun install && biome ci . && tsc --noEmit && bun test --coverage && bunup
+  SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
   ```
 
 ## Rollout Plan
@@ -631,9 +666,9 @@ Full feature parity; passes scenarios 3, 5, 6.
 
 ## Open Questions
 
-- **TS toolchain — pnpm vs bun (decide before Phase 1 `ss-d0id`).** See Toolchain
-  Alignment. Default recommendation **pnpm + tsdown + vitest + eslint/prettier**; bun is a
-  reasonable alternative. Does not affect the parity design.
+- ~~**TS toolchain — pnpm vs bun.**~~ **Decided: bun + biome** (see Toolchain Alignment).
+  Leanest house-approved stack for a focused small CLI/library; does not affect the parity
+  design. pnpm remains a documented fallback.
 - **TS package name:** `@softschema/core` (assumed) vs unscoped `softschema` on npm. The
   binary is `softschema-ts` regardless; the unscoped global name stays Python's.
 - **TS publishing:** tag-triggered OIDC npm publish with `publint` preflight (mirrors the
@@ -661,13 +696,14 @@ Full feature parity; passes scenarios 3, 5, 6.
 - `tbd guidelines golden-testing-guidelines` — tryscript, stable/unstable fields,
   transparent-box testing, anti-patterns. `npx tryscript@latest docs` for syntax.
 - `tbd guidelines typescript-rules` / `typescript-yaml-handling-rules` /
-  `typescript-cli-tool-rules` — Zod 4, `yaml@2`, **Commander 15**, picocolors, vitest,
-  supply-chain.
+  `typescript-cli-tool-rules` / `typescript-code-coverage` — Zod 4, `yaml@2`,
+  **Commander 15**, picocolors, coverage thresholds, supply-chain.
 - `tbd guidelines python-cli-patterns` / `python-modern-guidelines` — exit codes,
   stdout/stderr split, uv-dynamic-versioning, atomic output files, tag-triggered OIDC
   publish.
-- `tbd guidelines pnpm-monorepo-patterns` / `bun-monorepo-patterns` — version table
-  (Node 24, pnpm ^11 / bun 1.3, tsdown/bunup, publint, vitest, tryscript), supply-chain
+- `tbd guidelines bun-monorepo-patterns` / `pnpm-monorepo-patterns` — version table
+  (bun 1.3, bunup, biome, `bun test`, publint, tryscript; or Node 24/pnpm/tsdown/vitest),
+  supply-chain
   cool-off, single-package OIDC publishing.
 - Zod JSON Schema: <https://zod.dev/json-schema> — `z.toJSONSchema` options
   (`target`/`io`/`reused`/`cycles`/`unrepresentable`/`override`), `.meta()` passthrough,
