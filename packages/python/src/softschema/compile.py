@@ -12,6 +12,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
+from softschema.canonicalize import canonicalize_json_schema
+
 # Version of the `x-softschema` block format emitted into compiled sidecars,
 # not the installed package version (use `importlib.metadata.version("softschema")`
 # for that). Bump this only when the shape of `x-softschema` itself changes.
@@ -38,7 +40,9 @@ def compile_model(
     check_only: bool = False,
 ) -> CompileResult:
     """Compile ``model_cls`` to a JSON Schema YAML sidecar at ``out_path``."""
-    schema = _augment_schema(model_cls.model_json_schema(), model_cls, contract_id)
+    schema = canonicalize_json_schema(
+        _augment_schema(model_cls.model_json_schema(), model_cls, contract_id)
+    )
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
@@ -103,7 +107,8 @@ def _schema_sha256(schema: dict[str, Any]) -> str:
 
 
 def _yaml_dump(schema: dict[str, Any]) -> str:
-    return yaml.safe_dump(schema, sort_keys=False, default_flow_style=False, allow_unicode=True)
+    # Canonical profile: keys sorted for deterministic, cross-language byte output.
+    return yaml.safe_dump(schema, sort_keys=True, default_flow_style=False, allow_unicode=True)
 
 
 def _write_atomic(path: Path, text: str) -> None:
