@@ -22,7 +22,8 @@ dependencies = [
     "frontmatter-format>=0.3.0",
     "jsonschema>=4.20",
     "pydantic>=2",
-    "pyyaml",
+    "ruamel-yaml>=0.18",
+    "strif>=3.1.0",
 ]
 
 [project.urls]
@@ -32,6 +33,7 @@ Issues = "https://github.com/jlevy/softschema/issues"
 
 [project.scripts]
 softschema = "softschema.cli:main"
+softschema-py = "softschema.cli:main"
 
 [dependency-groups]
 dev = [
@@ -42,6 +44,14 @@ dev = [
     "ruff>=0.15.12",
     "rich>=15.0.0",
 ]
+
+[tool.uv]
+# Trusted-package exception to the 14-day supply-chain cool-off. strif is a reviewed,
+# zero-dependency, first-party package, so the latest release is allowed. This records
+# the decision and applies for local resolution; CI sets a global UV_EXCLUDE_NEWER that
+# overrides config, so ci.yml ALSO passes `--exclude-newer-package strif=...` with the
+# same date. Bump the date in both places to adopt a newer strif.
+exclude-newer-package = { strif = "2026-06-03" }
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
@@ -149,7 +159,7 @@ reportMissingTypeArgument = false
 reportPrivateUsage = false
 
 [tool.codespell]
-skip = "uv.lock,*.schema.yaml"
+skip = "uv.lock,bun.lock,*.schema.yaml,*/node_modules/*,*/dist/*,*/resources/*"
 ignore-words-list = "fo"
 
 [tool.pytest.ini_options]

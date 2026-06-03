@@ -110,12 +110,12 @@ The `extract-softschema` branch carries a v0.1-release-ready standalone repo:
 
 Release-readiness verified on 2026-05-28:
 
-- `uv run python devtools/lint.py --check` — clean (codespell, ruff, basedpyright, doc
+- `uv run python devtools/lint.py --check`: clean (codespell, ruff, basedpyright, doc
   footers).
-- `uv run pytest` — 63/63 tests pass across `test_cli`, `test_core`, `test_generate`,
+- `uv run pytest`: 63/63 tests pass across `test_cli`, `test_core`, `test_generate`,
   `test_movie_page_example`, `test_schema_view`, `test_soft_field`,
   `test_warning_codes`.
-- `uv build` — wheel and sdist build; bundled resources include the renamed
+- `uv build`: wheel and sdist build; bundled resources include the renamed
   `docs/softschema-python-design.md`.
 - All 34 tracked beads closed.
 
@@ -394,9 +394,9 @@ consumer seam).
 
 Closed via `ss-szpe`. Validated on 2026-05-28.
 
-- [x] Run `uv run python devtools/lint.py --check` — clean.
-- [x] Run `uv run pytest` — 63/63 pass.
-- [x] Run `uv build` — wheel and sdist build.
+- [x] Run `uv run python devtools/lint.py --check`: clean.
+- [x] Run `uv run pytest`: 63/63 pass.
+- [x] Run `uv build`: wheel and sdist build.
 - [x] Inspect the built wheel for bundled resources, including the renamed
   `docs/softschema-python-design.md`
   (`unzip -l dist/*.whl | grep softschema-python-design`).
@@ -492,14 +492,14 @@ Original implementation map (for reference):
     - `@property contract_id: str` (from `$id` or root `x-softschema.contract`).
     - `@property schema_sha256: str | None` (from root `x-softschema`).
     - `@property root_softmeta: dict[str, Any]`.
-    - `iter_fields(*, include_refs=True) -> Iterable[FieldInfo]` — flattens through
+    - `iter_fields(*, include_refs=True) -> Iterable[FieldInfo]`: flattens through
       `$ref`s into `$defs`, yields one `FieldInfo` per leaf-ish field; pointer is
       relative to the root schema using JSON Pointer.
-    - `field(pointer: str) -> FieldInfo` — single lookup by pointer.
+    - `field(pointer: str) -> FieldInfo`: single lookup by pointer.
     - `enum_values(pointer: str) -> list[str] | None`.
     - `softmeta(pointer: str) -> dict[str, Any]`.
     - `fields_by_group(group: str)`, `fields_by_owner(owner: str)`,
-      `fields_by_tier(tier: str)` — filter helpers on the `iter_fields` stream.
+      `fields_by_tier(tier: str)`: filter helpers on the `iter_fields` stream.
 
 - [x] Defer `view(name)` / `load_urn` to a follow-up.
   v0.1 ships the navigator only; views and URN resolution remain reserved.
@@ -514,7 +514,7 @@ Original implementation map (for reference):
   section.
 
 - [x] **Warning-code documentation.** `WarningCode` enum published in `softschema`,
-  Warning Codes + structural error kinds tables in `docs/softschema-python-design.md`,
+  Warning Codes and structural error kinds tables in `docs/softschema-python-design.md`,
   and regression test (`tests/test_warning_codes.py`) pinning emitted codes to the
   documented set. Committed to the `document-*` prefix for the warning family.
 
@@ -555,7 +555,7 @@ Shipped in commit landing this section:
 - “Generated-section drift” CI section added to `docs/development.md`.
 - One marker landed in `examples/movie_page/README.md` ("Schema Enums").
 - `tests/test_generate.py` (10 tests): parser, multi-block, unterminated-marker,
-  determinism, drift detection + repair, unknown-kind, field_list, vocab pointer
+  determinism, drift detection and repair, unknown-kind, field_list, vocab pointer
   requirement, vocab values, and the committed movie marker’s no-drift contract.
 
 Phase 0 scope (this bead):
@@ -579,7 +579,7 @@ Implementation map:
   mirrors, URN resolution).
 - [x] Add one marker to `examples/movie_page/README.md` (the “Schema Enums” block).
 - [x] Add `tests/test_generate.py` (10 tests): parser, multi-block, unterminated-marker,
-  determinism, drift detection + repair, unknown-kind, field_list, vocab pointer
+  determinism, drift detection and repair, unknown-kind, field_list, vocab pointer
   requirement, vocab values, committed-marker no-drift.
 
 ## Tracking Beads
@@ -608,12 +608,12 @@ Implementation map:
 | `ss-j6fu` | closed | CLI topic rename `design` → `python-design` noted in Phase 3. |
 | `ss-pu9z` | closed, P0 | Field-level `x-softschema` annotations through compile. |
 | `ss-9zdi` | closed, P0 | `SchemaView` shared schema reader. |
-| `ss-befh` | closed, P0 | Stable warning-code prefix scheme (documented + tested). |
+| `ss-befh` | closed, P0 | Stable warning-code prefix scheme (documented and tested). |
 | `ss-0cz4` | closed, P1 | Lifecycle / continuum walkthrough in the guide. |
 | `ss-ow97` | closed, P1 | Inline-vs-sidecar doctrine in the guide. |
 | `ss-91vh` | closed, P1 | Migration recipe (envelope reshape). |
 | `ss-4e4s` | closed, P1 | CI integration recipe in development docs. |
-| `ss-bini` | closed, P1 | Generated schema sections (markers + renderer + CLI). |
+| `ss-bini` | closed, P1 | Generated schema sections (markers, renderer, and CLI). |
 | `ss-8mt0` | closed | Addressed codex review of standalone docs+design organization. |
 | `ss-wut9` | closed | Decided fate of `docs/softschema-design.md` (removed for v0.1). |
 | `ss-hyhu` | closed | Restructured `docs/softschema-guide.md` as operational playbooks. |
@@ -660,7 +660,8 @@ uv run softschema skill --brief
 1. ~~Commit and push this plan spec in the softschema repo.~~ Done.
 2. ~~Remove accidental softschema planning work from the unrelated tryscript repo.~~
    Done.
-3. ~~Work through the linked softschema beads.~~ Done — 34/34 closed.
+3. ~~Work through the linked softschema beads.~~ Done.
+   34/34 closed.
 4. ~~Keep docs changes in the softschema repo only.~~ Maintained throughout.
 5. Publish or tag the standalone package.
    Remaining external steps:
@@ -730,9 +731,9 @@ These can wait until a TypeScript package is actually scheduled.
 - [Softschema Guide](../../../softschema-guide.md)
 - [Softschema Spec](../../../softschema-spec.md)
 - [Python Package Design](../../../softschema-python-design.md)
-- [Runtime Design v8](../../research/research-2026-05-24-softschema-runtime-design-v8.md)
-  — the durable design reference for the full “hard schema, soft authoring”
-  architecture. P0/P1/Deferred items in this plan trace back to this document.
+- [Runtime Design v8](../../research/research-2026-05-24-softschema-runtime-design-v8.md):
+  the durable design reference for the full “hard schema, soft authoring” architecture.
+  P0/P1/Deferred items in this plan trace back to this document.
 - [Movie Page Example](../../../../examples/movie_page/README.md)
 - [Future TypeScript Notes](../../../../packages/typescript/README.md)
 

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+from frontmatter_format import new_yaml, read_yaml_file
 from pydantic import BaseModel
+from strif import atomic_write_text
+
+from softschema.canonicalize import canonicalize_json_schema
 
 # Version of the `x-softschema` block format emitted into compiled sidecars,
 # not the installed package version (use `importlib.metadata.version("softschema")`
@@ -38,7 +41,7 @@ def compile_model(
     check_only: bool = False,
 ) -> CompileResult:
     """Compile ``model_cls`` to a JSON Schema YAML sidecar at ``out_path``."""
-    schema = _augment_schema(model_cls.model_json_schema(), model_cls, contract_id)
+    schema = canonicalize_json_schema(_augment_schema(model_cls.model_json_schema(), contract_id))
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
@@ -52,8 +55,11 @@ def compile_model(
                 drift_diff=f"missing committed schema sidecar at {out_path}",
                 schema_sha256=schema_sha256,
             )
-        existing = out_path.read_text()
-        if existing.strip() == rendered.strip():
+        # Compare parsed content, not raw bytes, so YAML formatting differences (e.g.
+        # a different writer in another implementation) are not treated as drift; only a
+        # genuine schema change is.
+        existing = read_yaml_file(out_path)
+        if existing == schema:
             return CompileResult(
                 out_path=out_path,
                 schema_yaml=rendered,
@@ -68,7 +74,7 @@ def compile_model(
             schema_sha256=schema_sha256,
         )
 
-    _write_atomic(out_path, rendered)
+    atomic_write_text(out_path, rendered, make_parents=True)
     return CompileResult(
         out_path=out_path,
         schema_yaml=rendered,
@@ -79,18 +85,19 @@ def compile_model(
 
 def _augment_schema(
     schema: dict[str, Any],
-    model_cls: type[BaseModel],
     contract_id: str | None,
 ) -> dict[str, Any]:
     out = dict(schema)
     out.setdefault("$schema", JSON_SCHEMA_DRAFT)
     if contract_id is not None:
         out.setdefault("$id", contract_id)
+    # The root x-softschema block is language-neutral on purpose: no `generated_from`
+    # provenance (a Pydantic/Zod-specific import path would leak the implementation and
+    # prevent a byte-identical sidecar across languages).
     out.setdefault("x-softschema", {})
     out["x-softschema"].update(
         {
             "contract": contract_id,
-            "generated_from": f"{model_cls.__module__}:{model_cls.__name__}",
             "softschema_format_version": SOFTSCHEMA_FORMAT_VERSION,
         }
     )
@@ -98,23 +105,24 @@ def _augment_schema(
 
 
 def _schema_sha256(schema: dict[str, Any]) -> str:
-    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"), default=str)
+    # ensure_ascii=False so the hash is over literal UTF-8 (matching the TypeScript
+    # JSON.stringify); otherwise non-ASCII in descriptions would hash differently.
+    canonical = json.dumps(
+        schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _yaml_dump(schema: dict[str, Any]) -> str:
-    return yaml.safe_dump(schema, sort_keys=False, default_flow_style=False, allow_unicode=True)
-
-
-def _write_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        delete=False,
-        dir=path.parent,
-        prefix=f".{path.name}.",
-    ) as tmp:
-        tmp.write(text)
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)
+    # Canonical profile: keys sorted for deterministic byte output. Use
+    # frontmatter-format's YAML (block style, clean multi-line scalars). Disable
+    # its default empty/None suppression: a schema serializer must never drop a
+    # field (e.g. an empty `properties` or a `null` enum member).
+    writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
+    # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
+    # wrapped onto continuation lines; keeps the sidecar clean and the byte
+    # output reproducible across implementations.
+    writer.width = 4096
+    buffer = io.StringIO()
+    writer.dump(schema, buffer)
+    return buffer.getvalue()

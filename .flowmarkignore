@@ -18,3 +18,7 @@
 
 # Beads issue store; managed by tbd, not human-authored.
 .beads/
+
+# Golden-test corpus: scenario files capture exact CLI output byte-for-byte.
+# Reflowing prose or tables here would corrupt the expected output.
+tests/golden/

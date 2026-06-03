@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 from pathlib import Path
 
 import pytest
@@ -11,9 +10,7 @@ from softschema import (
     Contracts,
     SchemaProfile,
     SchemaStatus,
-    ValueResolver,
     compile_model,
-    validate,
     validate_artifact,
     validate_semantic,
     validate_structural,
@@ -72,66 +69,37 @@ def test_validate_semantic_runs_cross_field_invariant() -> None:
     assert any("direction=up" in str(error.get("msg", "")) for error in result.errors)
 
 
-def test_validate_combined_frontmatter_doc(tmp_path: Path) -> None:
+def test_validate_values_requires_a_model_or_schema() -> None:
+    with pytest.raises(ValueError, match="model="):
+        validate_values({"name": "hello"})
+
+
+def test_validate_artifact_without_envelope_key_uses_frontmatter_root(tmp_path: Path) -> None:
     schema_path = tmp_path / "sample.schema.yaml"
     compile_model(SampleModel, schema_path, contract_id="example:Sample/v1")
     doc = tmp_path / "doc.md"
     write_doc(doc, "name: hello\ndirection: up\ndelta: 1.5\n")
-
-    result = validate(
-        doc,
+    contract = Contract(
+        id="example:Sample/v1",
         model=SampleModel,
-        schema=schema_path,
-        resolver=ValueResolver(kind="frontmatter_root"),
+        schema_path=schema_path,
     )
+
+    result = validate_artifact(doc, contract=contract)
 
     assert result.ok
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
 
 
-def test_validate_requires_a_model_or_schema(tmp_path: Path) -> None:
+def test_validate_artifact_reports_non_mapping_envelope(tmp_path: Path) -> None:
     doc = tmp_path / "doc.md"
-    write_doc(doc, "name: hello\n")
+    write_doc(doc, "sample:\n  - not\n  - a\n  - mapping\n")
+    contract = Contract(id="example:Sample/v1", model=SampleModel, envelope_key="sample")
 
-    with pytest.raises(ValueError, match="model="):
-        validate(doc)
-
-
-def test_validate_returns_structured_failure_when_resolver_pointer_is_missing(
-    tmp_path: Path,
-) -> None:
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-
-    result = validate(
-        doc,
-        model=SampleModel,
-        resolver=ValueResolver(kind="values_key", pointer="/missing"),
-    )
+    result = validate_artifact(doc, contract=contract)
 
     assert not result.ok
-    assert result.structural.errors[0]["kind"] == "resolver_error"
-    assert result.semantic.skipped_reason == "resolver_error"
-
-
-def test_validate_returns_structured_failure_when_host_adapter_raises(
-    tmp_path: Path,
-) -> None:
-    def adapter(_frontmatter: dict[str, object]) -> dict[str, object]:
-        raise RuntimeError("adapter failed")
-
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-
-    result = validate(
-        doc,
-        model=SampleModel,
-        resolver=ValueResolver(kind="host_adapter", host_adapter=adapter),
-    )
-
-    assert not result.ok
-    assert result.structural.errors[0]["kind"] == "resolver_error"
-    assert result.structural.errors[0]["exception_type"] == "RuntimeError"
-    assert result.semantic.skipped_reason == "resolver_error"
+    assert result.structural.errors[0]["kind"] == "envelope_not_mapping"
 
 
 def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -> None:
@@ -159,34 +127,6 @@ def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -
 
     assert result.ok
     assert result.contract_id == "example:Sample/v1"
-    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
-
-
-def test_validate_artifact_accepts_gzipped_markdown(tmp_path: Path) -> None:
-    doc = tmp_path / "sample.md.gz"
-    with gzip.open(doc, "wt", encoding="utf-8") as fh:
-        fh.write(
-            """---
-softschema:
-  contract: example:Sample/v1
-sample:
-  name: hello
-  direction: up
-  delta: 1.5
----
-# title
-"""
-        )
-    contract = Contract(
-        id="example:Sample/v1",
-        model=SampleModel,
-        envelope_key="sample",
-        status=SchemaStatus.enforced,
-    )
-
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.ok
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
 
 
@@ -249,6 +189,17 @@ def test_validate_artifact_rejects_invalid_metadata(tmp_path: Path) -> None:
     assert result.structural.errors[0]["kind"] == "document_softschema_invalid"
 
 
+def test_validate_artifact_reports_parse_error_for_malformed_pure_yaml(tmp_path: Path) -> None:
+    doc = tmp_path / "bad.yaml"
+    doc.write_text("key: [unclosed\n  : : :\n")
+    contract = Contract(id="example:Sample/v1", profile=SchemaProfile.pure_yaml)
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "parse_error"
+
+
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(doc, "wrong:\n  name: hello\n  direction: up\n  delta: 1.5\n")
@@ -305,7 +256,7 @@ def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> Non
 
     assert not result.ok
     assert result.structural.errors[0]["kind"] == "schema_sidecar_missing"
-    assert result.semantic.skipped_reason == "no_pydantic_model"
+    assert result.semantic.skipped_reason == "no_semantic_model"
 
 
 def test_registry_registers_complete_bindings_only() -> None:

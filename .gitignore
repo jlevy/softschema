@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Node / TypeScript
+node_modules/
+
 # Distribution / packaging
 .Python
 build/
@@ -223,3 +226,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# TS bundled doc/skill resources (generated at build by copy-resources)
+packages/typescript/resources/

@@ -3,15 +3,30 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install format format-check lint lint-check test upgrade build clean
+.PHONY: default install hooks-install format format-check lint lint-check test upgrade build clean
 
-# Pinned for stability — bump deliberately.
-FLOWMARK := uvx flowmark-rs@0.2.6
+# Pinned for stability — bump deliberately. flowmark-rs is a first-party package
+# (github.com/jlevy/flowmark); the --exclude-newer-package exception admits the pinned
+# release past the repo's supply-chain cool-off, mirroring the strif handling in
+# pyproject.toml and the practical-prose repo. Bump the version and the date together.
+FLOWMARK_VERSION := 0.3.1
+FLOWMARK := uvx --exclude-newer-package 'flowmark-rs=2026-06-02' flowmark-rs@$(FLOWMARK_VERSION)
 
 default: install format lint test
 
+# One-time local setup: Python deps, the root Node tooling that powers the git hooks
+# (lefthook), and the TypeScript package deps (so the biome pre-commit hook resolves a
+# lockfile-backed local binary instead of fetching one). GitHub Actions call uv / bun /
+# npx directly, not this Makefile.
 install:
 	uv sync --all-extras
+	npm install --silent
+	cd packages/typescript && bun install --frozen-lockfile
+
+# Install the lefthook-managed git hooks (pre-commit: flowmark + ruff + biome).
+# Run once after cloning. Bypass a hook for an emergency commit with --no-verify.
+hooks-install: install
+	npx --no-install lefthook install
 
 # Auto-format all Markdown with flowmark-rs (semantic line breaks, smart quotes,
 # safe cleanups). Pass `.` as the sole target so flowmark traverses the repo
@@ -19,14 +34,16 @@ install:
 # .flowmarkignore relative to its target arg, so passing subdirs or globs
 # bypasses it.
 #
-# After flowmark touches the prose, regenerate any softschema:generated
-# sections so the marker bodies stay byte-identical to the canonical output
-# (flowmark adds blank lines around block elements that the generator does
-# not emit; without this step the generate drift test would fail after a
-# format-only pass).
+# After flowmark touches the prose, regenerate the derived artifacts so they stay
+# byte-identical to their canonical source: (1) softschema:generated sections (flowmark
+# adds blank lines around block elements the generator does not emit), and (2) the skill
+# mirrors under .agents/ and .claude/, which are flowmark-ignored and so must be
+# re-installed from the just-reflowed skills/softschema/SKILL.md. Without these steps the
+# generate / skill-mirror drift tests fail after a format-only pass.
 format:
 	$(FLOWMARK) --auto .
 	uv run softschema generate examples/movie_page/README.md
+	uv run softschema skill --install
 
 # CI-mode Markdown check: run flowmark, then fail if it would change anything.
 # flowmark-rs has no native --check; we approximate via git diff. Requires a

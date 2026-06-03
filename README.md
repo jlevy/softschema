@@ -104,13 +104,40 @@ This repo is simply:
   defining soft schema file format conventions for Markdown documents with YAML
   frontmatter.
 
-- A simple [Python CLI](docs/softschema-python-design.md) that handles formatting,
-  compilation, validation, and other common workflows on soft schema-style documents.
+- A small CLI (and library) that handles formatting, compilation, validation, and other
+  common workflows on soft schema-style documents.
 
 The CLI can be used directly, as a library, or installed as a skill.
 
 For the full conceptual reference and adoption playbooks, see the
 [Softschema Guide](docs/softschema-guide.md).
+
+## Two Synchronized Implementations
+
+softschema ships **two complete, fully supported implementations** with the same CLI and
+library surface:
+
+- **Python / Pydantic**: [`softschema`](docs/softschema-python-design.md) on PyPI (run
+  as `softschema` or `softschema-py`).
+- **TypeScript / Zod**: [`softschema`](docs/softschema-typescript-design.md) on npm (run
+  as `softschema` or `softschema-ts`).
+
+The TypeScript package is a **synchronized port** of the Python one, held to **exact
+behavioral parity**: equivalent CLI inputs, outputs, and flags; equivalent library APIs;
+the same canonical JSON Schema sidecar (byte-identical, with an equal `schema_sha256`
+fingerprint); and the same engine-neutral validation results.
+Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
+Authoring or validating an artifact is identical regardless of which you run, so a team
+can adopt either runtime, or both, without divergence.
+
+The two are **maintained in lockstep**: every behavior change lands in a shared
+golden-test corpus first, then in both packages, and CI fails if their outputs or
+compiled schemas drift.
+They release together under **the same version number** on PyPI and npm.
+See
+[Keeping Python and TypeScript in Parity](docs/development.md#keeping-python-and-typescript-in-parity)
+for the development process and the parity invariants CI enforces, and
+[Publishing](docs/publishing.md) for the synchronized release.
 
 ## Example Artifact Shape
 
@@ -189,7 +216,7 @@ from the audience; IMDb users give it 8.6 out of 10 across more than 850,000 vot
 | Source | Score | Count |
 | --- | ---: | ---: |
 | Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |
-| Rotten Tomatoes Audience | 96% Popcornmeter | — |
+| Rotten Tomatoes Audience | 96% Popcornmeter | n/a |
 | IMDb | 8.6 / 10 | 850,000+ votes |
 ```
 
@@ -277,51 +304,90 @@ uv run softschema compile examples.movie_page.model:MoviePage \
   --out examples/movie_page/movie-page.schema.yaml
 ```
 
+## Try the TypeScript Package
+
+The TypeScript CLI takes the same arguments and emits byte-identical output.
+Validate the same artifact against the same language-neutral schema sidecar with a
+pinned zero-install runner:
+
+```bash
+npx softschema@latest validate examples/movie_page/spirited-away.md \
+  --schema examples/movie_page/movie-page.schema.yaml \
+  --envelope movie
+```
+
+The bundled docs and skill are served identically:
+
+```bash
+npx softschema@latest docs --list
+npx softschema@latest docs guide
+npx softschema@latest skill --brief
+```
+
+Semantic models are written in Zod instead of Pydantic; everything else (flags, result
+JSON, error records, and the compiled sidecar, down to its `schema_sha256`) matches the
+Python package exactly.
+See the [TypeScript Design](docs/softschema-typescript-design.md) doc for the Zod model
+shape and the full Python ↔ TypeScript API table.
+
 ## Use as an Agent Skill
 
-The `softschema` CLI ships as a [`SKILL.md`](https://agentskills.io) following the open
+Both packages ship the same [`SKILL.md`](https://agentskills.io) following the open
 Agent Skills standard discovered by Claude Code, Codex, Gemini CLI, Cursor, Copilot, and
 ~20 other coding agents.
 Pointing an agent at the CLI is enough to bootstrap its understanding of the soft-schema
 approach: the `--help` epilog routes it to a brief and the bundled docs.
 
 ```bash
-uvx softschema@0.1.3 --help            # entry point with bootstrap pointers
-uvx softschema@0.1.3 skill --brief     # ~12-line operating brief
-uvx softschema@0.1.3 docs guide        # full mental model and adoption path
+# Python:
+uvx softschema@latest --help            # entry point with bootstrap pointers
+uvx softschema@latest skill --brief     # compact operating brief
+uvx softschema@latest docs guide        # full mental model and adoption path
+
+# TypeScript (same commands, same bundled docs/skill):
+npx softschema@latest skill --brief
+npx softschema@latest docs guide
 ```
 
-Self-install the skill into a project so any agent working in the repo finds it
-natively:
+Self-install the skill into a project so any agent working in the repo finds it natively
+(either package writes the identical mirrors):
 
 ```bash
-uvx softschema@0.1.3 skill --install
+uvx softschema@latest skill --install
+# or: npx softschema@latest skill --install
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
 ```
 
-Both mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
-Re-run `softschema skill --install` to refresh after upgrading the CLI.
+Both mirrors carry a `DO NOT EDIT` marker.
+Re-run `skill --install` to refresh after upgrading the CLI.
 
 ## Repository Layout
 
 ```text
-docs/                  guide, spec, Python package design, and workflow docs
+docs/                  guide, spec, package design (Python + TypeScript), and workflow docs
 examples/movie_page/   complete example with model, host integration, artifact, schema
-packages/python/       Python implementation and tests
-packages/typescript/   future TypeScript/Zod notes only
-skills/softschema/     agent-facing usage guidance
+examples/parity/       cross-language parity fixture (Pydantic + Zod compile to one schema)
+packages/python/       Python/Pydantic implementation and tests
+packages/typescript/   TypeScript/Zod implementation and tests
+skills/softschema/     agent-facing usage guidance (shared SKILL.md source)
+tests/golden/          shared CLI golden corpus, run against both implementations
 ```
 
 The root `pyproject.toml` builds the Python package from
-`packages/python/src/softschema`. This keeps the first release simple while leaving room
-for a future TypeScript package.
+`packages/python/src/softschema`; `packages/typescript` builds the npm `softschema`
+package with bun. The shared golden corpus and the cross-language conformance test keep
+the two implementations byte-for-byte in sync.
 
 ## Development and Contributing
 
 See [Development](docs/development.md) for repo setup, common commands, CI checks,
 release workflow, and pointers to the installation and publishing docs.
+
+The Python and TypeScript implementations **must be kept in exact sync**. Any behavior
+change goes through the shared golden corpus first and then lands in both packages; see
+[Keeping Python and TypeScript in Parity](docs/development.md#keeping-python-and-typescript-in-parity).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

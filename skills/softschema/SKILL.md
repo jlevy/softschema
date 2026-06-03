@@ -26,7 +26,7 @@ Each command prints material the agent should read and follow:
 
 ```bash
 softschema --help                  # command listing + entry-point pointers
-softschema skill --brief           # ~12-line operating brief
+softschema skill --brief           # compact operating brief
 softschema docs guide              # mental model and adoption path
 softschema docs spec               # exact artifact format
 softschema docs example-artifact   # a copyable example
@@ -40,17 +40,27 @@ softschema docs --list             # full topic index
 - Use `softschema.contract` (not `schema`) to name the payload contract.
 - Promote a value into YAML only when something consumes it; leave exploratory or
   judgment-heavy content as prose.
-- Validate at the boundary with `softschema validate <file> --model pkg.mod:Model` or
-  `--schema sidecar.yaml`.
+- Validate at the boundary with `softschema validate`: `--model` for a Pydantic/Zod
+  model, `--schema` for a sidecar.
+  Run `softschema validate --help` for exact syntax.
 
 ## Install
 
-Prefer a version-pinned zero-install runner:
+softschema ships two interchangeable implementations with the same CLI surface; pick the
+runtime you already have.
+Use a zero-install runner:
 
 ```bash
-uvx softschema@<version> --help          # ephemeral; reproducible
-uv tool install softschema==<version>    # persistent; lockfile-friendly
+# Python (Pydantic):
+uvx softschema@latest --help            # ephemeral
+uv tool install softschema             # persistent
+
+# TypeScript (Zod):
+npx softschema@latest --help            # ephemeral
 ```
+
+Both expose the same commands and flags and validate against the same canonical schema;
+the only difference is whether models are written as Pydantic or Zod.
 
 ## Self-Install (Optional)
 
@@ -64,7 +74,7 @@ softschema skill --install
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
 ```
 
-The mirrors carry a `DO NOT EDIT` marker and the version that wrote them.
+The mirrors carry a `DO NOT EDIT` marker.
 Re-run `softschema skill --install` to refresh after upgrading.
 
 <!-- This document follows common-doc-guidelines.md.

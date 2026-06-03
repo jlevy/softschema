@@ -1,9 +1,9 @@
 ---
-title: softschema — clean, simple design (v8)
+title: "softschema: clean, simple design (v8)"
 description: softschema is a schema-bundle and generated-sections library for Markdown artifacts whose structured values are validated by Pydantic and JSON Schema. It has one native document profile (frontmatter values plus narrative body). Phase 0 ships compile, structural validate, semantic validate, validate-values, and generate-sections. Body-form workflows, manifest sidecar, patches, mirrors, materialization, repair-class issues, and provider adapters stay reserved.
-author: Joshua Levy + Claude
+author: Joshua Levy and Claude
 ---
-# Research: softschema — Clean, Simple Design (v8)
+# Research: softschema Clean, Simple Design (v8)
 
 **Status:** Design proposal.
 The current public Python package implements a subset of this design; the remaining
@@ -19,8 +19,8 @@ Worked examples are generic illustrations only and not tied to any specific doma
 The name “softschema” can mislead.
 It is not weak schema validation.
 The design is the opposite: **hard schema, soft authoring**. The contract is strict
-(Pydantic + JSON Schema, both running with `extra="forbid"` semantics), but the authored
-Markdown document remains narrative, editable, and gradually migratable.
+(Pydantic and JSON Schema, both running with `extra="forbid"` semantics), but the
+authored Markdown document remains narrative, editable, and gradually migratable.
 
 ```text
 Pydantic source models
@@ -40,7 +40,7 @@ dict (frontmatter parser, body-form runtime, structured-output adapter, hand-wri
 test fixture) can call `validate_values`. Phase 0 ships only the frontmatter consumer;
 other consumers compose without softschema-side changes.
 
-## Core principles
+## Core Principles
 
 1. **Pydantic models are the source of truth.** In Python projects.
    Other schema sources (Zod, TypeBox, hand-authored JSON Schema) produce the same
@@ -70,7 +70,7 @@ other consumers compose without softschema-side changes.
    Manifest, patches, mirrors, materialization, repair-class issues, provider adapters,
    and bridges to non-frontmatter consumers all stay reserved.
 
-## What we’re building
+## What We’re Building
 
 ```text
 Pydantic model
@@ -92,7 +92,7 @@ for one of: language-neutral invariant descriptions, migration maps, generated-s
 presets too large for `x-softschema`, schema-registry metadata, or provider-adapter
 metadata. None of those are Phase 0 needs.
 
-## The Pydantic contract layer
+## The Pydantic Contract Layer
 
 Each field carries metadata that drives prompts, runbook tables, judge prompts, JSON
 Schema export, and lifecycle policies.
@@ -213,7 +213,7 @@ model_config = ConfigDict(
 validation, not on every attribute assignment, so postprocess can mutate multiple fields
 atomically before re-validating.
 
-## The JSON Schema sidecar
+## The JSON Schema Sidecar
 
 The compiler produces one file per schema in Phase 0:
 
@@ -357,7 +357,7 @@ Resolution rules:
 This prevents every generated-section scanner and every validation entry point from
 inventing its own resolution logic.
 
-## Profile A: frontmatter values, narrative body
+## Profile A: Frontmatter Values, Narrative Body
 
 softschema’s one native document profile.
 
@@ -388,7 +388,7 @@ values:
           source_type: interview
           observation: Team reported steady throughput improvements.
 ---
-# WID-001 — 2025-Q2 Record
+# WID-001: 2025-Q2 Record
 
 ## Why The Result Came In Where It Did
 
@@ -515,17 +515,19 @@ Mismatch fails the run, unless `--allow-schema-mismatch` is set.
 This is a cheap guardrail against operator mistakes (running confidence-record
 validation on a widget-record document, etc.).
 
-## Generated sections
+## Generated Sections
 
 The mechanism that eliminates schema-fact duplication across documents.
 
 ```markdown
 <!-- softschema:generated kind="enum_table" schema="urn:example.docs:WidgetRecord:v2" sha256="..." -->
+
 | Field | Allowed values |
 | --- | --- |
 | outcome | above, below, on_plan, mixed, none, n_a |
 | direction | up, down, mixed, flat |
 | evidence_snippets[].source_type | filing, transcript, news, market_data, alt_data |
+
 <!-- /softschema:generated -->
 ```
 
@@ -708,7 +710,7 @@ The QA enum-constants case is worth calling out: rather than generate Python con
 QA reads the schema bundle through `SchemaView` at startup and sources enums from it.
 That removes one generated artifact and one drift surface.
 
-## The minimal runtime API
+## The Minimal Runtime API
 
 Phase 0 surface, with a clean separation between non-raising report functions and
 Pydantic-native convenience:
@@ -832,7 +834,7 @@ raw extracted values.
 
 That is the entire Phase 0 CLI.
 
-## Worked example: widget record (Profile A)
+## Worked Example: Widget Record (Profile A)
 
 End-to-end flow.
 
@@ -971,7 +973,7 @@ values:
           source_type: interview
           observation: Team reported steady throughput improvements.
 ---
-# WID-001 — 2025-Q2 Record
+# WID-001: 2025-Q2 Record
 
 ## Why The Result Came In Where It Did
 
@@ -989,21 +991,23 @@ frontmatter root). The host pipeline configures the resolver as `frontmatter_roo
 ### Generated section in a runbook
 
 ```markdown
-## Controlled vocabularies
+## Controlled Vocabularies
 
 <!-- softschema:generated kind="enum_table" schema="urn:example.docs:WidgetRecord:v2" view="all_enums" sha256="..." -->
+
 | Field | Allowed values |
 | --- | --- |
 | outcome | above, below, on_plan, mixed, none, n_a |
 | direction | up, down, mixed, flat |
 | evidence_snippets[].source_type | report, interview, news, dataset, other |
+
 <!-- /softschema:generated -->
 ```
 
 CI runs `softschema generate-sections --check` and fails if the table has drifted from
 the schema.
 
-## The YAML subset
+## The YAML Subset
 
 A conservative subset for authored frontmatter values, locked at Phase 0.
 
@@ -1053,7 +1057,7 @@ is also deferred. It becomes load-bearing only when a materialized canonical sid
 exists. The schema-side canonical hashing rule, however, is Phase 0; see §Schema hashing
 in The JSON Schema sidecar.
 
-## Extension points (reserved)
+## Extension Points (Reserved)
 
 Each is named, scoped, and has an “earned by” condition.
 None are Phase 0 work.
@@ -1136,9 +1140,9 @@ real form-shaped artifact, integration is one line per call site:
 No softschema-side feature work; no shared code.
 v7 documents this only as a design fact, not a planned phase.
 
-## Implementation arc
+## Implementation Arc
 
-### Phase 0: contract + validate + generate
+### Phase 0: contract, validate, and generate
 
 ```text
 softschema/
@@ -1235,7 +1239,7 @@ New templates require the `softschema:` block and the `values:` shape.
 Mitigated by the `softschema:` namespace on every marker.
 Generic `<!-- generated -->` is not a valid softschema marker.
 
-## Open questions
+## Open Questions
 
 1. **Should new templates also forbid the legacy resolver mode?** v8 treats
    `frontmatter_root` as a compatibility seam.
@@ -1257,7 +1261,7 @@ Generic `<!-- generated -->` is not a valid softschema marker.
    Splitting is a future refactor only if the package grows non-Pydantic schema sources
    or the generate-sections code outgrows the core.
 
-## Appendix A: Extension point design sketches
+## Appendix A: Extension Point Design Sketches
 
 The Phase 0 surface above is intentionally minimal.
 This appendix preserves the design content for each reserved extension point so this
@@ -1281,8 +1285,8 @@ values, and leave Pydantic semantic validation to the host.
 
 This way:
 
-- softschema = schema bundle + validation + generated schema sections (Python).
-- Body-form runtime = body-side authoring + patch/edit/export (language-agnostic).
+- softschema = schema bundle, validation, and generated schema sections (Python).
+- Body-form runtime = body-side authoring and patch/edit/export (language-agnostic).
 - Bridge = exported values validated by softschema or by the host’s Pydantic models.
 
 softschema does not depend on a body-form parser.
@@ -1471,10 +1475,12 @@ Multi-value mirror via Jinja template:
 
 ```markdown
 <!-- softschema:generated kind="value.template" template="price_table" -->
+
 | Metric | First Window | Scored Close |
 | --- | --- | --- |
 | Direction | up | up |
 | Move | 4.2% | 5.8% |
+
 <!-- /softschema:generated -->
 ```
 
@@ -1647,13 +1653,13 @@ must be set"), regex assertions across multiple fields, set-membership operation
 
 ## References
 
-- [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/schema) — the structural
+- [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/schema): the structural
   schema dialect used by the sidecar.
-- [Pydantic v2 JSON Schema](https://docs.pydantic.dev/latest/concepts/json_schema/) —
-  the `json_schema_extra` mechanism that carries `x-softschema` annotations.
-- [Pydantic v2 errors](https://docs.pydantic.dev/latest/errors/errors/) — the structured
+- [Pydantic v2 JSON Schema](https://docs.pydantic.dev/latest/concepts/json_schema/): the
+  `json_schema_extra` mechanism that carries `x-softschema` annotations.
+- [Pydantic v2 errors](https://docs.pydantic.dev/latest/errors/errors/): the structured
   `ValidationError` model used directly in Phase 0.
-- [frontmatter-format](https://github.com/jlevy/frontmatter-format) — the
+- [frontmatter-format](https://github.com/jlevy/frontmatter-format): the
   YAML-frontmatter library used for parsing Profile A documents.
 
 <!-- This document follows common-doc-guidelines.md.

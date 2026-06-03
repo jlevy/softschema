@@ -10,9 +10,9 @@ from softschema import SoftField, compile_model
 
 
 def _read_yaml(path: Path) -> dict:
-    import yaml
+    from frontmatter_format import read_yaml_file
 
-    return yaml.safe_load(path.read_text())
+    return read_yaml_file(path)
 
 
 class _AnnotatedModel(BaseModel):

@@ -23,11 +23,12 @@ def test_load_exposes_contract_and_hash(view: SchemaView) -> None:
     assert len(view.schema_sha256) == 64  # SHA-256 hex digest
 
 
-def test_root_softmeta_carries_compiler_provenance(view: SchemaView) -> None:
+def test_root_softmeta_is_language_neutral(view: SchemaView) -> None:
     meta = view.root_softmeta
     assert meta["contract"] == "example.movies:MoviePage/v1"
-    assert meta["generated_from"] == "examples.movie_page.model:MoviePage"
     assert "softschema_format_version" in meta
+    # No language-specific provenance (e.g. generated_from) leaks into the sidecar.
+    assert "generated_from" not in meta
 
 
 def test_iter_fields_includes_root_and_nested(view: SchemaView) -> None:
@@ -100,3 +101,31 @@ def test_load_rejects_non_mapping_root(tmp_path: Path) -> None:
     bad.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
     with pytest.raises(ValueError):
         SchemaView.load(bad)
+
+
+def test_iter_fields_terminates_on_cyclic_ref() -> None:
+    # A self-referential $def (Node.child -> Node). iter_fields must terminate by
+    # tracking the followed $ref on the recursion path. This is a shared parity case
+    # with the TypeScript test in schemaView.test.ts.
+    cyclic = {
+        "type": "object",
+        "properties": {"root": {"$ref": "#/$defs/Node"}},
+        "$defs": {
+            "Node": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "child": {"$ref": "#/$defs/Node"},
+                },
+            }
+        },
+    }
+    view = SchemaView(cyclic)
+    pointers = [f.pointer for f in view.iter_fields()]
+    assert pointers == [
+        "/properties/root",
+        "/properties/root/properties/name",
+        "/properties/root/properties/child",
+    ]
+    # The cyclic `child` is surfaced as an unresolved leaf (no further recursion).
+    assert view.field("/properties/root/properties/child").json_type is None

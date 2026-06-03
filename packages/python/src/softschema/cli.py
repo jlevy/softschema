@@ -47,6 +47,11 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "docs/softschema-python-design.md",
         "Python package design decisions.",
     ),
+    "typescript-design": ResourceTopic(
+        "TypeScript Package Design",
+        "docs/softschema-typescript-design.md",
+        "TypeScript package design decisions.",
+    ),
     "development": ResourceTopic(
         "Development",
         "docs/development.md",
@@ -495,7 +500,9 @@ def _write_text(text: str) -> None:
 
 
 def _json(value: Any) -> str:
-    return json.dumps(_plain(value), indent=2, sort_keys=True)
+    # ensure_ascii=False keeps non-ASCII literal so output matches the TypeScript
+    # CLI's JSON.stringify (which never escapes) byte-for-byte in golden tests.
+    return json.dumps(_plain(value), indent=2, sort_keys=True, ensure_ascii=False)
 
 
 def _plain(value: Any) -> Any:

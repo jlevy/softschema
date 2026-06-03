@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
+from frontmatter_format import read_yaml_file
 
 JsonPointer = str
 
@@ -47,8 +47,7 @@ class SchemaView:
     @classmethod
     def load(cls, schema_path: Path) -> SchemaView:
         """Load a YAML or JSON schema sidecar from disk."""
-        text = schema_path.read_text(encoding="utf-8")
-        data = yaml.safe_load(text)
+        data = read_yaml_file(schema_path)
         if not isinstance(data, dict):
             msg = f"schema at {schema_path} is not a mapping at the root"
             raise ValueError(msg)
@@ -132,7 +131,7 @@ class SchemaView:
         for name, raw_prop in properties.items():
             if not isinstance(raw_prop, dict):
                 continue
-            prop = self._maybe_resolve_ref(raw_prop, seen_refs, include_refs=include_refs)
+            prop, ref = self._maybe_resolve_ref(raw_prop, seen_refs, include_refs=include_refs)
             pointer = f"{base_pointer}/properties/{_escape_pointer_segment(name)}"
             yield FieldInfo(
                 pointer=pointer,
@@ -143,9 +142,13 @@ class SchemaView:
                 description=prop.get("description"),
                 softmeta=_extract_softmeta(prop),
             )
-            # Recurse into nested objects (after the ref is resolved).
+            # Recurse into nested objects (after the ref is resolved). Carry the
+            # just-followed $ref down the recursion path so a cyclic schema
+            # (A -> B -> A) terminates. The augmented set is scoped to this path only,
+            # so a $def reused by sibling fields (e.g. Address) still expands under each.
             if include_refs and prop.get("properties"):
-                yield from self._walk(prop, pointer, seen_refs, include_refs=include_refs)
+                next_seen = seen_refs | {ref} if ref is not None else seen_refs
+                yield from self._walk(prop, pointer, next_seen, include_refs=include_refs)
 
     def _maybe_resolve_ref(
         self,
@@ -153,21 +156,20 @@ class SchemaView:
         seen_refs: set[str],
         *,
         include_refs: bool,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str | None]:
         if not include_refs:
-            return prop
+            return prop, None
         ref = prop.get("$ref")
         # JSON Schema 2020-12 also allows `anyOf: [{$ref: ...}, {type: null}]` for
         # optional refs (which Pydantic emits). Handle both.
         if not isinstance(ref, str):
             ref = _ref_from_anyof(prop)
         if not isinstance(ref, str) or ref in seen_refs:
-            return prop
+            return prop, None
         target = _resolve_ref(self._schema, ref)
         if target is None:
-            return prop
-        seen_refs = seen_refs | {ref}
-        return target
+            return prop, None
+        return target, ref
 
 
 def _ref_from_anyof(prop: dict[str, Any]) -> str | None:
@@ -199,11 +201,11 @@ def _extract_type(prop: dict[str, Any]) -> str | None:
     if isinstance(t, str):
         return t
     if isinstance(t, list):
-        # JSON Schema 2020-12 allows ["string", "null"] etc. — return the non-null one.
+        # JSON Schema 2020-12 allows ["string", "null"] etc. Return the non-null one.
         non_null = [entry for entry in t if entry != "null"]
         if len(non_null) == 1 and isinstance(non_null[0], str):
             return non_null[0]
-    # `anyOf` style optionals (Pydantic's `Foo | None`) — extract from the first typed branch.
+    # `anyOf` style optionals (Pydantic's `Foo | None`): extract from the first typed branch.
     any_of = prop.get("anyOf")
     if isinstance(any_of, list):
         for entry in any_of:

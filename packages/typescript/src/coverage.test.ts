@@ -1,0 +1,248 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { z } from "zod";
+import { buildCanonicalSchema, compileSchema } from "./compile.js";
+import {
+  collapseAdditionalProperties,
+  normalizeAjvError,
+  renderStructuralMessage,
+  structuralErrorRecord,
+} from "./errors.js";
+import {
+  type Contract,
+  contractToOutput,
+  isSchemaStatus,
+  metadataToOutput,
+  parseSchemaMetadata,
+  SchemaMetadataError,
+} from "./models.js";
+import { validateArtifact } from "./validate.js";
+
+function tmp(name: string, content: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "softschema-cov-"));
+  const path = join(dir, name);
+  writeFileSync(path, content);
+  return path;
+}
+
+function contract(o: Partial<Contract> = {}): Contract {
+  return {
+    id: "x:S/v1",
+    model: null,
+    envelopeKey: null,
+    status: "soft",
+    profile: "frontmatter-md",
+    schemaPath: null,
+    ...o,
+  };
+}
+
+describe("models", () => {
+  test("parseSchemaMetadata shapes", () => {
+    expect(parseSchemaMetadata(null)).toBeNull();
+    expect(parseSchemaMetadata("a:B/v1")).toEqual({ contractId: "a:B/v1", status: null });
+    expect(parseSchemaMetadata({ contract: "a:B/v1", status: "enforced" })).toEqual({
+      contractId: "a:B/v1",
+      status: "enforced",
+    });
+    expect(() => parseSchemaMetadata({ status: "enforced" })).toThrow(SchemaMetadataError);
+    expect(() => parseSchemaMetadata({ contract: "a", status: "nope" })).toThrow(
+      SchemaMetadataError,
+    );
+    expect(() => parseSchemaMetadata(42)).toThrow(SchemaMetadataError);
+  });
+  test("status guard + output helpers", () => {
+    expect(isSchemaStatus("enforced")).toBe(true);
+    expect(isSchemaStatus("x")).toBe(false);
+    expect(metadataToOutput(null)).toBeNull();
+    expect(metadataToOutput({ contractId: "a", status: null })).toEqual({
+      contract: "a",
+      status: null,
+    });
+    expect(contractToOutput(contract({ envelopeKey: "movie", schemaPath: "s.yaml" }))).toEqual({
+      envelope_key: "movie",
+      id: "x:S/v1",
+      model: null,
+      profile: "frontmatter-md",
+      schema_path: "s.yaml",
+      status: "soft",
+    });
+  });
+});
+
+describe("errors: every message template", () => {
+  const cases: [string, unknown, unknown, string][] = [
+    ["enum", ["G", "PG"], "X", "value 'X' is not one of ['G', 'PG']"],
+    ["type", "integer", "x", "value 'x' is not of type 'integer'"],
+    ["required", "name", null, "required property 'name' is missing"],
+    ["minimum", 1, 0, "value 0 is less than the minimum of 1"],
+    ["maximum", 9, 10, "value 10 is greater than the maximum of 9"],
+    ["exclusiveMinimum", 0, 0, "value 0 is not greater than 0"],
+    ["exclusiveMaximum", 1, 1, "value 1 is not less than 1"],
+    ["minItems", 1, [], "array is shorter than the minimum of 1 items"],
+    ["maxItems", 2, [1, 2, 3], "array is longer than the maximum of 2 items"],
+    ["minLength", 2, "a", "string is shorter than the minimum length of 2"],
+    ["maxLength", 3, "abcd", "string is longer than the maximum length of 3"],
+    ["pattern", "^a$", "b", "value 'b' does not match pattern '^a$'"],
+    ["additionalProperties", false, {}, "object has properties that are not allowed"],
+    ["multipleOf", 5, 7, "value 7 is not a multiple of 5"],
+    ["weird", 1, 2, "value 2 failed weird constraint 1"],
+  ];
+  for (const [validator, vv, value, expected] of cases) {
+    test(validator, () => expect(renderStructuralMessage(validator, vv, value)).toBe(expected));
+  }
+  test("pyRepr edge cases (bool/null/string-with-quote)", () => {
+    expect(renderStructuralMessage("type", "boolean", true)).toBe(
+      "value True is not of type 'boolean'",
+    );
+    expect(renderStructuralMessage("type", "null", null)).toBe("value None is not of type 'null'");
+    expect(renderStructuralMessage("pattern", "x", "a'b")).toBe(
+      "value \"a'b\" does not match pattern 'x'",
+    );
+  });
+  test("pyRepr renders objects Python-dict style (regression for [object Object])", () => {
+    // Python: repr({'x': 1}) == "{'x': 1}"; an object supplied where a string is expected.
+    expect(renderStructuralMessage("type", "string", { x: 1 })).toBe(
+      "value {'x': 1} is not of type 'string'",
+    );
+    // Object-valued enum members, and an object instance, both render byte-identically.
+    expect(renderStructuralMessage("enum", [{ a: 1 }, { b: 2 }], { c: 3 })).toBe(
+      "value {'c': 3} is not one of [{'a': 1}, {'b': 2}]",
+    );
+    // Nested objects/arrays recurse like Python repr.
+    expect(renderStructuralMessage("type", "string", { a: { b: 2 }, c: [1, 2] })).toBe(
+      "value {'a': {'b': 2}, 'c': [1, 2]} is not of type 'string'",
+    );
+  });
+  test("normalizeAjvError reads validator_value from error.schema and value from error.data", () => {
+    const rec = normalizeAjvError({
+      instancePath: "/release_year",
+      keyword: "minimum",
+      params: { limit: 1888 },
+      schema: 1888,
+      data: 1500,
+    } as never);
+    expect(rec).toEqual(
+      structuralErrorRecord({
+        path: ["release_year"],
+        validator: "minimum",
+        validatorValue: 1888,
+        value: 1500,
+      }),
+    );
+  });
+
+  test("normalizeAjvError uses error.schema for multipleOf (not params.limit)", () => {
+    // Regression for ss-f4sc: multipleOf lived in params.multipleOf, not params.limit,
+    // so the old mapping produced validator_value undefined and "multiple of None".
+    const rec = normalizeAjvError({
+      instancePath: "/step",
+      keyword: "multipleOf",
+      params: { multipleOf: 5 },
+      schema: 5,
+      data: 7,
+    } as never);
+    expect(rec.validator_value).toBe(5);
+    expect(rec.message).toBe("value 7 is not a multiple of 5");
+  });
+
+  test("normalizeAjvError uses the full required list for required (matching jsonschema)", () => {
+    // Regression for ss-l9ng: Python's validator_value is the whole required array.
+    const rec = normalizeAjvError({
+      instancePath: "",
+      keyword: "required",
+      params: { missingProperty: "title" },
+      schema: ["title", "year"],
+      data: { year: 2000 },
+    } as never);
+    expect(rec.validator_value).toEqual(["title", "year"]);
+    expect(rec.message).toBe("required property ['title', 'year'] is missing");
+  });
+
+  test("collapseAdditionalProperties keeps one record per object path", () => {
+    // Regression for ss-b1l9: ajv emits one additionalProperties error per extra key.
+    const base = structuralErrorRecord({
+      path: [],
+      validator: "additionalProperties",
+      validatorValue: false,
+      value: { a: 1, b: 2 },
+    });
+    expect(collapseAdditionalProperties([base, { ...base }])).toEqual([base]);
+    const req = structuralErrorRecord({
+      path: [],
+      validator: "required",
+      validatorValue: ["x"],
+      value: {},
+    });
+    // required duplicates are preserved (jsonschema also emits one per missing key).
+    expect(collapseAdditionalProperties([req, { ...req }])).toHaveLength(2);
+  });
+});
+
+describe("compile: write mode + build", () => {
+  const Sample = z.strictObject({ name: z.string() });
+  test("write mode produces a file and a hash", () => {
+    const out = join(mkdtempSync(join(tmpdir(), "softschema-c-")), "s.yaml");
+    const r = compileSchema(Sample, out, { contractId: "x:S/v1" });
+    expect(r.drift).toBe(false);
+    expect(r.schemaSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(readFileSync(out, "utf8")).toContain("x-softschema");
+  });
+  test("check mode reports missing committed sidecar", () => {
+    const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), { checkOnly: true });
+    expect(r.drift).toBe(true);
+  });
+  test("buildCanonicalSchema sets schema_sha256 inside x-softschema", () => {
+    const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
+    expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
+  });
+});
+
+describe("validate: artifact error kinds + advisory warning", () => {
+  test("no_frontmatter", () => {
+    const r = validateArtifact(tmp("d.md", "no fence here\n"), contract());
+    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "no_frontmatter",
+    );
+  });
+  test("document_softschema_invalid", () => {
+    const r = validateArtifact(
+      tmp("d.md", "---\nsoftschema:\n  status: enforced\nx: 1\n---\n"),
+      contract(),
+    );
+    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "document_softschema_invalid",
+    );
+  });
+  test("document_contract_mismatch (enforced) vs warning (advisory)", () => {
+    const doc = tmp("d.md", "---\nsoftschema:\n  contract: other:Z/v1\nmovie:\n  a: 1\n---\n");
+    const enforced = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }));
+    expect((enforced.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "document_contract_mismatch",
+    );
+    const advisory = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }), {
+      metadataMode: "advisory",
+    });
+    expect((advisory.output.warnings as { code: string }[])[0]?.code).toBe(
+      "document-contract-mismatch",
+    );
+  });
+  test("envelope_mismatch + schema_sidecar_missing", () => {
+    const em = validateArtifact(
+      tmp("d.md", "---\nwrong:\n  a: 1\n---\n"),
+      contract({ envelopeKey: "movie" }),
+    );
+    expect((em.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "envelope_mismatch",
+    );
+    const sm = validateArtifact(
+      tmp("d.md", "---\nmovie:\n  a: 1\n---\n"),
+      contract({ envelopeKey: "movie", schemaPath: "/no/such/sidecar.yaml" }),
+    );
+    expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+      "schema_sidecar_missing",
+    );
+  });
+});

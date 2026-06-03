@@ -4,15 +4,12 @@ $defs:
     description: One billed cast member.
     properties:
       actor:
-        title: Actor
         type: string
       character:
-        title: Character
         type: string
     required:
     - actor
     - character
-    title: CastMember
     type: object
   ImdbRating:
     additionalProperties: false
@@ -22,80 +19,79 @@ $defs:
         description: IMDb rating on a 0-10 scale.
         maximum: 10.0
         minimum: 0.0
-        title: Score
         type: number
       total_votes:
         minimum: 0
-        title: Total Votes
         type: integer
     required:
     - score
     - total_votes
-    title: ImdbRating
     type: object
   MovieRatings:
     additionalProperties: false
     description: Aggregate ratings from external sources.
     properties:
-      rotten_tomatoes:
-        anyOf:
-        - $ref: '#/$defs/RottenTomatoesRating'
-        - type: 'null'
-        default: null
       imdb:
         anyOf:
         - $ref: '#/$defs/ImdbRating'
         - type: 'null'
-        default: null
-    title: MovieRatings
+      rotten_tomatoes:
+        anyOf:
+        - $ref: '#/$defs/RottenTomatoesRating'
+        - type: 'null'
     type: object
   RottenTomatoesRating:
     additionalProperties: false
     description: Rotten Tomatoes critic and audience scores.
     properties:
-      critics_percent:
-        description: Tomatometer score, 0-100.
-        maximum: 100
-        minimum: 0
-        title: Critics Percent
-        type: integer
       audience_percent:
         description: Popcornmeter score, 0-100.
         maximum: 100
         minimum: 0
-        title: Audience Percent
         type: integer
       critic_review_count:
         minimum: 0
-        title: Critic Review Count
+        type: integer
+      critics_percent:
+        description: Tomatometer score, 0-100.
+        maximum: 100
+        minimum: 0
         type: integer
     required:
-    - critics_percent
     - audience_percent
     - critic_review_count
-    title: RottenTomatoesRating
+    - critics_percent
     type: object
+$id: example.movies:MoviePage/v1
+$schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
-description: 'A small movie info page, similar to a public IMDB-style listing.
-
+description: |-
+  A small movie info page, similar to a public IMDB-style listing.
 
   The fields illustrate the structural variety a softschema artifact can carry:
-
   constrained scalars, enums, lists of strings, lists of structured records, and
-
-  optional nested objects.'
+  optional nested objects.
 properties:
-  title:
-    title: Title
-    type: string
-  release_year:
-    minimum: 1888
-    title: Release Year
-    type: integer
-  runtime_minutes:
-    exclusiveMinimum: 0
-    title: Runtime Minutes
-    type: integer
+  cast:
+    items:
+      $ref: '#/$defs/CastMember'
+    type: array
+  directors:
+    items:
+      type: string
+    minItems: 1
+    type: array
+  genres:
+    description: Genre labels for the film.
+    items:
+      type: string
+    minItems: 1
+    type: array
+    x-softschema:
+      group: taxonomy
+      instruction: Pick from the standard IMDb genre vocabulary; at least one.
+      owner: agent
+      tier: constrained
   mpaa_rating:
     anyOf:
     - enum:
@@ -107,56 +103,32 @@ properties:
       - NR
       type: string
     - type: 'null'
-    default: null
-    title: Mpaa Rating
-  directors:
-    items:
-      type: string
-    minItems: 1
-    title: Directors
-    type: array
-  genres:
-    description: Genre labels for the film.
-    items:
-      type: string
-    minItems: 1
-    title: Genres
-    type: array
-    x-softschema:
-      group: taxonomy
-      instruction: Pick from the standard IMDb genre vocabulary; at least one.
-      owner: agent
-      tier: constrained
+  ratings:
+    $ref: '#/$defs/MovieRatings'
+  release_year:
+    minimum: 1888
+    type: integer
+  runtime_minutes:
+    exclusiveMinimum: 0
+    type: integer
+  synopsis:
+    type: string
   tagline:
     anyOf:
     - type: string
     - type: 'null'
-    default: null
-    title: Tagline
-  synopsis:
-    title: Synopsis
+  title:
     type: string
-  cast:
-    items:
-      $ref: '#/$defs/CastMember'
-    title: Cast
-    type: array
-  ratings:
-    $ref: '#/$defs/MovieRatings'
 required:
-- title
-- release_year
-- runtime_minutes
 - directors
 - genres
-- synopsis
 - ratings
-title: MoviePage
+- release_year
+- runtime_minutes
+- synopsis
+- title
 type: object
-$schema: https://json-schema.org/draft/2020-12/schema
-$id: example.movies:MoviePage/v1
 x-softschema:
   contract: example.movies:MoviePage/v1
-  generated_from: examples.movie_page.model:MoviePage
+  schema_sha256: b537ea5b1a5e36febe5feaa8f8536fc500ff25c912013b8961bdcde0cb6f7dd3
   softschema_format_version: 0.1.0
-  schema_sha256: 7e73a4a735af026100f2f07f944b8cabf91dfc54ec338bb2ab6d51c262cd7272

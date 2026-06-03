@@ -10,8 +10,8 @@ This example is deliberately small and complete:
 
 The Markdown body reads like a compact movie page: a short synopsis, a details table,
 the lead cast, and a ratings summary.
-It overlaps with the YAML frontmatter without mirroring it field for field — the prose
-adds the film’s Academy Award, which no structured field carries — and the YAML
+It overlaps with the YAML frontmatter without mirroring it field for field (the prose
+adds the film’s Academy Award, which no structured field carries), and the YAML
 frontmatter stays the authoritative source a consumer reads.
 
 The example deliberately exercises a representative mix of YAML shapes:
