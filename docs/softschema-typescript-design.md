@@ -75,9 +75,18 @@ softschema-synthesized messages, sorted by `(path, validator)`. CLI JSON uses a
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
 the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for
 every keyword; ajv’s per-key `additionalProperties` errors are collapsed to one.
-One known divergence remains (`ss-wbnm`): JS loses the int/float distinction at parse,
-so a whole-number float renders `2` where Python renders `2.0`. See the parity plan
-(epic `ss-jgkf`) for the full analysis.
+
+One known divergence remains (`ss-wbnm`): JS collapses a whole-number float (`2.0`, the
+schema bound `10.0`) to `2`/`10` at parse, while Python preserves the float from the
+YAML source token (`repr(2.0) == "2.0"`), so such a value renders without its `.0` in a
+TypeScript `value`/`validator_value`/message.
+A schema-type-aware fix cannot match Python (Python’s rendering follows the parsed
+value’s runtime type, not the declared type), so an exact fix requires preserving source
+tokens through parse → serialize → ajv; that is disproportionate for an edge case where
+everything else is byte-identical.
+The golden corpus keeps error-case values integer or non-whole-float so it stays
+byte-identical on both engines (see `tests/golden/README.md`). Full analysis in the
+parity plan (epic `ss-jgkf`).
 
 ## Toolchain
 

@@ -30,6 +30,13 @@ there are **no unstable fields** and no patterns are needed. Note in particular:
   version-specific URLs) are intentionally avoided: failure scenarios validate
   against the schema only (`--schema`, no `--model`), so the structural error
   records are identical across engines.
+- **Whole-number floats are avoided in error cases** (e.g. `2.0`, `10.0`). Python
+  preserves the int/float distinction from the YAML source token (`repr(2.0) ==
+  "2.0"`); JS collapses `2.0` to `2` at parse, so a whole-number float renders as
+  `2` on the TypeScript side. This is the one documented parity limitation
+  (`ss-wbnm`); keep golden values that appear in a `value`, `validator_value`, or
+  message as integers or **non-whole** floats (`0.3`, `8.6`) so the corpus stays
+  byte-identical on both engines. Non-error values elsewhere are unaffected.
 
 ## Updating
 

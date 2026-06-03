@@ -452,10 +452,19 @@ one-error-per-key `additionalProperties` is collapsed to jsonschema’s single r
 The `tests/golden/scenarios/error-normalization.md` corpus scenario now pins `required`,
 `multipleOf`, `type`, `enum`, and `additionalProperties` byte-for-byte across both CLIs.
 **Known limitation (`ss-wbnm`):** Python preserves the int/float distinction from the
-source token (`repr(2.0) == "2.0"`); JS collapses `2.0` to `2` at parse time, so a
-whole-number float instance value renders `2` where Python renders `2.0`. Closing it
-requires a float-aware number type threaded through parse → validate → serialize; the
-corpus deliberately avoids whole-number floats until that is justified.
+YAML source token (`repr(2.0) == "2.0"`); JS collapses `2.0` to `2` at parse time, so a
+whole-number float renders without its `.0` on the TS side.
+This affects both instance values (a doc’s `score: 9.0`) and schema bounds (the movie
+schema’s `maximum: 10.0`) when they appear in a `value`/`validator_value`/message.
+A schema-type-aware fix does **not** work: Python’s rendering follows the parsed value’s
+runtime type, not the declared type (an `int` `5` in a `number` field still renders `5`,
+not `5.0`), so it would diverge the other way.
+An exact fix requires preserving source tokens through parse → serialize → ajv-unwrap →
+error-resolution for both values and schema — disproportionate for an edge case where
+everything else is byte-identical.
+The golden corpus keeps error-case values integer or non-whole-float (see
+`tests/golden/README.md`) so it stays byte-identical on both engines, and the divergence
+cannot hide there.
 
 ### CLI naming and the dual-CLI golden mechanism
 
