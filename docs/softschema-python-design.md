@@ -133,30 +133,34 @@ envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
-a structured-output adapter, a fixture). The envelope is resolved directly from the
-document — an explicit `envelope_key`, or the single non-`softschema` top-level key when
-none is given. There is no separate value-path resolver. A relative `schema_path` is
-resolved against only the document directory and the current working directory, so
-resolution is predictable and never binds to an unrelated sidecar in a parent directory.
+a structured-output adapter, a fixture).
+The envelope is resolved directly from the document — an explicit `envelope_key`, or the
+single non-`softschema` top-level key when none is given.
+There is no separate value-path resolver.
+A relative `schema_path` is resolved against only the document directory and the current
+working directory, so resolution is predictable and never binds to an unrelated sidecar
+in a parent directory.
 
 ### Engine-neutral structural errors
 
 Structural validation runs through `jsonschema`, but the error records it returns are
-synthesized by softschema, not passed through from the library. Each violation becomes
+synthesized by softschema, not passed through from the library.
+Each violation becomes
 `{kind: "schema_violation", path, validator, validator_value, value, message}` where
-`message` comes from a shared template keyed on the JSON Schema keyword (`softschema.errors`).
-Records are sorted by `(path, validator)`. This keeps structural errors byte-identical to
-the future TypeScript port (which validates the same canonical sidecar through `ajv`).
-Semantic errors stay implementation-specific (raw Pydantic errors) and are not part of the
-cross-language contract.
+`message` comes from a shared template keyed on the JSON Schema keyword
+(`softschema.errors`). Records are sorted by `(path, validator)`. This keeps structural
+errors byte-identical to the future TypeScript port (which validates the same canonical
+sidecar through `ajv`). Semantic errors stay implementation-specific (raw Pydantic
+errors) and are not part of the cross-language contract.
 
 ### Alignment with `python-cli-patterns`
 
-The CLI follows the house Python-CLI conventions: exit codes `0` success / `1` validation
-failure or drift / `2` usage error; structured data to stdout and diagnostics to stderr;
-the package version comes from `importlib.metadata` via `uv-dynamic-versioning`. The
-package installs two console scripts, `softschema` and `softschema-py` (the latter pairs
-with a future `softschema-ts` for the shared golden corpus).
+The CLI follows the house Python-CLI conventions: exit codes `0` success / `1`
+validation failure or drift / `2` usage error; structured data to stdout and diagnostics
+to stderr; the package version comes from `importlib.metadata` via
+`uv-dynamic-versioning`. The package installs two console scripts, `softschema` and
+`softschema-py` (the latter pairs with a future `softschema-ts` for the shared golden
+corpus).
 
 ## Warning Codes
 
@@ -219,17 +223,18 @@ The emitted schema includes:
 - `$id` when a contract ID is supplied
 - an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
   `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
-  The block is deliberately language-neutral — it carries no `generated_from` provenance,
-  since a Pydantic/Zod import path would leak the implementation and prevent a
-  byte-identical sidecar across languages.
+  The block is deliberately language-neutral — it carries no `generated_from`
+  provenance, since a Pydantic/Zod import path would leak the implementation and prevent
+  a byte-identical sidecar across languages.
 
 Before hashing and serialization, the raw `model_json_schema()` output is run through
-`softschema.canonicalize.canonicalize_json_schema`, which applies a small set of semantic
-transforms (drop auto-generated `title` keywords, strip the implicit `default: null` of
-optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`) and serializes with
-sorted keys. This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic
-model and one compiled from the equivalent Zod schema converge to byte-identical output
-with the same `schema_sha256`.
+`softschema.canonicalize.canonicalize_json_schema`, which applies a small set of
+semantic transforms (drop auto-generated `title` keywords, strip the implicit
+`default: null` of optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`)
+and serializes with sorted keys.
+This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic model and
+one compiled from the equivalent Zod schema converge to byte-identical output with the
+same `schema_sha256`.
 
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements

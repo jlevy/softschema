@@ -1,0 +1,42 @@
+# Git hooks managed by lefthook (https://lefthook.dev).
+# Install once: `make hooks-install` (or `npx lefthook install`).
+# Bypass for an emergency commit: `git commit --no-verify` (avoid in PRs).
+
+pre-commit:
+  parallel: true
+  commands:
+    # Markdown formatting with flowmark-rs (pinned in the Makefile).
+    #
+    # Single source of truth: delegates to `make format`, the same command
+    # developers run locally, which invokes the pinned `uvx flowmark-rs --auto .`
+    # at the repo root and then regenerates softschema:generated sections.
+    #
+    # Why whole-repo (not `{staged_files}`)? flowmark-rs only reads
+    # .flowmarkignore relative to its target arg — passing subdirs or globs
+    # bypasses the exclusion list (it would damage tests/golden/ corpora and the
+    # generated skill mirrors). Do not split this into per-directory hooks.
+    #
+    # The `glob: '*.md'` filter fires the hook only when a Markdown file is
+    # staged; flowmark is fast across the whole tree.
+    format-markdown:
+      glob: "*.md"
+      run: make format
+      stage_fixed: true
+
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ruff-check:
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+
+    # biome owns the TypeScript package; run it in that root so it finds
+    # biome.json and resolves the local binary via bun.
+    biome:
+      root: "packages/typescript/"
+      glob: "*.{ts,tsx,js,jsx,json,jsonc}"
+      run: bunx @biomejs/biome check --write {staged_files}
+      stage_fixed: true

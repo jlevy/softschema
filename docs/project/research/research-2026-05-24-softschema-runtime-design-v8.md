@@ -521,11 +521,13 @@ The mechanism that eliminates schema-fact duplication across documents.
 
 ```markdown
 <!-- softschema:generated kind="enum_table" schema="urn:example.docs:WidgetRecord:v2" sha256="..." -->
+
 | Field | Allowed values |
 | --- | --- |
 | outcome | above, below, on_plan, mixed, none, n_a |
 | direction | up, down, mixed, flat |
 | evidence_snippets[].source_type | filing, transcript, news, market_data, alt_data |
+
 <!-- /softschema:generated -->
 ```
 
@@ -992,11 +994,13 @@ frontmatter root). The host pipeline configures the resolver as `frontmatter_roo
 ## Controlled vocabularies
 
 <!-- softschema:generated kind="enum_table" schema="urn:example.docs:WidgetRecord:v2" view="all_enums" sha256="..." -->
+
 | Field | Allowed values |
 | --- | --- |
 | outcome | above, below, on_plan, mixed, none, n_a |
 | direction | up, down, mixed, flat |
 | evidence_snippets[].source_type | report, interview, news, dataset, other |
+
 <!-- /softschema:generated -->
 ```
 
@@ -1471,10 +1475,12 @@ Multi-value mirror via Jinja template:
 
 ```markdown
 <!-- softschema:generated kind="value.template" template="price_table" -->
+
 | Metric | First Window | Scored Close |
 | --- | --- | --- |
 | Direction | up | up |
 | Move | 4.2% | 5.8% |
+
 <!-- /softschema:generated -->
 ```
 

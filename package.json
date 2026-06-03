@@ -1,0 +1,9 @@
+{
+  "name": "softschema-repo",
+  "private": true,
+  "description": "Tooling-only root package for git hooks (lefthook). The published packages are softschema on PyPI (packages/python) and softschema on npm (packages/typescript).",
+  "version": "0.0.0",
+  "devDependencies": {
+    "lefthook": "2.1.5"
+  }
+}

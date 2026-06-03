@@ -402,9 +402,11 @@ Wrap any Markdown block you want regenerated:
 
 ```markdown
 <!-- softschema:generated kind="enum_table" contract="schemas/incident.schema.yaml" -->
+
 | Field | Allowed values |
 | --- | --- |
 | `severity` | SEV-1, SEV-2, SEV-3 |
+
 <!-- /softschema:generated -->
 ```
 

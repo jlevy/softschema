@@ -3,11 +3,15 @@
 First-time setup of `uv` and Python is covered in [Installation](installation.md).
 Release workflow and PyPI steps are covered in [Publishing](publishing.md).
 
-Set up the repo:
+Set up the repo (Python deps, Node tooling for hooks, and the git hooks themselves):
 
 ```bash
-uv sync --all-extras
+make install        # uv sync --all-extras + npm install (lefthook)
+make hooks-install  # install the lefthook pre-commit hooks
 ```
+
+`make install` alone (or `uv sync --all-extras`) is enough to run tests and builds;
+`make hooks-install` additionally wires up the pre-commit hooks described below.
 
 Common workflows:
 
@@ -30,6 +34,21 @@ uv build
 ```
 
 The Python package is built from `packages/python/src/softschema`.
+
+### Git hooks (this repo)
+
+Hooks are managed by [lefthook](https://lefthook.dev) (`lefthook.yml`), installed with
+`make hooks-install`. The `pre-commit` hook formats staged changes so commits stay
+clean:
+
+- **Markdown** — delegates to `make format` (pinned `flowmark-rs` +
+  `softschema generate`); the single source of truth, the same command you run locally.
+- **Python** — `ruff format` + `ruff check --fix` on staged `*.py`.
+- **TypeScript** — `biome check --write` on staged files in `packages/typescript`.
+
+Bypass for an emergency commit with `git commit --no-verify` (avoid in PRs).
+flowmark runs across the whole tree (it honors `.flowmarkignore` only relative to its
+target arg), so staging any `*.md` reformats all Markdown; this is fast and idempotent.
 
 ## TypeScript Package
 
@@ -151,22 +170,23 @@ your repository.
 ## Keeping Python and TypeScript in Parity
 
 softschema ships two implementations — Python/Pydantic (`softschema`) and TypeScript/Zod
-(`softschema`, `softschema-ts`) — held to **exact behavioral parity**: equivalent
-CLI inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
+(`softschema`, `softschema-ts`) — held to **exact behavioral parity**: equivalent CLI
+inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
 (byte-identical, equal `schema_sha256`), and the same engine-neutral validation results.
 Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
 
 When you change any behavior, follow this loop so the two never drift:
 
 1. **Golden first.** Write or update the shared scenario in `tests/golden/scenarios/`
-   (neutral, runs on both) or `tests/golden/scenarios-{py,ts}/` (per-language invocation,
-   identical output) **before** touching code.
+   (neutral, runs on both) or `tests/golden/scenarios-{py,ts}/` (per-language
+   invocation, identical output) **before** touching code.
 2. **Implement in Python**, then `uv run pytest` and
    `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and
    `SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh`.
-4. **Both green + conformance.** Both golden runs and the cross-implementation conformance
-   test (the Zod and Pydantic compilers produce an identical canonical sidecar) pass in CI.
+4. **Both green + conformance.** Both golden runs and the cross-implementation
+   conformance test (the Zod and Pydantic compilers produce an identical canonical
+   sidecar) pass in CI.
 
 The parity invariants, and where each is enforced:
 

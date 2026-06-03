@@ -3,8 +3,8 @@
 Softschema is a file convention for Markdown/YAML artifacts that are readable by humans
 and structured enough for tools.
 The spec is programming-language agnostic.
-This repository ships two interchangeable implementations of the spec — a Python/Pydantic
-package and a TypeScript/Zod package — held to exact behavioral parity.
+This repository ships two interchangeable implementations of the spec — a
+Python/Pydantic package and a TypeScript/Zod package — held to exact behavioral parity.
 
 For the adoption guide, examples, and tutorials, see
 [Softschema Guide](softschema-guide.md).
@@ -184,9 +184,11 @@ code-generators:
 
 ```markdown
 <!-- softschema:generated kind="enum_table" contract="path/to/schema.yaml" -->
+
 | Field | Allowed values |
 | --- | --- |
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
+
 <!-- /softschema:generated -->
 ```
 
