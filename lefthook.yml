@@ -33,10 +33,12 @@ pre-commit:
       run: uv run ruff check --fix {staged_files}
       stage_fixed: true
 
-    # biome owns the TypeScript package; run it in that root so it finds
-    # biome.json and resolves the local binary via bun.
+    # biome owns the TypeScript package; run it in that root so it finds biome.json.
+    # Invoke the lockfile-backed local binary (installed by `make install`) rather than
+    # `bunx @biomejs/biome`, which could fetch an unpinned version; a missing binary fails
+    # clearly and points the developer at `make install`.
     biome:
       root: "packages/typescript/"
       glob: "*.{ts,tsx,js,jsx,json,jsonc}"
-      run: bunx @biomejs/biome check --write {staged_files}
+      run: node_modules/.bin/biome check --write {staged_files}
       stage_fixed: true

@@ -20,6 +20,9 @@ engine-neutral records, including:
   extra key; `jsonschema` reports one).
 - `multipleOf` carries the divisor as `validator_value` (regression guard for the
   `params.limit` bug that rendered "multiple of None").
+- **Object-valued** instances and `enum` members render Python-dict style (`{'k': v}`),
+  not `[object Object]` — `label` (an object supplied where a `string` is expected) and
+  `choice` (an object-valued `enum`) guard the `pyRepr` object-rendering fix.
 
 The fixture deliberately avoids whole-number floats, whose `2.0`-vs-`2` rendering is a
 known, documented JS limitation (`ss-wbnm`) rather than a fixable divergence.
@@ -58,9 +61,15 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
         "validator": "additionalProperties",
         "validator_value": false,
         "value": {
+          "choice": {
+            "tier": "bronze"
+          },
           "count": "x",
           "extra1": 1,
           "extra2": 2,
+          "label": {
+            "kind": "x"
+          },
           "rating": "X",
           "scale": 0.3,
           "step": 7,
@@ -79,9 +88,15 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
           "year"
         ],
         "value": {
+          "choice": {
+            "tier": "bronze"
+          },
           "count": "x",
           "extra1": 1,
           "extra2": 2,
+          "label": {
+            "kind": "x"
+          },
           "rating": "X",
           "scale": 0.3,
           "step": 7,
@@ -100,15 +115,40 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
           "year"
         ],
         "value": {
+          "choice": {
+            "tier": "bronze"
+          },
           "count": "x",
           "extra1": 1,
           "extra2": 2,
+          "label": {
+            "kind": "x"
+          },
           "rating": "X",
           "scale": 0.3,
           "step": 7,
           "tags": [
             "a"
           ]
+        }
+      },
+      {
+        "kind": "schema_violation",
+        "message": "value {'tier': 'bronze'} is not one of [{'tier': 'gold'}, {'tier': 'silver'}]",
+        "path": [
+          "choice"
+        ],
+        "validator": "enum",
+        "validator_value": [
+          {
+            "tier": "gold"
+          },
+          {
+            "tier": "silver"
+          }
+        ],
+        "value": {
+          "tier": "bronze"
         }
       },
       {
@@ -120,6 +160,18 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
         "validator": "type",
         "validator_value": "integer",
         "value": "x"
+      },
+      {
+        "kind": "schema_violation",
+        "message": "value {'kind': 'x'} is not of type 'string'",
+        "path": [
+          "label"
+        ],
+        "validator": "type",
+        "validator_value": "string",
+        "value": {
+          "kind": "x"
+        }
       },
       {
         "kind": "schema_violation",
@@ -172,9 +224,15 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
     "skipped_reason": null
   },
   "values": {
+    "choice": {
+      "tier": "bronze"
+    },
     "count": "x",
     "extra1": 1,
     "extra2": 2,
+    "label": {
+      "kind": "x"
+    },
     "rating": "X",
     "scale": 0.3,
     "step": 7,

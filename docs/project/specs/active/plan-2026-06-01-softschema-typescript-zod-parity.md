@@ -168,7 +168,7 @@ records, and the golden corpus are toolchain-agnostic).
 | Lint + format | **biome ^2.4** | eslint ^10 (flat) + prettier ^3.8 |
 | Type check | **`tsc --noEmit`** (TS ^6.0.3) | same |
 | CI setup action | **`oven-sh/setup-bun@v2`** | `pnpm/action-setup@v6` |
-| Shared by both | `commander@^15`, `zod@^4.4`, `yaml@^2.8`, `ajv@^8` (+`ajv-formats`), `picocolors`, `atomically`, `publint`, `tryscript`, tag-triggered OIDC publish (no changesets), `flowmark` for Markdown | — |
+| Shared by both | `commander@^15` (Node >=22.12), `zod@^4.4`, `yaml@^2.8`, `ajv@^8` (+`ajv-formats`), `atomically`, `tryscript`, tag-triggered OIDC publish (no changesets), `flowmark` for Markdown. (`picocolors` was dropped — JSON-only CLI; `publint` is not yet adopted, tracked as a suggestion.) | — |
 
 **Conformance note on coverage.** `typescript-code-coverage` is written for Vitest +
 `@vitest/coverage-v8`. With bun we use `bun test --coverage` (lcov), but we hold to the

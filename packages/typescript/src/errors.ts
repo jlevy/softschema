@@ -24,6 +24,15 @@ function pyRepr(value: unknown): string {
   if (typeof value === "number") return String(value);
   if (typeof value === "string") return pyReprStr(value);
   if (Array.isArray(value)) return `[${value.map(pyRepr).join(", ")}]`;
+  if (typeof value === "object") {
+    // Python dict repr: {'k': v, ...} with repr'd string keys, ": " and ", " separators,
+    // insertion order preserved. Matches `repr(dict)` so object-valued instances and enum
+    // members render byte-identically (e.g. an object supplied where a string is expected).
+    const entries = Object.entries(value as Record<string, unknown>).map(
+      ([key, val]) => `${pyReprStr(key)}: ${pyRepr(val)}`,
+    );
+    return `{${entries.join(", ")}}`;
+  }
   return String(value);
 }
 

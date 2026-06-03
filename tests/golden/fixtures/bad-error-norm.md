@@ -7,6 +7,10 @@ data:
   scale: 0.3
   count: "x"
   rating: X
+  label:
+    kind: x
+  choice:
+    tier: bronze
   tags:
     - a
   extra1: 1

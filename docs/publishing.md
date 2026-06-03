@@ -88,7 +88,7 @@ the registries mismatched and then collide with the workflow’s own npm publish
 
    ```bash
    npm pack                  # writes softschema-X.Y.Z.tgz
-   npx ./softschema-*.tgz --help   # must print usage and run under plain node
+   npx ./softschema-*.tgz --help   # must print usage under Node >= 22.12 (the engines floor)
    ```
 
 3. **Log in and publish, without provenance** (provenance needs CI OIDC, which a laptop

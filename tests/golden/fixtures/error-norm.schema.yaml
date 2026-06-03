@@ -25,6 +25,12 @@ properties:
       - G
       - PG
       - R
+  label:
+    type: string
+  choice:
+    enum:
+      - tier: gold
+      - tier: silver
   tags:
     type: array
     minItems: 2

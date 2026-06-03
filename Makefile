@@ -14,11 +14,14 @@ FLOWMARK := uvx --exclude-newer-package 'flowmark-rs=2026-06-02' flowmark-rs@$(F
 
 default: install format lint test
 
-# One-time local setup: Python deps + the Node tooling that powers the git hooks
-# (lefthook). GitHub Actions call uv / bun / npx directly, not this Makefile.
+# One-time local setup: Python deps, the root Node tooling that powers the git hooks
+# (lefthook), and the TypeScript package deps (so the biome pre-commit hook resolves a
+# lockfile-backed local binary instead of fetching one). GitHub Actions call uv / bun /
+# npx directly, not this Makefile.
 install:
 	uv sync --all-extras
 	npm install --silent
+	cd packages/typescript && bun install --frozen-lockfile
 
 # Install the lefthook-managed git hooks (pre-commit: flowmark + ruff + biome).
 # Run once after cloning. Bypass a hook for an emergency commit with --no-verify.

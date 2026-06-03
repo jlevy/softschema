@@ -102,6 +102,20 @@ describe("errors: every message template", () => {
       "value \"a'b\" does not match pattern 'x'",
     );
   });
+  test("pyRepr renders objects Python-dict style (regression for [object Object])", () => {
+    // Python: repr({'x': 1}) == "{'x': 1}"; an object supplied where a string is expected.
+    expect(renderStructuralMessage("type", "string", { x: 1 })).toBe(
+      "value {'x': 1} is not of type 'string'",
+    );
+    // Object-valued enum members, and an object instance, both render byte-identically.
+    expect(renderStructuralMessage("enum", [{ a: 1 }, { b: 2 }], { c: 3 })).toBe(
+      "value {'c': 3} is not one of [{'a': 1}, {'b': 2}]",
+    );
+    // Nested objects/arrays recurse like Python repr.
+    expect(renderStructuralMessage("type", "string", { a: { b: 2 }, c: [1, 2] })).toBe(
+      "value {'a': {'b': 2}, 'c': [1, 2]} is not of type 'string'",
+    );
+  });
   test("normalizeAjvError reads validator_value from error.schema and value from error.data", () => {
     const rec = normalizeAjvError({
       instancePath: "/release_year",
