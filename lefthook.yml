@@ -37,8 +37,11 @@ pre-commit:
     # Invoke the lockfile-backed local binary (installed by `make install`) rather than
     # `bunx @biomejs/biome`, which could fetch an unpinned version; a missing binary fails
     # clearly and points the developer at `make install`.
+    # --no-errors-on-unmatched: biome.json includes only src/**/*.ts, so staged files
+    # outside it (package.json, test/**) are ignored; without this flag biome exits
+    # nonzero with "no files processed" and blocks an otherwise valid commit.
     biome:
       root: "packages/typescript/"
       glob: "*.{ts,tsx,js,jsx,json,jsonc}"
-      run: node_modules/.bin/biome check --write {staged_files}
+      run: node_modules/.bin/biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
