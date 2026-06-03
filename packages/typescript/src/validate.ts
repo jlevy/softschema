@@ -138,7 +138,7 @@ export function validateStructural(
 }
 
 /**
- * Semantic validation via Zod `safeParse` — the idiomatic mirror of the Python Pydantic
+ * Semantic validation via Zod `safeParse`: the idiomatic mirror of the Python Pydantic
  * layer. Errors are implementation-specific (Zod issues) and are not part of the
  * cross-language byte contract; only pass/fail and the field path are portable.
  */
@@ -154,7 +154,7 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
 }
 
 /**
- * Validate a pre-extracted values mapping against a model, a schema, or both — the
+ * Validate a pre-extracted values mapping against a model, a schema, or both: the
  * idiomatic mirror of Python `validate_values`. Throws if neither is supplied.
  */
 export function validateValues(

@@ -21,7 +21,7 @@ engine-neutral records, including:
 - `multipleOf` carries the divisor as `validator_value` (regression guard for the
   `params.limit` bug that rendered "multiple of None").
 - **Object-valued** instances and `enum` members render Python-dict style (`{'k': v}`),
-  not `[object Object]` — `label` (an object supplied where a `string` is expected) and
+  not `[object Object]`: `label` (an object supplied where a `string` is expected) and
   `choice` (an object-valued `enum`) guard the `pyRepr` object-rendering fix.
 
 The fixture deliberately avoids whole-number floats, whose `2.0`-vs-`2` rendering is a

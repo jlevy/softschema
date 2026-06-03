@@ -11,7 +11,7 @@ path:
 The TypeScript compiler's source is an idiomatic Zod module export (vs Pydantic
 `module:Class` on Python). `--check` compares schema *content*, not YAML bytes, so the
 Zod KitchenSink matches the committed `examples/parity/parity.schema.yaml` produced from
-Pydantic — the same `schema_sha256` proves exact cross-language schema parity. The large
+Pydantic; the same `schema_sha256` proves exact cross-language schema parity. The large
 `schema_yaml` string is elided.
 
 ```console

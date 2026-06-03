@@ -134,7 +134,7 @@ envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
 a structured-output adapter, a fixture).
-The envelope is resolved directly from the document — an explicit `envelope_key`, or the
+The envelope is resolved directly from the document: an explicit `envelope_key`, or the
 single non-`softschema` top-level key when none is given.
 There is no separate value-path resolver.
 A relative `schema_path` is resolved against only the document directory and the current
@@ -223,9 +223,9 @@ The emitted schema includes:
 - `$id` when a contract ID is supplied
 - an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
   `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
-  The block is deliberately language-neutral — it carries no `generated_from`
-  provenance, since a Pydantic/Zod import path would leak the implementation and prevent
-  a byte-identical sidecar across languages.
+  The block is deliberately language-neutral; it carries no `generated_from` provenance,
+  since a Pydantic/Zod import path would leak the implementation and prevent a
+  byte-identical sidecar across languages.
 
 Before hashing and serialization, the raw `model_json_schema()` output is run through
 `softschema.canonicalize.canonicalize_json_schema`, which applies a small set of

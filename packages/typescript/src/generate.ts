@@ -81,7 +81,7 @@ function renderFieldList(view: SchemaView): string {
     const required = fieldInfo.required ? "required" : "optional";
     const description = fieldInfo.description ?? "";
     if (description) {
-      lines.push(`- \`${fieldInfo.name}\` (${typeLabel}, ${required}) — ${description}`);
+      lines.push(`- \`${fieldInfo.name}\` (${typeLabel}, ${required}): ${description}`);
     } else {
       lines.push(`- \`${fieldInfo.name}\` (${typeLabel}, ${required})`);
     }

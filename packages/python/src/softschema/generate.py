@@ -13,9 +13,9 @@ fail when committed sections lag behind the schema.
 
 Kinds shipped in v0.1:
 
-- ``enum_table`` — one table row per enum-valued field in the schema.
-- ``field_list`` — one bullet per field (name, type, required, description).
-- ``vocab`` — the enum values at a specific JSON Pointer (requires ``pointer=``).
+- ``enum_table``: one table row per enum-valued field in the schema.
+- ``field_list``: one bullet per field (name, type, required, description).
+- ``vocab``: the enum values at a specific JSON Pointer (requires ``pointer=``).
 """
 
 from __future__ import annotations
@@ -185,7 +185,7 @@ def _render_field_list(view: SchemaView, attrs: dict[str, str]) -> str:
         required = "required" if field_info.required else "optional"
         description = field_info.description or ""
         if description:
-            lines.append(f"- `{field_info.name}` ({type_label}, {required}) — {description}")
+            lines.append(f"- `{field_info.name}` ({type_label}, {required}): {description}")
         else:
             lines.append(f"- `{field_info.name}` ({type_label}, {required})")
     if not lines:

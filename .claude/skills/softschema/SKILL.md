@@ -44,14 +44,14 @@ softschema docs --list             # full topic index
 - Use `softschema.contract` (not `schema`) to name the payload contract.
 - Promote a value into YAML only when something consumes it; leave exploratory or
   judgment-heavy content as prose.
-- Validate at the boundary with `softschema validate` — `--model` for a Pydantic/Zod
+- Validate at the boundary with `softschema validate`: `--model` for a Pydantic/Zod
   model, `--schema` for a sidecar.
   Run `softschema validate --help` for exact syntax.
 
 ## Install
 
-softschema ships two interchangeable implementations with the same CLI surface — pick
-the runtime you already have.
+softschema ships two interchangeable implementations with the same CLI surface; pick the
+runtime you already have.
 Use a zero-install runner:
 
 ```bash

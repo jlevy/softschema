@@ -425,9 +425,9 @@ uv run softschema generate path/to/runbook.md --check
 
 Available `kind` values:
 
-- `enum_table` — one row per enum field in the schema (`Field`, `Allowed values`).
-- `field_list` — one bullet per top-level field (name, type, required, description).
-- `vocab` — enum values for one specific field; requires a `pointer="/properties/foo"`
+- `enum_table`: one row per enum field in the schema (`Field`, `Allowed values`).
+- `field_list`: one bullet per top-level field (name, type, required, description).
+- `vocab`: enum values for one specific field; requires a `pointer="/properties/foo"`
   attribute.
 
 A worked example lives in
@@ -438,8 +438,8 @@ section is regenerated from the movie schema.
 
 Two checks belong in CI:
 
-- **Sidecar drift check** — fail the build when a committed schema sidecar is out of
-  sync with the source model.
+- **Sidecar drift check.** Fail the build when a committed schema sidecar is out of sync
+  with the source model.
 
   ```bash
   uv run softschema compile mycorp.docs.incident:IncidentReview \
@@ -447,7 +447,7 @@ Two checks belong in CI:
     --out schemas/incident-review.v1.schema.yaml --check
   ```
 
-- **Artifact validation** — fail the build when any artifact under version control
+- **Artifact validation.** Fail the build when any artifact under version control
   doesn’t validate.
 
   ```bash
@@ -612,7 +612,7 @@ A few patterns help agents do the right thing:
 - **Splitting a payload across multiple envelopes.** A softschema artifact has a single
   envelope key beside `softschema:`. Splitting payload across two envelopes forces every
   caller to disambiguate.
-  (Unrelated top-level keys like `title:` or `tags:` are fine — the anti-pattern is
+  (Unrelated top-level keys like `title:` or `tags:` are fine; the anti-pattern is
   multiple keys that all carry payload values softschema is supposed to validate.)
 - **Putting implementation details in the artifact.** Resolver settings, sidecar paths,
   language identifiers, and migration state belong in host configuration, not in
@@ -628,15 +628,15 @@ A few patterns help agents do the right thing:
 The Python package is one convenience implementation of the language-neutral pattern.
 Public surface:
 
-- `Contract` — maps a contract ID to a Pydantic model and optional JSON Schema sidecar.
-- `Contracts` — host-owned mapping from contract IDs to contracts.
-- `validate_artifact(path, contract_id=..., registry=...)` — validates a file at a
+- `Contract`: maps a contract ID to a Pydantic model and optional JSON Schema sidecar.
+- `Contracts`: host-owned mapping from contract IDs to contracts.
+- `validate_artifact(path, contract_id=..., registry=...)`: validates a file at a
   boundary; returns a structured `ArtifactValidationResult` with separate `structural`
   and `semantic` reports.
-- `validate_values(values, model=..., schema=...)` — validates a values dict produced by
+- `validate_values(values, model=..., schema=...)`: validates a values dict produced by
   any consumer (frontmatter, body-form runtime, structured-output adapter, hand-written
   fixture).
-- `compile_model(model_cls, out_path)` — emits a deterministic JSON Schema YAML sidecar
+- `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML sidecar
   with canonical-JSON hashing for drift checks.
 
 The CLI mirrors the library: `softschema validate`, `softschema compile`,
@@ -667,14 +667,14 @@ For Python-specific module layout, public API decisions, and dependency boundary
 
 ## Further Reading
 
-- [Softschema Spec](softschema-spec.md) — exact artifact format and validation
+- [Softschema Spec](softschema-spec.md): exact artifact format and validation
   expectations.
-- [Python Package Design](softschema-python-design.md) — Python module layout, public
+- [Python Package Design](softschema-python-design.md): Python module layout, public
   API, and implementation decisions.
-- [Movie Page Example](../examples/movie_page/README.md) — the complete public example
+- [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
 - [Installation](installation.md), [Development](development.md), and
-  [Publishing](publishing.md) — workflow docs.
+  [Publishing](publishing.md): workflow docs.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

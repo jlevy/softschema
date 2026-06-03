@@ -116,11 +116,11 @@ def _schema_sha256(schema: dict[str, Any]) -> str:
 def _yaml_dump(schema: dict[str, Any]) -> str:
     # Canonical profile: keys sorted for deterministic byte output. Use
     # frontmatter-format's YAML (block style, clean multi-line scalars). Disable
-    # its default empty/None suppression — a schema serializer must never drop a
+    # its default empty/None suppression: a schema serializer must never drop a
     # field (e.g. an empty `properties` or a `null` enum member).
     writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
     # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
-    # wrapped onto continuation lines — keeps the sidecar clean and the byte
+    # wrapped onto continuation lines; keeps the sidecar clean and the byte
     # output reproducible across implementations.
     writer.width = 4096
     buffer = io.StringIO()

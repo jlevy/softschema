@@ -69,5 +69,5 @@ from the audience; IMDb users give it 8.6 out of 10 across more than 850,000 vot
 | Source | Score | Count |
 | --- | ---: | ---: |
 | Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |
-| Rotten Tomatoes Audience | 96% Popcornmeter | — |
+| Rotten Tomatoes Audience | 96% Popcornmeter | n/a |
 | IMDb | 8.6 / 10 | 850,000+ votes |

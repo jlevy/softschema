@@ -1,5 +1,5 @@
 /**
- * Read-only navigation over a compiled JSON Schema sidecar — the idiomatic mirror of the
+ * Read-only navigation over a compiled JSON Schema sidecar: the idiomatic mirror of the
  * Python `SchemaView`. One reader for every downstream consumer (generated sections, QA,
  * agent prompts) so $ref resolution and x-softschema lookup never diverge.
  */

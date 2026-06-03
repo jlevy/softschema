@@ -1,7 +1,7 @@
 /**
  * In-process CLI coverage. `standalone.test.ts` spawns the built `dist/cli.js` as a
  * subprocess (a real end-to-end check), but a subprocess is invisible to bun's V8 line
- * coverage, leaving `cli.ts` — the largest source file — uninstrumented. Driving the
+ * coverage, leaving `cli.ts` (the largest source file) uninstrumented. Driving the
  * exported `main(argv)` directly here exercises the same command paths in-process so the
  * coverage gate actually sees them. Output is suppressed to keep the test log clean.
  */

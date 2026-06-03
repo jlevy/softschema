@@ -117,10 +117,10 @@ For the full conceptual reference and adoption playbooks, see the
 softschema ships **two complete, fully supported implementations** with the same CLI and
 library surface:
 
-- **Python / Pydantic** — [`softschema`](docs/softschema-python-design.md) on PyPI (run
+- **Python / Pydantic**: [`softschema`](docs/softschema-python-design.md) on PyPI (run
   as `softschema` or `softschema-py`).
-- **TypeScript / Zod** — [`softschema`](docs/softschema-typescript-design.md) on npm
-  (run as `softschema` or `softschema-ts`).
+- **TypeScript / Zod**: [`softschema`](docs/softschema-typescript-design.md) on npm (run
+  as `softschema` or `softschema-ts`).
 
 The TypeScript package is a **synchronized port** of the Python one, held to **exact
 behavioral parity**: equivalent CLI inputs, outputs, and flags; equivalent library APIs;
@@ -128,7 +128,7 @@ the same canonical JSON Schema sidecar (byte-identical, with an equal `schema_sh
 fingerprint); and the same engine-neutral validation results.
 Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
 Authoring or validating an artifact is identical regardless of which you run, so a team
-can adopt either runtime — or both — without divergence.
+can adopt either runtime, or both, without divergence.
 
 The two are **maintained in lockstep**: every behavior change lands in a shared
 golden-test corpus first, then in both packages, and CI fails if their outputs or
@@ -216,7 +216,7 @@ from the audience; IMDb users give it 8.6 out of 10 across more than 850,000 vot
 | Source | Score | Count |
 | --- | ---: | ---: |
 | Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |
-| Rotten Tomatoes Audience | 96% Popcornmeter | — |
+| Rotten Tomatoes Audience | 96% Popcornmeter | n/a |
 | IMDb | 8.6 / 10 | 850,000+ votes |
 ```
 
@@ -324,9 +324,9 @@ npx softschema@latest docs guide
 npx softschema@latest skill --brief
 ```
 
-Semantic models are written in Zod instead of Pydantic; everything else — flags, result
-JSON, error records, and the compiled sidecar (down to its `schema_sha256`) — matches
-the Python package exactly.
+Semantic models are written in Zod instead of Pydantic; everything else (flags, result
+JSON, error records, and the compiled sidecar, down to its `schema_sha256`) matches the
+Python package exactly.
 See the [TypeScript Design](docs/softschema-typescript-design.md) doc for the Zod model
 shape and the full Python ↔ TypeScript API table.
 

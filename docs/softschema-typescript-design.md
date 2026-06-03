@@ -20,29 +20,29 @@ test; see the parity development process in [development.md](development.md).
 | `models` | `Contract`, status/profile unions, `SchemaMetadata`, `WarningCode`, `parseSchemaMetadata` |
 | `registry` | `Contracts`: resolve contracts by id |
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
-| `compile` | `compileSchema`: Zod → canonical JSON Schema YAML sidecar + `schema_sha256` |
-| `errors` | Engine-neutral structural error records + ajv normalization |
+| `compile` | `compileSchema`: Zod → canonical JSON Schema YAML sidecar and `schema_sha256` |
+| `errors` | Engine-neutral structural error records and ajv normalization |
 | `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic` |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a sidecar |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
 | `cli` | `commander` program: `validate`, `compile`, `inspect`, `docs`, `generate`, `skill` |
 
-## Idiomatic Zod choices
+## Idiomatic Zod Choices
 
 - Source schemas are Zod; `z.strictObject()` ↔ Pydantic `extra="forbid"`.
 - Validation uses `safeParse` (never throws on validation failure).
 - Per-field annotations use `softField(schema, {...})`, attaching an `x-softschema`
-  block via Zod `.meta()` — the same emitted block as Python’s `SoftField`.
+  block via Zod `.meta()`, the same emitted block as Python’s `SoftField`.
 - The sidecar is compiled with
   `z.toJSONSchema({ target: "draft-2020-12", io: "input", reused: "inline" })`; nested
   objects carry `.meta({ id })` so `$defs` keys match the Pydantic class names.
   The shared `canonicalizeJsonSchema` then normalizes the rest.
 - Resources (docs/skill) are bundled into the package (`resources/`, copied at build)
-  and served from there — never read from the working directory — mirroring the Python
+  and served from there (never read from the working directory), mirroring the Python
   wheel.
 
-## Library API parity
+## Library API Parity
 
 Names are idiomatic per language; shapes, semantics, error `kind`s, and warning codes
 are identical.
@@ -50,18 +50,18 @@ are identical.
 | Python | TypeScript | Notes |
 | --- | --- | --- |
 | `validate_artifact` | `validateArtifact` | same result JSON, `kind`s, warnings, `metadataMode` |
-| `validate_values` | `validateValues` | combined structural + semantic on a values mapping |
+| `validate_values` | `validateValues` | combined structural and semantic on a values mapping |
 | `validate_structural` | `validateStructural` | jsonschema ↔ ajv; identical error records |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
 | `compile_model` | `compileSchema` | byte-identical canonical sidecar, equal `schema_sha256` |
 | `Contracts` | `Contracts` | `register`/`resolve`/`all`; dup-id error |
-| `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation + filters |
-| `SoftField` | `softField` | same emitted `x-softschema` block + omit-empty rules |
-| `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes + errors |
+| `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation and filters |
+| `SoftField` | `softField` | same emitted `x-softschema` block and omit-empty rules |
+| `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes and errors |
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
 
-## Result shape and CLI output
+## Result Shape and CLI Output
 
 `validateArtifact` returns a result whose serialized form is byte-identical to Python’s
 (`contract`, `contract_id`, `document_metadata`, `path`, `profile`, `semantic`,
@@ -90,9 +90,9 @@ parity plan (epic `ss-jgkf`).
 
 ## Toolchain
 
-bun (runtime + package manager), `bunup` (build), `bun test` (unit), `biome` (lint +
+bun (runtime and package manager), `bunup` (build), `bun test` (unit), `biome` (lint and
 format), `tsc --noEmit` (types).
-Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`) + `ajv-formats`,
+Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`) and `ajv-formats`,
 `atomically` (the CLI emits only JSON, so no color dependency).
 The shared `tests/golden/` corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
 

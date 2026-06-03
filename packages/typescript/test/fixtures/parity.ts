@@ -1,5 +1,5 @@
 /**
- * Comprehensive cross-language parity fixture (Zod side) — the idiomatic mirror of
+ * Comprehensive cross-language parity fixture (Zod side): the idiomatic mirror of
  * examples/parity/model.py. Both must compile to the same canonical schema
  * (schema_sha256 of examples/parity/parity.schema.yaml). Nested objects carry `id` meta
  * so their $defs keys match the Pydantic class names.

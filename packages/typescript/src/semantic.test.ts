@@ -3,7 +3,7 @@ import { z } from "zod";
 import { validateSemantic } from "./validate.js";
 
 // Cross-field invariant expressible only in the semantic layer (Zod refine / Pydantic
-// validator) — impl-specific by design, tested per-language.
+// validator); impl-specific by design, tested per-language.
 const Reaction = z
   .object({ direction: z.enum(["up", "down"]), delta: z.number() })
   .refine((v) => (v.direction === "up" ? v.delta >= 0 : v.delta <= 0), {

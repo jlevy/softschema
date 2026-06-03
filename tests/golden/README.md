@@ -1,9 +1,9 @@
-# Golden corpus (cross-language CLI parity)
+# Golden Corpus (Cross-Language CLI Parity)
 
 One [tryscript](https://github.com/jlevy/tryscript) corpus, run against **both**
 the Python and the TypeScript softschema CLIs, proving they behave identically.
 
-## How it works
+## How It Works
 
 Each scenario in `scenarios/` invokes the **neutral** `softschema` command and
 captures full stdout/stderr/exit-code. `run.sh` builds a shim that points
@@ -18,9 +18,9 @@ Because the CLI emits deterministic, key-sorted JSON, engine-neutral structural
 error records, and a canonical JSON Schema sidecar, a single expected-output
 block validates both implementations. Parity is a test pass, not a manual audit.
 
-## Stable vs unstable
+## Stable vs Unstable
 
-These scenarios are fully deterministic — every command uses relative paths, so
+These scenarios are fully deterministic: every command uses relative paths, so
 there are **no unstable fields** and no patterns are needed. Note in particular:
 
 - `schema_sha256` is shown **literally**. It is a deterministic fingerprint of
@@ -47,14 +47,14 @@ there are **no unstable fields** and no patterns are needed. Note in particular:
 
 ## Layout
 
-- `scenarios/` — **neutral** scenarios that run on **both** implementations. They use
+- `scenarios/`: **neutral** scenarios that run on **both** implementations. They use
   only language-neutral inputs (the JSON Schema sidecar via `--schema`, `inspect`,
   `docs`, `skill`). The semantic layer (`--model`: Pydantic vs Zod) and `compile` (whose
   source is a Pydantic class vs a Zod module) are language-specific and are **not** here.
-- `scenarios-py/` and `scenarios-ts/` — per-implementation scenarios whose *invocation*
+- `scenarios-py/` and `scenarios-ts/`: per-implementation scenarios whose *invocation*
   differs by language even though the *output* is identical (e.g. `compile`). `run.sh`
   runs `scenarios/` plus `scenarios-$IMPL/`.
-- `fixtures/` — shared input artifacts.
+- `fixtures/`: shared input artifacts.
 
 | File | Scope | Covers |
 | --- | --- | --- |

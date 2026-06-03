@@ -1,6 +1,6 @@
 # softschema
 
-The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softschema) —
+The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softschema):
 validate and structure Markdown/YAML artifacts with frontmatter contracts.
 It is the idiomatic Zod counterpart to the Python/Pydantic package and is held to exact
 behavioral parity with it: the same CLI inputs/outputs/flags, the same library surface,

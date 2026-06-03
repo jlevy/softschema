@@ -9,9 +9,9 @@ A single `vX.Y.Z` Git tag drives both.
 The Python wheel and sdist derive their version from the tag via
 `uv-dynamic-versioning`; the npm package carries the same version in
 `packages/typescript/package.json`. Creating a GitHub release for the tag triggers
-[`publish.yml`](../.github/workflows/publish.yml), which publishes both packages —
-Python to PyPI and TypeScript to npm — via **trusted publishing (OIDC)** in the same
-run. No API tokens are stored in the repo.
+[`publish.yml`](../.github/workflows/publish.yml), which publishes both packages (Python
+to PyPI and TypeScript to npm) via **trusted publishing (OIDC)** in the same run.
+No API tokens are stored in the repo.
 
 ## Versioning Convention
 
@@ -33,7 +33,7 @@ run. No API tokens are stored in the repo.
 
 ## Trusted Publishing
 
-Both registries authenticate via OIDC from `publish.yml` — there are **no `*_TOKEN`
+Both registries authenticate via OIDC from `publish.yml`; there are **no `*_TOKEN`
 secrets** to manage or rotate.
 Each is configured once:
 
@@ -58,7 +58,7 @@ OIDC-based, so no token is involved.
 npm’s trusted publisher can only be configured on a package that **already exists**, so
 the very first publish of `softschema` is a chicken-and-egg case: the automated
 `publish-npm` job cannot run until the package is on the registry and the trusted
-publisher is set. Bootstrap it once, by hand, from a maintainer’s machine — this is an
+publisher is set. Bootstrap it once, by hand, from a maintainer’s machine; this is an
 interactive login, **not** a stored `NPM_TOKEN`.
 
 **Bootstrap at the version already on PyPI**, so the two registries start in sync and
@@ -145,7 +145,7 @@ For each release of version `X.Y.Z`:
 
    Optionally smoke-test the built artifacts in clean environments to confirm each CLI
    loads and the bundled docs/skill are reachable (`npm pack` for the tarball,
-   `uv build` + a fresh venv for the wheel).
+   `uv build` and a fresh venv for the wheel).
 
 3. **Commit and push** everything to `main` (the working tree must be clean before
    tagging so the Python version derivation is unambiguous).

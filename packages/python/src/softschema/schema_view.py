@@ -201,11 +201,11 @@ def _extract_type(prop: dict[str, Any]) -> str | None:
     if isinstance(t, str):
         return t
     if isinstance(t, list):
-        # JSON Schema 2020-12 allows ["string", "null"] etc. — return the non-null one.
+        # JSON Schema 2020-12 allows ["string", "null"] etc. Return the non-null one.
         non_null = [entry for entry in t if entry != "null"]
         if len(non_null) == 1 and isinstance(non_null[0], str):
             return non_null[0]
-    # `anyOf` style optionals (Pydantic's `Foo | None`) — extract from the first typed branch.
+    # `anyOf` style optionals (Pydantic's `Foo | None`): extract from the first typed branch.
     any_of = prop.get("anyOf")
     if isinstance(any_of, list):
         for entry in any_of:

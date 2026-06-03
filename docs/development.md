@@ -41,10 +41,10 @@ Hooks are managed by [lefthook](https://lefthook.dev) (`lefthook.yml`), installe
 `make hooks-install`. The `pre-commit` hook formats staged changes so commits stay
 clean:
 
-- **Markdown** — delegates to `make format` (pinned `flowmark-rs` +
+- **Markdown:** delegates to `make format` (pinned `flowmark-rs` and
   `softschema generate`); the single source of truth, the same command you run locally.
-- **Python** — `ruff format` + `ruff check --fix` on staged `*.py`.
-- **TypeScript** — `biome check --write` on staged files in `packages/typescript`.
+- **Python:** `ruff format` and `ruff check --fix` on staged `*.py`.
+- **TypeScript:** `biome check --write` on staged files in `packages/typescript`.
 
 Bypass for an emergency commit with `git commit --no-verify` (avoid in PRs).
 flowmark runs across the whole tree (it honors `.flowmarkignore` only relative to its
@@ -52,7 +52,7 @@ target arg), so staging any `*.md` reformats all Markdown; this is fast and idem
 
 ## TypeScript Package
 
-The TypeScript/Zod package lives in `packages/typescript` and builds with bun (bunup +
+The TypeScript/Zod package lives in `packages/typescript` and builds with bun (bunup and
 biome). Set it up and run its checks:
 
 ```bash
@@ -169,8 +169,8 @@ your repository.
 
 ## Keeping Python and TypeScript in Parity
 
-softschema ships two implementations — Python/Pydantic (`softschema`) and TypeScript/Zod
-(`softschema`, `softschema-ts`) — held to **exact behavioral parity**: equivalent CLI
+softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
+(`softschema`, `softschema-ts`), held to **exact behavioral parity**: equivalent CLI
 inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
 (byte-identical, equal `schema_sha256`), and the same engine-neutral validation results.
 Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
@@ -184,7 +184,7 @@ When you change any behavior, follow this loop so the two never drift:
    `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and
    `SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh`.
-4. **Both green + conformance.** Both golden runs and the cross-implementation
+4. **Both green and conformance.** Both golden runs and the cross-implementation
    conformance test (the Zod and Pydantic compilers produce an identical canonical
    sidecar) pass in CI.
 
@@ -192,10 +192,10 @@ The parity invariants, and where each is enforced:
 
 | Invariant | Enforced by |
 | --- | --- |
-| Canonical schema (equal `schema_sha256`) | `compile` + the KitchenSink conformance test (`packages/typescript/test/conformance.test.ts`) and `examples/parity/` |
+| Canonical schema (equal `schema_sha256`) | `compile` and the KitchenSink conformance test (`packages/typescript/test/conformance.test.ts`) and `examples/parity/` |
 | Engine-neutral structural errors | shared message templates (`errors`), the golden corpus |
 | Byte-identical neutral CLI output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
-| Equal flag/command surface | per-impl + neutral golden scenarios |
+| Equal flag/command surface | per-impl and neutral golden scenarios |
 | Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
 | Skill mirrors never go stale | the mirror drift test (`tests/test_skill_mirror_drift.py`) |
 

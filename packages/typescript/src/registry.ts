@@ -1,5 +1,5 @@
 /**
- * In-memory collection that resolves contracts by id — the idiomatic mirror of the
+ * In-memory collection that resolves contracts by id: the idiomatic mirror of the
  * Python `Contracts`. Registering a different contract under an existing id is an error.
  */
 import type { Contract } from "./models.js";
