@@ -60,7 +60,7 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
     "installation": ResourceTopic(
         "Installation",
         "docs/installation.md",
-        "Installing uv and Python.",
+        "Installing softschema for Node or Python.",
     ),
     "publishing": ResourceTopic(
         "Publishing",

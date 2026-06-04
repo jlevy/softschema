@@ -38,7 +38,7 @@ Available softschema docs:
   example-host       Host registry and validation helper.
   example-model      Pydantic model used by the example.
   guide              Concepts, mental model, and adoption path.
-  installation       Installing uv and Python.
+  installation       Installing softschema for Node or Python.
   publishing         Release and PyPI workflow.
   python-design      Python package design decisions.
   readme             Short first-visitor overview.
@@ -130,7 +130,7 @@ $ softschema docs --list --json
     {
       "name": "installation",
       "path": "docs/installation.md",
-      "summary": "Installing uv and Python.",
+      "summary": "Installing softschema for Node or Python.",
       "title": "Installation"
     },
     {
