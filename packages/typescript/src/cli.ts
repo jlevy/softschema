@@ -91,7 +91,7 @@ const DOC_TOPICS: DocTopic[] = [
     name: "installation",
     title: "Installation",
     path: "docs/installation.md",
-    summary: "Installing uv and Python.",
+    summary: "Installing softschema for Node or Python.",
   },
   {
     name: "publishing",
