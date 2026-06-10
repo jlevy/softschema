@@ -3,9 +3,9 @@ type: is
 id: is-01ktsqs9fs0j94t3x6rbvew4rt
 title: "P1: Python cli.py hardening (error boundary, --version, generate exit codes, dev-root fail-clear, atomic skill write, dedent)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
@@ -15,7 +15,9 @@ dependencies:
     target: is-01ktsqsexjfpcr1t1j2m7q9jdx
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:31.160Z
-updated_at: 2026-06-10T21:46:04.687Z
+updated_at: 2026-06-10T21:56:58.136Z
+closed_at: 2026-06-10T21:56:58.135Z
+close_reason: null
 ---
 FILE SCOPE: packages/python/src/softschema/cli.py only.
 - Single error boundary across validate/compile/inspect/generate: catch OSError, FileNotFoundError, FmFormatError, YAMLError, ModuleNotFoundError/ImportError, TypeError, ValueError, ValidationError; print one-line 'softschema <cmd>: <msg>' to stderr; exit 2. No tracebacks for user mistakes. Reproduced cases: missing file, malformed frontmatter, bad --model spec, malformed softschema block in inspect.

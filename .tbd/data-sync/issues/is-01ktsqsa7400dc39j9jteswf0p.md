@@ -3,9 +3,9 @@ type: is
 id: is-01ktsqsa7400dc39j9jteswf0p
 title: "P1: TypeScript cli.ts hardening (exit hygiene, EPIPE/SIGINT, safe error casts, --help epilog, --version, resource-root fail-clear)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
@@ -15,7 +15,9 @@ dependencies:
     target: is-01ktsqsexjfpcr1t1j2m7q9jdx
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:31.908Z
-updated_at: 2026-06-10T21:46:05.248Z
+updated_at: 2026-06-10T21:56:58.684Z
+closed_at: 2026-06-10T21:56:58.684Z
+close_reason: null
 ---
 FILE SCOPE: packages/typescript/src/cli.ts only.
 - Replace process.exit(code) after async with process.exitCode = code (avoid piped-stdout truncation, HIGH 1.1).
