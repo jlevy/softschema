@@ -3,9 +3,9 @@ type: is
 id: is-01ktsqsav2t9heta9h49hrqjd0
 title: "P1: Packaging bundle parity + DOC_TOPICS-resolves test (ship typescript-design in wheel, movie schema in npm, pytest config)"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
@@ -13,7 +13,7 @@ dependencies:
     target: is-01ktsqtgsd9ryf1ag8n7zx80b3
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:32.546Z
-updated_at: 2026-06-10T21:43:58.724Z
+updated_at: 2026-06-10T21:46:05.811Z
 ---
 FILE SCOPE: pyproject.toml, packages/typescript/scripts/copy-resources.ts, one test in each package.
 - pyproject [tool.hatch.build.targets.wheel.force-include]: add docs/softschema-typescript-design.md (HIGH M1: docs typescript-design crashes from a wheel install).
