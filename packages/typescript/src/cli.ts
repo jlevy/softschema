@@ -19,6 +19,14 @@ import { readFrontmatter, validateArtifact, YamlParseError } from "./validate.js
 // package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+const AGENT_HELP_EPILOG = `IMPORTANT for agents:
+  To set up softschema for this repo as a skill, run one command from the repo root:
+    uvx softschema@latest skill --install
+    # or
+    npx softschema@latest skill --install
+  Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
+  and bundled docs.`;
+
 /**
  * Read a bundled doc/skill resource by its repo-relative path. Resolves from the package's
  * bundled `resources/` first (so it never depends on the working directory), with a
@@ -454,7 +462,8 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   const program = new Command();
   program
     .name("softschema")
-    .description("Validate and explain soft schema Markdown/YAML artifacts.");
+    .description("Validate and explain soft schema Markdown/YAML artifacts.")
+    .addHelpText("after", `\n${AGENT_HELP_EPILOG}`);
   let exitCode = 0;
 
   program

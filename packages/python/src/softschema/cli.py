@@ -22,6 +22,14 @@ from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
 from softschema.validate import validate_artifact
 
+AGENT_HELP_EPILOG = """IMPORTANT for agents:
+  To set up softschema for this repo as a skill, run one command from the repo root:
+    uvx softschema@latest skill --install
+    # or
+    npx softschema@latest skill --install
+  Then read `softschema skill --brief` and `softschema docs --list` for operating rules
+  and bundled docs."""
+
 
 @dataclass(frozen=True)
 class ResourceTopic:
@@ -104,11 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="softschema",
         description="Validate and explain soft schema Markdown/YAML artifacts.",
-        epilog=(
-            "IMPORTANT for agents: run `softschema skill --brief` for operating "
-            "rules, then `softschema docs --list` to discover bundled docs "
-            "(`guide`, `spec`, and `example-artifact` are the key ones)."
-        ),
+        epilog=AGENT_HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

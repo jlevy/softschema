@@ -68,7 +68,9 @@ Run once per project to install discoverable mirrors of this skill, so any agent
 in the repo finds it natively:
 
 ```bash
-softschema skill --install
+uvx softschema@latest skill --install
+# or: npx softschema@latest skill --install
+# or, if the CLI is already installed: softschema skill --install
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)

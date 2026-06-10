@@ -183,6 +183,19 @@ def test_docs_topic_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert "# Softschema Spec" in output["content"]
 
 
+def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        softschema_main(["--help"])
+
+    assert exc.value.code == 0
+    output = capsys.readouterr().out
+    assert "IMPORTANT for agents" in output
+    assert "repo root" in output
+    assert "skill --install" in output
+    assert "uvx softschema@latest" in output
+    assert "npx softschema@latest" in output
+
+
 def test_skill_brief_points_agents_to_docs_and_rules(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

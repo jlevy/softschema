@@ -11,6 +11,17 @@ Two interchangeable implementations ship here, at exact behavioral parity: see
 [Python Package Design](softschema-python-design.md) and
 [TypeScript Package Design](softschema-typescript-design.md).
 
+## Quick Start for Agents
+
+To set up softschema in a repository with an agent, tell the agent:
+
+> Run `uvx softschema@latest --help` (for the Python implementation) or
+> `npx softschema@latest --help` (for the Node implementation) and follow the
+> instructions to set up softschema for this repo as a skill.
+
+The help output points the agent to the repo-local skill install command and the bundled
+docs it should read next.
+
 ## What Softschema Is
 
 A **soft schema** is structure added to a document gradually, rather than imposed all at
