@@ -60,13 +60,18 @@ $ softschema skill --brief
 Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
 consume some values reliably.
 
-- Read `softschema docs guide` for the mental model.
-- Read `softschema docs spec` for the exact artifact format.
-- Inspect `softschema docs example` and `softschema docs example-artifact` for the
-  copyable movie example.
-- Treat YAML/frontmatter as authoritative.
-- Do not parse Markdown body prose or tables for consumed values.
-- Use `softschema.contract` to name the payload contract.
+- YAML/frontmatter is authoritative for any consumed value.
+  Do not parse Markdown body prose or tables for structured fields.
+- Use `softschema.contract` (not `schema`) to name the payload contract.
+- Promote a value into YAML only when something consumes it; leave exploratory or
+  judgment-heavy content as prose.
+- Read `$SS docs guide` for the mental model.
+- Read `$SS docs spec` for the exact artifact format.
+- Inspect `$SS docs example` and `$SS docs example-artifact` for the copyable movie
+  example.
+- Validate at the boundary with `$SS validate`: `--model` for a Pydantic/Zod
+  model, `--schema` for a sidecar.
+  Run `$SS validate --help` for exact syntax.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.
 ? 0

@@ -45,6 +45,12 @@ describe("bundled resources (standalone, outside the repo)", () => {
     expect(r.stdout).toContain("npx softschema@latest");
   });
 
+  test("--version prints the package version", () => {
+    const r = runFromTmp(["--version"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("0.1.3");
+  });
+
   test("docs guide reads the bundled resource, not a cwd-relative file", () => {
     const r = runFromTmp(["docs", "guide"]);
     expect(r.status).toBe(0);

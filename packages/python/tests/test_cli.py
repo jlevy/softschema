@@ -6,6 +6,7 @@ from textwrap import dedent
 
 import pytest
 
+import softschema.cli as cli
 from softschema.cli import main as softschema_main
 
 # Tests write Markdown docs with indented YAML frontmatter for readability;
@@ -196,6 +197,51 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "npx softschema@latest" in output
 
 
+def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        softschema_main(["--version"])
+
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == cli._installed_version()
+
+
+def test_doctor_reports_available_runners_as_json(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paths = {
+        "softschema": "/usr/local/bin/softschema",
+        "uvx": "/opt/homebrew/bin/uvx",
+        "npx": None,
+    }
+    monkeypatch.setattr(cli, "_find_runner", lambda name: paths[name])
+
+    exit_code = softschema_main(["doctor", "--json"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["version"] == cli._installed_version()
+    assert output["recommended_invocation"] == "softschema"
+    assert output["runners"] == [
+        {"name": "softschema", "available": True, "path": "/usr/local/bin/softschema"},
+        {"name": "uvx", "available": True, "path": "/opt/homebrew/bin/uvx"},
+        {"name": "npx", "available": False, "path": None},
+    ]
+
+
+def test_doctor_text_tells_user_how_to_recover_when_no_runner_exists(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "_find_runner", lambda _name: None)
+
+    exit_code = softschema_main(["doctor"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "softschema version:" in output
+    assert "recommended invocation: unavailable" in output
+    assert "Install uv or Node" in output
+
+
 def test_skill_brief_points_agents_to_docs_and_rules(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -203,9 +249,16 @@ def test_skill_brief_points_agents_to_docs_and_rules(
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "softschema docs guide" in output
-    assert "softschema docs spec" in output
+    assert "$SS docs guide" in output
+    assert "$SS docs spec" in output
     assert "Do not parse Markdown body prose or tables" in output
+
+
+def test_skill_brief_is_derived_from_source_skill(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = softschema_main(["skill", "--brief"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == cli._brief_skill_text()
 
 
 def test_skill_uses_latest_runner(
@@ -220,6 +273,8 @@ def test_skill_uses_latest_runner(
     assert "<version>" not in output
     assert "uvx softschema@latest" in output
     assert "npx softschema@latest" in output
+    assert "Pick One Runner" in output
+    assert "$SS docs guide" in output
 
 
 def test_skill_install_creates_both_mirrors(

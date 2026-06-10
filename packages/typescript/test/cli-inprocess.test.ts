@@ -6,6 +6,9 @@
  * coverage gate actually sees them. Output is suppressed to keep the test log clean.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resolve } from "node:path";
 import { main } from "../src/cli.ts";
 
@@ -21,15 +24,53 @@ const PARITY_SIDECAR = resolve(REPO, "examples/parity/parity.schema.yaml");
 const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
 let originalWrite: typeof process.stdout.write;
+let originalPath: string | undefined;
+let stdout = "";
 beforeEach(() => {
   originalWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = (() => true) as typeof process.stdout.write;
+  originalPath = process.env.PATH;
+  stdout = "";
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    stdout += chunk.toString();
+    return true;
+  }) as typeof process.stdout.write;
 });
 afterEach(() => {
   process.stdout.write = originalWrite;
+  process.env.PATH = originalPath;
 });
 
 describe("cli main() in-process", () => {
+  test("doctor --json reports available runners", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "softschema-doctor-"));
+    for (const name of ["softschema", "uvx"]) {
+      const path = join(bin, name);
+      writeFileSync(path, "#!/bin/sh\nexit 0\n");
+      chmodSync(path, 0o755);
+    }
+    process.env.PATH = bin;
+
+    expect(await main(argv("doctor", "--json"))).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({
+      recommended_invocation: "softschema",
+      runners: [
+        { name: "softschema", available: true, path: join(bin, "softschema") },
+        { name: "uvx", available: true, path: join(bin, "uvx") },
+        { name: "npx", available: false, path: null },
+      ],
+      version: "0.1.3",
+    });
+  });
+
+  test("doctor text tells users how to recover when no runner exists", async () => {
+    process.env.PATH = mkdtempSync(join(tmpdir(), "softschema-doctor-empty-"));
+
+    expect(await main(argv("doctor"))).toBe(0);
+    expect(stdout).toContain("softschema version:");
+    expect(stdout).toContain("recommended invocation: unavailable");
+    expect(stdout).toContain("Install uv or Node");
+  });
+
   test("docs --list exits 0", async () => {
     expect(await main(argv("docs", "--list"))).toBe(0);
   });
