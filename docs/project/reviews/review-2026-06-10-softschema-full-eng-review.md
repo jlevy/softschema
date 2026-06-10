@@ -101,6 +101,22 @@ Two coherent resolutions exist; the current middle position is the worst of both
 
 Either way, the spec, guide, and implementations should agree on which one it is.
 
+**Decision (2026-06-10): give it optional teeth.** Enabling strictness must enforce it;
+not wanting enforcement means not enabling stricter settings.
+Concretely: when the effective status is `enforced`, structural validation treats every
+object schema that declares `properties` but omits `additionalProperties` as
+`additionalProperties: false`. An explicit `additionalProperties` value in the schema
+(true, false, or a subschema) always wins, so a schema can opt specific objects out.
+Object schemas without `properties` (free-form mappings) are unaffected.
+`soft` and `permissive` keep exactly today’s behavior: no loosening, no downgrade of
+errors to warnings. The overlay is validation-time only and never changes compiled
+sidecars; the rejected extras surface as ordinary `additionalProperties` schema
+violations through the existing engine-neutral error normalization, so cross-language
+output stays byte-identical.
+The effective status resolves as it does today: the caller’s contract or `--status` flag
+first, then the document’s declared `softschema.status`. Spec, guide, and the design
+docs must be updated to state this behavior.
+
 ### 2. The Spec’s Envelope Rules Live Only in the CLI, Not the Library
 
 The spec requires single-key envelope inference and explicit-designation-or-rejection
@@ -158,8 +174,23 @@ enforces:
   the published package’s primary invocation is `npx softschema` under Node.
   Node never runs the corpus in CI.
 
-This is mostly a documentation calibration issue plus a few cheap CI additions, not a
-flaw in the strategy.
+**Direction (2026-06-10): exact parity is the requirement, not an aspiration.** The Node
+gap above is a serious shortcoming, since Node is the runtime npm users actually get.
+Three principles govern the fix:
+
+- The golden corpus must run under Node as well as Bun in CI (for example
+  `SOFTSCHEMA_IMPL=ts` running `node dist/cli.js` as the primary TypeScript target, with
+  a Bun variant alongside), so the published runtime is what parity is proven on.
+- Golden scenarios must be **the same files** run by both CLIs whenever possible; the
+  per-implementation `scenarios-py/` and `scenarios-ts/` directories stay reserved for
+  the few invocations that genuinely differ by language (such as `compile` model specs)
+  while producing identical output.
+- Most functionality should be exposed through the CLI, precisely so the shared corpus
+  can exercise it; behavior that only exists as library API is behavior the shared
+  corpus cannot hold to parity.
+
+The remaining items (claim calibration, `--help` coverage) are documentation and corpus
+additions on top of that.
 
 ### 5. Error Handling Has No Boundary in Either CLI
 
@@ -263,6 +294,21 @@ can do nothing for them (design issue 6). When they do add enforcement, flipping
 `status` alone changes nothing (design issue 1), and an artifact whose `softschema:`
 block misspells a key (say `status` with a dropped letter) validates without complaint,
 despite the spec (see Bugs).
+
+**A research agent builds a corpus of loosely structured records.** An agent collects
+documents on many items of one kind (companies, products, papers), each starting as
+mostly prose with a few frontmatter fields.
+Over time the agent promotes more values into YAML, record by record, until every
+document carries a highly structured payload under one contract.
+The endgame is a strict schema whose fields can be synchronized into a typed database or
+drive UI features such as sort and filter, where those features only work if the strict
+fields are **known to be enforced** across the whole corpus.
+This use case is why the `status` decision above matters: `enforced` must actually
+guarantee that every validated record has exactly the declared shape, so a downstream
+database sync or UI can trust the corpus without re-checking it.
+It also stresses migration (hundreds of records at mixed maturity levels validated under
+one contract), batch validation ergonomics (the library loop and CLI over many files),
+and the soft-stage gap (early records have contracts but no schema yet).
 
 **A polyglot team relies on parity.** For ordinary artifacts, parity holds and is
 well-tested. An artifact with a value like `1e-7` or `Infinity` in frontmatter, or a
@@ -549,6 +595,11 @@ which is the strongest argument for adding them as a shared fixture corpus.
 
 ## Prioritized Recommendations
 
+The priorities below group findings by impact.
+The execution sequence (quick fixes first, then the parity/test safety net, then the
+major design changes, then remaining cleanups) is planned in
+[plan-2026-06-10-softschema-review-remediation.md](../specs/active/plan-2026-06-10-softschema-review-remediation.md).
+
 P1 (correctness and user-facing breakage):
 
 1. Add CLI error boundaries in both languages (clean message, exit 2); fix
@@ -564,8 +615,8 @@ P2 (design alignment):
 
 6. Move envelope/binding inference into the libraries; resolve the pure-yaml envelope
    question in spec or code.
-7. Decide `status` semantics (teeth or explicitly advisory) and align spec, guide, and
-   playbooks.
+7. Implement the decided `status` semantics (optional teeth; see the decision under
+   design issue 1) and align spec, guide, and playbooks.
 8. Refresh stale docs for the TypeScript port (guide sections, python-design
    Accepted/Deferred and module table, public-readiness plan disposition, publishing.md
    present state).
@@ -577,8 +628,9 @@ P3 (parity hardening and tests):
 10. Shared edge-case fixture corpus (numbers, unicode, malformed frontmatter, nested
     errors, max-side keywords); fix `pyRepr` number formatting and the empty-frontmatter
     divergence the fixtures will expose.
-11. Run the TypeScript golden corpus under Node as well as Bun; add a direct
-    cross-implementation diff job; consider running golden on the full Python matrix.
+11. Run the TypeScript golden corpus under Node (the published runtime) as well as Bun
+    in CI; keep golden scenarios as the same files for both CLIs wherever possible; add
+    a direct cross-implementation diff job; run golden on the full Python matrix.
 12. Version/format stamp on the skill marker (or delete the dead `<version>` path);
     TypeScript mirror drift test; atomic install writes; git-root awareness for
     `skill --install`.
