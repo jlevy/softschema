@@ -97,34 +97,40 @@ per-language suites instead.
 ### Phase 1: Quick Fixes and Bug Repairs
 
 Low-risk, independently shippable corrections; each lands with a regression test.
+**Status: complete (2026-06-10).** All items below landed; full Python suite (101),
+TypeScript suite (99) and the golden corpus (14/14 against both implementations) are
+green, lint and typecheck clean.
+Beads ss-5ipx, ss-m776, ss-i693, ss-29i1, ss-r4rs, ss-nqx0 closed.
+Cross-CLI exit-code parity for user errors (missing file, malformed metadata, bad model
+spec, missing implementation) verified: both CLIs exit 2.
 
-- [ ] Python CLI error boundary: catch `OSError`, `FmFormatError`, `YAMLError`,
-  `ModuleNotFoundError`/`ImportError`, `TypeError`, `ValueError`, and `ValidationError`
-  in `validate`, `compile`, `inspect`, and `generate`; one-line stderr message and exit
-  2 (no tracebacks for user mistakes).
-- [ ] `validate_artifact` (and the TypeScript `validateArtifact`) return a structured
+- [x] Python CLI error boundary: a shared `_USER_ERRORS` tuple and `_run_cmd` wrapper
+  catch `OSError`, `FmFormatError`, `YAMLError`, `ModuleNotFoundError`/`ImportError`,
+  `TypeError`, `ValueError`, `ValidationError`, and `KeyError` across every subcommand;
+  one-line stderr message and exit 2 (no tracebacks for user mistakes).
+- [x] `validate_artifact` (and the TypeScript `validateArtifact`) return a structured
   `parse_error` result for missing/unreadable files instead of raising.
-- [ ] `generate` exit codes: runtime errors exit 2; reserve 1 for drift; convert the
-  vocab-pointer `KeyError` into a clean error.
-- [ ] TypeScript CLI exit hygiene: set `process.exitCode` instead of `process.exit()`
-  after async work; add EPIPE handlers on stdout/stderr; handle SIGINT with exit 130.
-- [ ] TypeScript: replace `(err as Error).message` casts with
-  `err instanceof Error ? err.message : String(err)`.
-- [ ] TypeScript: parse schema sidecars through the `parseYaml` wrapper and reject
-  non-mapping roots with a clean structural error.
-- [ ] Add the agent `--help` epilog to the TypeScript CLI (same text as Python).
-- [ ] Ship `docs/softschema-typescript-design.md` in the wheel; add
-  `examples/movie_page/movie-page.schema.yaml` to the npm resources; add a test in each
-  package that every `DOC_TOPICS` entry resolves from the built artifact.
-- [ ] `--version` on both CLIs.
-- [ ] Atomic writes in `_install_skill` (use `atomic_write_text`, matching compile and
-  generate).
-- [ ] `_dev_repo_root` and the TypeScript resource walk-up: fail with a clear error
-  instead of guessing (`parents[4]`, magic depth 6 becomes a named constant).
-- [ ] Trivial cleanups: `devtools/lint.py` explicit UTF-8 encoding, `dedent` for the
-  brief-skill string, pytest `python_files` back to `test_*.py`, remove the dead
-  `FieldInfo` re-export and the dead `order !== null` check, escape `|` in generated
-  enum tables.
+- [x] `generate` exit codes: runtime errors exit 2; reserve 1 for drift; vocab-pointer
+  lookup now raises `ValueError` (not `KeyError`).
+- [x] TypeScript CLI exit hygiene: `process.exitCode` instead of `process.exit()` after
+  async work; EPIPE handlers on stdout/stderr; SIGINT exits 130.
+- [x] TypeScript: replaced `(err as Error).message` casts with an `errMessage` helper
+  (`err instanceof Error ? err.message : String(err)`).
+- [x] TypeScript: schema sidecars parse through the `parseYaml` wrapper; a non-mapping
+  root returns a clean `schema_sidecar_invalid` structural error.
+- [x] Agent `--help` epilog added to the TypeScript CLI (same text as Python), plus a
+  top-level backstop so no command leaks a stack trace.
+- [x] Shipped `docs/softschema-typescript-design.md` in the wheel; added
+  `examples/movie_page/movie-page.schema.yaml` to the npm resources; a doc-topics test
+  in each package asserts every `DOC_TOPICS` path resolves.
+- [x] `--version` on both CLIs (prints `softschema <version>`).
+- [x] Atomic writes in Python `_install_skill` (`atomic_write_text`). (TypeScript
+  counterpart tracked separately as ss-oodd.)
+- [x] `_dev_repo_root` and the TypeScript resource walk-up fail with a clear error
+  instead of guessing (named `MAX_RESOURCE_WALK_DEPTH` constant).
+- [x] Trivial cleanups: `devtools/lint.py` explicit UTF-8; `dedent` for the brief-skill
+  string; pytest `python_files` back to `test_*.py`; removed the dead `FieldInfo`
+  re-export and the dead `order !== null` check; escape `|` in generated enum tables.
 
 ### Phase 2: Parity and Test Safety Net
 

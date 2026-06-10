@@ -356,3 +356,81 @@ def test_validate_exits_one_when_payload_fails_model(tmp_path: Path, model_modul
     )
 
     assert exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# Error-boundary regression tests (Phase 1 remediation)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_missing_file_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Missing artifact file must exit 2 with a clean message, no traceback."""
+    missing = tmp_path / "does-not-exist.md"
+    schema = tmp_path / "dummy.schema.yaml"
+    schema.write_text("{}")
+
+    exit_code = softschema_main(["validate", str(missing), "--schema", str(schema)])
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "softschema validate:" in err
+    assert "Traceback" not in err
+
+
+def test_validate_bad_model_module_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A --model pointing to a nonexistent module must exit 2."""
+    doc = tmp_path / "doc.md"
+    write_doc(doc, "sample:\n  name: hello\n  count: 1\n")
+
+    exit_code = softschema_main(
+        ["validate", str(doc), "--model", "nonexistent_module:Foo", "--contract", "x"]
+    )
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "softschema validate:" in err
+    assert "Traceback" not in err
+
+
+def test_inspect_missing_file_exits_two(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Missing file for inspect must exit 2."""
+    missing = tmp_path / "does-not-exist.md"
+
+    exit_code = softschema_main(["inspect", str(missing)])
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "softschema inspect:" in err
+    assert "Traceback" not in err
+
+
+def test_inspect_malformed_softschema_block_exits_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A softschema block that is a list instead of a mapping must exit 2."""
+    doc = tmp_path / "doc.md"
+    doc.write_text("---\nsoftschema: [1, 2]\n---\n# title\n")
+
+    exit_code = softschema_main(["inspect", str(doc)])
+
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "softschema inspect:" in err
+    assert "Traceback" not in err
+
+
+def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    """--version prints 'softschema <version>' to stdout and exits 0."""
+    with pytest.raises(SystemExit) as exc_info:
+        softschema_main(["--version"])
+
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert out.startswith("softschema ")
+    # Must contain a version string, not be empty after the program name.
+    version_part = out.strip().removeprefix("softschema ")
+    assert len(version_part) > 0

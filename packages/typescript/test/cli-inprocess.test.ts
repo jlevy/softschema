@@ -101,4 +101,29 @@ describe("cli main() in-process", () => {
       ),
     ).toBe(1);
   });
+
+  test("--version prints 'softschema <version>' and exits 0", async () => {
+    const chunks: string[] = [];
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    const code = await main(argv("--version"));
+    expect(code).toBe(0);
+    const output = chunks.join("");
+    expect(output).toMatch(/^softschema \d+\.\d+\.\d+\n$/);
+  });
+
+  test("--help includes agent epilog text", async () => {
+    const chunks: string[] = [];
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    const code = await main(argv("--help"));
+    expect(code).toBe(0);
+    const output = chunks.join("");
+    expect(output).toContain("IMPORTANT for agents:");
+    expect(output).toContain("softschema skill --brief");
+  });
 });

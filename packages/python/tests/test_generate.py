@@ -148,6 +148,40 @@ def test_regenerate_vocab_renders_enum_values(tmp_path: Path) -> None:
         assert value in rendered
 
 
+def test_regenerate_vocab_nonexistent_pointer_raises_value_error(tmp_path: Path) -> None:
+    """A vocab block pointing at a nonexistent field raises ValueError, not KeyError."""
+    schema_dest = tmp_path / "x.schema.yaml"
+    schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
+    target = tmp_path / "doc.md"
+    target.write_text(
+        '<!-- softschema:generated kind="vocab" contract="x.schema.yaml" '
+        'pointer="/properties/nonexistent_field" -->\n'
+        "<!-- /softschema:generated -->\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="no field at pointer"):
+        regenerate(target)
+
+
+def test_regenerate_enum_table_escapes_pipe_in_values(tmp_path: Path) -> None:
+    """An enum value containing '|' is escaped to '\\|' in the rendered table."""
+    schema_dest = tmp_path / "pipe.schema.yaml"
+    schema_dest.write_text(
+        '{"type": "object", "properties": {"status": {"type": "string", "enum": ["a|b", "c"]}}}\n',
+        encoding="utf-8",
+    )
+    target = tmp_path / "doc.md"
+    target.write_text(
+        '<!-- softschema:generated kind="enum_table" contract="pipe.schema.yaml" -->\n'
+        "<!-- /softschema:generated -->\n",
+        encoding="utf-8",
+    )
+    regenerate(target)
+    rendered = target.read_text(encoding="utf-8")
+    assert "a\\|b" in rendered
+    assert "a|b" not in rendered.split("a\\|b")[0].split("\n")[-1]  # no unescaped pipe
+
+
 def test_movie_example_marker_is_in_sync_with_committed_schema() -> None:
     """The example README marker must not drift; CI's contract test."""
     result = regenerate(MOVIE_README, check=True)

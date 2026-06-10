@@ -53,7 +53,7 @@ def test_field_lookup_returns_typed_info(view: SchemaView) -> None:
 
 
 def test_field_lookup_missing_pointer_raises(view: SchemaView) -> None:
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="no field at pointer"):
         view.field("/properties/does_not_exist")
 
 

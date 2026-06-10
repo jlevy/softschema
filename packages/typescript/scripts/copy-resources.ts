@@ -25,6 +25,7 @@ const RESOURCES = [
   "examples/movie_page/spirited-away.md",
   "examples/movie_page/model.py",
   "examples/movie_page/host_integration.py",
+  "examples/movie_page/movie-page.schema.yaml",
   "skills/softschema/SKILL.md",
 ];
 

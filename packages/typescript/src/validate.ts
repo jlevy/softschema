@@ -248,10 +248,34 @@ function structuralForValues(
         skipped_reason: null,
       };
     }
-    return validateStructural(
-      values,
-      yamlParse(readFileSync(resolved, "utf8")) as Record<string, unknown>,
-    );
+    let sidecar: unknown;
+    try {
+      sidecar = parseYaml(readFileSync(resolved, "utf8"));
+    } catch (err) {
+      if (err instanceof YamlParseError) {
+        return {
+          ok: false,
+          errors: [structuralError("schema_sidecar_invalid", err.message)],
+          engine: "json_schema",
+          skipped_reason: null,
+        };
+      }
+      throw err;
+    }
+    if (!isMapping(sidecar)) {
+      return {
+        ok: false,
+        errors: [
+          structuralError(
+            "schema_sidecar_invalid",
+            `schema sidecar root is ${pyTypeName(sidecar)}, expected mapping`,
+          ),
+        ],
+        engine: "json_schema",
+        skipped_reason: null,
+      };
+    }
+    return validateStructural(values, sidecar);
   }
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
@@ -290,6 +314,19 @@ export function validateArtifact(
       if (err instanceof YamlParseError) {
         return failure(docPath, contract, null, "parse_error", err.message);
       }
+      if (
+        err instanceof Error &&
+        "code" in err &&
+        (err.code === "ENOENT" || err.code === "EACCES")
+      ) {
+        return failure(
+          docPath,
+          contract,
+          null,
+          "parse_error",
+          (err as NodeJS.ErrnoException).message,
+        );
+      }
       throw err;
     }
     if (!isMapping(raw)) {
@@ -311,6 +348,15 @@ export function validateArtifact(
   } catch (err) {
     if (err instanceof YamlParseError) {
       return failure(docPath, contract, null, "parse_error", err.message);
+    }
+    if (err instanceof Error && "code" in err && (err.code === "ENOENT" || err.code === "EACCES")) {
+      return failure(
+        docPath,
+        contract,
+        null,
+        "parse_error",
+        (err as NodeJS.ErrnoException).message,
+      );
     }
     throw err;
   }
