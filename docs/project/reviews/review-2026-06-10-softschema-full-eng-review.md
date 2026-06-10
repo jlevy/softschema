@@ -261,8 +261,8 @@ spec says must be rejected (design issue 2).
 **A team starts soft and tightens gradually.** At `status: soft` with no model, the CLI
 can do nothing for them (design issue 6). When they do add enforcement, flipping
 `status` alone changes nothing (design issue 1), and an artifact whose `softschema:`
-block carries a typo’d key (`statu: enforced`) validates without complaint, despite the
-spec (see Bugs).
+block misspells a key (say `status` with a dropped letter) validates without complaint,
+despite the spec (see Bugs).
 
 **A polyglot team relies on parity.** For ordinary artifacts, parity holds and is
 well-tested. An artifact with a value like `1e-7` or `Infinity` in frontmatter, or a
@@ -360,7 +360,7 @@ drift test. Findings:
 - **HIGH. TypeScript CLI has no `--help` epilog** (`cli.ts`; Python’s is at
   `cli.py:107-111`). The npm bootstrap chain is broken, and since `--help` output is not
   in the golden corpus, parity machinery cannot catch it.
-  Add `program.addHelpText("afterAll", ...)` with the same text.
+  Add the same text via commander’s `addHelpText` hook on the program.
 - **MEDIUM. No format or version stamp on the DO NOT EDIT marker** (`cli.py:341-345`,
   `cli.ts:152-153`). The guideline’s forward-compatibility model (format codes on
   generated artifacts) is absent: an older CLI cannot detect a newer-format mirror, and
