@@ -5,7 +5,7 @@ title: Implement softschema public readiness plan
 kind: epic
 status: closed
 priority: 2
-version: 24
+version: 44
 spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
@@ -31,8 +31,28 @@ child_order_hints:
   - is-01ksexn9bbxb41dvf18kq0dat6
   - is-01ksexnats38ya22bde90w065s
   - is-01ksexndke7ysd53r3jy3e0aq0
+  - is-01ksrkx7w08geyfhz9jch2gz8f
+  - is-01ksrkxc78w5rgj3jfp2fq7a4s
+  - is-01ksrmbd2yvw5yrqw1r2tjhgts
+  - is-01ksrxxp1w21t5994pdzrsb096
+  - is-01ksrxxp80s58wf28t07729jec
+  - is-01ksrxxpe11j3tejb2wckj376k
+  - is-01ksrxxpky39wwrfxre8xb9bwf
+  - is-01ksrxxpssffwpq76ag7y1hdct
+  - is-01ksrxy8j03gb902yraz6reft2
+  - is-01ksrxy8r83715n00d1jakp5t4
+  - is-01ksrxy8z2fea7tmk0kev415cb
+  - is-01ksrxy95nw98rkxcvqv3h9hks
+  - is-01ksrxy9by354mapnjhdgm7zpv
+  - is-01ksrzwzy4937pxf0bec8pvsv5
+  - is-01ksrzx043q8h9sa48r4sbjfqc
+  - is-01ksrzx0a7npry68ee6z8y3sf6
+  - is-01ksrzx0g5ckce8eh5xzxnjr2w
+  - is-01ksrzx0p7vnm70hqdzm4eqg9f
+  - is-01ksrzx0w8ndkx2avb3qpjgv2c
+  - is-01ksrzx1224nr63bc58dg8gg9n
 created_at: 2026-05-24T20:49:38.125Z
-updated_at: 2026-05-26T07:41:06.041Z
+updated_at: 2026-05-29T04:29:25.953Z
 closed_at: 2026-05-26T07:41:06.039Z
 close_reason: completed
 ---
