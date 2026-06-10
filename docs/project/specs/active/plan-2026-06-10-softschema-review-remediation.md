@@ -136,31 +136,66 @@ spec, missing implementation) verified: both CLIs exit 2.
 
 Full coverage of testing and feature parity on essential features, so phase 3 refactors
 are TDD against the corpus.
+This phase is **fundamental to stability and must land before Phase 3**: the golden
+corpus is the safety net the design refactors are validated against, so it has to run on
+the published runtime (Node) and cover the whole CLI surface before any behavior moves.
 Behavior-affecting divergence fixes here go golden-first.
 
-- [ ] `tests/golden/run.sh`: `SOFTSCHEMA_IMPL=ts` runs `node dist/cli.js` (the published
-  runtime) and `SOFTSCHEMA_IMPL=ts-bun` runs `bun dist/cli.js`; per-impl scenario
-  directories map `ts-bun` onto `scenarios-ts/`.
-- [ ] CI: the typescript job runs the golden corpus under both Node (pinned via
-  setup-node) and Bun; the golden job runs the Python corpus across the supported Python
-  matrix, not only 3.13.
-- [ ] CI: add a direct cross-implementation diff step that runs both CLIs on the same
-  inputs in one job and byte-compares the outputs, so parity failures are reported as
-  parity failures rather than as one side drifting from the committed corpus.
-- [ ] Expand the shared corpus with edge-case fixtures: non-ASCII values, empty and
+The headline item is **complete CLI golden coverage** (bead ss-q5wf): one tryscript
+corpus, run against both CLIs, exercising every command, flag, and user-error exit path,
+following `golden-testing-guidelines` (full output, no surgical extraction, patterns
+only for genuinely variable fields such as the version string) and tryscript best
+practices.
+
+**Status: harness, CI, cross-impl diff, and complete CLI coverage complete
+(2026-06-10).** The golden corpus runs under py, ts (Node, the published runtime), and
+ts-bun (Bun); a direct cross-impl diff job byte-compares Python vs TypeScript/Node; the
+Python golden corpus runs across the 3.11–3.14 matrix.
+Beads ss-danw, ss-8jd1, ss-lxnd, ss-q5wf closed.
+Running the corpus under Node surfaced a real divergence the Bun-only run hid: `compile`
+imports a TypeScript model module, which plain Node cannot load, so the `.ts`-model
+compile scenario now lives in `scenarios-ts-bun/` (proven under Bun and the conformance
+unit test) while every runtime command runs under Node, plus a Node-safe
+`validate --model` scenario using a plain `.mjs` Zod model.
+The edge-case fixtures and divergence-closing (ss-3iz5) and the per-language test gaps
+(ss-c71z) remain open and are **not** prerequisites for Phase 3 (they harden the net
+further; the complete CLI coverage above is the prerequisite and is in place).
+
+- [x] `tests/golden/run.sh`: `SOFTSCHEMA_IMPL=ts` runs `node dist/cli.js` (the published
+  runtime), `ts-bun` runs `bun dist/cli.js`; per-impl directories are `scenarios-py`,
+  `scenarios-ts` (Node-safe, run under ts and ts-bun), and `scenarios-ts-bun`
+  (TS-runtime-only). (ss-danw)
+- [x] CI: the typescript job runs the golden corpus under both Node (pinned via
+  setup-node) and Bun; the golden job runs the Python corpus across the 3.11–3.14
+  matrix. (ss-8jd1)
+- [x] CI: `tests/golden/cross-impl-diff.sh` runs both CLIs on the same inputs in one job
+  and byte-compares stdout and exit codes, so parity failures are reported as parity
+  failures rather than as one side drifting from the committed corpus.
+  (ss-lxnd)
+- [x] **Complete CLI golden coverage** (ss-q5wf): every command and flag exercised on
+  both CLIs, including the user-error exit paths Phase 1 made parity-clean (missing
+  file, malformed frontmatter, malformed metadata, unknown topic, ambiguous envelope,
+  missing implementation, envelope mismatch), `--version` (with a `[VERSION]` pattern),
+  `docs <topic>` and `--list --json`, `skill` and `skill --brief`, `generate --check`
+  (no-drift and drift), and per-impl semantic (`--model`) scenarios.
+  Error scenarios whose stderr wording is engine-specific assert the stable
+  `softschema <cmd>:` prefix and exit code, eliding the divergent tail; the divergent
+  wording itself is the separate divergence-closing item below.
+- [ ] Edge-case fixtures that stress the corpus: non-ASCII values, empty and
   whitespace-only frontmatter, unterminated fences, nested validation errors, max-side
   keywords (`maxLength`, `maxItems`, `pattern`, `exclusiveMaximum`), a pure-yaml
-  scenario, per-impl semantic (`--model`) scenarios with identical output, and at least
-  one full (un-elided) `docs <topic>` content check.
+  scenario, and at least one full (un-elided) `docs <topic>` content check.
 - [ ] Close the divergences the new fixtures expose: `pyRepr` number formatting
   (exponent padding, Python’s 1e16 exponential threshold, `inf`/`nan`), the
   empty-frontmatter `?? {}` coercion, the unterminated-fence error kind, `augmentSchema`
   merge-vs-replace, and the quoting/`got list` wording of out-of-corpus error messages.
   Document any remaining number-format limitation (the `2.0` family) in
   `tests/golden/README.md` with the full list of values the corpus must avoid.
+  (ss-3iz5)
 - [ ] Per-language test gaps: TypeScript `generate.ts` error paths, pure-yaml parse
   error, `skill --install`, and a TypeScript mirror drift test equivalent to
   `test_skill_mirror_drift.py`; include `test/` in the TypeScript typecheck.
+  (ss-c71z)
 
 ### Phase 3: Major Design Changes (Highest Priority)
 
