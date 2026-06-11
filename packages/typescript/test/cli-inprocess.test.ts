@@ -60,15 +60,15 @@ describe("cli main() in-process", () => {
     process.env.PATH = bin;
 
     expect(await main(argv("doctor", "--json"))).toBe(0);
-    expect(JSON.parse(captured())).toEqual({
-      recommended_invocation: "softschema",
-      runners: [
-        { name: "softschema", available: true, path: join(bin, "softschema") },
-        { name: "uvx", available: true, path: join(bin, "uvx") },
-        { name: "npx", available: false, path: null },
-      ],
-      version: "0.1.3",
-    });
+    const report = JSON.parse(captured());
+    expect(report.recommended_invocation).toBe("softschema");
+    expect(report.runners).toEqual([
+      { name: "softschema", available: true, path: join(bin, "softschema") },
+      { name: "uvx", available: true, path: join(bin, "uvx") },
+      { name: "npx", available: false, path: null },
+    ]);
+    // Version is read from package.json; assert shape, not a pinned literal.
+    expect(report.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   test("doctor text tells users how to recover when no runner exists", async () => {
