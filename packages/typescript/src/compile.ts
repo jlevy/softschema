@@ -47,7 +47,9 @@ function augmentSchema(
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
   // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
   // so custom fields from the raw schema are preserved.
-  const existing = isPlainObject(out["x-softschema"]) ? (out["x-softschema"] as Record<string, unknown>) : {};
+  const existing = isPlainObject(out["x-softschema"])
+    ? (out["x-softschema"] as Record<string, unknown>)
+    : {};
   out["x-softschema"] = {
     ...existing,
     contract: contractId,

@@ -361,7 +361,9 @@ function checkMetadata(
     metadata = parseSchemaMetadata(root.softschema ?? null);
   } catch (err) {
     if (err instanceof SchemaMetadataError) {
-      return { failed: failure(docPath, contract, null, "document_softschema_invalid", err.message) };
+      return {
+        failed: failure(docPath, contract, null, "document_softschema_invalid", err.message),
+      };
     }
     throw err;
   }
@@ -371,7 +373,14 @@ function checkMetadata(
       warnings.push(warning("document-contract-mismatch", message));
     } else {
       return {
-        failed: failure(docPath, contract, metadata, "document_contract_mismatch", message, warnings),
+        failed: failure(
+          docPath,
+          contract,
+          metadata,
+          "document_contract_mismatch",
+          message,
+          warnings,
+        ),
       };
     }
   }
