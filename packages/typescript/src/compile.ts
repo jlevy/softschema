@@ -99,7 +99,7 @@ export function compileSchema(
         outPath,
         schemaYaml: rendered,
         drift: true,
-        driftDiff: `missing committed schema sidecar at ${outPath}`,
+        driftDiff: `missing committed compiled schema at ${outPath}`,
         schemaSha256: sha,
       };
     }

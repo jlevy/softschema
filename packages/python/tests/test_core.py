@@ -261,7 +261,7 @@ def test_validate_artifact_resolves_schema_path_relative_to_doc(tmp_path: Path) 
     assert result.ok
 
 
-def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> None:
+def test_validate_artifact_reports_missing_schema(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(
         doc,
@@ -281,7 +281,7 @@ def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> Non
     result = validate_artifact(doc, contract=contract)
 
     assert not result.ok
-    assert result.structural.errors[0]["kind"] == "schema_sidecar_missing"
+    assert result.structural.errors[0]["kind"] == "schema_missing"
     assert result.semantic.skipped_reason == "no_semantic_model"
 
 

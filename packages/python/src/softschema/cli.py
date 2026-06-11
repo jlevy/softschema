@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     validate_parser.add_argument(
         "--schema",
         type=Path,
-        help="JSON Schema YAML sidecar. Required unless --model is provided.",
+        help="Compiled JSON Schema (YAML or JSON). Required unless --model is provided.",
     )
     validate_parser.add_argument(
         "--status",

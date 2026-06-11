@@ -235,7 +235,8 @@ The current first-release kinds:
 | `envelope_not_mapping` | The resolved envelope value is present but is not a mapping. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
-| `schema_sidecar_missing` | The contract declared a `schema_path` but the file does not exist or is unreadable. |
+| `schema_missing` | A compiled schema is bound (a `schema_path`) but the file does not exist or is unreadable. |
+| `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them

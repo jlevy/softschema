@@ -109,7 +109,7 @@ describe("cli main() in-process", () => {
     expect(captured()).toContain("softschema");
   });
 
-  test("inspect a schema sidecar exits 0 and prints JSON", async () => {
+  test("inspect a compiled schema exits 0 and prints JSON", async () => {
     expect(await main(argv("inspect", MOVIE_SCHEMA))).toBe(0);
     expect(() => JSON.parse(captured())).not.toThrow();
     expect(JSON.parse(captured())).toHaveProperty("path");

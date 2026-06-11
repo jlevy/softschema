@@ -52,7 +52,7 @@ def compile_model(
                 out_path=out_path,
                 schema_yaml=rendered,
                 drift=True,
-                drift_diff=f"missing committed schema sidecar at {out_path}",
+                drift_diff=f"missing committed compiled schema at {out_path}",
                 schema_sha256=schema_sha256,
             )
         # Compare parsed content, not raw bytes, so YAML formatting differences (e.g.

@@ -282,46 +282,42 @@ function structuralForValues(
       return {
         ok: false,
         errors: [
-          structuralError(
-            "schema_sidecar_missing",
-            `schema sidecar not found: ${contract.schemaPath}`,
-            {
-              path: contract.schemaPath,
-            },
-          ),
+          structuralError("schema_missing", `compiled schema not found: ${contract.schemaPath}`, {
+            path: contract.schemaPath,
+          }),
         ],
         engine: "json_schema",
         skipped_reason: null,
       };
     }
-    let sidecar: unknown;
+    let compiledSchema: unknown;
     try {
-      sidecar = parseYaml(readFileSync(resolved, "utf8"));
+      compiledSchema = parseYaml(readFileSync(resolved, "utf8"));
     } catch (err) {
       if (err instanceof YamlParseError) {
         return {
           ok: false,
-          errors: [structuralError("schema_sidecar_invalid", err.message)],
+          errors: [structuralError("schema_invalid", err.message)],
           engine: "json_schema",
           skipped_reason: null,
         };
       }
       throw err;
     }
-    if (!isMapping(sidecar)) {
+    if (!isMapping(compiledSchema)) {
       return {
         ok: false,
         errors: [
           structuralError(
-            "schema_sidecar_invalid",
-            `schema sidecar root is ${pyTypeName(sidecar)}, expected mapping`,
+            "schema_invalid",
+            `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`,
           ),
         ],
         engine: "json_schema",
         skipped_reason: null,
       };
     }
-    return validateStructural(values, sidecar, {
+    return validateStructural(values, compiledSchema, {
       strictExtras: contract.status === "enforced",
     });
   }

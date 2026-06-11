@@ -451,8 +451,8 @@ def _validate_extracted_values(
                 ok=False,
                 errors=[
                     _error(
-                        "schema_sidecar_missing",
-                        f"schema sidecar not found: {contract.schema_path}",
+                        "schema_missing",
+                        f"compiled schema not found: {contract.schema_path}",
                         path=str(contract.schema_path),
                     )
                 ],

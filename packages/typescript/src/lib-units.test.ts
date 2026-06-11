@@ -232,7 +232,7 @@ describe("compile: write mode + build", () => {
     expect(r.schemaSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(readFileSync(out, "utf8")).toContain("x-softschema");
   });
-  test("check mode reports missing committed sidecar", () => {
+  test("check mode reports missing committed compiled schema", () => {
     const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), { checkOnly: true });
     expect(r.drift).toBe(true);
   });
@@ -330,7 +330,7 @@ describe("validate: artifact error kinds + advisory warning", () => {
       "document-contract-mismatch",
     );
   });
-  test("envelope_mismatch + schema_sidecar_missing", () => {
+  test("envelope_mismatch + schema_missing", () => {
     const em = validateArtifact(
       tmp("d.md", "---\nwrong:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie" }),
@@ -340,10 +340,10 @@ describe("validate: artifact error kinds + advisory warning", () => {
     );
     const sm = validateArtifact(
       tmp("d.md", "---\nmovie:\n  a: 1\n---\n"),
-      contract({ envelopeKey: "movie", schemaPath: "/no/such/sidecar.yaml" }),
+      contract({ envelopeKey: "movie", schemaPath: "/no/such/schema.yaml" }),
     );
     expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
-      "schema_sidecar_missing",
+      "schema_missing",
     );
   });
 });
