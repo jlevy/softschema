@@ -45,11 +45,17 @@ format:
 	uv run softschema generate examples/movie_page/README.md
 	uv run softschema skill --install
 
-# CI-mode Markdown check: run flowmark, then fail if it would change anything.
-# flowmark-rs has no native --check; we approximate via git diff. Requires a
-# clean working tree (Markdown-wise) before running.
+# CI-mode Markdown check: run the FULL format pipeline, then fail if it would
+# change anything. flowmark-rs has no native --check, so we approximate via git
+# diff. This must run the same steps as `format` (flowmark + regenerate the
+# derived sections + reinstall the skill mirrors), not flowmark alone: flowmark
+# adds blank lines around the block elements inside softschema:generated markers
+# that the generator does not emit, so a flowmark-only check reports false drift
+# on an otherwise-canonical tree. Requires a clean working tree before running.
 format-check:
 	$(FLOWMARK) --auto .
+	uv run softschema generate examples/movie_page/README.md
+	uv run softschema skill --install
 	@git diff --exit-code -- '*.md' || \
 	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 

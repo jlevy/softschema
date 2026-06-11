@@ -66,62 +66,62 @@ re-bootstrapping) lives in [Publishing npm (bootstrap runbook)](publishing-npm.m
 
 ## Release Checklist
 
+A release is **staged through a pull request**, not pushed straight to `main`: that way
+CI runs the full matrix (lint, both test suites, the golden corpus on every runtime, and
+the cross-impl parity diff) against the exact tree that will be tagged, before anything
+is published. The tag is created on the merge commit only after that PR is green and
+merged.
+
 For each release of version `X.Y.Z`:
 
-1. **Set both package versions to `X.Y.Z`.** Edit `packages/typescript/package.json`
+1. **Branch from `main`:** `git checkout -b claude/release-X.Y.Z`.
+
+2. **Set both package versions to `X.Y.Z`.** Edit `packages/typescript/package.json`
    `"version"` to `X.Y.Z` (the Python version is derived from the tag, so it needs no
    file edit). The two must match or the npm publish step aborts.
+   Bump any docs that pin the version (`installation.md`, the guide, README) in the same
+   commit.
 
-2. **Run the full local check sweep for both packages** (mirrors CI):
+3. **Run the full validation pass** from the
+   [end-to-end testing runbook](e2e-testing.runbook.md): the local automated sweep
+   (Phase 1, which mirrors CI) plus the manual phases CI cannot cover —
+   clean-environment installs of the wheel and npm tarball, the quickstart as written,
+   and the skill bootstrap (Phases 2–4). Everything must exit 0.
 
-   ```bash
-   # Python
-   make format       # flowmark + `softschema generate`; never run raw flowmark
-   make lint test    # ruff format, basedpyright, doc footers, pytest
-   uv build          # builds dist/softschema-X.Y.Z.tar.gz and wheel
+4. **Open the release PR and merge once CI is green.** Push the branch, open a PR
+   (`release: bump to X.Y.Z`), and wait for every required check to pass before merging
+   to `main`. CI on the PR is the gate; do not tag a tree CI has not validated.
 
-   # TypeScript
-   cd packages/typescript
-   bun install --frozen-lockfile
-   bun run check     # biome, tsc, tests
-   bun run build     # copy-resources + bunup → dist/
-
-   # Cross-language parity (run from the repo root)
-   cd ../..
-   SOFTSCHEMA_IMPL=py bash tests/golden/run.sh
-   SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
-   ```
-
-   Then run the manual validation phases that CI cannot cover — clean-environment
-   installs of the wheel and npm tarball, the quickstart as written, and the skill
-   bootstrap — codified in the [end-to-end testing runbook](e2e-testing.runbook.md)
-   (Phases 2–4).
-
-3. **Commit and push** everything to `main` (the working tree must be clean before
-   tagging so the Python version derivation is unambiguous).
-
-4. **Tag and push the tag:**
+5. **Tag the merge commit on `main` and push the tag.** The working tree must be clean
+   and the tag must sit on the merged release commit, so the Python version derived from
+   git is exactly `X.Y.Z` (the publish workflow’s tag-vs-build guard fails otherwise):
 
    ```bash
+   git checkout main && git pull origin main
    git tag -a vX.Y.Z -m "Release X.Y.Z"
    git push origin vX.Y.Z
    ```
 
-5. **Create the GitHub release** (this triggers the publish workflow):
+6. **Create the GitHub release** (this triggers the publish workflow, which publishes to
+   both PyPI and npm over OIDC in one run):
 
    ```bash
    gh release create vX.Y.Z --title "softschema X.Y.Z" --notes "..."
    ```
 
-6. **Watch the workflow** until both `Publish to PyPI` and `Publish to npm` report
+   Write the notes from the release’s behavior/breaking changes (see prior releases for
+   the shape: a one-line summary, then “Behavior changes”, “Fixes and hardening”, and
+   “Testing and release safety” sections).
+
+7. **Watch the workflow** until both `Publish to PyPI` and `Publish to npm` report
    success:
 
    ```bash
    gh run watch <run-id> --exit-status
    ```
 
-7. **Verify both registries** have the new version, then smoke-test the published
-   artifacts:
+8. **Verify both registries** have the new version, then smoke-test the published
+   artifacts (end-to-end runbook Phase 5):
 
    ```bash
    uvx --exclude-newer-package "softschema=$(date +%F)" softschema@X.Y.Z --help
