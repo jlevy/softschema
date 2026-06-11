@@ -418,7 +418,7 @@ the schema.
 Wrap any Markdown block you want regenerated:
 
 ```markdown
-<!-- softschema:generated kind="enum_table" contract="schemas/incident.schema.yaml" -->
+<!-- softschema:generated kind="enum_table" schema="schemas/incident.schema.yaml" -->
 
 | Field | Allowed values |
 | --- | --- |

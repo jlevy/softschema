@@ -31,7 +31,7 @@ The block below is regenerated from `movie-page.schema.yaml` by
 `uv run softschema generate examples/movie_page/README.md`. CI runs the same command
 with `--check` and fails on drift.
 
-<!-- softschema:generated kind="enum_table" contract="movie-page.schema.yaml" -->
+<!-- softschema:generated kind="enum_table" schema="movie-page.schema.yaml" -->
 | Field | Allowed values |
 | --- | --- |
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |

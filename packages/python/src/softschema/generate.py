@@ -2,14 +2,16 @@
 
 Marker format:
 
-    <!-- softschema:generated kind="enum_table" contract="schemas/foo.schema.yaml" -->
+    <!-- softschema:generated kind="enum_table" schema="schemas/foo.schema.yaml" -->
     ...rendered content...
     <!-- /softschema:generated -->
 
 The renderer parses the attributes from the opening marker, loads the referenced
-schema through `SchemaView`, renders the section, and writes the file back. With
-``check=True`` it returns a drift report instead of touching the file, so CI can
-fail when committed sections lag behind the schema.
+compiled schema through `SchemaView`, renders the section, and writes the file back.
+With ``check=True`` it returns a drift report instead of touching the file, so CI
+can fail when committed sections lag behind the schema. The path attribute is
+``schema=`` (a file path); the older ``contract=`` spelling is rejected, since a
+contract is a logical ID, not a file path.
 
 Kinds shipped in v0.1:
 
@@ -34,6 +36,11 @@ _MARKER_OPEN = re.compile(
 )
 _MARKER_CLOSE = "<!-- /softschema:generated -->"
 _ATTR_PATTERN = re.compile(r'(?P<key>[A-Za-z_][A-Za-z0-9_]*)="(?P<value>[^"]*)"')
+_KNOWN_ATTRS = frozenset({"kind", "schema", "pointer", "sha256"})
+_CONTRACT_ATTR_RENAME = (
+    'softschema:generated marker uses the removed "contract" attribute for a schema '
+    'path; rename it to "schema" (contract is a logical ID, not a file path)'
+)
 
 
 @dataclass
@@ -52,8 +59,8 @@ class GeneratedSection:
         return self.attrs.get("kind", "")
 
     @property
-    def contract(self) -> str:
-        return self.attrs.get("contract", "")
+    def schema(self) -> str:
+        return self.attrs.get("schema", "")
 
 
 @dataclass
@@ -100,16 +107,15 @@ def regenerate(
     path: Path,
     *,
     check: bool = False,
-    contract_root: Path | None = None,
+    schema_root: Path | None = None,
 ) -> RegenerateResult:
     """Regenerate every ``softschema:generated`` block in ``path``.
 
     With ``check=True`` the file is not touched; the result reports whether any
     block has drifted from what the schema would currently render.
 
-    ``contract_root`` controls how the ``contract="..."`` attribute is resolved:
-    by default a relative path is resolved relative to the file containing the
-    marker.
+    ``schema_root`` controls how the ``schema="..."`` attribute is resolved: by
+    default a relative path is resolved relative to the file containing the marker.
     """
     text = path.read_text(encoding="utf-8")
     sections = parse_sections(text)
@@ -117,7 +123,7 @@ def regenerate(
     if not sections:
         return result
 
-    base = contract_root or path.parent
+    base = schema_root or path.parent
     new_text = ""
     cursor = 0
     for section in sections:
@@ -134,30 +140,36 @@ def regenerate(
     return result
 
 
-def _render_section(section: GeneratedSection, contract_root: Path) -> str:
+def _render_section(section: GeneratedSection, schema_root: Path) -> str:
+    if "contract" in section.attrs:
+        raise ValueError(_CONTRACT_ATTR_RENAME)
+    unknown = sorted(key for key in section.attrs if key not in _KNOWN_ATTRS)
+    if unknown:
+        msg = f"softschema:generated marker has unknown attribute(s): {', '.join(unknown)}"
+        raise ValueError(msg)
     if not section.kind:
         msg = f"softschema:generated marker is missing 'kind': {section.open_marker}"
         raise ValueError(msg)
-    if not section.contract:
-        msg = f"softschema:generated marker is missing 'contract': {section.open_marker}"
+    if not section.schema:
+        msg = f"softschema:generated marker is missing 'schema': {section.open_marker}"
         raise ValueError(msg)
     renderer = _RENDERERS.get(section.kind)
     if renderer is None:
         known = ", ".join(sorted(_RENDERERS))
         msg = f"unknown softschema:generated kind {section.kind!r}; known: {known}"
         raise ValueError(msg)
-    schema_path = _resolve_contract_path(section.contract, contract_root)
+    schema_path = _resolve_schema_path(section.schema, schema_root)
     view = SchemaView.load(schema_path)
     body = renderer(view, section.attrs)
     return f"\n{body}\n"
 
 
-def _resolve_contract_path(contract: str, base: Path) -> Path:
-    path = Path(contract)
+def _resolve_schema_path(schema: str, base: Path) -> Path:
+    path = Path(schema)
     if not path.is_absolute():
         path = base / path
     if not path.exists():
-        msg = f"softschema:generated contract not found: {path}"
+        msg = f"softschema:generated schema not found: {path}"
         raise FileNotFoundError(msg)
     return path
 

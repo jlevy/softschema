@@ -20,22 +20,22 @@ def _doc(markers: str) -> str:
 
 def test_parse_sections_finds_single_block() -> None:
     text = _doc(
-        '<!-- softschema:generated kind="enum_table" contract="x.yaml" -->\n'
+        '<!-- softschema:generated kind="enum_table" schema="x.yaml" -->\n'
         "old body\n"
         "<!-- /softschema:generated -->"
     )
     sections = parse_sections(text)
     assert len(sections) == 1
     assert sections[0].kind == "enum_table"
-    assert sections[0].contract == "x.yaml"
+    assert sections[0].schema == "x.yaml"
     assert "old body" in sections[0].existing_content
 
 
 def test_parse_sections_handles_multiple_blocks() -> None:
     text = (
-        '<!-- softschema:generated kind="enum_table" contract="a.yaml" -->\n'
+        '<!-- softschema:generated kind="enum_table" schema="a.yaml" -->\n'
         "a\n<!-- /softschema:generated -->\n\n"
-        '<!-- softschema:generated kind="field_list" contract="b.yaml" -->\n'
+        '<!-- softschema:generated kind="field_list" schema="b.yaml" -->\n'
         "b\n<!-- /softschema:generated -->\n"
     )
     sections = parse_sections(text)
@@ -43,7 +43,7 @@ def test_parse_sections_handles_multiple_blocks() -> None:
 
 
 def test_parse_sections_raises_on_unterminated_marker() -> None:
-    text = '<!-- softschema:generated kind="enum_table" contract="a.yaml" -->\nbody only\n'
+    text = '<!-- softschema:generated kind="enum_table" schema="a.yaml" -->\nbody only\n'
     with pytest.raises(ValueError, match="unterminated"):
         parse_sections(text)
 
@@ -69,7 +69,7 @@ def test_regenerate_detects_and_repairs_drift(tmp_path: Path) -> None:
     schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="enum_table" contract="movie-page.schema.yaml" -->\n'
+        '<!-- softschema:generated kind="enum_table" schema="movie-page.schema.yaml" -->\n'
         "stale junk that does not match the schema\n"
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
@@ -95,7 +95,7 @@ def test_regenerate_rejects_unknown_kind(tmp_path: Path) -> None:
     schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="unsupported_kind" contract="x.schema.yaml" -->\n'
+        '<!-- softschema:generated kind="unsupported_kind" schema="x.schema.yaml" -->\n'
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
     )
@@ -108,7 +108,7 @@ def test_regenerate_field_list_renders_one_bullet_per_field(tmp_path: Path) -> N
     schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="field_list" contract="x.schema.yaml" -->\n'
+        '<!-- softschema:generated kind="field_list" schema="x.schema.yaml" -->\n'
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
     )
@@ -124,7 +124,7 @@ def test_regenerate_vocab_requires_pointer(tmp_path: Path) -> None:
     schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="vocab" contract="x.schema.yaml" -->\n'
+        '<!-- softschema:generated kind="vocab" schema="x.schema.yaml" -->\n'
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
     )
@@ -137,7 +137,7 @@ def test_regenerate_vocab_renders_enum_values(tmp_path: Path) -> None:
     schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="vocab" contract="x.schema.yaml" '
+        '<!-- softschema:generated kind="vocab" schema="x.schema.yaml" '
         'pointer="/properties/mpaa_rating" -->\n'
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
@@ -154,7 +154,7 @@ def test_regenerate_vocab_nonexistent_pointer_raises_value_error(tmp_path: Path)
     schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="vocab" contract="x.schema.yaml" '
+        '<!-- softschema:generated kind="vocab" schema="x.schema.yaml" '
         'pointer="/properties/nonexistent_field" -->\n'
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
@@ -172,7 +172,7 @@ def test_regenerate_enum_table_escapes_pipe_in_values(tmp_path: Path) -> None:
     )
     target = tmp_path / "doc.md"
     target.write_text(
-        '<!-- softschema:generated kind="enum_table" contract="pipe.schema.yaml" -->\n'
+        '<!-- softschema:generated kind="enum_table" schema="pipe.schema.yaml" -->\n'
         "<!-- /softschema:generated -->\n",
         encoding="utf-8",
     )
@@ -180,6 +180,34 @@ def test_regenerate_enum_table_escapes_pipe_in_values(tmp_path: Path) -> None:
     rendered = target.read_text(encoding="utf-8")
     assert "a\\|b" in rendered
     assert "a|b" not in rendered.split("a\\|b")[0].split("\n")[-1]  # no unescaped pipe
+
+
+def test_regenerate_rejects_legacy_contract_attribute(tmp_path: Path) -> None:
+    """The old `contract="...path..."` marker attribute is rejected with a rename hint."""
+    schema_dest = tmp_path / "x.schema.yaml"
+    schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
+    target = tmp_path / "doc.md"
+    target.write_text(
+        '<!-- softschema:generated kind="enum_table" contract="x.schema.yaml" -->\n'
+        "<!-- /softschema:generated -->\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match='rename it to "schema"'):
+        regenerate(target)
+
+
+def test_regenerate_rejects_unknown_attribute(tmp_path: Path) -> None:
+    """An attribute outside {kind, schema, pointer, sha256} is rejected."""
+    schema_dest = tmp_path / "x.schema.yaml"
+    schema_dest.write_text(MOVIE_SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
+    target = tmp_path / "doc.md"
+    target.write_text(
+        '<!-- softschema:generated kind="enum_table" schema="x.schema.yaml" bogus="1" -->\n'
+        "<!-- /softschema:generated -->\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unknown attribute"):
+        regenerate(target)
 
 
 def test_movie_example_marker_is_in_sync_with_committed_schema() -> None:

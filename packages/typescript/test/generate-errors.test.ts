@@ -1,6 +1,7 @@
 /**
- * Error paths and happy paths for generate.ts: missing/unknown kind, missing contract,
- * unreadable contract, unterminated marker, plus renderFieldList and renderVocab.
+ * Error paths and happy paths for generate.ts: missing/unknown kind, missing schema,
+ * unreadable schema, the rejected legacy `contract=` attribute, unknown attributes,
+ * unterminated marker, plus renderFieldList and renderVocab.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -47,7 +48,7 @@ describe("generate.ts error paths", () => {
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Test\n<!-- softschema:generated contract="test.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
+      `# Test\n<!-- softschema:generated schema="test.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
     );
     expect(() => regenerate(doc)).toThrow("missing 'kind'");
   });
@@ -59,33 +60,57 @@ describe("generate.ts error paths", () => {
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Test\n<!-- softschema:generated kind="bogus_kind" contract="test.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
+      `# Test\n<!-- softschema:generated kind="bogus_kind" schema="test.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
     );
     expect(() => regenerate(doc)).toThrow(/unknown softschema:generated kind.*"bogus_kind"/);
   });
 
-  test("missing contract attribute throws", () => {
+  test("missing schema attribute throws", () => {
     const dir = makeTempDir();
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
       `# Test\n<!-- softschema:generated kind="field_list" -->\nold\n<!-- /softschema:generated -->\n`,
     );
-    expect(() => regenerate(doc)).toThrow("missing 'contract'");
+    expect(() => regenerate(doc)).toThrow("missing 'schema'");
   });
 
-  test("unreadable contract path throws", () => {
+  test("legacy contract= attribute is rejected with a rename hint", () => {
+    const dir = makeTempDir();
+    const schemaPath = join(dir, "test.schema.yaml");
+    writeFileSync(schemaPath, MINI_SCHEMA);
+    const doc = join(dir, "doc.md");
+    writeFileSync(
+      doc,
+      `# Test\n<!-- softschema:generated kind="enum_table" contract="test.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
+    );
+    expect(() => regenerate(doc)).toThrow(/rename it to "schema"/);
+  });
+
+  test("unknown attribute is rejected", () => {
+    const dir = makeTempDir();
+    const schemaPath = join(dir, "test.schema.yaml");
+    writeFileSync(schemaPath, MINI_SCHEMA);
+    const doc = join(dir, "doc.md");
+    writeFileSync(
+      doc,
+      `# Test\n<!-- softschema:generated kind="enum_table" schema="test.schema.yaml" bogus="1" -->\nold\n<!-- /softschema:generated -->\n`,
+    );
+    expect(() => regenerate(doc)).toThrow(/unknown attribute/);
+  });
+
+  test("unreadable schema path throws", () => {
     const dir = makeTempDir();
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Test\n<!-- softschema:generated kind="field_list" contract="nonexistent.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
+      `# Test\n<!-- softschema:generated kind="field_list" schema="nonexistent.schema.yaml" -->\nold\n<!-- /softschema:generated -->\n`,
     );
     expect(() => regenerate(doc)).toThrow();
   });
 
   test("unterminated softschema:generated marker throws", () => {
-    const text = `# Test\n<!-- softschema:generated kind="field_list" contract="x.yaml" -->\nno closing marker here\n`;
+    const text = `# Test\n<!-- softschema:generated kind="field_list" schema="x.yaml" -->\nno closing marker here\n`;
     expect(() => parseSections(text)).toThrow(/unterminated softschema:generated marker/);
   });
 });
@@ -98,7 +123,7 @@ describe("generate.ts happy paths", () => {
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Fields\n<!-- softschema:generated kind="field_list" contract="test.schema.yaml" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
+      `# Fields\n<!-- softschema:generated kind="field_list" schema="test.schema.yaml" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
     );
     const result = regenerate(doc);
     expect(result.sections).toBe(1);
@@ -116,7 +141,7 @@ describe("generate.ts happy paths", () => {
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Vocab\n<!-- softschema:generated kind="vocab" contract="test.schema.yaml" pointer="/properties/status" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
+      `# Vocab\n<!-- softschema:generated kind="vocab" schema="test.schema.yaml" pointer="/properties/status" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
     );
     const result = regenerate(doc);
     expect(result.sections).toBe(1);
@@ -133,7 +158,7 @@ describe("generate.ts happy paths", () => {
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Vocab\n<!-- softschema:generated kind="vocab" contract="test.schema.yaml" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
+      `# Vocab\n<!-- softschema:generated kind="vocab" schema="test.schema.yaml" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
     );
     expect(() => regenerate(doc)).toThrow(/requires a 'pointer' attribute/);
   });
@@ -145,7 +170,7 @@ describe("generate.ts happy paths", () => {
     const doc = join(dir, "doc.md");
     writeFileSync(
       doc,
-      `# Enums\n<!-- softschema:generated kind="enum_table" contract="test.schema.yaml" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
+      `# Enums\n<!-- softschema:generated kind="enum_table" schema="test.schema.yaml" -->\nplaceholder\n<!-- /softschema:generated -->\n`,
     );
     const result = regenerate(doc);
     expect(result.sections).toBe(1);
