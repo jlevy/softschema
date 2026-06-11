@@ -97,7 +97,7 @@ class SchemaView:
             if info.pointer == pointer:
                 return info
         msg = f"no field at pointer {pointer!r}"
-        raise KeyError(msg)
+        raise ValueError(msg)
 
     def enum_values(self, pointer: JsonPointer) -> list[str] | None:
         """Return the `enum` list at `pointer`, or None if it has none."""

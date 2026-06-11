@@ -269,5 +269,31 @@ def test_registry_registers_complete_bindings_only() -> None:
         registry.register(Contract(id="example:Sample/v1", model=EnvelopeModel))
 
 
+def test_validate_artifact_returns_parse_error_for_missing_file_frontmatter() -> None:
+    """A nonexistent .md path returns a structured parse_error, not an exception."""
+    contract = Contract(id="example:Sample/v1", model=SampleModel)
+    result = validate_artifact(Path("/nonexistent.md"), contract=contract)
+
+    assert not result.ok
+    assert result.structural.ok is False
+    assert result.structural.errors[0]["kind"] == "parse_error"
+    assert result.semantic.skipped_reason == "parse_error"
+
+
+def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> None:
+    """A nonexistent .yaml path with pure_yaml profile returns a structured parse_error."""
+    contract = Contract(
+        id="example:Sample/v1",
+        model=SampleModel,
+        profile=SchemaProfile.pure_yaml,
+    )
+    result = validate_artifact(Path("/nonexistent.yaml"), contract=contract)
+
+    assert not result.ok
+    assert result.structural.ok is False
+    assert result.structural.errors[0]["kind"] == "parse_error"
+    assert result.semantic.skipped_reason == "parse_error"
+
+
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:
     path.write_text(f"---\n{frontmatter_yaml}\n---\n{body}")

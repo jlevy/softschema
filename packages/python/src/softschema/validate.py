@@ -182,7 +182,7 @@ def _validate_frontmatter_artifact(
 ) -> ArtifactValidationResult:
     try:
         _content, frontmatter = _read_frontmatter_doc(doc_path)
-    except (FmFormatError, YAMLError) as exc:
+    except (FmFormatError, YAMLError, OSError) as exc:
         return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if frontmatter is None:
         return _artifact_failure(
@@ -264,7 +264,7 @@ def _validate_pure_yaml_artifact(
 ) -> ArtifactValidationResult:
     try:
         raw = _read_yaml(doc_path)
-    except YAMLError as exc:
+    except (YAMLError, OSError) as exc:
         return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(

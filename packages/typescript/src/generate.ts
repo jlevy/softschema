@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { writeFileSync } from "atomically";
-import { type FieldInfo, SchemaView } from "./schemaView.js";
+import { SchemaView } from "./schemaView.js";
 
 const MARKER_OPEN = /<!--\s*softschema:generated\s+([^>]*?)\s*-->/g;
 const MARKER_CLOSE = "<!-- /softschema:generated -->";
@@ -152,5 +152,3 @@ export function regenerate(
   }
   return result;
 }
-
-export type { FieldInfo };

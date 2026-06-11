@@ -6,6 +6,7 @@ import argparse
 import importlib
 import json
 import sys
+import textwrap
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from importlib import resources
@@ -14,13 +15,30 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
-from frontmatter_format import fmf_read
+from frontmatter_format import FmFormatError, fmf_read
 from pydantic import BaseModel, ValidationError
+from ruamel.yaml import YAMLError
+from strif import atomic_write_text
 
 from softschema.compile import compile_model
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
 from softschema.validate import validate_artifact
+
+# Exception families that represent user mistakes (bad files, bad input, bad
+# config) rather than internal bugs.  Caught by the per-subcommand error
+# boundary so that ordinary mistakes never produce a traceback.
+_USER_ERRORS = (
+    OSError,
+    FmFormatError,
+    YAMLError,
+    ModuleNotFoundError,
+    ImportError,
+    TypeError,
+    ValueError,
+    ValidationError,
+    KeyError,
+)
 
 
 @dataclass(frozen=True)
@@ -100,6 +118,20 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
 }
 
 
+def _run_cmd(command_name: str, func: Any, args: argparse.Namespace) -> int:
+    """Run a subcommand handler inside an error boundary.
+
+    Exceptions in ``_USER_ERRORS`` are reported to stderr as a one-line
+    message (no traceback) and the process exits 2.  Any narrower try/except
+    inside the handler still fires first.
+    """
+    try:
+        return func(args)
+    except _USER_ERRORS as exc:
+        print(f"softschema {command_name}: {exc}", file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="softschema",
@@ -109,6 +141,11 @@ def main(argv: list[str] | None = None) -> int:
             "rules, then `softschema docs --list` to discover bundled docs "
             "(`guide`, `spec`, and `example-artifact` are the key ones)."
         ),
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_installed_version()}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -192,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     skill_parser.set_defaults(func=_skill_cmd)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    return _run_cmd(args.command, args.func, args)
 
 
 def _validate_cmd(args: argparse.Namespace) -> int:
@@ -315,9 +352,9 @@ def _generate_cmd(args: argparse.Namespace) -> int:
     for path in args.paths:
         try:
             result = regenerate(path, check=args.check)
-        except (OSError, ValueError) as exc:
-            print(f"error: {path}: {exc}", file=sys.stderr)
-            return 1
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"softschema generate: {path}: {exc}", file=sys.stderr)
+            return 2
         any_drift = any_drift or result.drift
         summary.append(
             {
@@ -375,12 +412,11 @@ def _install_skill(base_dir: Path) -> dict[str, Any]:
     files: list[dict[str, str]] = []
     for relative in SKILL_INSTALL_TARGETS:
         target = base_dir / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
         existing = target.read_text(encoding="utf-8") if target.exists() else None
         if existing == payload:
             status = "unchanged"
         else:
-            target.write_text(payload, encoding="utf-8")
+            atomic_write_text(target, payload, make_parents=True)
             status = "updated" if existing is not None else "created"
         files.append({"path": str(relative), "status": status})
     return {
@@ -455,21 +491,22 @@ def _docs_listing_payload() -> dict[str, Any]:
 
 
 def _brief_skill_text() -> str:
-    return """# Softschema Skill Brief
+    return textwrap.dedent("""\
+        # Softschema Skill Brief
 
-Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
-consume some values reliably.
+        Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
+        consume some values reliably.
 
-- Read `softschema docs guide` for the mental model.
-- Read `softschema docs spec` for the exact artifact format.
-- Inspect `softschema docs example` and `softschema docs example-artifact` for the
-  copyable movie example.
-- Treat YAML/frontmatter as authoritative.
-- Do not parse Markdown body prose or tables for consumed values.
-- Use `softschema.contract` to name the payload contract.
-- Keep examples copyable; do not scaffold or mutate a target project unless the user
-  explicitly asks for that workflow.
-"""
+        - Read `softschema docs guide` for the mental model.
+        - Read `softschema docs spec` for the exact artifact format.
+        - Inspect `softschema docs example` and `softschema docs example-artifact` for the
+          copyable movie example.
+        - Treat YAML/frontmatter as authoritative.
+        - Do not parse Markdown body prose or tables for consumed values.
+        - Use `softschema.contract` to name the payload contract.
+        - Keep examples copyable; do not scaffold or mutate a target project unless the user
+          explicitly asks for that workflow.
+        """)
 
 
 def _read_resource(relative_path: str) -> str:
@@ -479,7 +516,12 @@ def _read_resource(relative_path: str) -> str:
     except FileNotFoundError:
         pass
 
-    dev_path = _dev_repo_root() / relative_path
+    try:
+        dev_root = _dev_repo_root()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"bundled softschema resource not found: {relative_path}") from None
+
+    dev_path = dev_root / relative_path
     if dev_path.is_file():
         return dev_path.read_text(encoding="utf-8")
 
@@ -490,7 +532,10 @@ def _dev_repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
         if (parent / "pyproject.toml").is_file() and (parent / "docs").is_dir():
             return parent
-    return Path(__file__).resolve().parents[4]
+    raise FileNotFoundError(
+        "softschema development repo root not found: no ancestor of "
+        f"{Path(__file__).resolve()} contains both pyproject.toml and docs/"
+    )
 
 
 def _write_text(text: str) -> None:

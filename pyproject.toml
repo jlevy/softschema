@@ -76,6 +76,7 @@ packages = ["packages/python/src/softschema"]
 "docs/softschema-guide.md" = "softschema/resources/docs/softschema-guide.md"
 "docs/softschema-spec.md" = "softschema/resources/docs/softschema-spec.md"
 "docs/softschema-python-design.md" = "softschema/resources/docs/softschema-python-design.md"
+"docs/softschema-typescript-design.md" = "softschema/resources/docs/softschema-typescript-design.md"
 "docs/installation.md" = "softschema/resources/docs/installation.md"
 "docs/development.md" = "softschema/resources/docs/development.md"
 "docs/publishing.md" = "softschema/resources/docs/publishing.md"
@@ -160,10 +161,10 @@ reportPrivateUsage = false
 
 [tool.codespell]
 skip = "uv.lock,bun.lock,*.schema.yaml,*/node_modules/*,*/dist/*,*/resources/*"
-ignore-words-list = "fo"
+ignore-words-list = "fo,afterall"
 
 [tool.pytest.ini_options]
-python_files = ["*.py"]
+python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["packages/python/tests"]

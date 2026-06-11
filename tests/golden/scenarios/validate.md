@@ -172,3 +172,55 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
 }
 ? 1
 ```
+
+# Test: a designated envelope key that is absent fails (envelope_mismatch, exit 1)
+
+With `--envelope nope`, the contract names a key the frontmatter does not carry. The
+result is a structural `envelope_mismatch` record (not a usage error): exit 1 with a
+full result whose `actual_keys` lists the keys that *are* present.
+
+```console
+$ softschema validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml --envelope nope
+{
+  "contract": {
+    "envelope_key": "nope",
+    "id": "example.movies:MoviePage/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "examples/movie_page/movie-page.schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "example.movies:MoviePage/v1",
+  "document_metadata": {
+    "contract": "example.movies:MoviePage/v1",
+    "status": "enforced"
+  },
+  "path": "examples/movie_page/spirited-away.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "envelope_mismatch"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "actual_keys": [
+          "title",
+          "movie"
+        ],
+        "expected_key": "nope",
+        "kind": "envelope_mismatch",
+        "message": "contract 'example.movies:MoviePage/v1' expects 'nope'"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```

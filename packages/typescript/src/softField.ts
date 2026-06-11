@@ -26,7 +26,7 @@ export interface SoftFieldOptions {
 /** Build the `x-softschema` annotation block with the same omit-empty rules as Python. */
 export function softFieldMeta(options: SoftFieldOptions): Record<string, unknown> {
   const meta: Record<string, unknown> = { group: options.group };
-  if (options.order !== undefined && options.order !== null) meta.order = options.order;
+  if (options.order !== undefined) meta.order = options.order;
   if (options.tier !== undefined) meta.tier = options.tier;
   meta.owner = options.owner ?? "agent";
   if (options.instruction !== undefined) meta.instruction = options.instruction;

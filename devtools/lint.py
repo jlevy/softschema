@@ -71,7 +71,7 @@ def check_doc_footers() -> int:
 
 
 def has_doc_footer(path: Path) -> bool:
-    return path.read_text().endswith(DOC_FOOTER)
+    return path.read_text(encoding="utf-8").endswith(DOC_FOOTER)
 
 
 def iter_doc_footer_files() -> list[Path]:
