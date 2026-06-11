@@ -3,14 +3,14 @@ type: is
 id: is-01ktsqtg3vrcjttjqydfz7w989
 title: "P4: Spec conformance-language note"
 kind: task
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:43:10.715Z
-updated_at: 2026-06-10T21:43:10.715Z
+updated_at: 2026-06-11T06:20:33.285Z
 ---
 FILE SCOPE: docs/softschema-spec.md. Add a one-paragraph note that 'must'/'must not' are normative requirements on conforming implementations and artifacts, so statements like 'never authoritative' have a clear addressee (LOW F2.3).
