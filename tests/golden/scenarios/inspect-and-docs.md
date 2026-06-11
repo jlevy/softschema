@@ -187,3 +187,48 @@ $ softschema docs spec
 ...
 ? 0
 ```
+
+# Test: inspect a document with frontmatter but no softschema block
+
+A single non-`softschema` key is reported as the envelope; metadata is null.
+
+```console
+$ softschema inspect tests/golden/fixtures/plain-doc.md
+{
+  "envelope_keys": [
+    "movie"
+  ],
+  "has_frontmatter": true,
+  "metadata": null,
+  "path": "tests/golden/fixtures/plain-doc.md"
+}
+? 0
+```
+
+# Test: inspect a document with no frontmatter at all
+
+```console
+$ softschema inspect tests/golden/fixtures/no-frontmatter.md
+{
+  "envelope_keys": [],
+  "has_frontmatter": false,
+  "metadata": null,
+  "path": "tests/golden/fixtures/no-frontmatter.md"
+}
+? 0
+```
+
+# Test: skill prints the bundled SKILL.md (header asserted, fenced body elided)
+
+The bare `skill` command prints the bundled `SKILL.md`. Its body contains fenced code
+blocks, so the header is asserted and the remainder elided with `...`; the full text is
+held byte-identical across packages by the skill-mirror drift unit test, and
+`skill --brief` above is the un-elided bundled-resource check.
+
+```console
+$ softschema skill
+---
+name: softschema
+...
+? 0
+```

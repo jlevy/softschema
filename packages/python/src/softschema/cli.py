@@ -15,8 +15,10 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
-from frontmatter_format import fmf_read
+from frontmatter_format import FmFormatError, fmf_read
 from pydantic import BaseModel, ValidationError
+from ruamel.yaml import YAMLError
+from strif import atomic_write_text
 
 from softschema.compile import compile_model
 from softschema.generate import regenerate
@@ -39,6 +41,21 @@ AGENT_HELP_EPILOG = """IMPORTANT for agents:
     npx softschema@latest skill --install
   Then read `softschema skill --brief` and `softschema docs --list` for operating rules
   and bundled docs."""
+
+# Exception families that represent user mistakes (bad files, bad input, bad
+# config) rather than internal bugs.  Caught by the per-subcommand error
+# boundary so that ordinary mistakes never produce a traceback.
+_USER_ERRORS = (
+    OSError,
+    FmFormatError,
+    YAMLError,
+    ModuleNotFoundError,
+    ImportError,
+    TypeError,
+    ValueError,
+    ValidationError,
+    KeyError,
+)
 
 
 @dataclass(frozen=True)
@@ -118,6 +135,20 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
 }
 
 
+def _run_cmd(command_name: str, func: Any, args: argparse.Namespace) -> int:
+    """Run a subcommand handler inside an error boundary.
+
+    Exceptions in ``_USER_ERRORS`` are reported to stderr as a one-line
+    message (no traceback) and the process exits 2.  Any narrower try/except
+    inside the handler still fires first.
+    """
+    try:
+        return func(args)
+    except _USER_ERRORS as exc:
+        print(f"softschema {command_name}: {exc}", file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="softschema",
@@ -125,7 +156,11 @@ def main(argv: list[str] | None = None) -> int:
         epilog=AGENT_HELP_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", action="version", version=_installed_version())
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_installed_version()}",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate an artifact.")
@@ -219,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     skill_parser.set_defaults(func=_skill_cmd)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    return _run_cmd(args.command, args.func, args)
 
 
 def _validate_cmd(args: argparse.Namespace) -> int:
@@ -342,9 +377,9 @@ def _generate_cmd(args: argparse.Namespace) -> int:
     for path in args.paths:
         try:
             result = regenerate(path, check=args.check)
-        except (OSError, ValueError) as exc:
-            print(f"error: {path}: {exc}", file=sys.stderr)
-            return 1
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"softschema generate: {path}: {exc}", file=sys.stderr)
+            return 2
         any_drift = any_drift or result.drift
         summary.append(
             {
@@ -447,12 +482,11 @@ def _install_skill(base_dir: Path) -> dict[str, Any]:
     files: list[dict[str, str]] = []
     for relative in SKILL_INSTALL_TARGETS:
         target = base_dir / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
         existing = target.read_text(encoding="utf-8") if target.exists() else None
         if existing == payload:
             status = "unchanged"
         else:
-            target.write_text(payload, encoding="utf-8")
+            atomic_write_text(target, payload, make_parents=True)
             status = "updated" if existing is not None else "created"
         files.append({"path": str(relative), "status": status})
     return {

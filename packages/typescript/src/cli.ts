@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
@@ -41,9 +41,11 @@ const AGENT_HELP_EPILOG = `IMPORTANT for agents:
  * source file so tests catch source drift; installed packages fall back to bundled
  * `resources/`, so they never depend on the working directory.
  */
+const MAX_RESOURCE_WALK_DEPTH = 6;
+
 function readResource(relPath: string): string {
   let dir = PACKAGE_ROOT;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < MAX_RESOURCE_WALK_DEPTH; i++) {
     const candidate = join(dir, relPath);
     if (existsSync(candidate)) return readFileSync(candidate, "utf8");
     dir = resolve(dir, "..");
@@ -162,6 +164,11 @@ function packageVersion(): string {
   } catch {
     return "unknown";
   }
+}
+
+/** Safely extract a message from an unknown thrown value. */
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function renderedSkill(): string {
@@ -321,7 +328,7 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
   try {
     mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
   } catch (err) {
-    throw new UsageError(`cannot import ${JSON.stringify(spec)}: ${(err as Error).message}`);
+    throw new UsageError(`cannot import ${JSON.stringify(spec)}: ${errMessage(err)}`);
   }
   const schema = mod[exportName];
   if (schema === undefined) {
@@ -370,37 +377,33 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     writeText(stableStringify(result.output));
     return result.ok ? 0 : 1;
   } catch (err) {
-    if (err instanceof UsageError) {
-      process.stderr.write(`softschema validate: ${err.message}\n`);
-      return 2;
-    }
-    // Any other failure (e.g. an unreadable or malformed schema sidecar) is reported as a
-    // stable error line with exit 1, never an uncaught stack trace.
-    process.stderr.write(`softschema validate: ${(err as Error).message}\n`);
-    return 1;
+    // IO/parse/usage failures (missing or unreadable file, malformed YAML, bad model
+    // spec) are reported as a stable one-line stderr message with exit 2, matching the
+    // Python CLI's error boundary. Exit 1 is reserved for a readable artifact that fails
+    // validation (the result path above). Never an uncaught stack trace.
+    process.stderr.write(`softschema validate: ${errMessage(err)}\n`);
+    return 2;
   }
 }
 
 function runInspect(path: string): number {
-  let frontmatter: Record<string, unknown> | null;
   try {
-    frontmatter = readFrontmatterRaw(path);
+    const frontmatter = readFrontmatterRaw(path);
+    const metadata = frontmatter ? parseSchemaMetadata(frontmatter.softschema ?? null) : null;
+    const output = {
+      envelope_keys: frontmatter ? envelopeKeys(frontmatter) : [],
+      has_frontmatter: frontmatter !== null,
+      metadata: metadataToOutput(metadata),
+      path,
+    };
+    writeText(stableStringify(output));
+    return 0;
   } catch (err) {
-    if (err instanceof UsageError) {
-      process.stderr.write(`softschema inspect: ${err.message}\n`);
-      return 2;
-    }
-    throw err;
+    // Missing/unreadable file, malformed YAML, or a malformed softschema block are all
+    // user errors: a one-line stderr message and exit 2, matching the Python CLI.
+    process.stderr.write(`softschema inspect: ${errMessage(err)}\n`);
+    return 2;
   }
-  const metadata = frontmatter ? parseSchemaMetadata(frontmatter.softschema ?? null) : null;
-  const output = {
-    envelope_keys: frontmatter ? envelopeKeys(frontmatter) : [],
-    has_frontmatter: frontmatter !== null,
-    metadata: metadataToOutput(metadata),
-    path,
-  };
-  writeText(stableStringify(output));
-  return 0;
 }
 
 async function runCompile(
@@ -424,7 +427,7 @@ async function runCompile(
     );
     return result.drift ? 1 : 0;
   } catch (err) {
-    process.stderr.write(`softschema compile: ${(err as Error).message}\n`);
+    process.stderr.write(`softschema compile: ${errMessage(err)}\n`);
     return 2;
   }
 }
@@ -437,8 +440,10 @@ function runGenerate(paths: string[], opts: { check?: boolean }): number {
     try {
       result = regenerate(path, { check: opts.check });
     } catch (err) {
-      process.stderr.write(`error: ${path}: ${(err as Error).message}\n`);
-      return 1;
+      // Runtime errors (missing file, bad marker) are usage failures: exit 2 with the
+      // command prefix, matching the Python CLI. Exit 1 is reserved for drift.
+      process.stderr.write(`softschema generate: ${path}: ${errMessage(err)}\n`);
+      return 2;
     }
     anyDrift = anyDrift || result.drift;
     files.push({
@@ -517,8 +522,9 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   program
     .name("softschema")
     .description("Validate and explain soft schema Markdown/YAML artifacts.")
-    .version(packageVersion(), "--version", "show version number")
-    .addHelpText("after", `\n${AGENT_HELP_EPILOG}`);
+    .version(`softschema ${packageVersion()}`, "--version")
+    .addHelpText("afterAll", `\n${AGENT_HELP_EPILOG}`)
+    .exitOverride();
   let exitCode = 0;
 
   program
@@ -597,11 +603,40 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       }
     });
 
-  await program.parseAsync(argv);
+  try {
+    await program.parseAsync(argv);
+  } catch (err) {
+    if (err instanceof CommanderError) {
+      // --help and --version throw when exitOverride is active; honour the exit code
+      // Commander intended (0 for help/version, non-zero for usage errors).
+      return err.exitCode;
+    }
+    // Top-level backstop (mirrors the Python CLI's per-command error boundary): no
+    // command handler should leak a stack trace. Report a clean one-line message and
+    // exit 2 for any otherwise-unhandled error.
+    process.stderr.write(`softschema: ${errMessage(err)}\n`);
+    return 2;
+  }
   return exitCode;
 }
 
 const isMain = import.meta.main ?? process.argv[1]?.endsWith("cli.js");
 if (isMain) {
-  main().then((code) => process.exit(code));
+  // EPIPE on stdout/stderr: silently exit 0 (expected when piped to head, etc.).
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EPIPE") {
+        process.exitCode = 0;
+        process.exit(0);
+      }
+    });
+  }
+  // SIGINT: exit 128 + 2 = 130 (standard POSIX convention).
+  process.on("SIGINT", () => {
+    process.exit(130);
+  });
+
+  main().then((code) => {
+    process.exitCode = code;
+  });
 }

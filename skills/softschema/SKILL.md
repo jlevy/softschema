@@ -31,6 +31,10 @@ In examples, `$SS ...` means “run the selected prefix with these arguments.”
 4. Else install uv (`curl -LsSf https://astral.sh/uv/install.sh | sh` or
    `brew install uv`) or Node (`brew install node`), then retry.
 
+The unpinned `@latest` is a deliberate repo policy, not an oversight: installs resolve
+through a release-age cool-off gate (see `$SS docs installation`), which is this
+project’s supply-chain control in place of a pinned version.
+
 `$SS doctor` reports the installed version, available runners, and recommended command
 prefix.
 

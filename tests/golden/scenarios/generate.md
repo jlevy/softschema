@@ -28,3 +28,28 @@ $ softschema generate examples/movie_page/README.md --check
 }
 ? 0
 ```
+
+# Test: generate --check reports drift for a stale section (exit 1)
+
+A fixture whose committed `enum_table` body is wrong drifts from the schema; `--check`
+reports it and exits 1. The drift detail names the file and section, byte-identical
+across implementations.
+
+```console
+$ softschema generate tests/golden/fixtures/stale-generated.md --check
+{
+  "check": true,
+  "drift": true,
+  "files": [
+    {
+      "drift": true,
+      "drift_details": [
+        "tests/golden/fixtures/stale-generated.md: section enum_table drifted"
+      ],
+      "path": "tests/golden/fixtures/stale-generated.md",
+      "sections": 1
+    }
+  ]
+}
+? 1
+```

@@ -167,7 +167,7 @@ def _render_enum_table(view: SchemaView, attrs: dict[str, str]) -> str:
     for field_info in view.iter_fields():
         if field_info.enum is None:
             continue
-        values = ", ".join(field_info.enum)
+        values = ", ".join(v.replace("|", "\\|") for v in field_info.enum)
         lines.append(f"| `{field_info.name}` | {values} |")
     if len(lines) == 2:
         lines.append("| _(no enum fields)_ | _(none)_ |")
