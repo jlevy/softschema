@@ -117,6 +117,11 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "examples/movie_page/host_integration.py",
         "Host registry and validation helper.",
     ),
+    "example-schema": ResourceTopic(
+        "Movie Page Compiled Schema",
+        "examples/movie_page/movie-page.schema.yaml",
+        "Compiled JSON Schema for the example.",
+    ),
     "skill": ResourceTopic(
         "softschema Skill",
         "skills/softschema/SKILL.md",
@@ -588,7 +593,13 @@ def _docs_listing_payload() -> dict[str, Any]:
             }
             for name, topic in sorted(DOC_TOPICS.items())
         ],
-        "copyable_examples": ["example", "example-artifact", "example-model", "example-host"],
+        "copyable_examples": [
+            "example",
+            "example-artifact",
+            "example-model",
+            "example-host",
+            "example-schema",
+        ],
         "scaffolding": False,
     }
 

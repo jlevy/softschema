@@ -89,16 +89,42 @@ A `Contract` carries everything the validator needs to handle one artifact contr
 `Contracts` holds a collection of registered contracts, keyed by `id`. It does not
 expose aliases, compatibility maps, or incremental registration helpers.
 
+`SchemaMetadata` represents the document-level `softschema:` block (the self-description
+quartet). Fields:
+
+- `contract_id` (alias `contract`): the contract ID (required).
+- `schema_ref` (alias `schema`): optional relative path to the compiled schema.
+- `envelope`: optional declared envelope key.
+- `status`: optional validation strictness (`soft`, `permissive`, `enforced`).
+
+Serialized as `{contract, envelope, schema, status}` (the alias names).
+`parse_schema_metadata` accepts both the compact string form (contract ID only) and the
+expanded mapping.
+
 ## CLI Resolution
 
 The CLI reads `softschema.contract`, `softschema.status`, and a single top-level
 envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
-Without `--model` or `--schema`, `validate` performs a metadata-only check: the
-frontmatter parses, the `softschema:` block is well-formed (unknown keys and a malformed
-contract are errors), and the envelope resolves; the structural and semantic layers are
-reported as skipped.
+**Schema precedence** (host over document): `--schema` flag > registry
+`Contract.schema_path` (library only) > `softschema.schema` (document metadata) >
+metadata-only (no structural validation).
+
+**Envelope precedence**: `--envelope` flag > registry `envelope_key` >
+`softschema.envelope` (document metadata) > single-key inference (the single
+non-`softschema` top-level key; zero or several candidates are rejected as
+`envelope_missing` / `envelope_ambiguous`).
+
+Document-declared `schema` paths are relative-only, resolved from the document’s
+directory, bounded to the document directory and the current working directory.
+Absolute paths and paths that escape both bounds are rejected as `schema_missing`.
+Absolute paths require `--schema`.
+
+Without `--model` or `--schema`, and when neither the registry nor the document binds a
+schema, `validate` performs a metadata-only check: the frontmatter parses, the
+`softschema:` block is well-formed (unknown keys and a malformed contract are errors),
+and the envelope resolves; the structural and semantic layers are reported as skipped.
 This makes the CLI useful from the `soft` stage, before any schema or model exists.
 Passing `--model` or `--schema` adds the corresponding validation layers.
 
@@ -235,7 +261,7 @@ The current first-release kinds:
 | `envelope_not_mapping` | The resolved envelope value is present but is not a mapping. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
-| `schema_missing` | A compiled schema is bound (a `schema_path`) but the file does not exist or is unreadable. |
+| `schema_missing` | A compiled schema is bound (a `schema_path` or `softschema.schema`) but the file does not exist, is unreadable, or fails bounded resolution (absolute path or path escaping the document directory and working directory). |
 | `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 
@@ -247,7 +273,7 @@ as the documented surface and open an issue if a consumer needs a typed constant
 `softschema compile` emits JSON Schema as YAML:
 
 ```bash
-uv run softschema compile examples.movie_page.model:MoviePage \
+softschema compile examples.movie_page.model:MoviePage \
   --contract example.movies:MoviePage/v1 \
   --out examples/movie_page/movie-page.schema.yaml
 ```

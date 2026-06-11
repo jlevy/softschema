@@ -104,6 +104,12 @@ export const DOC_TOPICS: DocTopic[] = [
     summary: "Pydantic model used by the example.",
   },
   {
+    name: "example-schema",
+    title: "Movie Page Compiled Schema",
+    path: "examples/movie_page/movie-page.schema.yaml",
+    summary: "Compiled JSON Schema for the example.",
+  },
+  {
     name: "guide",
     title: "softschema Guide",
     path: "docs/softschema-guide.md",
@@ -142,7 +148,13 @@ export const DOC_TOPICS: DocTopic[] = [
   },
 ];
 
-const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
+const COPYABLE_EXAMPLES = [
+  "example",
+  "example-artifact",
+  "example-model",
+  "example-host",
+  "example-schema",
+];
 
 export const SKILL_INSTALL_TARGETS = [
   ".agents/skills/softschema/SKILL.md",

@@ -370,16 +370,16 @@ The output is normative — equal inputs produce byte-equal output, and an imple
 is checked against this spec, not the other way around:
 
 - **`enum_table`**: a GFM table with header row `| Field | Allowed values |`; one row
-  per string-enum property of the schema, in the schema’s property order; the field
-  name in backticks; allowed values comma-space joined in schema order; a literal `|`
-  in a value is escaped as `\|`. A property is enum-valued when it carries an
-  all-string `enum`, or the `anyOf: [{enum: …}, {type: "null"}]` nullable shape (whose
-  string-enum branch is rendered); any other enum shape is skipped.
+  per string-enum property of the schema, in the schema’s property order; the field name
+  in backticks; allowed values comma-space joined in schema order; a literal `|` in a
+  value is escaped as `\|`. A property is enum-valued when it carries an all-string
+  `enum`, or the `anyOf: [{enum: …}, {type: "null"}]` nullable shape (whose string-enum
+  branch is rendered); any other enum shape is skipped.
   With no enum-valued properties the single row is `| _(no enum fields)_ | _(none)_ |`.
 - **`field_list`**: one bullet per top-level property, in schema order:
-  `` - `name` (type, required): description `` — the JSON type label, `required` or
-  `optional`, then `: description` only when the property has one. Nested properties
-  are not listed (they appear through their parent’s type).
+  `- `name` (type, required): description` — the JSON type label, `required` or
+  `optional`, then `: description` only when the property has one.
+  Nested properties are not listed (they appear through their parent’s type).
   With no properties the single bullet is `- _(no fields)_`.
 - **`vocab`**: one `` - `value` `` bullet per allowed value of the single property
   addressed by `pointer`, in schema order.

@@ -60,7 +60,11 @@ are identical.
 | `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation and filters |
 | `SoftField` | `softField` | same emitted `x-softschema` block and omit-empty rules |
 | `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes and errors |
+| `SchemaMetadata` | `SchemaMetadata` | quartet: `contract_id`/`schema_ref`/`envelope`/`status` (Python); `contractId`/`schema`/`envelope`/`status` (TS); serialized as `{contract, envelope, schema, status}` |
+| `_resolve_metadata_schema` | `resolveMetadataSchema` | bounded relative-path resolution from document directory + cwd |
 | `regenerate` | `regenerate` | byte-identical marker bodies |
+| `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
+| `SOFTSCHEMA_FORMAT_VERSION` | `SOFTSCHEMA_FORMAT_VERSION` | exported from `index.ts` / `__init__.py` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
 
 ## Result Shape and CLI Output
