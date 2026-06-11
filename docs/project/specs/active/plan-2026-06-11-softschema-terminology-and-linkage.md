@@ -30,8 +30,10 @@ maintainer (markform, sidematter-format, frontmatter-format; checked out under
   language-neutral contract artifact, Pydantic/Zod as sources that compile to it, an
   explicit way to bind an artifact to its schema, and a documented per-CLI support
   matrix.
-- Docs written for installed users (zero-install runners), with repo-developer workflows
-  confined to development docs.
+- Docs written for installed users, not repo developers, that make the consumption
+  choice explicit: pin softschema as a dependency for projects, CI gates, and library
+  use; reach for zero-install (`uvx`/`npx`) for ad-hoc checks and agent bootstrap.
+  Repo-developer workflows stay in development docs.
 - Terminology that does not collide with the maintainer’s other formats: “sidecar”
   reserved for sidematter-format-style companions, and explicit compatibility notes for
   frontmatter-format and markform.
@@ -147,7 +149,86 @@ The maintainer’s feedback, in this plan’s own words, with the underlying cau
     The maintainer maintains all of these projects and wants the engineering kept
     consistent.
 
+11. **The consumption model is undecided and undocumented.** softschema can be used two
+    ways, and the docs never say which to reach for: (a) **pinned as a dependency** of a
+    project (a Python dev dependency / `uv tool install`, or an npm `devDependency`), or
+    (b) **zero-install** via `uvx softschema@<v>` / `npx softschema@<v>`. These are not
+    interchangeable, and conflating them is part of why the README felt wrong (challenge
+    2): library usage (`import`) is only possible as a dependency, and a reproducible CI
+    gate wants a pinned dependency, while an agent bootstrapping in a fresh container or
+    a human running a one-off check wants zero-install.
+    The docs should make the choice explicit and steer each audience to the right one
+    rather than leaving every example in one mode.
+
 ## Design
+
+### 0. Consumption model: pinned dependency vs zero-install
+
+Two supported ways to consume softschema, both first-class, with a clear default for
+each audience. This decision shapes the README, `docs/installation.md`, the guide’s CI
+playbook, and the skill’s runner ladder, so it is settled first.
+
+**(a) Pinned as a dependency — the default for projects, CI, and library use.** A
+project adds softschema to its lockfile at a fixed version and invokes the local binary
+(or imports the library).
+This is the right choice whenever softschema runs more than once or its result must be
+reproducible:
+
+- **Reproducible and auditable.** The version is recorded in `uv.lock` /
+  `package-lock.json` / `bun.lock`; every run, local and CI, uses the same bytes, and
+  the supply-chain age gate applies once at lock time, not on every invocation.
+
+- **Fast and offline.** No per-call resolution or download; the binary is already on
+  disk. Matters for tight CI loops and editor/agent feedback.
+
+- **The only way to use the library.** `from softschema import validate_artifact` /
+  `import { validateArtifact } from "softschema"` requires the package installed; you
+  cannot import from a `uvx`/`npx` runner.
+
+  Recipes (pinned):
+  - Python: `uv add --dev softschema==X.Y.Z` (a dev dependency), or
+    `uv tool install softschema@X.Y.Z` (a user tool); invoke `uv run softschema ...` or
+    the tool binary.
+  - TypeScript/Node: `npm i -D softschema@X.Y.Z` (or `bun add -d`); invoke via
+    `npx softschema ...` (resolves the local pinned copy), `bunx`, or
+    `node_modules/.bin/softschema`.
+
+**(b) Zero-install (`uvx` / `npx`) — the default for ad-hoc and agent bootstrap.** No
+project setup; the runner fetches and runs on demand.
+The right choice when there is nothing to install into, or nothing to reuse:
+
+- **One-off checks** ("does this file validate?") with no project to add a dependency
+  to.
+- **Ephemeral / cloud agents** and fresh containers where nothing persists, where the
+  agent skill bootstraps the CLI on first use.
+- **Trade-offs to state plainly:** a cold-start fetch on first call, a network
+  requirement, and — critically — an **unpinned** runner (`uvx softschema@latest`,
+  `npx softschema@latest`) re-resolves to the newest release on every run, which
+  bypasses any consumer-side cool-off.
+  For repeatable use, pin the runner too (`uvx softschema@X.Y.Z`,
+  `npx -y softschema@X.Y.Z`).
+
+**The recommendation, stated once and reused:** *if softschema runs more than once, or
+in CI, or you import it — pin it as a dependency.
+For a quick one-off or an agent bootstrapping with nothing installed — use a
+zero-install runner, pinned where the result must be repeatable.* The skill’s runner
+ladder (local binary → `uvx`/`npx`) already encodes “prefer an installed copy, fall back
+to zero-install,” which matches this recommendation; the docs make it explicit for
+humans.
+
+**Reconciling `@latest` in the skill (open question 5 below):** the skill text uses
+`@latest` for the agent-bootstrap case, justified by the repo’s release-age cool-off.
+That stays for the *bootstrap* path, but the consumer-facing README/installation docs
+and the CI playbook recommend a **pinned** dependency or runner, because a project’s
+reproducibility is the project’s responsibility, not the publisher’s cool-off.
+Both audiences get the guidance that fits them, in the doc that fits them.
+
+How this threads through the rest of the plan: `docs/installation.md` gains a short
+decision table (dependency vs zero-install, when to use each) and the recipes above; the
+README quickstart leads with the zero-install try-it path and links to “pin it as a
+dependency” + the library surfaces (design 2); the guide’s “Validate In CI” playbook is
+rewritten to pin softschema as a consumer dependency rather than the current
+repo-relative `uv run`.
 
 ### 1. Naming convention (write it down, then sweep)
 
@@ -319,9 +400,14 @@ Schema, and is never required to be an import path.
   sidematter-format pointer, markform note).
 - [ ] Prose-only “compiled schema” rename across docs (error-kind renames wait for Phase
   2).
-- [ ] README rework per design 2 (uvx/npx quickstart, “Use as a Library” pointer, dev
-  workflows moved out); library examples into the per-package READMEs; guide playbooks
-  updated to the JSON-Schema-first workflow and renamed terminology.
+- [ ] Consumption-model docs per design 0: a dependency-vs-zero-install decision table
+  plus pinned recipes in `docs/installation.md`; the guide’s “Validate In CI” playbook
+  rewritten to pin softschema as a consumer dependency; the recommendation wording
+  reused (not re-derived) in the README.
+- [ ] README rework per design 2 (zero-install try-it quickstart that links to “pin it
+  as a dependency” and the library surfaces, dev workflows moved out); library examples
+  into the per-package READMEs; guide playbooks updated to the JSON-Schema-first
+  workflow and renamed terminology.
 
 ### Phase 2: Behavior (golden-first, both implementations)
 
