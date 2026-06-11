@@ -78,7 +78,7 @@ describe("validateArtifact: frontmatter_not_mapping", () => {
 describe("schema sidecar invalid root", () => {
   test("scalar YAML root in sidecar yields schema_sidecar_invalid", () => {
     const sidecar = tmpFile("schema.yaml", "just a string\n");
-    const doc = tmpFile("doc.md", "---\nname: hi\n---\nbody\n");
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
     const result = validateArtifact(doc, contract({ schemaPath: sidecar }));
     expect(result.ok).toBe(false);
     const structural = result.output.structural as {
@@ -93,7 +93,7 @@ describe("schema sidecar invalid root", () => {
 
   test("array YAML root in sidecar yields schema_sidecar_invalid", () => {
     const sidecar = tmpFile("schema.yaml", "- a\n- b\n");
-    const doc = tmpFile("doc.md", "---\nname: hi\n---\nbody\n");
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
     const result = validateArtifact(doc, contract({ schemaPath: sidecar }));
     expect(result.ok).toBe(false);
     const structural = result.output.structural as {

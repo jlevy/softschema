@@ -1,5 +1,5 @@
-/** Public API for softschema. */
-export { canonicalizeJsonSchema } from "./canonicalize.js";
+/** Public API for softschema. Targets Node.js / Bun runtimes (uses `node:` builtins transitively). */
+export { applyEnforcedExtras, canonicalizeJsonSchema } from "./canonicalize.js";
 export { type CompileOptions, type CompileResult, compileSchema } from "./compile.js";
 export {
   normalizeAjvError,
@@ -30,7 +30,11 @@ export {
 } from "./softField.js";
 export {
   type ArtifactValidationResult,
+  EnvelopeAmbiguityError,
+  inferEnvelopeKey,
   type MetadataMode,
+  type RawFrontmatter,
+  readFrontmatter,
   type SemanticResult,
   type StructuralResult,
   type ValidationResult,

@@ -3,10 +3,10 @@
  * `compile_model`. The schema_sha256 is computed over the canonical JSON (not the YAML
  * text), so it is the language-neutral fingerprint used for cross-implementation parity.
  *
- * NOTE: byte-identical sidecar *files* across languages additionally require matching the
- * Python side's YAML writer (frontmatter-format/ruamel) and the `generated_from`
- * provenance string; that reconciliation is Phase 2. The content hash is independent of
- * YAML formatting.
+ * Sidecar *files* are content-identical across languages, not byte-identical: the YAML
+ * writers differ in serialization style (indentation, quoting), so `--check` drift
+ * compares parsed canonical content, and the schema_sha256 over the canonical JSON is
+ * the cross-language fingerprint, independent of YAML formatting.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { writeFileSync } from "atomically";
@@ -31,6 +31,10 @@ export interface CompileOptions {
   checkOnly?: boolean;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function augmentSchema(
   schema: Record<string, unknown>,
   contractId: string | null,
@@ -41,7 +45,13 @@ function augmentSchema(
     out.$id ??= contractId;
   }
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
+  // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
+  // so custom fields from the raw schema are preserved.
+  const existing = isPlainObject(out["x-softschema"])
+    ? (out["x-softschema"] as Record<string, unknown>)
+    : {};
   out["x-softschema"] = {
+    ...existing,
     contract: contractId,
     softschema_format_version: SOFTSCHEMA_FORMAT_VERSION,
   };

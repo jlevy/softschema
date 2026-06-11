@@ -5,10 +5,12 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
+import { applyEnforcedExtras } from "./canonicalize.js";
 import {
   collapseAdditionalProperties,
   compareStructuralRecords,
@@ -24,6 +26,27 @@ import {
   SchemaMetadataError,
   type SchemaWarning,
 } from "./models.js";
+
+/** Module-level Ajv2020 instance, initialized once and reused for all validations. */
+const sharedAjv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
+addFormats(sharedAjv);
+
+/** Cache of compiled validators keyed by the stable JSON serialization of the final schema. */
+const validatorCache = new Map<string, ValidateFunction>();
+
+/** Deterministic JSON key for a schema object (sorts keys recursively). */
+function stableCacheKey(obj: unknown): string {
+  return JSON.stringify(obj, (_key, value) => {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(value).sort()) {
+        sorted[k] = value[k];
+      }
+      return sorted;
+    }
+    return value;
+  });
+}
 
 export interface StructuralResult {
   ok: boolean;
@@ -65,7 +88,7 @@ function isMapping(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-interface RawFrontmatter {
+export interface RawFrontmatter {
   hasFence: boolean;
   value: unknown;
 }
@@ -96,8 +119,22 @@ function readFrontmatter(path: string): RawFrontmatter {
       break;
     }
   }
-  if (end === -1) return { hasFence: false, value: null };
-  return { hasFence: true, value: parseYaml(lines.slice(1, end).join("\n")) ?? {} };
+  if (end === -1) {
+    // Unterminated fence: Python's frontmatter_format raises FmFormatError.
+    throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${path}\``);
+  }
+  // Empty frontmatter (end-fence at line 1, zero content lines between fences):
+  // Python's fmf_read returns metadata=None → no_frontmatter.
+  if (end === 1) return { hasFence: false, value: null };
+  const parsed = parseYaml(lines.slice(1, end).join("\n"));
+  if (parsed === null || parsed === undefined) {
+    // Whitespace-only frontmatter: YAML parses to null. Python's frontmatter_format
+    // raises FmFormatError with this exact message.
+    throw new YamlParseError(
+      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
+    );
+  }
+  return { hasFence: true, value: parsed };
 }
 
 function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
@@ -120,15 +157,24 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
 export function validateStructural(
   values: unknown,
   schemaObject: Record<string, unknown>,
+  options: { strictExtras?: boolean } = {},
 ): StructuralResult {
-  const schema = { ...schemaObject };
+  let schema = { ...schemaObject };
   // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
   delete schema.$id;
-  // `verbose` makes each error carry `schema`/`data`, which `normalizeAjvError` maps
-  // onto jsonschema's `validator_value`/`instance` for cross-language byte parity.
-  const ajv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
-  addFormats(ajv);
-  const validateFn = ajv.compile(schema);
+  if (options.strictExtras) {
+    // The `status: enforced` overlay: object schemas that declare `properties` but
+    // omit `additionalProperties` are validated as closed. See applyEnforcedExtras.
+    schema = applyEnforcedExtras(schema) as Record<string, unknown>;
+  }
+  // Cache key is computed from the FINAL schema (post-$id deletion and post-overlay),
+  // so two calls with the same base schema but different strictExtras won't collide.
+  const cacheKey = stableCacheKey(schema);
+  let validateFn = validatorCache.get(cacheKey);
+  if (validateFn === undefined) {
+    validateFn = sharedAjv.compile(schema);
+    validatorCache.set(cacheKey, validateFn);
+  }
   const ok = validateFn(values);
   const errors: StructuralErrorRecord[] = ok
     ? []
@@ -275,7 +321,9 @@ function structuralForValues(
         skipped_reason: null,
       };
     }
-    return validateStructural(values, sidecar);
+    return validateStructural(values, sidecar, {
+      strictExtras: contract.status === "enforced",
+    });
   }
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
@@ -299,6 +347,79 @@ function validateExtracted(
   return buildResult({ docPath, contract, metadata, values, structural, semantic, warnings });
 }
 
+/** Multiple top-level payload candidates; the envelope must be designated. */
+export class EnvelopeAmbiguityError extends Error {
+  candidates: string[];
+
+  constructor(candidates: string[]) {
+    super(
+      "multiple top-level frontmatter keys; designate the softschema payload " +
+        `(candidates: ${candidates.join(", ")})`,
+    );
+    this.candidates = candidates;
+  }
+}
+
+/**
+ * Infer the spec's single envelope key from a frontmatter mapping: the single
+ * non-`softschema` top-level key, null when there is no candidate; throws
+ * EnvelopeAmbiguityError when several keys are present. Mirrors Python's
+ * `infer_envelope_key`.
+ */
+export function inferEnvelopeKey(frontmatter: Record<string, unknown>): string | null {
+  const candidates = Object.keys(frontmatter).filter((key) => key !== "softschema");
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0] as string;
+  throw new EnvelopeAmbiguityError(candidates);
+}
+
+/** Run the metadata checks shared by the frontmatter-md and pure-yaml paths. */
+function checkMetadata(
+  docPath: string,
+  root: Record<string, unknown>,
+  contract: Contract,
+  warnings: SchemaWarning[],
+  metadataMode: MetadataMode,
+): { metadata: SchemaMetadata | null } | { failed: ArtifactValidationResult } {
+  let metadata: SchemaMetadata | null;
+  try {
+    metadata = parseSchemaMetadata(root.softschema ?? null);
+  } catch (err) {
+    if (err instanceof SchemaMetadataError) {
+      return {
+        failed: failure(docPath, contract, null, "document_softschema_invalid", err.message),
+      };
+    }
+    throw err;
+  }
+  if (metadata !== null && metadata.contractId !== contract.id) {
+    const message = `document declares '${metadata.contractId}'; contract uses '${contract.id}'`;
+    if (metadataMode === "advisory") {
+      warnings.push(warning("document-contract-mismatch", message));
+    } else {
+      return {
+        failed: failure(
+          docPath,
+          contract,
+          metadata,
+          "document_contract_mismatch",
+          message,
+          warnings,
+        ),
+      };
+    }
+  }
+  if (metadata !== null && metadata.status !== null && metadata.status !== contract.status) {
+    warnings.push(
+      warning(
+        "document-status-mismatch",
+        `document declares status '${metadata.status}'; contract uses '${contract.status}'`,
+      ),
+    );
+  }
+  return { metadata };
+}
+
 /** Validate an artifact against a contract (frontmatter-md or pure-yaml). */
 export function validateArtifact(
   docPath: string,
@@ -306,6 +427,7 @@ export function validateArtifact(
   options: { semanticModel?: z.ZodType; metadataMode?: MetadataMode } = {},
 ): ArtifactValidationResult {
   const warnings: SchemaWarning[] = [];
+  const metadataMode = options.metadataMode ?? "enforced";
   if (contract.profile === "pure-yaml") {
     let raw: unknown;
     try {
@@ -338,10 +460,51 @@ export function validateArtifact(
         `YAML root is ${pyTypeName(raw)}, expected mapping`,
       );
     }
-    return validateExtracted(docPath, contract, raw, null, warnings, options.semanticModel);
+    // Same metadata rules as frontmatter: the softschema: block is recognized
+    // (and checked), never validated as payload data. The envelope differs by
+    // design: an explicit envelopeKey nests the payload; otherwise the
+    // remaining root IS the payload (a pure-yaml file is "the whole document
+    // is the structured payload", e.g. a data sidecar).
+    const checked = checkMetadata(docPath, raw, contract, warnings, metadataMode);
+    if ("failed" in checked) return checked.failed;
+    let values: unknown;
+    if (contract.envelopeKey !== null) {
+      if (!(contract.envelopeKey in raw)) {
+        const actualKeys = Object.keys(raw).filter((key) => key !== "softschema");
+        return failure(
+          docPath,
+          contract,
+          checked.metadata,
+          "envelope_mismatch",
+          `contract '${contract.id}' expects '${contract.envelopeKey}'`,
+          warnings,
+          { expected_key: contract.envelopeKey, actual_keys: actualKeys },
+        );
+      }
+      values = raw[contract.envelopeKey];
+    } else {
+      values = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "softschema"));
+    }
+    if (!isMapping(values)) {
+      return failure(
+        docPath,
+        contract,
+        checked.metadata,
+        "envelope_not_mapping",
+        `envelope value is ${pyTypeName(values)}, expected mapping`,
+        warnings,
+      );
+    }
+    return validateExtracted(
+      docPath,
+      contract,
+      values,
+      checked.metadata,
+      warnings,
+      options.semanticModel,
+    );
   }
 
-  const metadataMode = options.metadataMode ?? "enforced";
   let parsed: RawFrontmatter;
   try {
     parsed = readFrontmatter(docPath);
@@ -374,50 +537,49 @@ export function validateArtifact(
     );
   }
 
-  let metadata: SchemaMetadata | null;
-  try {
-    metadata = parseSchemaMetadata(frontmatter.softschema ?? null);
-  } catch (err) {
-    if (err instanceof SchemaMetadataError) {
-      return failure(docPath, contract, null, "document_softschema_invalid", err.message);
+  const checked = checkMetadata(docPath, frontmatter, contract, warnings, metadataMode);
+  if ("failed" in checked) return checked.failed;
+  const metadata = checked.metadata;
+
+  let values: unknown;
+  if (contract.envelopeKey !== null) {
+    if (!(contract.envelopeKey in frontmatter)) {
+      const actualKeys = Object.keys(frontmatter).filter((key) => key !== "softschema");
+      return failure(
+        docPath,
+        contract,
+        metadata,
+        "envelope_mismatch",
+        `contract '${contract.id}' expects '${contract.envelopeKey}'`,
+        warnings,
+        { expected_key: contract.envelopeKey, actual_keys: actualKeys },
+      );
     }
-    throw err;
-  }
-
-  if (metadata !== null && metadata.contractId !== contract.id) {
-    const message = `document declares '${metadata.contractId}'; contract uses '${contract.id}'`;
-    if (metadataMode === "advisory") {
-      warnings.push(warning("document-contract-mismatch", message));
-    } else {
-      return failure(docPath, contract, metadata, "document_contract_mismatch", message, warnings);
+    values = frontmatter[contract.envelopeKey];
+  } else {
+    // The spec's envelope rules: exactly one non-softschema top-level key is
+    // the envelope by convention; zero or several candidates are rejected.
+    let envelopeKey: string | null;
+    try {
+      envelopeKey = inferEnvelopeKey(frontmatter);
+    } catch (err) {
+      if (err instanceof EnvelopeAmbiguityError) {
+        return failure(docPath, contract, metadata, "envelope_ambiguous", err.message, warnings);
+      }
+      throw err;
     }
+    if (envelopeKey === null) {
+      return failure(
+        docPath,
+        contract,
+        metadata,
+        "envelope_missing",
+        "document has no payload key beside softschema",
+        warnings,
+      );
+    }
+    values = frontmatter[envelopeKey];
   }
-  if (metadata !== null && metadata.status !== null && metadata.status !== contract.status) {
-    warnings.push(
-      warning(
-        "document-status-mismatch",
-        `document declares status '${metadata.status}'; contract uses '${contract.status}'`,
-      ),
-    );
-  }
-
-  if (contract.envelopeKey !== null && !(contract.envelopeKey in frontmatter)) {
-    const actualKeys = Object.keys(frontmatter).filter((key) => key !== "softschema");
-    return failure(
-      docPath,
-      contract,
-      metadata,
-      "envelope_mismatch",
-      `contract '${contract.id}' expects '${contract.envelopeKey}'`,
-      warnings,
-      { expected_key: contract.envelopeKey, actual_keys: actualKeys },
-    );
-  }
-
-  const values =
-    contract.envelopeKey !== null
-      ? frontmatter[contract.envelopeKey]
-      : Object.fromEntries(Object.entries(frontmatter).filter(([k]) => k !== "softschema"));
 
   if (!isMapping(values)) {
     return failure(

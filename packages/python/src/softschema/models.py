@@ -25,11 +25,15 @@ class SchemaProfile(StrEnum):
 
 
 class SchemaMetadata(BaseModel):
-    """Optional document-level ``softschema:`` metadata."""
+    """Optional document-level ``softschema:`` metadata.
 
-    model_config = ConfigDict(populate_by_name=True)
+    The spec makes unknown keys in the ``softschema:`` block a validation error
+    (``extra="forbid"``), and a contract ID must be a non-empty string.
+    """
 
-    contract_id: str = Field(alias="contract")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    contract_id: str = Field(alias="contract", min_length=1)
     status: SchemaStatus | None = None
 
 

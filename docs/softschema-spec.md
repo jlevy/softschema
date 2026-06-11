@@ -17,6 +17,14 @@ expectations a conforming implementation must honor.
 It does not define how to author artifacts, how to migrate existing documents, or how a
 specific implementation should package itself.
 
+## Conformance Language
+
+The words “must” and “must not” state requirements on conforming implementations and
+artifacts; “may” marks optional behavior.
+A document that meets every “must” is a conforming artifact, and a tool that honors
+every “must” is a conforming implementation.
+This spec uses plain “must” rather than the capitalized RFC 2119 forms.
+
 ## Artifact Profiles
 
 A conforming artifact uses one of two profiles:
@@ -27,8 +35,15 @@ A conforming artifact uses one of two profiles:
 | `pure-yaml` | YAML file with no Markdown body. The whole document is the structured payload. |
 
 The frontmatter-md profile is the primary shape.
-A pure-yaml artifact follows the same metadata and envelope rules; references to
-“frontmatter” below apply to the document root in the pure-yaml case.
+A pure-yaml artifact follows the same metadata rules: references to “frontmatter” in the
+Metadata section apply to the document root, and a `softschema:` block at the root is
+recognized metadata, never payload data.
+The envelope differs by design: with an explicit envelope designation the named key
+nests the payload, and otherwise the remaining document root (minus the `softschema`
+block) is the payload as a whole.
+Single-key inference and ambiguity rejection do not apply to pure-yaml, because the
+profile’s purpose is “the whole document is the structured payload” (for example a data
+sidecar).
 
 ## Frontmatter Artifact Shape
 
@@ -112,6 +127,8 @@ An implementation must:
 ## Contract IDs
 
 A contract ID names an artifact payload contract.
+A contract ID must be a non-empty string; anything else is a malformed `contract` value.
+The form below is recommended, not required.
 
 The recommended form is `namespace:UpperCamelCaseName/version`. Examples:
 
@@ -131,9 +148,20 @@ It is not required to be an import path or a class name.
 | `permissive` | Known fields validate; extension fields may be allowed by the source model |
 | `enforced` | The schema is authoritative at the boundary |
 
-`status` records intended maturity.
-It does not change validation behavior by itself; whether a model allows extra fields is
-configured on the source model.
+`status` records intended maturity, and `enforced` tightens validation:
+
+- `soft` and `permissive` do not change validation behavior; whether a model allows
+  extra fields is configured on the source model.
+- `enforced` makes the schema authoritative at the boundary: a conforming validator
+  treats every object schema that declares `properties` but omits `additionalProperties`
+  as `additionalProperties: false`. An explicit `additionalProperties` value in the
+  schema (true, false, or a subschema) always wins, so a schema can opt specific objects
+  out of strictness. Object schemas without `properties` (free-form mappings) are
+  unaffected. The overlay applies at validation time only; it never changes compiled
+  sidecars.
+
+The effective status is resolved by the caller (for example a registry contract or a
+`--status` flag), falling back to the document’s declared `softschema.status`.
 
 ## Source of Truth
 
@@ -175,6 +203,8 @@ A validator must reject:
 - a missing or unreadable schema sidecar when the contract declares one
 - a JSON Schema validation failure
 - an implementation-schema validation failure
+- undeclared payload fields rejected by the `enforced` strictness rule (see Status
+  Values)
 
 ## Generated Sections
 

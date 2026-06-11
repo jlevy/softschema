@@ -8,7 +8,9 @@ using Zod instead of Pydantic.
 
 The two implementations are held to **exact behavioral parity**: equivalent CLI
 inputs/outputs/flags and equivalent library APIs, the same canonical JSON Schema sidecar
-(byte-identical, equal `schema_sha256`), and the same engine-neutral validation results.
+(content-identical, equal `schema_sha256` over its canonical JSON; the YAML
+serialization bytes may differ, and `--check` drift compares parsed canonical content),
+and the same engine-neutral validation results.
 Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
 Parity is enforced by the shared golden corpus and a cross-implementation conformance
 test; see the parity development process in [development.md](development.md).
@@ -53,7 +55,7 @@ are identical.
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping |
 | `validate_structural` | `validateStructural` | jsonschema ↔ ajv; identical error records |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
-| `compile_model` | `compileSchema` | byte-identical canonical sidecar, equal `schema_sha256` |
+| `compile_model` | `compileSchema` | content-identical canonical sidecar, equal `schema_sha256` |
 | `Contracts` | `Contracts` | `register`/`resolve`/`all`; dup-id error |
 | `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation and filters |
 | `SoftField` | `softField` | same emitted `x-softschema` block and omit-empty rules |
@@ -83,7 +85,8 @@ TypeScript `value`/`validator_value`/message.
 A schema-type-aware fix cannot match Python (Python’s rendering follows the parsed
 value’s runtime type, not the declared type), so an exact fix requires preserving source
 tokens through parse → serialize → ajv; that is disproportionate for an edge case where
-everything else is byte-identical.
+all other golden CLI output and error rendering is byte-identical.
+(Sidecar YAML files are content-identical rather than byte-identical; see above.)
 The golden corpus keeps error-case values integer or non-whole-float so it stays
 byte-identical on both engines (see `tests/golden/README.md`). Full analysis in the
 parity plan (epic `ss-jgkf`).

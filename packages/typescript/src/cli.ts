@@ -4,7 +4,7 @@
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
@@ -13,7 +13,13 @@ import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
 import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
 import { stableStringify } from "./settings.js";
-import { readFrontmatter, validateArtifact, YamlParseError } from "./validate.js";
+import {
+  EnvelopeAmbiguityError,
+  inferEnvelopeKey,
+  readFrontmatter,
+  validateArtifact,
+  YamlParseError,
+} from "./validate.js";
 
 // The package root holds the bundled `resources/` dir (copied at build, shipped via the
 // package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
@@ -147,13 +153,16 @@ const DOC_TOPICS: DocTopic[] = [
 
 const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
 
-const SKILL_INSTALL_TARGETS = [
+export const SKILL_INSTALL_TARGETS = [
   ".agents/skills/softschema/SKILL.md",
   ".claude/skills/softschema/SKILL.md",
-];
+] as const;
 
-const SKILL_DO_NOT_EDIT_MARKER =
-  "<!-- DO NOT EDIT: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
+// The format=fNN stamp lets a future installer recognize this managed surface and refuse
+// to clobber a newer format. The package version is intentionally omitted so the
+// committed mirrors stay deterministic across dev builds (matches the Python marker).
+export const SKILL_DO_NOT_EDIT_MARKER =
+  "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
 
 function packageVersion(): string {
   try {
@@ -172,7 +181,7 @@ function errMessage(err: unknown): string {
 }
 
 function renderedSkill(): string {
-  return readResource("skills/softschema/SKILL.md").replaceAll("<version>", packageVersion());
+  return readResource("skills/softschema/SKILL.md");
 }
 
 function extractMarkedSection(text: string): string {
@@ -189,7 +198,7 @@ function renderedSkillBrief(): string {
 }
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
-function installSkillPayload(rendered: string): string {
+export function installSkillPayload(rendered: string): string {
   const lines = rendered.split("\n");
   let delimiters = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -204,22 +213,39 @@ function installSkillPayload(rendered: string): string {
   return lines.join("\n");
 }
 
+/** Resolve the install base: the nearest ancestor containing `.git`, else the cwd. */
+function resolveInstallBase(start: string): string {
+  let dir = resolve(start);
+  for (;;) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(start);
+    dir = parent;
+  }
+}
+
 function runSkillInstall(): number {
   const payload = installSkillPayload(renderedSkill());
+  const baseDir = resolveInstallBase(process.cwd());
   const files = SKILL_INSTALL_TARGETS.map((relative) => {
-    const target = join(process.cwd(), relative);
+    const target = join(baseDir, relative);
     const existing = existsSync(target) ? readFileSync(target, "utf8") : null;
     let status: string;
     if (existing === payload) {
       status = "unchanged";
     } else {
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, payload);
+      const dir = dirname(target);
+      mkdirSync(dir, { recursive: true });
+      // Atomic write: write to a temp file in the same directory, then rename.
+      // fs.renameSync is atomic on the same filesystem (POSIX guarantee).
+      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
+      writeFileSync(tmp, payload);
+      renameSync(tmp, target);
       status = existing !== null ? "updated" : "created";
     }
     return { path: relative, status };
   });
-  writeText(stableStringify({ version: packageVersion(), base_dir: process.cwd(), files }));
+  writeText(stableStringify({ version: packageVersion(), base_dir: baseDir, files }));
   return 0;
 }
 
@@ -303,12 +329,16 @@ function inferEnvelope(
   override: string | undefined,
 ): string | null {
   if (override !== undefined) return override;
-  const keys = envelopeKeys(frontmatter);
-  if (keys.length === 1) return keys[0] as string;
-  if (keys.length === 0) return null;
-  throw new UsageError(
-    `multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: ${keys.join(", ")})`,
-  );
+  try {
+    return inferEnvelopeKey(frontmatter);
+  } catch (err) {
+    if (err instanceof EnvelopeAmbiguityError) {
+      throw new UsageError(
+        `multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: ${err.candidates.join(", ")})`,
+      );
+    }
+    throw err;
+  }
 }
 
 interface ValidateOptions {
@@ -342,9 +372,9 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
 
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
-    if (opts.model === undefined && opts.schema === undefined) {
-      throw new UsageError("missing validation implementation; pass --model, --schema, or both");
-    }
+    // Without --model/--schema this is a metadata-only check: frontmatter parses,
+    // the softschema: block is well-formed, and the envelope resolves; structural
+    // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     const frontmatter = readFrontmatterRaw(path);
     if (frontmatter === null) {

@@ -135,8 +135,8 @@ library surface:
 
 The TypeScript package is a **synchronized port** of the Python one, held to **exact
 behavioral parity**: equivalent CLI inputs, outputs, and flags; equivalent library APIs;
-the same canonical JSON Schema sidecar (byte-identical, with an equal `schema_sha256`
-fingerprint); and the same engine-neutral validation results.
+the same canonical JSON Schema sidecar (content-identical, with an equal `schema_sha256`
+fingerprint over its canonical JSON); and the same engine-neutral validation results.
 Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
 Authoring or validating an artifact is identical regardless of which you run, so a team
 can adopt either runtime, or both, without divergence.

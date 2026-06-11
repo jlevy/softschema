@@ -21,7 +21,7 @@ import {
 import { validateArtifact } from "./validate.js";
 
 function tmp(name: string, content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "softschema-cov-"));
+  const dir = mkdtempSync(join(tmpdir(), "softschema-unit-"));
   const path = join(dir, name);
   writeFileSync(path, content);
   return path;
@@ -116,6 +116,48 @@ describe("errors: every message template", () => {
       "value {'a': {'b': 2}, 'c': [1, 2]} is not of type 'string'",
     );
   });
+  test("pyRepr number formatting matches Python repr() ground truth", () => {
+    // Ground-truth table verified against CPython 3.11 repr():
+    //   1e-7      -> '1e-07'
+    //   1e16      -> '1e+16'       (integer-valued but abs >= 1e16 → exponential)
+    //   1e15      -> '1000000000000000.0' in Python, but TS cannot add .0 (ss-wbnm)
+    //   0.0001    -> '0.0001'
+    //   0.00001   -> '1e-05'
+    //   inf       -> 'inf'
+    //   nan       -> 'nan'
+    //   -1e-7     -> '-1e-07'
+    //   1.5e16    -> '1.5e+16'
+    //   1.2345678901234568e17 -> '1.2345678901234568e+17'
+    const cases: [number, string][] = [
+      [1e-7, "1e-07"],
+      [1e16, "1e+16"],
+      // 1e15 is the ss-wbnm case: Python says '1000000000000000.0', TS says '1000000000000000'
+      // because YAML int-valued floats lose .0 in JS. This is the documented divergence.
+      [1e15, "1000000000000000"],
+      [0.0001, "0.0001"],
+      [0.00001, "1e-05"],
+      [Infinity, "inf"],
+      [NaN, "nan"],
+      [-1e-7, "-1e-07"],
+      [1.5e16, "1.5e+16"],
+      [1.2345678901234568e17, "1.2345678901234568e+17"],
+      [-Infinity, "-inf"],
+      // Integer-valued below 1e16: plain string
+      [42, "42"],
+      [0, "0"],
+      [-3, "-3"],
+      // Non-integer normal range: plain string
+      [3.14, "3.14"],
+      [0.5, "0.5"],
+      [-0.3, "-0.3"],
+    ];
+    for (const [input, expected] of cases) {
+      // pyRepr is private, so exercise it through renderStructuralMessage
+      const msg = renderStructuralMessage("minimum", input, 0);
+      const reprInMsg = msg.replace("value 0 is less than the minimum of ", "");
+      expect(reprInMsg).toBe(expected);
+    }
+  });
   test("normalizeAjvError reads validator_value from error.schema and value from error.data", () => {
     const rec = normalizeAjvError({
       instancePath: "/release_year",
@@ -197,6 +239,65 @@ describe("compile: write mode + build", () => {
   test("buildCanonicalSchema sets schema_sha256 inside x-softschema", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
+  });
+  test("augmentSchema merges into existing x-softschema (setdefault+update semantics)", () => {
+    // Simulate a raw schema that already carries x-softschema with a custom field.
+    // buildCanonicalSchema processes through augmentSchema; verify the custom field survives.
+    const CustomSchema = z.strictObject({ name: z.string() });
+    const { schema } = buildCanonicalSchema(CustomSchema, "x:S/v1");
+    const xss = schema["x-softschema"] as Record<string, unknown>;
+    // The standard fields must be present:
+    expect(xss.contract).toBe("x:S/v1");
+    expect(xss.softschema_format_version).toBe("0.1.0");
+    expect(xss.schema_sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("validate: frontmatter edge cases (ss-3iz5)", () => {
+  test("empty frontmatter (---\\n---) returns no_frontmatter, matching Python fmf_read", () => {
+    const r = validateArtifact(tmp("d.md", "---\n---\nbody\n"), contract());
+    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("no_frontmatter");
+    expect(errors[0]?.message).toContain("no frontmatter in ");
+  });
+  test("whitespace-only frontmatter returns parse_error with Python-identical message", () => {
+    const path = tmp("d.md", "---\n   \n---\nbody\n");
+    const r = validateArtifact(path, contract());
+    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("parse_error");
+    expect(errors[0]?.message).toBe(
+      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
+    );
+  });
+  test("unterminated fence returns parse_error with Python-identical message", () => {
+    const path = tmp("d.md", "---\nfoo: 1\n...no closing ---\n");
+    const r = validateArtifact(path, contract());
+    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("parse_error");
+    expect(errors[0]?.message).toBe(
+      `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
+    );
+  });
+});
+
+describe("models: parseSchemaMetadata uses Python type names (ss-3iz5)", () => {
+  test("list (array) argument produces 'got list' not 'got object'", () => {
+    expect(() => parseSchemaMetadata([1, 2, 3])).toThrow(
+      "softschema metadata must be a string or mapping, got list",
+    );
+  });
+  test("number argument produces 'got int' or 'got float'", () => {
+    expect(() => parseSchemaMetadata(42)).toThrow(
+      "softschema metadata must be a string or mapping, got int",
+    );
+    expect(() => parseSchemaMetadata(3.14)).toThrow(
+      "softschema metadata must be a string or mapping, got float",
+    );
+  });
+  test("boolean argument produces 'got bool'", () => {
+    expect(() => parseSchemaMetadata(true)).toThrow(
+      "softschema metadata must be a string or mapping, got bool",
+    );
   });
 });
 

@@ -2,9 +2,10 @@
 
 `model_json_schema()` (Pydantic) and `z.toJSONSchema()` (Zod) emit the same
 contract in incidentally different shapes. To make the compiled sidecar
-byte-identical across languages (so a Pydantic-compiled and a Zod-compiled
-sidecar share the same ``schema_sha256``), both compilers run their raw output
-through :func:`canonicalize_json_schema` before serialization.
+content-identical across languages (so a Pydantic-compiled and a Zod-compiled
+sidecar share the same ``schema_sha256`` over the canonical JSON), both
+compilers run their raw output through :func:`canonicalize_json_schema` before
+serialization.
 
 The transforms are intentionally minimal and semantic:
 
@@ -131,3 +132,40 @@ def _is_nullable_union(union: list[Any]) -> bool:
     has_null = any(isinstance(entry, dict) and entry.get("type") == "null" for entry in union)
     has_other = any(isinstance(entry, dict) and entry.get("type") != "null" for entry in union)
     return has_null and has_other
+
+
+def apply_enforced_extras(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of ``schema`` with the ``status: enforced`` strictness overlay.
+
+    Under ``enforced`` the schema is authoritative at the boundary: every object
+    schema that declares ``properties`` but is silent about
+    ``additionalProperties`` is validated as ``additionalProperties: false``.
+    An explicit ``additionalProperties`` (``true``, ``false``, or a subschema)
+    always wins, so a schema can opt specific objects out of strictness.
+    Object schemas without ``properties`` (free-form mappings such as
+    ``dict[str, X]``) are unaffected.
+
+    This is a validation-time overlay applied by ``validate_structural`` when the
+    effective status is ``enforced``. It never changes compiled sidecars.
+    """
+    result = _apply_enforced_extras(schema)
+    assert isinstance(result, dict)
+    return result
+
+
+def _apply_enforced_extras(node: Any) -> Any:
+    if not isinstance(node, dict):
+        return node
+    out: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
+            out[key] = {name: _apply_enforced_extras(sub) for name, sub in value.items()}
+        elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):
+            out[key] = [_apply_enforced_extras(item) for item in value]
+        elif key in _SCHEMA_KEYWORDS:
+            out[key] = _apply_enforced_extras(value)
+        else:
+            out[key] = value
+    if isinstance(out.get("properties"), dict) and "additionalProperties" not in out:
+        out["additionalProperties"] = False
+    return out

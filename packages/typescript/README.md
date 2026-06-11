@@ -4,7 +4,8 @@ The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softs
 validate and structure Markdown/YAML artifacts with frontmatter contracts.
 It is the idiomatic Zod counterpart to the Python/Pydantic package and is held to exact
 behavioral parity with it: the same CLI inputs/outputs/flags, the same library surface,
-and the same canonical JSON Schema sidecar (byte-identical, equal `schema_sha256`).
+and the same canonical JSON Schema sidecar (content-identical, equal `schema_sha256`
+over its canonical JSON; YAML serialization bytes may differ).
 
 ```bash
 npx softschema@latest --help            # zero-install

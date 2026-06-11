@@ -44,10 +44,11 @@ that fits the application instead of committing to all-prose or all-data up fron
 
 **Soft schemas** name the general practice.
 **Softschema** is the implementation in this repository: conventions and tools for the
-Markdown-plus-YAML case, with a Python package that validates the YAML payload against a
-named contract.
-The practice is language neutral; another project could implement it with
-TypeScript, Zod, JSON Schema, database records, or hand-written validators.
+Markdown-plus-YAML case, shipped as two interchangeable packages held to exact
+behavioral parity, Python/Pydantic and TypeScript/Zod, that validate the YAML payload
+against a named contract.
+The practice is language neutral; another project could implement it with any of JSON
+Schema, database records, or hand-written validators.
 
 ## When To Use It
 
@@ -248,8 +249,11 @@ missing or malformed value, add a Pydantic model (or JSON Schema sidecar), set
 Bugs that used to silently break the consumer now fail loudly.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
-real authoring bugs, flip `status: enforced` and set the source model to
-`extra="forbid"`.
+real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
+fields at the structural boundary (object schemas that are silent about
+`additionalProperties` are treated as closed; an explicit `additionalProperties` in the
+schema still wins). Setting the source model to `extra="forbid"` additionally compiles
+that strictness into the sidecar itself and enforces it at the semantic layer.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -357,8 +361,9 @@ Wire a Pydantic model to a contract and validate at file boundaries:
        handle_validation_failure(result)
    ```
 
-5. **Tighten over time.** Start `permissive`; flip to `enforced` and add
-   `extra="forbid"` once authoring is consistently clean.
+5. **Tighten over time.** Start `permissive`; flip to `enforced` once authoring is
+   consistently clean (undeclared fields then fail structural validation), and add
+   `extra="forbid"` to also enforce at the semantic layer.
 
 The `result` object reports `structural` (JSON Schema) and `semantic` (Pydantic) errors
 separately, so callers can distinguish “shape was wrong” from “cross-field invariant
@@ -634,10 +639,11 @@ A few patterns help agents do the right thing:
 - **Promoting prose that no consumer reads.** Leave background, analysis, and caveats as
   prose. Promote a value only when a code path, QA check, or aggregation reads it.
 
-## Relationship To The Python Package
+## Relationship To The Packages
 
-The Python package is one convenience implementation of the language-neutral pattern.
-Public surface:
+Two interchangeable packages implement the language-neutral pattern at exact behavioral
+parity, Python/Pydantic and TypeScript/Zod.
+The Python public surface:
 
 - `Contract`: maps a contract ID to a Pydantic model and optional JSON Schema sidecar.
 - `Contracts`: host-owned mapping from contract IDs to contracts.
@@ -650,8 +656,11 @@ Public surface:
 - `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML sidecar
   with canonical-JSON hashing for drift checks.
 
+The TypeScript package mirrors this surface (`validateArtifact`, `validateValues`,
+`compileSchema`) with Zod models; both CLIs expose the same commands.
+
 The CLI mirrors the library: `softschema validate`, `softschema compile`,
-`softschema inspect`, `softschema docs`, `softschema skill`.
+`softschema inspect`, `softschema generate`, `softschema docs`, `softschema skill`.
 
 A host application typically registers complete contracts during startup and validates
 artifacts at file boundaries:
@@ -682,6 +691,8 @@ For Python-specific module layout, public API decisions, and dependency boundary
   expectations.
 - [Python Package Design](softschema-python-design.md): Python module layout, public
   API, and implementation decisions.
+- [TypeScript Package Design](softschema-typescript-design.md): the Zod port and the
+  Python ↔ TypeScript API parity table.
 - [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
 - [Installation](installation.md), [Development](development.md), and

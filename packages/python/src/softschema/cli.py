@@ -23,7 +23,7 @@ from strif import atomic_write_text
 from softschema.compile import compile_model
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
-from softschema.validate import validate_artifact
+from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
@@ -258,9 +258,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _validate_cmd(args: argparse.Namespace) -> int:
+    # Without --model/--schema this is a metadata-only check: frontmatter parses,
+    # the softschema: block is well-formed, and the envelope resolves; structural
+    # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     try:
-        if args.model is None and args.schema is None:
-            raise ValueError("missing validation implementation; pass --model, --schema, or both")
         contract_id, status, envelope_key = _infer_validation_binding(args)
         model = _load_model(args.model) if args.model else None
     except (TypeError, ValueError, ValidationError) as exc:
@@ -304,15 +305,13 @@ def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
 def _envelope_from_args(args: argparse.Namespace, frontmatter: dict[str, Any]) -> str | None:
     if args.envelope is not None:
         return args.envelope
-    envelope_keys = [str(key) for key in frontmatter if key != "softschema"]
-    if len(envelope_keys) == 1:
-        return envelope_keys[0]
-    if not envelope_keys:
-        return None
-    raise ValueError(
-        "multiple top-level frontmatter keys; pass --envelope to designate the "
-        f"softschema payload (candidates: {', '.join(envelope_keys)})"
-    )
+    try:
+        return infer_envelope_key(frontmatter)
+    except EnvelopeAmbiguityError as exc:
+        raise ValueError(
+            "multiple top-level frontmatter keys; pass --envelope to designate the "
+            f"softschema payload (candidates: {', '.join(exc.candidates)})"
+        ) from exc
 
 
 def _compile_cmd(args: argparse.Namespace) -> int:
@@ -445,8 +444,12 @@ SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
     Path(".claude/skills/softschema/SKILL.md"),
 )
 
+# The format=fNN stamp lets a future installer recognize this managed surface and
+# refuse to clobber a newer format. The package version is intentionally omitted so the
+# committed mirrors stay deterministic across dev builds (the drift test renders with the
+# locally installed version).
 SKILL_DO_NOT_EDIT_MARKER = (
-    "<!-- DO NOT EDIT: written by `softschema skill --install`.\n"
+    "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\n"
     "Re-run that command to update.\n"
     "-->\n"
 )
@@ -460,8 +463,7 @@ def _installed_version() -> str:
 
 
 def _rendered_skill_text() -> str:
-    raw = _read_resource(DOC_TOPICS["skill"].path)
-    return raw.replace("<version>", _installed_version())
+    return _read_resource(DOC_TOPICS["skill"].path)
 
 
 def _install_skill_payload(rendered: str) -> str:
@@ -477,7 +479,18 @@ def _install_skill_payload(rendered: str) -> str:
     return "\n".join(lines)
 
 
+def _resolve_install_base(start: Path) -> Path:
+    """The nearest ancestor containing ``.git`` (so installs land at the repo root),
+    falling back to ``start`` when none is found."""
+    start = start.resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
 def _install_skill(base_dir: Path) -> dict[str, Any]:
+    base_dir = _resolve_install_base(base_dir)
     payload = _install_skill_payload(_rendered_skill_text())
     files: list[dict[str, str]] = []
     for relative in SKILL_INSTALL_TARGETS:

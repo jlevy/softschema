@@ -63,10 +63,6 @@ Documentation rules:
 - Include the standard documentation footer in repo docs.
   Do not add it to authored softschema example artifacts.
 
-<!-- This document follows common-doc-guidelines.md.
-See github.com/jlevy/practical-prose and review guidelines before editing.
--->
-
 <!-- BEGIN TBD INTEGRATION format=f04 surface=agents-md -->
 ## tbd
 

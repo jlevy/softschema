@@ -56,13 +56,21 @@ Otherwise no patterns are needed. Note in particular:
   streams with `2>&1` and asserts the stable `softschema <cmd>:` prefix plus exit code,
   eliding the engine-specific tail with `[..]`/`...`. Where the wording is identical
   (ambiguous envelope, missing implementation) it is asserted in full on stderr (`!`).
-- **Whole-number floats are avoided in error cases** (e.g. `2.0`, `10.0`). Python
-  preserves the int/float distinction from the YAML source token (`repr(2.0) == "2.0"`);
-  JS collapses `2.0` to `2` at parse, so a whole-number float renders as `2` on the
-  TypeScript side. This is the one documented parity limitation (`ss-wbnm`); keep golden
-  values that appear in a `value`, `validator_value`, or message as integers or
-  **non-whole** floats (`0.3`, `8.6`) so the corpus stays byte-identical on both engines.
-  Non-error values elsewhere are unaffected.
+- **Number formatting limitations.** The `pyRepr` formatter in both implementations
+  renders numbers to match Python's `repr()`, but two edge cases cannot be aligned:
+  - **(a) Whole-number floats below 1e16 render without `.0` on TS** (`ss-wbnm`). Python
+    preserves the int/float distinction from the YAML source token
+    (`repr(2.0) == "2.0"`); JS collapses `2.0` to `2` at parse, so a whole-number float
+    renders as `2` on the TypeScript side. Keep golden values that appear in a `value`,
+    `validator_value`, or message as integers or **non-whole** floats (`0.3`, `8.6`) so
+    the corpus stays byte-identical on both engines. Non-error values elsewhere are
+    unaffected.
+  - **(b) Integer literals >= 2^53 diverge.** Python has arbitrary-precision integers
+    (`repr(10000000000000000)` is `10000000000000000`), while JS collapses large integer
+    literals into IEEE 754 doubles, losing precision. A YAML integer literal like
+    `10000000000000000` stays `int` in Python but becomes a float in JS (same numeric
+    value, different repr). Avoid integer-valued literals >= 2^53 in error-exercising
+    fixtures.
 
 ## Updating
 
@@ -100,10 +108,11 @@ Otherwise no patterns are needed. Note in particular:
 | `scenarios/generate.md` | all | `generate --check` no-drift and drift (exit 1) |
 | `scenarios/version.md` | all | `--version` (`[VERSION]` pattern) |
 | `scenarios/error-normalization.md` | all | every structural error keyword, engine-neutral |
+| `scenarios/frontmatter-edge-cases.md` | all | empty frontmatter (`no_frontmatter`); whitespace-only frontmatter (parse error, exit 2); unterminated fence (parse error, exit 2) |
 | `scenarios-py/compile.md` | py | `compile --check` no-drift (literal digest) and drift; source is a Pydantic class |
 | `scenarios-py/validate-model.md` | py | `validate --model` semantic-ok path (Pydantic) |
 | `scenarios-ts/validate-model.md` | ts, ts-bun | `validate --model` semantic-ok path (Zod `.mjs`) |
 | `scenarios-ts-bun/compile.md` | ts-bun | same compile output; source is a Zod module (needs a TS runtime) |
 
-Compile parity (byte-identical sidecar, equal digest) across languages is additionally
-asserted by the cross-implementation conformance test.
+Compile parity (content-identical sidecar, equal digest) across languages is
+additionally asserted by the cross-implementation conformance test.

@@ -20,10 +20,10 @@ core package.
 
 | Module | Purpose |
 | --- | --- |
-| `softschema.models` | Contract, metadata, status, profile, stage, and warning models |
+| `softschema.models` | Contract, metadata, status, profile, and warning models |
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
-| `softschema.canonicalize` | Canonical JSON Schema profile shared with the future TypeScript port |
+| `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema sidecar compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
@@ -94,8 +94,12 @@ The CLI reads `softschema.contract`, `softschema.status`, and a single top-level
 envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
-The CLI still needs a validation implementation, such as `--model` or `--schema`,
-because document metadata identifies the contract but does not import code.
+Without `--model` or `--schema`, `validate` performs a metadata-only check: the
+frontmatter parses, the `softschema:` block is well-formed (unknown keys and a malformed
+contract are errors), and the envelope resolves; the structural and semantic layers are
+reported as skipped.
+This makes the CLI useful from the `soft` stage, before any schema or model exists.
+Passing `--model` or `--schema` adds the corresponding validation layers.
 
 `softschema docs` and `softschema skill` are informational commands.
 They print bundled Markdown resources to stdout so agents in installed environments can
@@ -131,11 +135,22 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 
+When the contract’s status is `enforced`, structural validation applies the
+strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
+schemas that declare `properties` but omit `additionalProperties` are validated as
+`additionalProperties: false`, an explicit `additionalProperties` always wins, and
+free-form mappings are unaffected.
+The overlay is validation-time only; compiled sidecars never change.
+`validate_structural` exposes the same behavior via its `strict_extras` keyword.
+
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
 a structured-output adapter, a fixture).
 The envelope is resolved directly from the document: an explicit `envelope_key`, or the
-single non-`softschema` top-level key when none is given.
+single non-`softschema` top-level key when none is given (zero or several candidates are
+rejected as `envelope_missing` / `envelope_ambiguous`, per the spec).
+`infer_envelope_key` and `EnvelopeAmbiguityError` expose the same inference to callers,
+and the CLI’s `--envelope` handling delegates to them.
 There is no separate value-path resolver.
 A relative `schema_path` is resolved against only the document directory and the current
 working directory, so resolution is predictable and never binds to an unrelated sidecar
@@ -149,9 +164,9 @@ Each violation becomes
 `{kind: "schema_violation", path, validator, validator_value, value, message}` where
 `message` comes from a shared template keyed on the JSON Schema keyword
 (`softschema.errors`). Records are sorted by `(path, validator)`. This keeps structural
-errors byte-identical to the future TypeScript port (which validates the same canonical
-sidecar through `ajv`). Semantic errors stay implementation-specific (raw Pydantic
-errors) and are not part of the cross-language contract.
+errors byte-identical to the TypeScript port (which validates the same canonical sidecar
+through `ajv`). Semantic errors stay implementation-specific (raw Pydantic errors) and
+are not part of the cross-language contract.
 
 ### Alignment with `python-cli-patterns`
 
@@ -195,7 +210,7 @@ if any(w.code.startswith("document-") for w in result.warnings):
 | Code | When it’s emitted |
 | --- | --- |
 | `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
-| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: `status` records intent, not enforcement. |
+| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the `enforced` strict-extras overlay). |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.
@@ -214,6 +229,8 @@ The current first-release kinds:
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
 | `contract_unknown` | No contract registered for the requested contract ID. |
 | `envelope_mismatch` | The contract’s `envelope_key` is not present in the frontmatter. |
+| `envelope_ambiguous` | No `envelope_key` and multiple top-level non-`softschema` keys; the envelope must be designated explicitly. |
+| `envelope_missing` | No `envelope_key` and zero non-`softschema` top-level keys (frontmatter-md only). |
 | `envelope_not_mapping` | The resolved envelope value is present but is not a mapping. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
@@ -240,8 +257,8 @@ The emitted schema includes:
 - an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
   `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
   The block is deliberately language-neutral; it carries no `generated_from` provenance,
-  since a Pydantic/Zod import path would leak the implementation and prevent a
-  byte-identical sidecar across languages.
+  since a Pydantic/Zod import path would leak the implementation and break the
+  cross-language content identity and equal `schema_sha256`.
 
 Before hashing and serialization, the raw `model_json_schema()` output is run through
 `softschema.canonicalize.canonicalize_json_schema`, which applies a small set of
@@ -249,12 +266,13 @@ semantic transforms (drop auto-generated `title` keywords, strip the implicit
 `default: null` of optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`)
 and serializes with sorted keys.
 This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic model and
-one compiled from the equivalent Zod schema converge to byte-identical output with the
-same `schema_sha256`.
+one compiled from the equivalent Zod schema converge to the same canonical schema
+content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the
+YAML serialization bytes may differ).
 
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
-for a future TypeScript package.
+for the TypeScript package.
 
 ### Field Annotations (`SoftField`)
 
@@ -387,7 +405,8 @@ boundaries.
 - Recommend namespace plus UpperCamelCase name plus version for contract IDs.
 - Keep the first Python package at the repo root for uv and PyPI simplicity, while
   storing source under `packages/python`.
-- Keep TypeScript/Zod as a future path, represented only by a README stub for now.
+- Ship Python/Pydantic and TypeScript/Zod as two interchangeable packages held to exact
+  behavioral parity (see [TypeScript Package Design](softschema-typescript-design.md)).
 - Treat invalid `softschema:` metadata as a validation error.
 - Do not carry private compatibility shims into the public repo.
 - Bundle guide/spec/example/skill resources into the Python wheel and expose them with
@@ -396,7 +415,6 @@ boundaries.
 
 ## Deferred
 
-- TypeScript/Zod implementation.
 - Sidecar data loading beyond simple JSON Schema sidecars.
 - Agent tool APIs beyond the CLI docs and skill instructions.
 - `softschema init-example` or other artifact scaffolding commands.
