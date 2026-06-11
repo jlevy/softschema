@@ -44,10 +44,11 @@ that fits the application instead of committing to all-prose or all-data up fron
 
 **Soft schemas** name the general practice.
 **Softschema** is the implementation in this repository: conventions and tools for the
-Markdown-plus-YAML case, with a Python package that validates the YAML payload against a
-named contract.
-The practice is language neutral; another project could implement it with
-TypeScript, Zod, JSON Schema, database records, or hand-written validators.
+Markdown-plus-YAML case, shipped as two interchangeable packages held to exact
+behavioral parity, Python/Pydantic and TypeScript/Zod, that validate the YAML payload
+against a named contract.
+The practice is language neutral; another project could implement it with any of JSON
+Schema, database records, or hand-written validators.
 
 ## When To Use It
 
@@ -638,10 +639,11 @@ A few patterns help agents do the right thing:
 - **Promoting prose that no consumer reads.** Leave background, analysis, and caveats as
   prose. Promote a value only when a code path, QA check, or aggregation reads it.
 
-## Relationship To The Python Package
+## Relationship To The Packages
 
-The Python package is one convenience implementation of the language-neutral pattern.
-Public surface:
+Two interchangeable packages implement the language-neutral pattern at exact behavioral
+parity, Python/Pydantic and TypeScript/Zod.
+The Python public surface:
 
 - `Contract`: maps a contract ID to a Pydantic model and optional JSON Schema sidecar.
 - `Contracts`: host-owned mapping from contract IDs to contracts.
@@ -654,8 +656,11 @@ Public surface:
 - `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML sidecar
   with canonical-JSON hashing for drift checks.
 
+The TypeScript package mirrors this surface (`validateArtifact`, `validateValues`,
+`compileSchema`) with Zod models; both CLIs expose the same commands.
+
 The CLI mirrors the library: `softschema validate`, `softschema compile`,
-`softschema inspect`, `softschema docs`, `softschema skill`.
+`softschema inspect`, `softschema generate`, `softschema docs`, `softschema skill`.
 
 A host application typically registers complete contracts during startup and validates
 artifacts at file boundaries:
@@ -686,6 +691,8 @@ For Python-specific module layout, public API decisions, and dependency boundary
   expectations.
 - [Python Package Design](softschema-python-design.md): Python module layout, public
   API, and implementation decisions.
+- [TypeScript Package Design](softschema-typescript-design.md): the Zod port and the
+  Python ↔ TypeScript API parity table.
 - [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
 - [Installation](installation.md), [Development](development.md), and

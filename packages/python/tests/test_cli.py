@@ -295,7 +295,7 @@ def test_skill_install_creates_both_mirrors(
     agents = (tmp_path / ".agents/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     claude = (tmp_path / ".claude/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     assert agents == claude
-    assert "DO NOT EDIT: written by `softschema skill --install`" in agents
+    assert "DO NOT EDIT format=f01: written by `softschema skill --install`" in agents
     assert "<version>" not in agents
 
 

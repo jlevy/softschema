@@ -53,67 +53,16 @@ The npm job requests an OIDC `id-token`, runs npm ≥ 11.5.1, and publishes with
 `npm publish --access public --provenance`; both auth and the provenance attestation are
 OIDC-based, so no token is involved.
 
-## First npm Publish (One-Time Bootstrap)
+## npm Trusted Publishing
 
-npm’s trusted publisher can only be configured on a package that **already exists**, so
-the very first publish of `softschema` is a chicken-and-egg case: the automated
-`publish-npm` job cannot run until the package is on the registry and the trusted
-publisher is set. Bootstrap it once, by hand, from a maintainer’s machine; this is an
-interactive login, **not** a stored `NPM_TOKEN`.
+Both packages publish automatically from the release workflow over OIDC, with provenance
+and no stored token.
+npm’s trusted publisher is configured on `jlevy/softschema` → workflow `publish.yml`, so
+a tagged release publishes PyPI and npm in one run.
 
-**Bootstrap at the version already on PyPI**, so the two registries start in sync and
-the next tagged release exercises the automated dual-publish path for both.
-PyPI is at `0.1.2` and npm is unclaimed, so bootstrap npm `0.1.2`, then cut `0.1.3` for
-the first fully-automated synchronized release.
-Do **not** bootstrap npm at `0.1.3`: PyPI does not have `0.1.3` yet, so that would leave
-the registries mismatched and then collide with the workflow’s own npm publish of
-`0.1.3`.
-
-1. **Confirm the name is free and the version matches PyPI.** `npm view softschema`
-   should 404, and `packages/typescript/package.json` `"version"` must equal the version
-   already on PyPI (currently `0.1.2`; verify with `uvx pip index versions softschema`
-   or on pypi.org, do not assume).
-
-2. **Build and inspect the exact tarball that will publish:**
-
-   ```bash
-   cd packages/typescript
-   bun install --frozen-lockfile
-   bun run check
-   bun run build
-   npm pack --dry-run        # confirm: dist/cli.js (with shebang), resources/, README, LICENSE
-   ```
-
-   Optionally smoke-test the real artifact in a temp dir:
-
-   ```bash
-   npm pack                  # writes softschema-X.Y.Z.tgz
-   npx ./softschema-*.tgz --help   # must print usage under Node >= 22.12 (the engines floor)
-   ```
-
-3. **Log in and publish, without provenance** (provenance needs CI OIDC, which a laptop
-   does not have):
-
-   ```bash
-   npm login                 # interactive auth + 2FA; creates a local session, not a repo secret
-   npm publish --access public --no-provenance
-   ```
-
-   This claims the `softschema` name and uploads the first version.
-
-4. **Configure the trusted publisher** at npmjs.com → `softschema` → Settings → Trusted
-   Publishing → GitHub Actions: owner/repo `jlevy/softschema`, workflow `publish.yml`.
-
-5. **Log out of the bootstrap session** if it was on a shared machine (`npm logout`).
-   From here on, every release publishes automatically through the workflow over OIDC,
-   with provenance and no token.
-
-After the bootstrap, npm and PyPI both sit at the bootstrap version (`0.1.2`) and the
-version just published is taken: do **not** re-trigger the release workflow for that
-same `X.Y.Z` (npm rejects a duplicate version).
-The automated dual publish takes over from the next release (`0.1.3`), which bumps
-`packages/typescript/package.json` to `0.1.3`, tags `v0.1.3`, and publishes both
-packages in one workflow run.
+The one-time bootstrap that claimed the npm name and configured trusted publishing has
+already been done; the full runbook (for reference, or if the package ever needs
+re-bootstrapping) lives in [Publishing npm (bootstrap runbook)](publishing-npm.md).
 
 ## Release Checklist
 

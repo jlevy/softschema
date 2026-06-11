@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import type { ValidateFunction } from "ajv/dist/2020.js";
 import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
 import { applyEnforcedExtras } from "./canonicalize.js";
@@ -25,6 +26,27 @@ import {
   SchemaMetadataError,
   type SchemaWarning,
 } from "./models.js";
+
+/** Module-level Ajv2020 instance, initialized once and reused for all validations. */
+const sharedAjv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
+addFormats(sharedAjv);
+
+/** Cache of compiled validators keyed by the stable JSON serialization of the final schema. */
+const validatorCache = new Map<string, ValidateFunction>();
+
+/** Deterministic JSON key for a schema object (sorts keys recursively). */
+function stableCacheKey(obj: unknown): string {
+  return JSON.stringify(obj, (_key, value) => {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(value).sort()) {
+        sorted[k] = value[k];
+      }
+      return sorted;
+    }
+    return value;
+  });
+}
 
 export interface StructuralResult {
   ok: boolean;
@@ -66,7 +88,7 @@ function isMapping(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-interface RawFrontmatter {
+export interface RawFrontmatter {
   hasFence: boolean;
   value: unknown;
 }
@@ -145,11 +167,14 @@ export function validateStructural(
     // omit `additionalProperties` are validated as closed. See applyEnforcedExtras.
     schema = applyEnforcedExtras(schema) as Record<string, unknown>;
   }
-  // `verbose` makes each error carry `schema`/`data`, which `normalizeAjvError` maps
-  // onto jsonschema's `validator_value`/`instance` for cross-language byte parity.
-  const ajv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
-  addFormats(ajv);
-  const validateFn = ajv.compile(schema);
+  // Cache key is computed from the FINAL schema (post-$id deletion and post-overlay),
+  // so two calls with the same base schema but different strictExtras won't collide.
+  const cacheKey = stableCacheKey(schema);
+  let validateFn = validatorCache.get(cacheKey);
+  if (validateFn === undefined) {
+    validateFn = sharedAjv.compile(schema);
+    validatorCache.set(cacheKey, validateFn);
+  }
   const ok = validateFn(values);
   const errors: StructuralErrorRecord[] = ok
     ? []

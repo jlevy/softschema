@@ -21,7 +21,7 @@ import {
 import { validateArtifact } from "./validate.js";
 
 function tmp(name: string, content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "softschema-cov-"));
+  const dir = mkdtempSync(join(tmpdir(), "softschema-unit-"));
   const path = join(dir, name);
   writeFileSync(path, content);
   return path;

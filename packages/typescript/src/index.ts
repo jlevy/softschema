@@ -1,4 +1,4 @@
-/** Public API for softschema. */
+/** Public API for softschema. Targets Node.js / Bun runtimes (uses `node:` builtins transitively). */
 export { applyEnforcedExtras, canonicalizeJsonSchema } from "./canonicalize.js";
 export { type CompileOptions, type CompileResult, compileSchema } from "./compile.js";
 export {
@@ -33,6 +33,8 @@ export {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type MetadataMode,
+  type RawFrontmatter,
+  readFrontmatter,
   type SemanticResult,
   type StructuralResult,
   type ValidationResult,

@@ -133,8 +133,8 @@ jobs:
   softschema:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8
       - run: uv sync --all-extras
       - name: Sidecar drift check
         run: |
@@ -172,8 +172,8 @@ your repository.
 softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
 (`softschema`, `softschema-ts`), held to **exact behavioral parity**: equivalent CLI
 inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
-(byte-identical, equal `schema_sha256`), and the same engine-neutral validation results.
-Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
+(content-identical, equal `schema_sha256`), and the same engine-neutral validation
+results. Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
 
 When you change any behavior, follow this loop so the two never drift:
 

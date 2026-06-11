@@ -20,10 +20,10 @@ core package.
 
 | Module | Purpose |
 | --- | --- |
-| `softschema.models` | Contract, metadata, status, profile, stage, and warning models |
+| `softschema.models` | Contract, metadata, status, profile, and warning models |
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
-| `softschema.canonicalize` | Canonical JSON Schema profile shared with the future TypeScript port |
+| `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema sidecar compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
@@ -164,9 +164,9 @@ Each violation becomes
 `{kind: "schema_violation", path, validator, validator_value, value, message}` where
 `message` comes from a shared template keyed on the JSON Schema keyword
 (`softschema.errors`). Records are sorted by `(path, validator)`. This keeps structural
-errors byte-identical to the future TypeScript port (which validates the same canonical
-sidecar through `ajv`). Semantic errors stay implementation-specific (raw Pydantic
-errors) and are not part of the cross-language contract.
+errors byte-identical to the TypeScript port (which validates the same canonical sidecar
+through `ajv`). Semantic errors stay implementation-specific (raw Pydantic errors) and
+are not part of the cross-language contract.
 
 ### Alignment with `python-cli-patterns`
 
@@ -271,7 +271,7 @@ same `schema_sha256`.
 
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
-for a future TypeScript package.
+for the TypeScript package.
 
 ### Field Annotations (`SoftField`)
 
@@ -404,7 +404,8 @@ boundaries.
 - Recommend namespace plus UpperCamelCase name plus version for contract IDs.
 - Keep the first Python package at the repo root for uv and PyPI simplicity, while
   storing source under `packages/python`.
-- Keep TypeScript/Zod as a future path, represented only by a README stub for now.
+- Ship Python/Pydantic and TypeScript/Zod as two interchangeable packages held to exact
+  behavioral parity (see [TypeScript Package Design](softschema-typescript-design.md)).
 - Treat invalid `softschema:` metadata as a validation error.
 - Do not carry private compatibility shims into the public repo.
 - Bundle guide/spec/example/skill resources into the Python wheel and expose them with
@@ -413,7 +414,6 @@ boundaries.
 
 ## Deferred
 
-- TypeScript/Zod implementation.
 - Sidecar data loading beyond simple JSON Schema sidecars.
 - Agent tool APIs beyond the CLI docs and skill instructions.
 - `softschema init-example` or other artifact scaffolding commands.

@@ -6,8 +6,9 @@ description: >-
   document into a hard schema. Use when working with soft schemas, frontmatter
   validation, mixed prose-and-data files, agent pipelines that produce or
   consume Markdown artifacts, or running the `softschema` CLI.
+allowed-tools: ["Bash(softschema:*)"]
 ---
-<!-- DO NOT EDIT: written by `softschema skill --install`.
+<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.
 Re-run that command to update.
 -->
 

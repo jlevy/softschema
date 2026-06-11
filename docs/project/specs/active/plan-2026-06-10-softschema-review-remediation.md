@@ -244,6 +244,18 @@ ts-bun 34; cross-impl diff byte-identical; lint clean.
 ### Phase 4: Remaining Items
 
 Cleanups, clarifications, and the rest of the testing and packaging improvements.
+**Status: complete (2026-06-11).** Docs refreshed for the TypeScript port and
+calibrated; spec gained a conformance-language note; skill hardened (allowed-tools,
+format=f01 marker stamp, git-root-aware install, @latest cool-off justification in the
+skill text); TS library polished (cached Ajv validators, `./cli` export,
+`readFrontmatter` made public, Node-only posture documented); test polish (renamed
+`coverage.test.ts` to `lib-units.test.ts`, in-process CLI test captures stdout instead
+of globally stubbing); and a wheel force-include coverage test guards the resource
+manifest against drift.
+The bundled-topic trim (dropping/sanitizing the maintainer-facing `agents` and
+`publishing` `docs` topics) was deliberately deferred: it changes the public `docs`
+surface and is better treated as a separate product decision; the drift guard is in
+place. Beads ss-hgsk, ss-pcqo, ss-jauz, ss-s0lt, ss-3m4s, ss-gyjs, ss-fuv1 closed.
 
 - [ ] Doc refresh for the TypeScript port: guide ("What Softschema Is", “Relationship To
   The Python Package”, Further Reading, the CLI list), python-design (module table

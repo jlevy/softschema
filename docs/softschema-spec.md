@@ -17,6 +17,14 @@ expectations a conforming implementation must honor.
 It does not define how to author artifacts, how to migrate existing documents, or how a
 specific implementation should package itself.
 
+## Conformance Language
+
+The words “must” and “must not” state requirements on conforming implementations and
+artifacts; “may” marks optional behavior.
+A document that meets every “must” is a conforming artifact, and a tool that honors
+every “must” is a conforming implementation.
+This spec uses plain “must” rather than the capitalized RFC 2119 forms.
+
 ## Artifact Profiles
 
 A conforming artifact uses one of two profiles:

@@ -444,8 +444,12 @@ SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
     Path(".claude/skills/softschema/SKILL.md"),
 )
 
+# The format=fNN stamp lets a future installer recognize this managed surface and
+# refuse to clobber a newer format. The package version is intentionally omitted so the
+# committed mirrors stay deterministic across dev builds (the drift test renders with the
+# locally installed version).
 SKILL_DO_NOT_EDIT_MARKER = (
-    "<!-- DO NOT EDIT: written by `softschema skill --install`.\n"
+    "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\n"
     "Re-run that command to update.\n"
     "-->\n"
 )
@@ -476,7 +480,18 @@ def _install_skill_payload(rendered: str) -> str:
     return "\n".join(lines)
 
 
+def _resolve_install_base(start: Path) -> Path:
+    """The nearest ancestor containing ``.git`` (so installs land at the repo root),
+    falling back to ``start`` when none is found."""
+    start = start.resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
 def _install_skill(base_dir: Path) -> dict[str, Any]:
+    base_dir = _resolve_install_base(base_dir)
     payload = _install_skill_payload(_rendered_skill_text())
     files: list[dict[str, str]] = []
     for relative in SKILL_INSTALL_TARGETS:

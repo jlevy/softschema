@@ -158,8 +158,11 @@ export const SKILL_INSTALL_TARGETS = [
   ".claude/skills/softschema/SKILL.md",
 ] as const;
 
+// The format=fNN stamp lets a future installer recognize this managed surface and refuse
+// to clobber a newer format. The package version is intentionally omitted so the
+// committed mirrors stay deterministic across dev builds (matches the Python marker).
 export const SKILL_DO_NOT_EDIT_MARKER =
-  "<!-- DO NOT EDIT: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
+  "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
 
 function packageVersion(): string {
   try {
@@ -210,10 +213,22 @@ export function installSkillPayload(rendered: string): string {
   return lines.join("\n");
 }
 
+/** Resolve the install base: the nearest ancestor containing `.git`, else the cwd. */
+function resolveInstallBase(start: string): string {
+  let dir = resolve(start);
+  for (;;) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(start);
+    dir = parent;
+  }
+}
+
 function runSkillInstall(): number {
   const payload = installSkillPayload(renderedSkill());
+  const baseDir = resolveInstallBase(process.cwd());
   const files = SKILL_INSTALL_TARGETS.map((relative) => {
-    const target = join(process.cwd(), relative);
+    const target = join(baseDir, relative);
     const existing = existsSync(target) ? readFileSync(target, "utf8") : null;
     let status: string;
     if (existing === payload) {
@@ -230,7 +245,7 @@ function runSkillInstall(): number {
     }
     return { path: relative, status };
   });
-  writeText(stableStringify({ version: packageVersion(), base_dir: process.cwd(), files }));
+  writeText(stableStringify({ version: packageVersion(), base_dir: baseDir, files }));
   return 0;
 }
 
