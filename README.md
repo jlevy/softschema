@@ -203,39 +203,14 @@ It won the 2003 Academy Award for Best Animated Feature.
 Rotten Tomatoes shows a 96% Tomatometer from 225 critic reviews and a 96% Popcornmeter
 from the audience; IMDb users give it 8.6 out of 10 across more than 850,000 votes.
 
-## Movie Details
-
-| Field | Value |
-| --- | --- |
-| Title | Spirited Away |
-| Release year | 2001 |
-| Runtime | 125 minutes |
-| MPAA rating | PG |
-| Director | Hayao Miyazaki |
-| Genres | Animation, Adventure, Family |
-
-## Lead Cast
-
-| Actor | Character |
-| --- | --- |
-| Rumi Hiiragi | Chihiro / Sen |
-| Miyu Irino | Haku |
-| Mari Natsuki | Yubaba |
-
-## Ratings
-
-| Source | Score | Count |
-| --- | ---: | ---: |
-| Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |
-| Rotten Tomatoes Audience | 96% Popcornmeter | n/a |
-| IMDb | 8.6 / 10 | 850,000+ votes |
+<!-- The reader-facing body continues with prose and tables; see the full example. -->
 ```
 
 The YAML payload is authoritative; a consumer reads it.
-The Markdown body overlaps with it but is for human readers: the body’s tables mirror
-some YAML fields for the reader’s convenience, the prose adds context like the film’s
-Academy Award (which no structured field carries), and the YAML alone carries downstream
-fields such as `critic_review_count`.
+The Markdown body overlaps with it but is for human readers: the prose adds context like
+the film’s Academy Award (which no structured field carries), the YAML alone carries
+downstream fields such as `critic_review_count`, and the full example’s body mirrors
+some YAML fields as tables for the reader’s convenience.
 
 Only the `softschema` block and the chosen envelope key (`movie:` above) are
 softschema’s concern.

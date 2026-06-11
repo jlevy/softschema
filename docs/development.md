@@ -60,6 +60,7 @@ cd packages/typescript
 bun install --frozen-lockfile
 bun run check       # biome lint, tsc --noEmit, bun test (+ coverage gate)
 bun run build       # copy-resources + bunup → dist/
+bun run publint     # lint the publishable package layout (run after build)
 ```
 
 It publishes to npm as `softschema` (the same name as the PyPI package) and exposes the
