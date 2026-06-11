@@ -30,6 +30,8 @@ export {
 } from "./softField.js";
 export {
   type ArtifactValidationResult,
+  EnvelopeAmbiguityError,
+  inferEnvelopeKey,
   type MetadataMode,
   type SemanticResult,
   type StructuralResult,

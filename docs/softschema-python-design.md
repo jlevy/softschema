@@ -147,7 +147,10 @@ There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
 a structured-output adapter, a fixture).
 The envelope is resolved directly from the document: an explicit `envelope_key`, or the
-single non-`softschema` top-level key when none is given.
+single non-`softschema` top-level key when none is given (zero or several candidates are
+rejected as `envelope_missing` / `envelope_ambiguous`, per the spec).
+`infer_envelope_key` and `EnvelopeAmbiguityError` expose the same inference to callers,
+and the CLI’s `--envelope` handling delegates to them.
 There is no separate value-path resolver.
 A relative `schema_path` is resolved against only the document directory and the current
 working directory, so resolution is predictable and never binds to an unrelated sidecar
@@ -226,6 +229,8 @@ The current first-release kinds:
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
 | `contract_unknown` | No contract registered for the requested contract ID. |
 | `envelope_mismatch` | The contract’s `envelope_key` is not present in the frontmatter. |
+| `envelope_ambiguous` | No `envelope_key` and multiple top-level non-`softschema` keys; the envelope must be designated explicitly. |
+| `envelope_missing` | No `envelope_key` and zero non-`softschema` top-level keys (frontmatter-md only). |
 | `envelope_not_mapping` | The resolved envelope value is present but is not a mapping. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |

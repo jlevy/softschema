@@ -13,7 +13,13 @@ import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
 import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
 import { stableStringify } from "./settings.js";
-import { readFrontmatter, validateArtifact, YamlParseError } from "./validate.js";
+import {
+  EnvelopeAmbiguityError,
+  inferEnvelopeKey,
+  readFrontmatter,
+  validateArtifact,
+  YamlParseError,
+} from "./validate.js";
 
 // The package root holds the bundled `resources/` dir (copied at build, shipped via the
 // package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
@@ -308,12 +314,16 @@ function inferEnvelope(
   override: string | undefined,
 ): string | null {
   if (override !== undefined) return override;
-  const keys = envelopeKeys(frontmatter);
-  if (keys.length === 1) return keys[0] as string;
-  if (keys.length === 0) return null;
-  throw new UsageError(
-    `multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: ${keys.join(", ")})`,
-  );
+  try {
+    return inferEnvelopeKey(frontmatter);
+  } catch (err) {
+    if (err instanceof EnvelopeAmbiguityError) {
+      throw new UsageError(
+        `multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: ${err.candidates.join(", ")})`,
+      );
+    }
+    throw err;
+  }
 }
 
 interface ValidateOptions {

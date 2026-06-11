@@ -184,7 +184,7 @@ def validate_artifact(
 
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, contract, warnings)
+        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode)
     return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode)
 
 
@@ -217,50 +217,43 @@ def _validate_frontmatter_artifact(
         return metadata_result
     metadata = metadata_result
 
-    if contract.envelope_key is not None and contract.envelope_key not in frontmatter:
-        actual_keys = [str(key) for key in frontmatter if key != "softschema"]
-        return ArtifactValidationResult(
-            path=doc_path,
-            contract_id=contract.id,
-            status=contract.status,
-            profile=contract.profile,
-            contract=contract,
-            document_metadata=metadata,
-            warnings=warnings,
-            structural=StructuralResult(
-                ok=False,
-                errors=[
-                    _error(
-                        "envelope_mismatch",
-                        f"contract {contract.id!r} expects {contract.envelope_key!r}",
-                        expected_key=contract.envelope_key,
-                        actual_keys=actual_keys,
-                    )
-                ],
-            ),
-            semantic=SemanticResult(ok=False, skipped_reason="envelope_mismatch"),
-        )
+    if contract.envelope_key is not None:
+        if contract.envelope_key not in frontmatter:
+            return _envelope_mismatch_result(doc_path, contract, metadata, warnings, frontmatter)
+        values = frontmatter[contract.envelope_key]
+    else:
+        # The spec's envelope rules: exactly one non-softschema top-level key is
+        # the envelope by convention; zero or several candidates are rejected.
+        try:
+            envelope_key = infer_envelope_key(frontmatter)
+        except EnvelopeAmbiguityError as exc:
+            return _artifact_failure(
+                doc_path,
+                contract,
+                "envelope_ambiguous",
+                str(exc),
+                metadata=metadata,
+                warnings=warnings,
+            )
+        if envelope_key is None:
+            return _artifact_failure(
+                doc_path,
+                contract,
+                "envelope_missing",
+                "document has no payload key beside softschema",
+                metadata=metadata,
+                warnings=warnings,
+            )
+        values = frontmatter[envelope_key]
 
-    values = _extract_envelope_values(frontmatter, contract)
     if not isinstance(values, dict):
-        return ArtifactValidationResult(
-            path=doc_path,
-            contract_id=contract.id,
-            status=contract.status,
-            profile=contract.profile,
-            contract=contract,
-            document_metadata=metadata,
+        return _artifact_failure(
+            doc_path,
+            contract,
+            "envelope_not_mapping",
+            f"envelope value is {type(values).__name__}, expected mapping",
+            metadata=metadata,
             warnings=warnings,
-            structural=StructuralResult(
-                ok=False,
-                errors=[
-                    _error(
-                        "envelope_not_mapping",
-                        f"envelope value is {type(values).__name__}, expected mapping",
-                    )
-                ],
-            ),
-            semantic=SemanticResult(ok=False, skipped_reason="envelope_not_mapping"),
         )
     return _validate_extracted_values(
         doc_path,
@@ -271,11 +264,54 @@ def _validate_frontmatter_artifact(
     )
 
 
+def _envelope_mismatch_result(
+    doc_path: Path,
+    contract: Contract,
+    metadata: SchemaMetadata | None,
+    warnings: list[SchemaWarning],
+    root: dict[str, Any],
+) -> ArtifactValidationResult:
+    actual_keys = [str(key) for key in root if key != "softschema"]
+    return ArtifactValidationResult(
+        path=doc_path,
+        contract_id=contract.id,
+        status=contract.status,
+        profile=contract.profile,
+        contract=contract,
+        document_metadata=metadata,
+        warnings=warnings,
+        structural=StructuralResult(
+            ok=False,
+            errors=[
+                _error(
+                    "envelope_mismatch",
+                    f"contract {contract.id!r} expects {contract.envelope_key!r}",
+                    expected_key=contract.envelope_key,
+                    actual_keys=actual_keys,
+                )
+            ],
+        ),
+        semantic=SemanticResult(ok=False, skipped_reason="envelope_mismatch"),
+    )
+
+
 def _validate_pure_yaml_artifact(
     doc_path: Path,
     contract: Contract,
     warnings: list[SchemaWarning],
+    metadata_mode: Literal["enforced", "advisory"],
 ) -> ArtifactValidationResult:
+    """Validate a pure-yaml artifact.
+
+    The document root follows the same metadata rules as frontmatter: an
+    optional ``softschema:`` block is recognized (and checked) rather than
+    validated as payload data.
+    The envelope differs by design: with an explicit ``envelope_key`` the named
+    key nests the payload; otherwise the remaining root (minus the metadata
+    block) IS the payload, because a pure-yaml file is "the whole document is
+    the structured payload" (e.g. a data sidecar), so single-key inference and
+    ambiguity rejection do not apply.
+    """
     try:
         raw = _read_yaml(doc_path)
     except (YAMLError, OSError) as exc:
@@ -287,19 +323,56 @@ def _validate_pure_yaml_artifact(
             "yaml_not_mapping",
             f"YAML root is {type(raw).__name__}, expected mapping",
         )
-    return _validate_extracted_values(doc_path, contract, raw, metadata=None, warnings=warnings)
 
+    metadata_result = _metadata_from_frontmatter(doc_path, raw, contract, warnings, metadata_mode)
+    if isinstance(metadata_result, ArtifactValidationResult):
+        return metadata_result
+    metadata = metadata_result
 
-def _extract_envelope_values(frontmatter: dict[str, Any], contract: Contract) -> Any:
-    """Project frontmatter to the values the contract validates.
-
-    With an explicit ``envelope_key`` the named mapping is the payload. Without
-    one, the payload is every top-level key except ``softschema``. This is the
-    spec's single-envelope rule; there is no value-path resolver.
-    """
     if contract.envelope_key is not None:
-        return frontmatter[contract.envelope_key]
-    return {key: value for key, value in frontmatter.items() if key != "softschema"}
+        if contract.envelope_key not in raw:
+            return _envelope_mismatch_result(doc_path, contract, metadata, warnings, raw)
+        values = raw[contract.envelope_key]
+    else:
+        values = {key: value for key, value in raw.items() if key != "softschema"}
+    if not isinstance(values, dict):
+        return _artifact_failure(
+            doc_path,
+            contract,
+            "envelope_not_mapping",
+            f"envelope value is {type(values).__name__}, expected mapping",
+            metadata=metadata,
+            warnings=warnings,
+        )
+    return _validate_extracted_values(
+        doc_path, contract, values, metadata=metadata, warnings=warnings
+    )
+
+
+class EnvelopeAmbiguityError(ValueError):
+    """Multiple top-level payload candidates; the envelope must be designated."""
+
+    def __init__(self, candidates: list[str]) -> None:
+        self.candidates = candidates
+        super().__init__(
+            "multiple top-level frontmatter keys; designate the softschema payload "
+            f"(candidates: {', '.join(candidates)})"
+        )
+
+
+def infer_envelope_key(frontmatter: dict[str, Any]) -> str | None:
+    """Infer the spec's single envelope key from a frontmatter mapping.
+
+    Returns the single non-``softschema`` top-level key, ``None`` when there is
+    no candidate, and raises :class:`EnvelopeAmbiguityError` when several keys
+    are present (the caller must designate the envelope explicitly).
+    """
+    candidates = [str(key) for key in frontmatter if key != "softschema"]
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    raise EnvelopeAmbiguityError(candidates)
 
 
 def _metadata_from_frontmatter(

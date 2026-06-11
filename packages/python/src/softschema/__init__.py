@@ -25,9 +25,11 @@ from softschema.soft_field import (
 )
 from softschema.validate import (
     ArtifactValidationResult,
+    EnvelopeAmbiguityError,
     SemanticResult,
     StructuralResult,
     ValidationResult,
+    infer_envelope_key,
     validate_artifact,
     validate_semantic,
     validate_structural,
@@ -40,6 +42,7 @@ __all__ = [
     "canonicalize_json_schema",
     "SchemaProfile",
     "ArtifactValidationResult",
+    "EnvelopeAmbiguityError",
     "CompileResult",
     "SchemaMetadata",
     "Contract",
@@ -60,6 +63,7 @@ __all__ = [
     "SoftTier",
     "WarningCode",
     "compile_model",
+    "infer_envelope_key",
     "parse_schema_metadata",
     "regenerate",
     "validate_artifact",

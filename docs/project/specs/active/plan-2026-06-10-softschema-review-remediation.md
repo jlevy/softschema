@@ -201,6 +201,18 @@ further; the complete CLI coverage above is the prerequisite and is in place).
 
 All items follow the golden-first loop and update the spec, guide, and design docs in
 the same change.
+**Status: complete (2026-06-10)** along with the remaining Phase 2 items
+(ss-3iz5 divergence closing, ss-c71z per-language test gaps, ss-oodd atomic TS skill
+writes). Notes against the original sketch: the binding-inference work landed the
+spec-conformance half (library-level single-key inference with `envelope_ambiguous` /
+`envelope_missing` rejection, shared `infer_envelope_key` API that both CLIs delegate
+to); the single-read CLI plumbing remains a deferred efficiency polish.
+The pure-yaml open question resolved to amending the spec: the metadata block is
+recognized at the root (same metadata rules), an explicit envelope nests the payload,
+and otherwise the whole remaining root is the payload, since single-key inference would
+break the data-sidecar use case the profile exists for.
+Verified end to end: pytest 122; bun test 140 + typecheck; golden py 34 / ts(Node) 32 /
+ts-bun 34; cross-impl diff byte-identical; lint clean.
 
 - [ ] **`status: enforced` teeth (decided).** Add `apply_enforced_extras` /
   `applyEnforcedExtras` to the canonicalize modules (recursive overlay: object schemas

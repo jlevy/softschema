@@ -322,6 +322,70 @@ function validateExtracted(
   return buildResult({ docPath, contract, metadata, values, structural, semantic, warnings });
 }
 
+/** Multiple top-level payload candidates; the envelope must be designated. */
+export class EnvelopeAmbiguityError extends Error {
+  candidates: string[];
+
+  constructor(candidates: string[]) {
+    super(
+      "multiple top-level frontmatter keys; designate the softschema payload " +
+        `(candidates: ${candidates.join(", ")})`,
+    );
+    this.candidates = candidates;
+  }
+}
+
+/**
+ * Infer the spec's single envelope key from a frontmatter mapping: the single
+ * non-`softschema` top-level key, null when there is no candidate; throws
+ * EnvelopeAmbiguityError when several keys are present. Mirrors Python's
+ * `infer_envelope_key`.
+ */
+export function inferEnvelopeKey(frontmatter: Record<string, unknown>): string | null {
+  const candidates = Object.keys(frontmatter).filter((key) => key !== "softschema");
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0] as string;
+  throw new EnvelopeAmbiguityError(candidates);
+}
+
+/** Run the metadata checks shared by the frontmatter-md and pure-yaml paths. */
+function checkMetadata(
+  docPath: string,
+  root: Record<string, unknown>,
+  contract: Contract,
+  warnings: SchemaWarning[],
+  metadataMode: MetadataMode,
+): { metadata: SchemaMetadata | null } | { failed: ArtifactValidationResult } {
+  let metadata: SchemaMetadata | null;
+  try {
+    metadata = parseSchemaMetadata(root.softschema ?? null);
+  } catch (err) {
+    if (err instanceof SchemaMetadataError) {
+      return { failed: failure(docPath, contract, null, "document_softschema_invalid", err.message) };
+    }
+    throw err;
+  }
+  if (metadata !== null && metadata.contractId !== contract.id) {
+    const message = `document declares '${metadata.contractId}'; contract uses '${contract.id}'`;
+    if (metadataMode === "advisory") {
+      warnings.push(warning("document-contract-mismatch", message));
+    } else {
+      return {
+        failed: failure(docPath, contract, metadata, "document_contract_mismatch", message, warnings),
+      };
+    }
+  }
+  if (metadata !== null && metadata.status !== null && metadata.status !== contract.status) {
+    warnings.push(
+      warning(
+        "document-status-mismatch",
+        `document declares status '${metadata.status}'; contract uses '${contract.status}'`,
+      ),
+    );
+  }
+  return { metadata };
+}
+
 /** Validate an artifact against a contract (frontmatter-md or pure-yaml). */
 export function validateArtifact(
   docPath: string,
@@ -329,6 +393,7 @@ export function validateArtifact(
   options: { semanticModel?: z.ZodType; metadataMode?: MetadataMode } = {},
 ): ArtifactValidationResult {
   const warnings: SchemaWarning[] = [];
+  const metadataMode = options.metadataMode ?? "enforced";
   if (contract.profile === "pure-yaml") {
     let raw: unknown;
     try {
@@ -361,10 +426,51 @@ export function validateArtifact(
         `YAML root is ${pyTypeName(raw)}, expected mapping`,
       );
     }
-    return validateExtracted(docPath, contract, raw, null, warnings, options.semanticModel);
+    // Same metadata rules as frontmatter: the softschema: block is recognized
+    // (and checked), never validated as payload data. The envelope differs by
+    // design: an explicit envelopeKey nests the payload; otherwise the
+    // remaining root IS the payload (a pure-yaml file is "the whole document
+    // is the structured payload", e.g. a data sidecar).
+    const checked = checkMetadata(docPath, raw, contract, warnings, metadataMode);
+    if ("failed" in checked) return checked.failed;
+    let values: unknown;
+    if (contract.envelopeKey !== null) {
+      if (!(contract.envelopeKey in raw)) {
+        const actualKeys = Object.keys(raw).filter((key) => key !== "softschema");
+        return failure(
+          docPath,
+          contract,
+          checked.metadata,
+          "envelope_mismatch",
+          `contract '${contract.id}' expects '${contract.envelopeKey}'`,
+          warnings,
+          { expected_key: contract.envelopeKey, actual_keys: actualKeys },
+        );
+      }
+      values = raw[contract.envelopeKey];
+    } else {
+      values = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "softschema"));
+    }
+    if (!isMapping(values)) {
+      return failure(
+        docPath,
+        contract,
+        checked.metadata,
+        "envelope_not_mapping",
+        `envelope value is ${pyTypeName(values)}, expected mapping`,
+        warnings,
+      );
+    }
+    return validateExtracted(
+      docPath,
+      contract,
+      values,
+      checked.metadata,
+      warnings,
+      options.semanticModel,
+    );
   }
 
-  const metadataMode = options.metadataMode ?? "enforced";
   let parsed: RawFrontmatter;
   try {
     parsed = readFrontmatter(docPath);
@@ -397,50 +503,49 @@ export function validateArtifact(
     );
   }
 
-  let metadata: SchemaMetadata | null;
-  try {
-    metadata = parseSchemaMetadata(frontmatter.softschema ?? null);
-  } catch (err) {
-    if (err instanceof SchemaMetadataError) {
-      return failure(docPath, contract, null, "document_softschema_invalid", err.message);
+  const checked = checkMetadata(docPath, frontmatter, contract, warnings, metadataMode);
+  if ("failed" in checked) return checked.failed;
+  const metadata = checked.metadata;
+
+  let values: unknown;
+  if (contract.envelopeKey !== null) {
+    if (!(contract.envelopeKey in frontmatter)) {
+      const actualKeys = Object.keys(frontmatter).filter((key) => key !== "softschema");
+      return failure(
+        docPath,
+        contract,
+        metadata,
+        "envelope_mismatch",
+        `contract '${contract.id}' expects '${contract.envelopeKey}'`,
+        warnings,
+        { expected_key: contract.envelopeKey, actual_keys: actualKeys },
+      );
     }
-    throw err;
-  }
-
-  if (metadata !== null && metadata.contractId !== contract.id) {
-    const message = `document declares '${metadata.contractId}'; contract uses '${contract.id}'`;
-    if (metadataMode === "advisory") {
-      warnings.push(warning("document-contract-mismatch", message));
-    } else {
-      return failure(docPath, contract, metadata, "document_contract_mismatch", message, warnings);
+    values = frontmatter[contract.envelopeKey];
+  } else {
+    // The spec's envelope rules: exactly one non-softschema top-level key is
+    // the envelope by convention; zero or several candidates are rejected.
+    let envelopeKey: string | null;
+    try {
+      envelopeKey = inferEnvelopeKey(frontmatter);
+    } catch (err) {
+      if (err instanceof EnvelopeAmbiguityError) {
+        return failure(docPath, contract, metadata, "envelope_ambiguous", err.message, warnings);
+      }
+      throw err;
     }
+    if (envelopeKey === null) {
+      return failure(
+        docPath,
+        contract,
+        metadata,
+        "envelope_missing",
+        "document has no payload key beside softschema",
+        warnings,
+      );
+    }
+    values = frontmatter[envelopeKey];
   }
-  if (metadata !== null && metadata.status !== null && metadata.status !== contract.status) {
-    warnings.push(
-      warning(
-        "document-status-mismatch",
-        `document declares status '${metadata.status}'; contract uses '${contract.status}'`,
-      ),
-    );
-  }
-
-  if (contract.envelopeKey !== null && !(contract.envelopeKey in frontmatter)) {
-    const actualKeys = Object.keys(frontmatter).filter((key) => key !== "softschema");
-    return failure(
-      docPath,
-      contract,
-      metadata,
-      "envelope_mismatch",
-      `contract '${contract.id}' expects '${contract.envelopeKey}'`,
-      warnings,
-      { expected_key: contract.envelopeKey, actual_keys: actualKeys },
-    );
-  }
-
-  const values =
-    contract.envelopeKey !== null
-      ? frontmatter[contract.envelopeKey]
-      : Object.fromEntries(Object.entries(frontmatter).filter(([k]) => k !== "softschema"));
 
   if (!isMapping(values)) {
     return failure(

@@ -23,7 +23,7 @@ from strif import atomic_write_text
 from softschema.compile import compile_model
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
-from softschema.validate import validate_artifact
+from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
@@ -305,15 +305,13 @@ def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
 def _envelope_from_args(args: argparse.Namespace, frontmatter: dict[str, Any]) -> str | None:
     if args.envelope is not None:
         return args.envelope
-    envelope_keys = [str(key) for key in frontmatter if key != "softschema"]
-    if len(envelope_keys) == 1:
-        return envelope_keys[0]
-    if not envelope_keys:
-        return None
-    raise ValueError(
-        "multiple top-level frontmatter keys; pass --envelope to designate the "
-        f"softschema payload (candidates: {', '.join(envelope_keys)})"
-    )
+    try:
+        return infer_envelope_key(frontmatter)
+    except EnvelopeAmbiguityError as exc:
+        raise ValueError(
+            "multiple top-level frontmatter keys; pass --envelope to designate the "
+            f"softschema payload (candidates: {', '.join(exc.candidates)})"
+        ) from exc
 
 
 def _compile_cmd(args: argparse.Namespace) -> int:

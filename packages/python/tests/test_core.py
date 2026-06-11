@@ -74,11 +74,12 @@ def test_validate_values_requires_a_model_or_schema() -> None:
         validate_values({"name": "hello"})
 
 
-def test_validate_artifact_without_envelope_key_uses_frontmatter_root(tmp_path: Path) -> None:
+def test_validate_artifact_without_envelope_key_infers_single_envelope(tmp_path: Path) -> None:
+    """Per the spec, a contract with no envelope_key uses single-key inference."""
     schema_path = tmp_path / "sample.schema.yaml"
     compile_model(SampleModel, schema_path, contract_id="example:Sample/v1")
     doc = tmp_path / "doc.md"
-    write_doc(doc, "name: hello\ndirection: up\ndelta: 1.5\n")
+    write_doc(doc, "sample:\n  name: hello\n  direction: up\n  delta: 1.5\n")
     contract = Contract(
         id="example:Sample/v1",
         model=SampleModel,
@@ -89,6 +90,31 @@ def test_validate_artifact_without_envelope_key_uses_frontmatter_root(tmp_path: 
 
     assert result.ok
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_validate_artifact_without_envelope_key_rejects_multi_key_root(tmp_path: Path) -> None:
+    """Multi-key documents are ambiguous; the spec requires explicit designation."""
+    doc = tmp_path / "doc.md"
+    write_doc(doc, "name: hello\ndirection: up\ndelta: 1.5\n")
+    contract = Contract(id="example:Sample/v1", model=SampleModel)
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert result.structural.ok is False
+    error = result.structural.errors[0]
+    assert error["kind"] == "envelope_ambiguous"
+    assert "name" in error["message"]
+
+
+def test_validate_artifact_without_envelope_key_rejects_zero_key_root(tmp_path: Path) -> None:
+    doc = tmp_path / "doc.md"
+    write_doc(doc, "softschema:\n  contract: example:Sample/v1\n")
+    contract = Contract(id="example:Sample/v1", model=SampleModel)
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert result.structural.ok is False
+    assert result.structural.errors[0]["kind"] == "envelope_missing"
 
 
 def test_validate_artifact_reports_non_mapping_envelope(tmp_path: Path) -> None:
@@ -297,3 +323,49 @@ def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> N
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:
     path.write_text(f"---\n{frontmatter_yaml}\n---\n{body}")
+
+
+def test_pure_yaml_softschema_block_is_metadata_not_payload(tmp_path: Path) -> None:
+    """Pure-yaml follows the same metadata rules: the block is recognized and
+    stripped, never validated as payload data."""
+    doc = tmp_path / "doc.yaml"
+    doc.write_text(
+        "softschema:\n  contract: example:Sample/v1\nname: hello\ndirection: up\ndelta: 1.5\n"
+    )
+    contract = Contract(id="example:Sample/v1", model=SampleModel, profile=SchemaProfile.pure_yaml)
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert result.ok
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+    assert result.document_metadata is not None
+    assert result.document_metadata.contract_id == "example:Sample/v1"
+
+
+def test_pure_yaml_contract_mismatch_is_detected(tmp_path: Path) -> None:
+    doc = tmp_path / "doc.yaml"
+    doc.write_text("softschema:\n  contract: example:Sample/v1\nname: hello\n")
+    contract = Contract(id="other:Thing/v1", profile=SchemaProfile.pure_yaml)
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert result.structural.errors[0]["kind"] == "document_contract_mismatch"
+
+
+def test_pure_yaml_explicit_envelope_key_nests_the_payload(tmp_path: Path) -> None:
+    doc = tmp_path / "doc.yaml"
+    doc.write_text(
+        "softschema:\n  contract: example:Sample/v1\n"
+        "sample:\n  name: hello\n  direction: up\n  delta: 1.5\n"
+    )
+    contract = Contract(
+        id="example:Sample/v1",
+        model=SampleModel,
+        profile=SchemaProfile.pure_yaml,
+        envelope_key="sample",
+    )
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert result.ok
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}

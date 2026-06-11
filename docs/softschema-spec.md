@@ -27,8 +27,15 @@ A conforming artifact uses one of two profiles:
 | `pure-yaml` | YAML file with no Markdown body. The whole document is the structured payload. |
 
 The frontmatter-md profile is the primary shape.
-A pure-yaml artifact follows the same metadata and envelope rules; references to
-“frontmatter” below apply to the document root in the pure-yaml case.
+A pure-yaml artifact follows the same metadata rules: references to “frontmatter” in the
+Metadata section apply to the document root, and a `softschema:` block at the root is
+recognized metadata, never payload data.
+The envelope differs by design: with an explicit envelope designation the named key
+nests the payload, and otherwise the remaining document root (minus the `softschema`
+block) is the payload as a whole.
+Single-key inference and ambiguity rejection do not apply to pure-yaml, because the
+profile’s purpose is “the whole document is the structured payload” (for example a data
+sidecar).
 
 ## Frontmatter Artifact Shape
 
