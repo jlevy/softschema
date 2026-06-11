@@ -4,9 +4,9 @@ This repo teaches and implements the soft schema pattern.
 
 Start here:
 
-- [Softschema Guide](docs/softschema-guide.md): standalone concept and adoption guide
+- [softschema Guide](docs/softschema-guide.md): standalone concept and adoption guide
   for humans and agents.
-- [Softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
+- [softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
 - [Movie page example](examples/movie_page/README.md): complete Python-backed example.
 
 softschema ships two interchangeable implementations with the same CLI and library

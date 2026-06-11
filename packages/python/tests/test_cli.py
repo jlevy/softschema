@@ -146,7 +146,7 @@ def test_docs_prints_bundled_guide(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "# Softschema Guide" in output
+    assert "# softschema Guide" in output
     assert "language-neutral" in output
     assert "## Playbook: Add Python Validation" in output
 
@@ -181,7 +181,7 @@ def test_docs_topic_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
     output = json.loads(capsys.readouterr().out)
     assert output["name"] == "spec"
     assert output["path"] == "docs/softschema-spec.md"
-    assert "# Softschema Spec" in output["content"]
+    assert "# softschema Spec" in output["content"]
 
 
 def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str]) -> None:

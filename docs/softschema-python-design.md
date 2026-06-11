@@ -1,7 +1,7 @@
-# Softschema Python Design
+# softschema Python Design
 
-The broader soft schema practice is explained in [Softschema Guide](softschema-guide.md)
-and specified in [Softschema Spec](softschema-spec.md).
+The broader soft schema practice is explained in [softschema Guide](softschema-guide.md)
+and specified in [softschema Spec](softschema-spec.md).
 
 This document covers the Python package that implements the Markdown/YAML validation
 slice of that practice.
@@ -40,8 +40,8 @@ The docs have two primary entry points:
 
 | Document | Purpose |
 | --- | --- |
-| [Softschema Guide](softschema-guide.md) | Standalone conceptual reference for humans and agents |
-| [Softschema Spec](softschema-spec.md) | Exact language-neutral artifact format |
+| [softschema Guide](softschema-guide.md) | Standalone conceptual reference for humans and agents |
+| [softschema Spec](softschema-spec.md) | Exact language-neutral artifact format |
 
 The root README is a short subset of the guide.
 It should orient a new visitor, show the main example, and point to the guide and spec

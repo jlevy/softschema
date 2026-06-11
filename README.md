@@ -25,7 +25,7 @@ structured and unstructured data, such as document processing, data extraction,
 scientific or financial analyses, and many similar applications.
 
 **Soft schemas** are what we call the general practice.
-**Softschema** is the name of this repository’s Markdown-and-YAML spec and the matching
+**softschema** is the name of this repository’s Markdown-and-YAML spec and the matching
 `softschema` CLI that implements it.
 
 ## How Do Soft Schemas Work?
@@ -121,7 +121,7 @@ This repo is simply:
 The CLI can be used directly, as a library, or installed as a skill.
 
 For the full conceptual reference and adoption playbooks, see the
-[Softschema Guide](docs/softschema-guide.md).
+[softschema Guide](docs/softschema-guide.md).
 
 ## Two Synchronized Implementations
 

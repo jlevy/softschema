@@ -8,7 +8,7 @@ description: >-
   consume Markdown artifacts, or running the `softschema` CLI.
 allowed-tools: ["Bash(softschema:*)"]
 ---
-# Softschema Skill
+# softschema Skill
 
 `softschema` adds and validates structure for Markdown/YAML artifacts that mix prose
 context with machine-readable values.

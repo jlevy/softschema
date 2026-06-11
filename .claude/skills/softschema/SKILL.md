@@ -12,7 +12,7 @@ allowed-tools: ["Bash(softschema:*)"]
 Re-run that command to update.
 -->
 
-# Softschema Skill
+# softschema Skill
 
 `softschema` adds and validates structure for Markdown/YAML artifacts that mix prose
 context with machine-readable values.

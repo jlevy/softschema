@@ -1,13 +1,13 @@
-# Softschema Spec
+# softschema Spec
 
-Softschema is a file convention for Markdown/YAML artifacts that are readable by humans
+softschema is a file convention for Markdown/YAML artifacts that are readable by humans
 and structured enough for tools.
 The spec is programming-language agnostic.
 This repository ships two interchangeable implementations of the spec, a Python/Pydantic
 package and a TypeScript/Zod package, held to exact behavioral parity.
 
 For the adoption guide, examples, and tutorials, see
-[Softschema Guide](softschema-guide.md).
+[softschema Guide](softschema-guide.md).
 This document defines what an artifact must look like and how a validator must treat it.
 
 ## Scope

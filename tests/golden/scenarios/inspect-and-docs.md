@@ -53,7 +53,7 @@ Copy examples from the printed docs or from the repository files; the CLI does n
 
 ```console
 $ softschema skill --brief
-# Softschema Skill Brief
+# softschema Skill Brief
 
 Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
 consume some values reliably.
@@ -122,7 +122,7 @@ $ softschema docs --list --json
       "name": "guide",
       "path": "docs/softschema-guide.md",
       "summary": "Concepts, mental model, and adoption path.",
-      "title": "Softschema Guide"
+      "title": "softschema Guide"
     },
     {
       "name": "installation",
@@ -146,13 +146,13 @@ $ softschema docs --list --json
       "name": "skill",
       "path": "skills/softschema/SKILL.md",
       "summary": "Portable agent skill instructions.",
-      "title": "Softschema Skill"
+      "title": "softschema Skill"
     },
     {
       "name": "spec",
       "path": "docs/softschema-spec.md",
       "summary": "Language-neutral artifact format.",
-      "title": "Softschema Spec"
+      "title": "softschema Spec"
     },
     {
       "name": "typescript-design",
@@ -169,7 +169,7 @@ $ softschema docs --list --json
 
 ```console
 $ softschema docs spec
-# Softschema Spec
+# softschema Spec
 ...
 ? 0
 ```

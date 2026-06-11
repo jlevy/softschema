@@ -37,7 +37,7 @@ Source schemas are Zod (`z.strictObject(...)`); validation uses `safeParse`; per
 authoring metadata uses `softField(schema, {...})`. See
 [the TypeScript design doc](../../docs/softschema-typescript-design.md) for the module
 layout and the Python↔TypeScript API parity table, and the
-[Softschema Guide](../../docs/softschema-guide.md) /
+[softschema Guide](../../docs/softschema-guide.md) /
 [Spec](../../docs/softschema-spec.md) for the language-neutral concept and artifact
 format.
 

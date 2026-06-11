@@ -1,4 +1,4 @@
-"""Softschema validation for Markdown frontmatter and YAML artifacts.
+"""softschema validation for Markdown frontmatter and YAML artifacts.
 
 Two public entry points:
 

@@ -105,7 +105,7 @@ export const DOC_TOPICS: DocTopic[] = [
   },
   {
     name: "guide",
-    title: "Softschema Guide",
+    title: "softschema Guide",
     path: "docs/softschema-guide.md",
     summary: "Concepts, mental model, and adoption path.",
   },
@@ -124,13 +124,13 @@ export const DOC_TOPICS: DocTopic[] = [
   { name: "readme", title: "README", path: "README.md", summary: "Short first-visitor overview." },
   {
     name: "skill",
-    title: "Softschema Skill",
+    title: "softschema Skill",
     path: "skills/softschema/SKILL.md",
     summary: "Portable agent skill instructions.",
   },
   {
     name: "spec",
-    title: "Softschema Spec",
+    title: "softschema Spec",
     path: "docs/softschema-spec.md",
     summary: "Language-neutral artifact format.",
   },
@@ -185,7 +185,7 @@ function extractMarkedSection(text: string): string {
 }
 
 function renderedSkillBrief(): string {
-  return `# Softschema Skill Brief\n\n${extractMarkedSection(renderedSkill()).trim()}\n`;
+  return `# softschema Skill Brief\n\n${extractMarkedSection(renderedSkill()).trim()}\n`;
 }
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */

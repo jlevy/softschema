@@ -18,7 +18,7 @@ Record shape (every structural validation error):
         "message": "<synthesized, engine-neutral>",
     }
 
-Softschema-level artifact errors (missing envelope, malformed metadata, ...)
+softschema-level artifact errors (missing envelope, malformed metadata, ...)
 use the separate ``{"kind": ..., "message": ...}`` shape produced by
 ``softschema.validate._error`` and are not routed through here.
 """

@@ -13,8 +13,8 @@ The Python package provides:
 The package source lives under `packages/python/src/softschema`, but the root
 `pyproject.toml` owns builds and dependency management.
 
-Use the root [Softschema Guide](../../docs/softschema-guide.md) for the concept and
-[Softschema Spec](../../docs/softschema-spec.md) for the artifact format.
+Use the root [softschema Guide](../../docs/softschema-guide.md) for the concept and
+[softschema Spec](../../docs/softschema-spec.md) for the artifact format.
 
 Installed environments can print the same reference material:
 

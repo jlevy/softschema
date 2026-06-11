@@ -1,4 +1,4 @@
-# Softschema Guide
+# softschema Guide
 
 Soft schemas are a practice for adding structure gradually to artifacts that mix human
 context and machine-readable values.
@@ -6,7 +6,7 @@ This guide is the operational reference for humans and coding agents adopting th
 pattern.
 
 For the exact file format and validation rules, see
-[Softschema Spec](softschema-spec.md).
+[softschema Spec](softschema-spec.md).
 Two interchangeable implementations ship here, at exact behavioral parity: see
 [Python Package Design](softschema-python-design.md) and
 [TypeScript Package Design](softschema-typescript-design.md).
@@ -22,7 +22,7 @@ To set up softschema in a repository with an agent, tell the agent:
 The help output points the agent to the repo-local skill install command and the bundled
 docs it should read next.
 
-## What Softschema Is
+## What softschema Is
 
 A **soft schema** is structure added to a document gradually, rather than imposed all at
 once. The term is relative to a *hard* schema: instead of declaring a rigid contract
@@ -43,7 +43,7 @@ Soft schemas let a project move along that spectrum field by field, picking the 
 that fits the application instead of committing to all-prose or all-data up front.
 
 **Soft schemas** name the general practice.
-**Softschema** is the implementation in this repository: conventions and tools for the
+**softschema** is the implementation in this repository: conventions and tools for the
 Markdown-plus-YAML case, shipped as two interchangeable packages held to exact
 behavioral parity, Python/Pydantic and TypeScript/Zod, that validate the YAML payload
 against a named contract.
@@ -170,7 +170,7 @@ Picking a version:
 - Additive, optional fields usually don’t need a version bump.
 - Keep versions short (`v1`, `v2`, `1.0`).
 
-## Playbook: Adopt Softschema For An Existing Markdown Artifact
+## Playbook: Adopt softschema For An Existing Markdown Artifact
 
 Start with one document type, not a whole repository:
 
@@ -584,9 +584,9 @@ The consumer reads YAML now.
 For each migration, set `status: soft` or `permissive` initially.
 Tighten only after existing instances validate cleanly.
 
-## Playbook: Use Softschema With Agents
+## Playbook: Use softschema With Agents
 
-Softschema is built for documents that humans and coding agents both write.
+softschema is built for documents that humans and coding agents both write.
 A few patterns help agents do the right thing:
 
 - **Point the agent at the skill and docs.** When the CLI is installed:
@@ -687,7 +687,7 @@ For Python-specific module layout, public API decisions, and dependency boundary
 
 ## Further Reading
 
-- [Softschema Spec](softschema-spec.md): exact artifact format and validation
+- [softschema Spec](softschema-spec.md): exact artifact format and validation
   expectations.
 - [Python Package Design](softschema-python-design.md): Python module layout, public
   API, and implementation decisions.

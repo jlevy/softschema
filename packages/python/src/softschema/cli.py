@@ -68,12 +68,12 @@ class ResourceTopic:
 DOC_TOPICS: dict[str, ResourceTopic] = {
     "readme": ResourceTopic("README", "README.md", "Short first-visitor overview."),
     "guide": ResourceTopic(
-        "Softschema Guide",
+        "softschema Guide",
         "docs/softschema-guide.md",
         "Concepts, mental model, and adoption path.",
     ),
     "spec": ResourceTopic(
-        "Softschema Spec",
+        "softschema Spec",
         "docs/softschema-spec.md",
         "Language-neutral artifact format.",
     ),
@@ -118,7 +118,7 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "Host registry and validation helper.",
     ),
     "skill": ResourceTopic(
-        "Softschema Skill",
+        "softschema Skill",
         "skills/softschema/SKILL.md",
         "Portable agent skill instructions.",
     ),
@@ -567,7 +567,7 @@ def _docs_listing_payload() -> dict[str, Any]:
 
 def _brief_skill_text() -> str:
     return (
-        f"# Softschema Skill Brief\n\n{_extract_marked_section(_rendered_skill_text()).strip()}\n"
+        f"# softschema Skill Brief\n\n{_extract_marked_section(_rendered_skill_text()).strip()}\n"
     )
 
 

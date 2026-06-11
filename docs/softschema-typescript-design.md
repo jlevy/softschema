@@ -1,7 +1,7 @@
-# Softschema TypeScript Design
+# softschema TypeScript Design
 
 The soft schema practice is language-neutral (see
-[Softschema Guide](softschema-guide.md) and [Softschema Spec](softschema-spec.md)). This
+[softschema Guide](softschema-guide.md) and [softschema Spec](softschema-spec.md)). This
 document covers the TypeScript package, `softschema`, which implements the same
 Markdown/YAML validation slice as the [Python package](softschema-python-design.md)
 using Zod instead of Pydantic.
