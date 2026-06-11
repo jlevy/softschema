@@ -335,14 +335,43 @@ Schema, and is never required to be an import path.
 
   With it, `softschema validate doc.md` needs no flags; without it, validation falls
   back to a flag, a registry binding, or a metadata-only check.
-  Precedence: `--schema` flag > `softschema.schema` metadata > registry `schema_path` >
-  none (metadata-only check).
-  The `--schema` flag is therefore an **optional override**: unnecessary when
+  Precedence (highest wins): `--schema` flag / explicit `schema=` argument > host
+  registry binding (`Contract.schema_path` / `schemaPath`, library path only) >
+  `softschema.schema` document metadata > none (metadata-only check).
+  Host-controlled configuration outranks document-declared metadata on purpose: a
+  document must not silently redirect a host’s validation to a schema the host did not
+  choose. (This corrects the earlier draft, which put metadata above the registry; the
+  review’s trust concern motivates the flip.)
+  In the CLI there is no registry, so the chain collapses to `--schema` >
+  `softschema.schema` > none, which is what gives a self-describing artifact its no-flag
+  validation. The `--schema` flag is therefore an **optional override**: unnecessary when
   `softschema.schema` is present, but available to point validation at a different
   schema on a given run (a candidate revision, a stricter variant, or a schema for an
   artifact whose author omitted the key).
   Unknown-key rejection continues to apply (the known set becomes `contract`, `status`,
   `schema`).
+
+- **API contract (settled for implementation).** The boundary is the same in both
+  languages, golden-first:
+  - The metadata type (`SchemaMetadata` in Python, the mirror in TypeScript) gains a
+    `schema: str | None` / `schema?: string` field, parsed from `softschema.schema`. A
+    present-but-empty or non-string `schema` is a malformed-metadata error, in the same
+    family as a malformed `contract` or an unknown key (reported at metadata-parse time,
+    not as `schema_missing`/`schema_invalid`, which are reserved for the resolved file).
+  - `validate_artifact` / `validateArtifact` read `softschema.schema` and apply the
+    precedence above, so the library gets no-flag binding too; the CLI is a thin
+    wrapper, not a second code path.
+  - `inspect` reports the `schema` pointer alongside `contract` and `status` (cheap, and
+    makes the binding visible without validating).
+  - Resolution in the reference CLIs: a relative `schema` resolves from the document’s
+    directory; an absolute path is used as given; a path whose resolution escapes
+    **both** the document directory and the current working directory is rejected (the
+    bounded resolution, so `../../etc/passwd`-style values cannot bind).
+    A resolved path that is missing or unreadable is `schema_missing`; a resolved file
+    that is not valid JSON Schema is `schema_invalid`.
+  - Spec level: only that `schema`, when present, is a non-empty string.
+    The bounded resolution is the reference behavior, not a conformance requirement (a
+    host may resolve differently).
 
 - **Resolution is a convention, not an enforced rule.** By convention the `schema` value
   is a path to the compiled schema *relative to the document that carries it* (the
@@ -386,15 +415,34 @@ Schema, and is never required to be an import path.
 
 ### 7. Generated sections, fully specified
 
-- Each kind gets a normative definition with a rendered example:
-  - `enum_table`: one GFM table row per enum-valued property in the compiled schema
-    (columns: Field, Allowed values), in deterministic order.
-  - `field_list`: one bullet per top-level property: name, JSON type, required marker,
-    description.
-  - `vocab`: the allowed values of the single field addressed by `pointer` (RFC 6901),
-    as a comma-separated list.
-    The reference renderers (`generate.py` / `generate.ts`) are the source of truth; the
-    spec documents exactly what they emit.
+- **The spec is the normative source of the output contract; the renderers are tested
+  against it** (not the other way around).
+  For a language-neutral spec, “whatever `generate.py` emits” cannot be the definition,
+  or parity drifts toward one implementation.
+  The spec states, for each kind, the exact output so both renderers and any third party
+  can be checked against it:
+  - `enum_table`: a GFM table, columns `Field` then `Allowed values`; one row per
+    enum-valued property; rows in the schema’s property order; values comma-space joined
+    in schema order; a property whose enum includes `null` shows the non-null members
+    only; `|` in a value is escaped.
+  - `field_list`: one `-` bullet per top-level property in schema order: `` `name` `` —
+    JSON type (the JSON Schema `type`, or `anyOf`/`$ref` rendered as a stable label),
+    `required`/`optional`, then the property `description` (omitted, with no trailing
+    dash, when absent).
+  - `vocab`: the allowed values of the single property addressed by `pointer` (RFC
+    6901), comma-space joined in schema order, on one line.
+  - Every kind: equal inputs produce byte-equal output; an unknown `kind` is rejected
+    rather than silently emitting a fallback; a missing/unreadable schema is an error.
+- **Marker attribute rename (breaking, 0.2.0): `contract="path/to/schema.yaml"` →
+  `schema="path/to/schema.yaml"`.** Today the generated-marker attribute that holds a
+  *schema file path* is spelled `contract=` (`docs/softschema-spec.md:216`,`:230`,
+  example READMEs), which directly contradicts the new terminology where `contract` is
+  the logical payload ID and `schema` is the concrete file pointer.
+  The attribute is renamed to `schema=` so one word means one thing everywhere.
+  This is a hard migration (no dual-accept): both parsers/renderers, the spec examples,
+  the movie-page README marker, and the goldens move together; an old
+  `contract="...path..."` marker is rejected with a clear message pointing at the
+  rename. (See Compatibility and Breaking Changes.)
 - Marker grammar specified completely: attribute syntax (`key="value"`, double quotes),
   the open/close pair on their own lines, no nesting, unknown attributes rejected, body
   fully generator-owned.
@@ -407,25 +455,69 @@ Schema, and is never required to be an import path.
 
 ### 8. Compatibility and Related Formats (new spec section)
 
-- **frontmatter-format**: the `frontmatter-md` profile is frontmatter-format’s
-  YAML/Markdown style, exactly.
+- **frontmatter-format**: the `frontmatter-md` profile matches frontmatter-format’s
+  YAML/Markdown (`---` delimited) style exactly — and only that style.
+  The “exactly” is scoped to the Markdown `---` profile; frontmatter-format’s
+  comment-style fences for other file types (HTML, Python, Rust, CSS, SQL) are
+  explicitly out of scope here today, so the boundary cannot be misread as “every
+  frontmatter-format file type.”
   The Python implementation consumes the `frontmatter-format` library; the TypeScript
-  implementation implements the same Markdown-style subset and is held to it by the
-  golden corpus. Comment-style fences for other file types (HTML, Python, Rust, CSS, SQL)
-  are defined by frontmatter-format and out of scope here today.
-  Behavioral authority: where the implementations differ from frontmatter-format’s
-  Markdown rules, frontmatter-format wins — which resolves `ss-eero` (the TS parser must
-  reject non-mapping frontmatter the way `fmf_read` does).
+  implementation implements the same `---` subset and is held to it by the golden
+  corpus. Behavioral authority: where the implementations differ from
+  frontmatter-format’s Markdown rules, frontmatter-format wins.
+  This resolves `ss-eero` (non-mapping frontmatter must be rejected the way `fmf_read`
+  does), and the fix is scoped **by entrypoint, not by intent**: every public surface
+  that reads frontmatter must reject a non-mapping document — `validate`, `inspect`, the
+  exported `readFrontmatter` parser, and the library validation path — with golden/test
+  coverage for each, so one path cannot be fixed while another stays divergent.
 - **sidematter-format**: the forward pointer for future per-document companion data (see
   design 6).
 - **markform**: the shared marker mechanism note (see design 7).
 
+## Compatibility and Breaking Changes
+
+softschema is pre-1.0 and the affected surfaces are young, so the policy is simple and
+deliberate: **a clean 0.2.0 break — no compatibility shims, no dual-accept, no
+error-kind aliases, no migration paths.** Downstream consumers upgrade fully.
+We do not invest in seamless migration; the value we provide instead is that **every new
+or stricter check fails loudly with a clear, documented error** a human or agent can act
+on. A clear failure is better than lenient acceptance: if a check is worth adding, an
+artifact that violates it should be rejected with a message that says what is wrong and
+how to fix it, not silently tolerated.
+A downstream agent reading that error can upgrade the artifact or the code.
+
+The table below is reference documentation of what changes and the clear error each
+breaking surface produces (not a migration procedure):
+
+| Surface | 0.1.x | 0.2.0 | What a violating input sees |
+| --- | --- | --- | --- |
+| Contract-ID grammar | any non-empty string accepted | grammar enforced (design 4), at metadata-parse time regardless of `status` | exit 2 with a diagnostic naming the malformed ID and the expected shape; the recommended form already passes |
+| Metadata keys | `contract`, `status` | adds optional `schema`; unknown keys still rejected | additive; nothing breaks for existing docs |
+| Validation error kinds | `schema_sidecar_missing`, `schema_sidecar_invalid` | `schema_missing`, `schema_invalid` (renamed, **no alias**) | a consumer branching on the old `kind` strings stops matching; the new strings are documented |
+| Generated-marker attribute | `contract="...path..."` | `schema="...path..."` (renamed, hard) | the old attribute is rejected with a message pointing at the `schema=` rename |
+| No-flag validation | `--schema` or registry required | `softschema.schema` binds with no flag | additive; nothing breaks |
+| Library APIs | `validate_artifact`, `validateArtifact`, `compile_model`, `compileSchema` | unchanged signatures; metadata type gains a `schema` field | additive; existing calls compile unchanged |
+
+The release note lists the breaking items and the clear error each produces, so an
+upgrading consumer knows exactly what to fix.
+That note, plus the errors themselves, is the whole of the “migration” story.
+
+**Trust note (carried into the installed-user docs).** `--model module:Class` /
+`--model path:export` imports and executes local code to build the validator, so it must
+be used only with trusted models.
+`--schema` (a compiled JSON Schema) executes nothing and is the safe, language-neutral
+path for validating artifacts from an untrusted source.
+The README/guide examples say this where they introduce `--model`.
+
 ## Implementation Plan
 
-### Phase 1: Conventions and Docs (no behavior change)
+### Phase 1: Conventions and Docs (no validation behavior change)
 
 - [ ] Write the naming convention into AGENTS.md and apply the softschema/"soft schema"
   sweep across all docs, SKILL.md, and CLI strings.
+  Note: the sweep touches user-visible CLI output (bundled doc-topic titles, the
+  skill-brief header), so the shared golden `inspect-and-docs.md` updates with it — a
+  terminology diff, not a validation change.
 - [ ] Restructure the spec per design 3 (Terminology section, annotated example,
   rewritten profiles, genuine trimmed spirited-away example, worked envelope example);
   fully specify generated sections per design 7.
@@ -452,9 +544,13 @@ Schema, and is never required to be an import path.
   relative resolution, unknown-key set update, golden scenarios for bound validate with
   no flags).
 - [ ] Error-kind renames `schema_missing` / `schema_invalid` per design 6 (goldens,
-  tests, design-doc table).
+  tests, design-doc table; no aliases — see Compatibility and Breaking Changes).
+- [ ] Generated-marker attribute rename `contract="...path..."` → `schema="...path..."`
+  per design 7 (both parsers/renderers, spec examples, movie-page README marker,
+  goldens; old form rejected with a rename hint).
 - [ ] TS frontmatter parser: reject non-mapping frontmatter per frontmatter-format
-  authority (closes `ss-eero`; golden scenario).
+  authority across every entrypoint (`validate`, `inspect`, `readFrontmatter`, library;
+  closes `ss-eero`; golden + unit coverage per entrypoint).
 - [ ] Update the per-CLI support matrix in docs and `--help` text to match.
 
 ### Phase 3: Follow-through
@@ -467,22 +563,77 @@ Schema, and is never required to be an import path.
 
 ## Testing Strategy
 
-Phase 1 is prose: lint, doc-footer checks, and the existing golden corpus prove no
+Phase 1 is prose plus the terminology sweep: lint, doc-footer checks, and the existing
+golden corpus (with the `inspect-and-docs.md` terminology diff) prove no validation
 behavior moved. Phase 2 follows the repo’s golden-first loop: shared scenarios before
 code, both implementations ported, byte-identical output on py/ts/ts-bun plus the
 cross-impl diff job.
-The error-kind and metadata-key changes update existing scenarios; their diffs are
-reviewed as the behavioral spec.
+The error-kind, metadata-key, and marker-attribute changes update existing scenarios;
+their diffs are reviewed as the behavioral spec.
+
+These outputs are stable and behavioral (no unstable values), so the goldens capture
+them exactly. Shared scenario checklist for Phase 2 (each a golden unless noted):
+
+- **Contract-ID grammar — accept:** bare `Name`; namespaced `ns:Name`; versioned
+  `ns:Name/v1`; underscores in name; dotted namespace `a.b.c:Name`; a lowercase name
+  (UpperCamelCase is advisory, asserted to pass).
+- **Contract-ID grammar — reject (exit 2, clean diagnostic):** empty string;
+  whitespace-only; whitespace around separators; empty namespace segment (`:Name`);
+  repeated `:`; repeated `/`; empty version (`Name/`).
+- **Metadata `schema` binding:** `softschema.schema` present → `validate` succeeds with
+  **no** flags; `--schema` overrides `softschema.schema` (different schema wins);
+  `inspect` reports the `schema` pointer; an unknown metadata key still rejects after
+  `schema` joins the known set; a non-string/empty `schema` is a malformed-metadata
+  error; a `schema` pointing at a missing file → `schema_missing`; a `schema` pointing
+  at an invalid schema file → `schema_invalid`; a `..` path escaping the doc-dir/cwd
+  bound is rejected.
+- **Registry fallback (library unit tests, not CLI goldens):** a registered
+  `Contract.schema_path` still resolves; the registry binding outranks
+  `softschema.schema` per the precedence; an explicit `schema=` argument outranks both.
+- **Error-kind rename:** every scenario emitting `schema_sidecar_*` now emits
+  `schema_missing` / `schema_invalid`; no alias remains.
+- **Generated-marker rename:** a block with the new `schema="..."` attribute renders;
+  `generate --check` is byte-stable; a block still using `contract="...path..."` is
+  rejected with the rename hint; one golden per kind (`enum_table`, `field_list`,
+  `vocab`) pins the normative output (columns, ordering, escaping, optional/required,
+  missing-description, pointer-failure).
+- **Non-mapping frontmatter rejection (per entrypoint):** `validate`, `inspect`, the
+  exported `readFrontmatter`, and the library path each reject a non-mapping document.
 
 ## Rollout Plan
 
 One PR per phase (or Phase 1+2 stacked if review prefers); 0.2.0 ships after Phase 2
 with both packages in lockstep as usual.
 
+## Bead Map (tbd tracking)
+
+The implementation is tracked under epic **`ss-20i3`** (these IDs are real beads; they
+also live on the `tbd-sync` branch, so a checkout that has not fetched it will not show
+them via `tbd show` — this list keeps the plan self-contained).
+Phase ordering is enforced by blocker dependencies.
+
+| Bead | Phase | Scope | Blocked by |
+| --- | --- | --- | --- |
+| `ss-ltxx` | 1 | Naming sweep (`Softschema` → `softschema`) — **done** | — |
+| `ss-3oz6` | 1 | Prose-only “compiled schema” rename (docs) | — |
+| `ss-oe39` | 1 | Spec restructure: terminology-first, genuine example, generated sections fully defined | — |
+| `ss-dif0` | 1 | Consumption-model docs (dependency vs zero-install), design 0 | — |
+| `ss-hrnm` | 2 | `docs example-schema` topic (+ resource manifests) | — |
+| `ss-kkdl` | 1/2 | README installed-user rework + library surfaces + trust note | `ss-dif0`, `ss-hrnm` |
+| `ss-5a4w` | 2 | Enforce contract-ID grammar (design 4) | `ss-oe39` |
+| `ss-69f4` | 2 | `softschema.schema` metadata binding (design 5) | `ss-oe39` |
+| `ss-brlt` | 2 | Generated-marker attribute rename `contract=` → `schema=` (design 7) | `ss-oe39` |
+| `ss-m25c` | 2 | Error-kind rename `schema_sidecar_*` → `schema_missing`/`schema_invalid` (design 6) | `ss-3oz6` |
+| `ss-7cbb` | 2 | Reject non-mapping frontmatter across every entrypoint (closes `ss-eero`) | `ss-eero` |
+| `ss-15bv` | 3 | Re-verify derived surfaces, release 0.2.0 | all Phase 2 |
+
+A deferred, out-of-epic bead tracks the future sidematter-format companion-data work
+(design 6); it is not part of 0.2.0.
+
 ## Resolved Decisions
 
-These were open during drafting and are now settled (maintainer direction); they are
-recorded here so the implementation beads inherit the final shape:
+Every decision needed to start implementation is settled (maintainer direction and the
+PR #13 review). Recorded here so the implementation beads inherit the final shape:
 
 - **`schema` key is recommended, not required.** A self-describing artifact must carry
   `contract`; `schema` is an optional, recommended pointer.
@@ -491,28 +642,41 @@ recorded here so the implementation beads inherit the final shape:
   See Design 5.
 - **`--schema` is an optional override, not the primary path.** When `softschema.schema`
   is present, validation needs no flag; `--schema` exists to point a given run at a
-  different schema (candidate revision, stricter variant, or an artifact whose author
-  omitted the key). Precedence: `--schema` > `softschema.schema` > registry >
-  metadata-only.
+  different schema. Precedence (highest wins): `--schema` flag / explicit `schema=` arg >
+  host registry binding (`Contract.schema_path`, library only) > `softschema.schema`
+  metadata > none. Host config outranks document metadata so a document cannot redirect a
+  host’s validation (see Design 5).
+- **Metadata key name is `schema`** (not `schema_path`): it reads better in YAML and
+  matches the `--schema` flag.
 - **Relative-from-document resolution is a convention, not a conformance rule.** The
   reference CLIs resolve `schema` relative to the document (bounded to doc-dir + cwd),
   but the spec only requires that `schema`, when present, be a non-empty string.
-  Layout is too situational to mandate one resolution for every consumer.
+- **Error-kind rename targets are `schema_missing` / `schema_invalid`, with no alias**
+  (clean 0.2.0 break; see Compatibility and Breaking Changes).
+- **Contract-ID grammar is enforced at metadata-parse time regardless of `status`** (it
+  is cheap to comply and the recommended form already passes).
+  UpperCamelCase stays advisory.
+- **Generated-marker attribute renames `contract=` → `schema=`** (hard migration; see
+  Design 7 and Compatibility and Breaking Changes).
+- **Heading style: the lowercase brand stays lowercase even in Title Case headings**
+  (“softschema Spec”), a documented exception — already applied in the Phase 1 sweep.
+- **Backward compatibility: a clean 0.2.0 break, no shims or aliases; clear documented
+  errors instead of migration paths** (see Compatibility and Breaking Changes).
 
 ## Open Questions
 
-- Metadata key name: `schema` (proposed) vs `schema_path`? `schema` reads better in YAML
-  and matches the `--schema` flag.
-- Error-kind rename targets: `schema_missing` / `schema_invalid` (proposed) — confirm
-  before goldens are rewritten.
-- Contract-ID grammar: enforce everywhere (proposed: yes, it is cheap to comply) or only
-  warn under `soft` status?
-- Heading style for the lowercase brand: “softschema Spec” as a documented Title Case
-  exception (proposed) vs renaming the docs ("The softschema Spec").
+None block implementation.
+All drafting questions above are now settled; if review reopens any (for example
+registry-vs-metadata precedence, or a softer migration than a hard break), that item
+returns here and its Phase 2 bead waits on it.
 
 ## References
 
 - Maintainer feedback (this plan’s Background restates it).
+- PR #13 senior-engineering review (maintainer): drove the decision reconciliation, the
+  generated-marker rename, the Compatibility and Breaking Changes section, the schema-
+  linkage API contract, the golden checklist, the entrypoint-scoped frontmatter fix, and
+  the normative generated-section output.
 - [Full engineering review](../../reviews/review-2026-06-10-softschema-full-eng-review.md)
   and [remediation plan](plan-2026-06-10-softschema-review-remediation.md) (complete).
 - Reference repos reviewed in `attic/`: jlevy/markform (`docs/markform-spec.md`),
