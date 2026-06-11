@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Contract } from "./models.js";
-import { validateArtifact, validateValues } from "./validate.js";
+import { readFrontmatter, validateArtifact, validateValues, YamlParseError } from "./validate.js";
 
 const Sample = z.strictObject({ name: z.string(), count: z.int().min(0) });
 const SAMPLE_SCHEMA = z.toJSONSchema(Sample) as Record<string, unknown>;
@@ -66,9 +66,15 @@ describe("validateArtifact: pure-yaml profile", () => {
 });
 
 describe("validateArtifact: frontmatter_not_mapping", () => {
-  test("frontmatter that parses to a non-mapping is rejected", () => {
+  test("a pre-parsed non-mapping frontmatter is rejected as frontmatter_not_mapping", () => {
+    // Reading a non-mapping document from disk is a parse_error (see the ss-7cbb tests
+    // below, matching Python's fmf_read). The frontmatter_not_mapping kind is reached
+    // only when a caller supplies an already-parsed non-mapping value (Python parity:
+    // validate_artifact(..., frontmatter=[...]) → frontmatter_not_mapping).
     const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
-    const result = validateArtifact(doc, contract({ envelopeKey: "sample" }));
+    const result = validateArtifact(doc, contract({ envelopeKey: "sample" }), {
+      preParsed: { hasFence: true, value: [1, 2, 3] },
+    });
     expect(result.ok).toBe(false);
     const err = result.output.structural as { errors: { kind: string }[] };
     expect(err.errors[0]?.kind).toBe("frontmatter_not_mapping");
@@ -123,6 +129,28 @@ describe("validateArtifact: missing/unreadable document file", () => {
     expect(result.ok).toBe(false);
     const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
+    expect(structural.errors[0]?.kind).toBe("parse_error");
+  });
+});
+
+describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
+  test("readFrontmatter throws YamlParseError on a list frontmatter", () => {
+    const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
+    expect(() => readFrontmatter(doc)).toThrow(YamlParseError);
+    expect(() => readFrontmatter(doc)).toThrow("got <class 'list'>");
+  });
+
+  test("readFrontmatter throws YamlParseError on a scalar frontmatter", () => {
+    const doc = tmpFile("doc.md", "---\njust a string\n---\nbody\n");
+    expect(() => readFrontmatter(doc)).toThrow(YamlParseError);
+    expect(() => readFrontmatter(doc)).toThrow("got <class 'str'>");
+  });
+
+  test("validateArtifact returns parse_error for non-mapping frontmatter", () => {
+    const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
+    const result = validateArtifact(doc, contract());
+    expect(result.ok).toBe(false);
+    const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("parse_error");
   });
 });

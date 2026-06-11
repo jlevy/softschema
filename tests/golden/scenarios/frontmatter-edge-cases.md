@@ -65,6 +65,32 @@ softschema validate: [..]
 ? 2
 ```
 
+# Test: non-mapping frontmatter is a parse error on validate (exit 2)
+
+A frontmatter block that parses to a YAML list (or any non-mapping value) is rejected
+by frontmatter-format's `fmf_read`. The TS implementation must match: `readFrontmatter`
+rejects a non-mapping document the same way, so both CLIs exit 2 instead of treating list
+indices as keys. The TS CLI wraps the message differently, so only the stable prefix is
+asserted.
+
+```console
+$ softschema validate tests/golden/fixtures/list-frontmatter.md --schema tests/golden/fixtures/error-norm.schema.yaml --contract test.errors:Sample/v1 --envelope data 2>&1
+softschema validate: [..]
+? 2
+```
+
+# Test: non-mapping frontmatter is a parse error on inspect (exit 2)
+
+The same non-mapping frontmatter is rejected by `inspect`, not reported with numeric
+list-index envelope keys. Both CLIs exit 2; the message wording differs, so only the
+stable prefix is asserted.
+
+```console
+$ softschema inspect tests/golden/fixtures/list-frontmatter.md 2>&1
+softschema inspect: [..]
+? 2
+```
+
 # Test: unterminated frontmatter fence is a parse error (exit 2)
 
 A file that opens a `---` frontmatter fence but never closes it is a format
