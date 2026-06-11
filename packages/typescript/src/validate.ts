@@ -9,6 +9,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
+import { applyEnforcedExtras } from "./canonicalize.js";
 import {
   collapseAdditionalProperties,
   compareStructuralRecords,
@@ -96,8 +97,22 @@ function readFrontmatter(path: string): RawFrontmatter {
       break;
     }
   }
-  if (end === -1) return { hasFence: false, value: null };
-  return { hasFence: true, value: parseYaml(lines.slice(1, end).join("\n")) ?? {} };
+  if (end === -1) {
+    // Unterminated fence: Python's frontmatter_format raises FmFormatError.
+    throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${path}\``);
+  }
+  // Empty frontmatter (end-fence at line 1, zero content lines between fences):
+  // Python's fmf_read returns metadata=None → no_frontmatter.
+  if (end === 1) return { hasFence: false, value: null };
+  const parsed = parseYaml(lines.slice(1, end).join("\n"));
+  if (parsed === null || parsed === undefined) {
+    // Whitespace-only frontmatter: YAML parses to null. Python's frontmatter_format
+    // raises FmFormatError with this exact message.
+    throw new YamlParseError(
+      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
+    );
+  }
+  return { hasFence: true, value: parsed };
 }
 
 function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
@@ -120,10 +135,16 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
 export function validateStructural(
   values: unknown,
   schemaObject: Record<string, unknown>,
+  options: { strictExtras?: boolean } = {},
 ): StructuralResult {
-  const schema = { ...schemaObject };
+  let schema = { ...schemaObject };
   // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
   delete schema.$id;
+  if (options.strictExtras) {
+    // The `status: enforced` overlay: object schemas that declare `properties` but
+    // omit `additionalProperties` are validated as closed. See applyEnforcedExtras.
+    schema = applyEnforcedExtras(schema) as Record<string, unknown>;
+  }
   // `verbose` makes each error carry `schema`/`data`, which `normalizeAjvError` maps
   // onto jsonschema's `validator_value`/`instance` for cross-language byte parity.
   const ajv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
@@ -275,7 +296,9 @@ function structuralForValues(
         skipped_reason: null,
       };
     }
-    return validateStructural(values, sidecar);
+    return validateStructural(values, sidecar, {
+      strictExtras: contract.status === "enforced",
+    });
   }
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };

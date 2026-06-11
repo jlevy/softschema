@@ -39,6 +39,17 @@ export interface Contract {
   schemaPath: string | null;
 }
 
+/** Python `type(x).__name__` for the type names used in error messages. */
+function pyTypeName(value: unknown): string {
+  if (value === null || value === undefined) return "NoneType";
+  if (Array.isArray(value)) return "list";
+  if (typeof value === "string") return "str";
+  if (typeof value === "boolean") return "bool";
+  if (typeof value === "number") return Number.isInteger(value) ? "int" : "float";
+  if (typeof value === "object") return "dict";
+  return typeof value;
+}
+
 /** Raised for a malformed `softschema:` metadata block (→ document_softschema_invalid). */
 export class SchemaMetadataError extends Error {}
 
@@ -52,9 +63,14 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
   }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
+    // The spec makes unknown keys in the softschema: block a validation error.
+    const unknown = Object.keys(obj).filter((key) => key !== "contract" && key !== "status");
+    if (unknown.length > 0) {
+      throw new SchemaMetadataError(`softschema metadata has unknown keys: ${unknown.join(", ")}`);
+    }
     const contract = obj.contract;
-    if (typeof contract !== "string") {
-      throw new SchemaMetadataError("softschema metadata requires a string 'contract'");
+    if (typeof contract !== "string" || contract.length === 0) {
+      throw new SchemaMetadataError("softschema metadata requires a non-empty string 'contract'");
     }
     let status: SchemaStatus | null = null;
     if (obj.status !== undefined && obj.status !== null) {
@@ -66,7 +82,7 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
     return { contractId: contract, status };
   }
   throw new SchemaMetadataError(
-    `softschema metadata must be a string or mapping, got ${typeof raw}`,
+    `softschema metadata must be a string or mapping, got ${pyTypeName(raw)}`,
   );
 }
 

@@ -31,6 +31,10 @@ export interface CompileOptions {
   checkOnly?: boolean;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function augmentSchema(
   schema: Record<string, unknown>,
   contractId: string | null,
@@ -41,7 +45,11 @@ function augmentSchema(
     out.$id ??= contractId;
   }
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
+  // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
+  // so custom fields from the raw schema are preserved.
+  const existing = isPlainObject(out["x-softschema"]) ? (out["x-softschema"] as Record<string, unknown>) : {};
   out["x-softschema"] = {
+    ...existing,
     contract: contractId,
     softschema_format_version: SOFTSCHEMA_FORMAT_VERSION,
   };

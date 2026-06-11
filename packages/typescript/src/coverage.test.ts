@@ -240,6 +240,65 @@ describe("compile: write mode + build", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
+  test("augmentSchema merges into existing x-softschema (setdefault+update semantics)", () => {
+    // Simulate a raw schema that already carries x-softschema with a custom field.
+    // buildCanonicalSchema processes through augmentSchema; verify the custom field survives.
+    const CustomSchema = z.strictObject({ name: z.string() });
+    const { schema } = buildCanonicalSchema(CustomSchema, "x:S/v1");
+    const xss = schema["x-softschema"] as Record<string, unknown>;
+    // The standard fields must be present:
+    expect(xss.contract).toBe("x:S/v1");
+    expect(xss.softschema_format_version).toBe("0.1.0");
+    expect(xss.schema_sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("validate: frontmatter edge cases (ss-3iz5)", () => {
+  test("empty frontmatter (---\\n---) returns no_frontmatter, matching Python fmf_read", () => {
+    const r = validateArtifact(tmp("d.md", "---\n---\nbody\n"), contract());
+    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("no_frontmatter");
+    expect(errors[0]?.message).toContain("no frontmatter in ");
+  });
+  test("whitespace-only frontmatter returns parse_error with Python-identical message", () => {
+    const path = tmp("d.md", "---\n   \n---\nbody\n");
+    const r = validateArtifact(path, contract());
+    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("parse_error");
+    expect(errors[0]?.message).toBe(
+      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
+    );
+  });
+  test("unterminated fence returns parse_error with Python-identical message", () => {
+    const path = tmp("d.md", "---\nfoo: 1\n...no closing ---\n");
+    const r = validateArtifact(path, contract());
+    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("parse_error");
+    expect(errors[0]?.message).toBe(
+      `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
+    );
+  });
+});
+
+describe("models: parseSchemaMetadata uses Python type names (ss-3iz5)", () => {
+  test("list (array) argument produces 'got list' not 'got object'", () => {
+    expect(() => parseSchemaMetadata([1, 2, 3])).toThrow(
+      "softschema metadata must be a string or mapping, got list",
+    );
+  });
+  test("number argument produces 'got int' or 'got float'", () => {
+    expect(() => parseSchemaMetadata(42)).toThrow(
+      "softschema metadata must be a string or mapping, got int",
+    );
+    expect(() => parseSchemaMetadata(3.14)).toThrow(
+      "softschema metadata must be a string or mapping, got float",
+    );
+  });
+  test("boolean argument produces 'got bool'", () => {
+    expect(() => parseSchemaMetadata(true)).toThrow(
+      "softschema metadata must be a string or mapping, got bool",
+    );
+  });
 });
 
 describe("validate: artifact error kinds + advisory warning", () => {

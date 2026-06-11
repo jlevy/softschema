@@ -17,11 +17,54 @@ export interface StructuralErrorRecord {
   message: string;
 }
 
+/**
+ * Format a number the way Python's `repr()` would. Handles NaN, Infinity, and
+ * routes through exponential notation for abs >= 1e16 or (0 < abs < 1e-4 and
+ * non-integer), matching Python's float repr output. Integer-valued floats
+ * below 1e16 render without `.0` (the ss-wbnm limitation: YAML `2.0` parses as
+ * JS integer `2`, so `.0` cannot be recovered).
+ */
+function pyReprNumber(value: number): string {
+  if (Number.isNaN(value)) return "nan";
+  if (value === Infinity) return "inf";
+  if (value === -Infinity) return "-inf";
+
+  const abs = Math.abs(value);
+
+  // Exponential formatting for large or small magnitudes (matches Python repr).
+  if (abs >= 1e16 || (abs > 0 && abs < 1e-4 && !Number.isInteger(value))) {
+    // Use JS toExponential() (no fixed precision → shortest representation),
+    // then reformat the exponent to Python style: always signed, at least 2 digits.
+    const raw = value.toExponential();
+    // raw is like "1.5e+16" or "1e-7" — split on 'e'
+    const eIdx = raw.indexOf("e");
+    const mantissa = raw.slice(0, eIdx);
+    const expPart = raw.slice(eIdx + 1); // "+16" or "-7" or "16"
+    let sign: string;
+    let digits: string;
+    if (expPart.startsWith("-")) {
+      sign = "-";
+      digits = expPart.slice(1);
+    } else if (expPart.startsWith("+")) {
+      sign = "+";
+      digits = expPart.slice(1);
+    } else {
+      sign = "+";
+      digits = expPart;
+    }
+    // Pad to at least 2 digits
+    if (digits.length < 2) digits = "0" + digits;
+    return `${mantissa}e${sign}${digits}`;
+  }
+
+  return String(value);
+}
+
 /** Mimic Python's `repr()` for the value kinds that appear in messages. */
 function pyRepr(value: unknown): string {
   if (value === null || value === undefined) return "None";
   if (typeof value === "boolean") return value ? "True" : "False";
-  if (typeof value === "number") return String(value);
+  if (typeof value === "number") return pyReprNumber(value);
   if (typeof value === "string") return pyReprStr(value);
   if (Array.isArray(value)) return `[${value.map(pyRepr).join(", ")}]`;
   if (typeof value === "object") {

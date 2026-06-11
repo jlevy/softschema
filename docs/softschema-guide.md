@@ -251,9 +251,8 @@ Bugs that used to silently break the consumer now fail loudly.
 real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
 fields at the structural boundary (object schemas that are silent about
 `additionalProperties` are treated as closed; an explicit `additionalProperties` in the
-schema still wins).
-Setting the source model to `extra="forbid"` additionally compiles that strictness into
-the sidecar itself and enforces it at the semantic layer.
+schema still wins). Setting the source model to `extra="forbid"` additionally compiles
+that strictness into the sidecar itself and enforces it at the semantic layer.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON

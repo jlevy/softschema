@@ -95,9 +95,9 @@ envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
 Without `--model` or `--schema`, `validate` performs a metadata-only check: the
-frontmatter parses, the `softschema:` block is well-formed (unknown keys and a
-malformed contract are errors), and the envelope resolves; the structural and semantic
-layers are reported as skipped.
+frontmatter parses, the `softschema:` block is well-formed (unknown keys and a malformed
+contract are errors), and the envelope resolves; the structural and semantic layers are
+reported as skipped.
 This makes the CLI useful from the `soft` stage, before any schema or model exists.
 Passing `--model` or `--schema` adds the corresponding validation layers.
 
@@ -135,7 +135,7 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
 
-When the contract's status is `enforced`, structural validation applies the
+When the contract’s status is `enforced`, structural validation applies the
 strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
 schemas that declare `properties` but omit `additionalProperties` are validated as
 `additionalProperties: false`, an explicit `additionalProperties` always wins, and
