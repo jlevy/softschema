@@ -463,8 +463,7 @@ def _installed_version() -> str:
 
 
 def _rendered_skill_text() -> str:
-    raw = _read_resource(DOC_TOPICS["skill"].path)
-    return raw.replace("<version>", _installed_version())
+    return _read_resource(DOC_TOPICS["skill"].path)
 
 
 def _install_skill_payload(rendered: str) -> str:

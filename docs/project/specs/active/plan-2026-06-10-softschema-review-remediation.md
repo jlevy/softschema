@@ -4,7 +4,11 @@
 
 **Author:** Claude Code, with maintainer decisions by Joshua Levy
 
-**Status:** In Review
+**Status:** Complete (2026-06-11). All four phases landed (PR #9 merged; PR #10 carries
+the Phase 2 remainder, Phase 3, and Phase 4). Deliberately deferred follow-ups are
+tracked as beads ss-8131 (bundled-topic trim + single resource manifest), ss-lflv
+(README artifact shortening), and ss-hvqw (single-read CLI plumbing); everything else
+below is done.
 
 ## Overview
 
@@ -181,18 +185,18 @@ further; the complete CLI coverage above is the prerequisite and is in place).
   Error scenarios whose stderr wording is engine-specific assert the stable
   `softschema <cmd>:` prefix and exit code, eliding the divergent tail; the divergent
   wording itself is the separate divergence-closing item below.
-- [ ] Edge-case fixtures that stress the corpus: non-ASCII values, empty and
+- [x] Edge-case fixtures that stress the corpus: non-ASCII values, empty and
   whitespace-only frontmatter, unterminated fences, nested validation errors, max-side
   keywords (`maxLength`, `maxItems`, `pattern`, `exclusiveMaximum`), a pure-yaml
   scenario, and at least one full (un-elided) `docs <topic>` content check.
-- [ ] Close the divergences the new fixtures expose: `pyRepr` number formatting
+- [x] Close the divergences the new fixtures expose: `pyRepr` number formatting
   (exponent padding, Python’s 1e16 exponential threshold, `inf`/`nan`), the
   empty-frontmatter `?? {}` coercion, the unterminated-fence error kind, `augmentSchema`
   merge-vs-replace, and the quoting/`got list` wording of out-of-corpus error messages.
   Document any remaining number-format limitation (the `2.0` family) in
   `tests/golden/README.md` with the full list of values the corpus must avoid.
   (ss-3iz5)
-- [ ] Per-language test gaps: TypeScript `generate.ts` error paths, pure-yaml parse
+- [x] Per-language test gaps: TypeScript `generate.ts` error paths, pure-yaml parse
   error, `skill --install`, and a TypeScript mirror drift test equivalent to
   `test_skill_mirror_drift.py`; include `test/` in the TypeScript typecheck.
   (ss-c71z)
@@ -214,7 +218,7 @@ break the data-sidecar use case the profile exists for.
 Verified end to end: pytest 122; bun test 140 + typecheck; golden py 34 / ts(Node) 32 /
 ts-bun 34; cross-impl diff byte-identical; lint clean.
 
-- [ ] **`status: enforced` teeth (decided).** Add `apply_enforced_extras` /
+- [x] **`status: enforced` teeth (decided).** Add `apply_enforced_extras` /
   `applyEnforcedExtras` to the canonicalize modules (recursive overlay: object schemas
   with `properties` and no explicit `additionalProperties` validate as closed; explicit
   values win; free-form mappings untouched; validation-time only).
@@ -224,20 +228,22 @@ ts-bun 34; cross-impl diff byte-identical; lint clean.
   Rewrite the spec’s Status Values section (drop “does not change validation behavior by
   itself”), the guide’s promotion playbooks, and the design docs’ status wording to
   match.
-- [ ] **Binding inference into the libraries.** Move contract/status/envelope resolution
-  (single-key inference, ambiguity rejection per the spec) from the CLIs into library
-  API in both packages; CLIs become thin callers; the document is read once.
+- [x] **Binding inference into the libraries.** (Single-read CLI plumbing deferred:
+  ss-hvqw.) Move contract/status/envelope resolution (single-key inference, ambiguity
+  rejection per the spec) from the CLIs into library API in both packages; CLIs become
+  thin callers; the document is read once.
   Library callers with no `envelope_key` get spec behavior (inference or rejection)
   instead of merged multi-key payloads.
-- [ ] **Pure-yaml profile alignment.** Honor the spec’s stated rule: recognize the
-  `softschema:` metadata block at the document root and apply the same envelope rules;
-  reject the block being validated as payload.
+- [x] **Pure-yaml profile alignment.** (Resolved by amending the spec; see the status
+  note above.) Honor the spec’s stated rule: recognize the `softschema:` metadata block
+  at the document root and apply the same envelope rules; reject the block being
+  validated as payload.
   (If implementation reveals this is the wrong call, amend the spec instead; see Open
   Questions.)
-- [ ] **Metadata rules enforced.** Reject unknown keys in the `softschema:` block in
+- [x] **Metadata rules enforced.** Reject unknown keys in the `softschema:` block in
   both implementations; define the contract-ID minimum in the spec (non-empty string,
   recommended form documented as advisory) and validate it.
-- [ ] **Metadata-only validate.** `softschema validate` without `--model`/`--schema`
+- [x] **Metadata-only validate.** `softschema validate` without `--model`/`--schema`
   checks the metadata block, contract ID shape, and envelope presence/uniqueness, so the
   CLI is useful from the `soft` stage onward.
 
@@ -257,27 +263,28 @@ The bundled-topic trim (dropping/sanitizing the maintainer-facing `agents` and
 surface and is better treated as a separate product decision; the drift guard is in
 place. Beads ss-hgsk, ss-pcqo, ss-jauz, ss-s0lt, ss-3m4s, ss-gyjs, ss-fuv1 closed.
 
-- [ ] Doc refresh for the TypeScript port: guide ("What Softschema Is", “Relationship To
+- [x] Doc refresh for the TypeScript port: guide ("What Softschema Is", “Relationship To
   The Python Package”, Further Reading, the CLI list), python-design (module table
   `stage` ghost, “future port” wording, Accepted/Deferred entries), mark the
   public-readiness plan superseded, rewrite publishing.md to present state, link
   publishing-npm.md, drop the duplicate AGENTS.md footer, update the development.md CI
   snippet pins.
-- [ ] README calibration: replace “unreasonably effective”, phrase the sidecar guarantee
-  as content-identical with equal `schema_sha256`, shorten the duplicated movie artifact
-  to a fragment plus link.
-- [ ] Spec polish: one-paragraph conformance-language note.
-- [ ] Skill hardening: format/version stamp on the DO NOT EDIT marker (wire the
-  currently dead `<version>` substitution or delete it and its vacuous test assertions),
-  `allowed-tools` in the skill frontmatter, git-root awareness for `skill --install`,
-  carry the `@latest` cool-off justification (or a pin) in the skill text.
-- [ ] Resource unification: one manifest consumed by the wheel force-include, the npm
-  copy-resources script, and `DOC_TOPICS`; drop or sanitize the `agents` and
-  `publishing` topics (strip the tbd integration block from bundled copies).
-- [ ] Library polish: cache the Ajv instance/compiled validators, decide the node-free
+- [x] README calibration: replaced “unreasonably effective” and phrased the sidecar
+  guarantee as content-identical with equal `schema_sha256`. (Shortening the duplicated
+  movie artifact deferred as a maintainer content decision: ss-lflv.)
+- [x] Spec polish: one-paragraph conformance-language note.
+- [x] Skill hardening: `format=f01` stamp on the DO NOT EDIT marker; the dead
+  `<version>` substitution and its vacuous test assertions deleted; `allowed-tools` in
+  the skill frontmatter; git-root awareness for `skill --install`; the `@latest`
+  cool-off justification carried in the skill text.
+- [x] Resource unification: a wheel force-include coverage test now guards `DOC_TOPICS`
+  against manifest drift.
+  (The single shared manifest and the `agents`/`publishing` topic trim are deferred as a
+  product decision: ss-8131.)
+- [x] Library polish: cache the Ajv instance/compiled validators, decide the node-free
   `"."` entry vs documented Node-only posture plus a `"./cli"` export, resolve the
   half-exported `readFrontmatter`.
-- [ ] Test polish: rename `coverage.test.ts` to reflect its content, capture rather than
+- [x] Test polish: rename `coverage.test.ts` to reflect its content, capture rather than
   discard stdout in the in-process CLI test, document the corpus update workflow in
   `tests/golden/README.md`.
 

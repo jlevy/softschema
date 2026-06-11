@@ -257,8 +257,8 @@ The emitted schema includes:
 - an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
   `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
   The block is deliberately language-neutral; it carries no `generated_from` provenance,
-  since a Pydantic/Zod import path would leak the implementation and prevent a
-  byte-identical sidecar across languages.
+  since a Pydantic/Zod import path would leak the implementation and break the
+  cross-language content identity and equal `schema_sha256`.
 
 Before hashing and serialization, the raw `model_json_schema()` output is run through
 `softschema.canonicalize.canonicalize_json_schema`, which applies a small set of
@@ -266,8 +266,9 @@ semantic transforms (drop auto-generated `title` keywords, strip the implicit
 `default: null` of optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`)
 and serializes with sorted keys.
 This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic model and
-one compiled from the equivalent Zod schema converge to byte-identical output with the
-same `schema_sha256`.
+one compiled from the equivalent Zod schema converge to the same canonical schema
+content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the
+YAML serialization bytes may differ).
 
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements

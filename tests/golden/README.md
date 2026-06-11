@@ -114,5 +114,5 @@ Otherwise no patterns are needed. Note in particular:
 | `scenarios-ts/validate-model.md` | ts, ts-bun | `validate --model` semantic-ok path (Zod `.mjs`) |
 | `scenarios-ts-bun/compile.md` | ts-bun | same compile output; source is a Zod module (needs a TS runtime) |
 
-Compile parity (byte-identical sidecar, equal digest) across languages is additionally
-asserted by the cross-implementation conformance test.
+Compile parity (content-identical sidecar, equal digest) across languages is
+additionally asserted by the cross-implementation conformance test.

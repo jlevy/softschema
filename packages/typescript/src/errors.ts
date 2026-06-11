@@ -53,7 +53,7 @@ function pyReprNumber(value: number): string {
       digits = expPart;
     }
     // Pad to at least 2 digits
-    if (digits.length < 2) digits = "0" + digits;
+    if (digits.length < 2) digits = `0${digits}`;
     return `${mantissa}e${sign}${digits}`;
   }
 

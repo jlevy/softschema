@@ -181,7 +181,7 @@ function errMessage(err: unknown): string {
 }
 
 function renderedSkill(): string {
-  return readResource("skills/softschema/SKILL.md").replaceAll("<version>", packageVersion());
+  return readResource("skills/softschema/SKILL.md");
 }
 
 function extractMarkedSection(text: string): string {

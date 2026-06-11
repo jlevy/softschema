@@ -2,9 +2,10 @@
 
 `model_json_schema()` (Pydantic) and `z.toJSONSchema()` (Zod) emit the same
 contract in incidentally different shapes. To make the compiled sidecar
-byte-identical across languages (so a Pydantic-compiled and a Zod-compiled
-sidecar share the same ``schema_sha256``), both compilers run their raw output
-through :func:`canonicalize_json_schema` before serialization.
+content-identical across languages (so a Pydantic-compiled and a Zod-compiled
+sidecar share the same ``schema_sha256`` over the canonical JSON), both
+compilers run their raw output through :func:`canonicalize_json_schema` before
+serialization.
 
 The transforms are intentionally minimal and semantic:
 

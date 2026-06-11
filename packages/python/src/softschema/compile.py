@@ -93,7 +93,7 @@ def _augment_schema(
         out.setdefault("$id", contract_id)
     # The root x-softschema block is language-neutral on purpose: no `generated_from`
     # provenance (a Pydantic/Zod-specific import path would leak the implementation and
-    # prevent a byte-identical sidecar across languages).
+    # break the cross-language content identity and equal schema_sha256).
     out.setdefault("x-softschema", {})
     out["x-softschema"].update(
         {

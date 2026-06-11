@@ -1,7 +1,7 @@
 /**
  * Canonical JSON Schema profile shared with the Python implementation. Both compilers
  * run their raw output through this so a Pydantic-compiled and a Zod-compiled sidecar
- * converge to byte-identical output with the same schema_sha256.
+ * converge to the same canonical schema content with an equal schema_sha256.
  *
  * Transforms (schema-aware): drop auto-generated `title` keywords (never property
  * names), strip implicit `default: null`, rewrite `oneOf` nullable unions to `anyOf`.

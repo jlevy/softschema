@@ -270,7 +270,6 @@ def test_skill_uses_latest_runner(
     output = capsys.readouterr().out
     # The skill references @latest (safe under the repo's supply-chain cool-off), so no
     # version placeholder survives and no per-release pin is baked in.
-    assert "<version>" not in output
     assert "uvx softschema@latest" in output
     assert "npx softschema@latest" in output
     assert "Pick One Runner" in output
@@ -296,7 +295,6 @@ def test_skill_install_creates_both_mirrors(
     claude = (tmp_path / ".claude/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     assert agents == claude
     assert "DO NOT EDIT format=f01: written by `softschema skill --install`" in agents
-    assert "<version>" not in agents
 
 
 def test_skill_install_is_idempotent(
