@@ -13,14 +13,12 @@ const OUT_ROOT = resolve(import.meta.dir, "../resources");
 
 const RESOURCES = [
   "README.md",
-  "AGENTS.md",
   "docs/softschema-guide.md",
   "docs/softschema-spec.md",
   "docs/softschema-python-design.md",
   "docs/softschema-typescript-design.md",
   "docs/development.md",
   "docs/installation.md",
-  "docs/publishing.md",
   "examples/movie_page/README.md",
   "examples/movie_page/spirited-away.md",
   "examples/movie_page/model.py",

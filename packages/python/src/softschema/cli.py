@@ -97,11 +97,6 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "docs/installation.md",
         "Installing softschema for Node or Python.",
     ),
-    "publishing": ResourceTopic(
-        "Publishing",
-        "docs/publishing.md",
-        "Release and PyPI workflow.",
-    ),
     "example": ResourceTopic(
         "Movie Page Example",
         "examples/movie_page/README.md",
@@ -127,12 +122,9 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "skills/softschema/SKILL.md",
         "Portable agent skill instructions.",
     ),
-    "agents": ResourceTopic(
-        "Agent Instructions",
-        "AGENTS.md",
-        "Repo-level agent instructions.",
-    ),
 }
+# `agents` (AGENTS.md) and `publishing` (release runbook) are intentionally not bundled
+# topics: both are repo/maintainer-internal and have no use inside an installed package.
 
 
 def _run_cmd(command_name: str, func: Any, args: argparse.Namespace) -> int:

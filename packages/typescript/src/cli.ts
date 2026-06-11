@@ -70,13 +70,9 @@ interface DocTopic {
 }
 
 // Sorted by name to match the Python CLI's `sorted(DOC_TOPICS)` output.
+// `agents` (AGENTS.md) and `publishing` (release runbook) are intentionally not bundled
+// topics: both are repo/maintainer-internal and have no use inside an installed package.
 const DOC_TOPICS: DocTopic[] = [
-  {
-    name: "agents",
-    title: "Agent Instructions",
-    path: "AGENTS.md",
-    summary: "Repo-level agent instructions.",
-  },
   {
     name: "development",
     title: "Development",
@@ -118,12 +114,6 @@ const DOC_TOPICS: DocTopic[] = [
     title: "Installation",
     path: "docs/installation.md",
     summary: "Installing softschema for Node or Python.",
-  },
-  {
-    name: "publishing",
-    title: "Publishing",
-    path: "docs/publishing.md",
-    summary: "Release and PyPI workflow.",
   },
   {
     name: "python-design",
