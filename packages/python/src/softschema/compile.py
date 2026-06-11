@@ -1,4 +1,4 @@
-"""Pydantic to JSON Schema YAML sidecar emitter."""
+"""Pydantic-to-JSON-Schema compiler (emits compiled schema YAML)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from strif import atomic_write_text
 
 from softschema.canonicalize import canonicalize_json_schema
 
-# Version of the `x-softschema` block format emitted into compiled sidecars,
+# Version of the `x-softschema` block format emitted into compiled schemas,
 # not the installed package version (use `importlib.metadata.version("softschema")`
 # for that). Bump this only when the shape of `x-softschema` itself changes.
 SOFTSCHEMA_FORMAT_VERSION = "0.1.0"
@@ -40,7 +40,7 @@ def compile_model(
     contract_id: str | None = None,
     check_only: bool = False,
 ) -> CompileResult:
-    """Compile ``model_cls`` to a JSON Schema YAML sidecar at ``out_path``."""
+    """Compile ``model_cls`` to a compiled JSON Schema YAML file at ``out_path``."""
     schema = canonicalize_json_schema(_augment_schema(model_cls.model_json_schema(), contract_id))
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
@@ -120,7 +120,7 @@ def _yaml_dump(schema: dict[str, Any]) -> str:
     # field (e.g. an empty `properties` or a `null` enum member).
     writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
     # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
-    # wrapped onto continuation lines; keeps the sidecar clean and the byte
+    # wrapped onto continuation lines; keeps the compiled schema clean and the byte
     # output reproducible across implementations.
     writer.width = 4096
     buffer = io.StringIO()

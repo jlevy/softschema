@@ -244,7 +244,7 @@ that field (and only that field) into YAML frontmatter under an envelope key.
 Add `softschema.contract` and `status: soft`. The rest of the document stays prose.
 
 **Step 4: schema validation at boundaries.** When the consumer has been burned by a
-missing or malformed value, add a Pydantic model (or JSON Schema sidecar), set
+missing or malformed value, add a Pydantic model (or compiled schema), set
 `status: permissive`, and validate at file boundaries.
 Bugs that used to silently break the consumer now fail loudly.
 
@@ -253,7 +253,7 @@ real authoring bugs, flip `status: enforced`: the validator then rejects undecla
 fields at the structural boundary (object schemas that are silent about
 `additionalProperties` are treated as closed; an explicit `additionalProperties` in the
 schema still wins). Setting the source model to `extra="forbid"` additionally compiles
-that strictness into the sidecar itself and enforces it at the semantic layer.
+that strictness into the compiled schema itself and enforces it at the semantic layer.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -262,15 +262,15 @@ file. The contract ID stays; only the shell changes.
 A field is ready to promote when: a consumer extracts it, the value type is stable, and
 emitting it consistently is easier than parsing it from prose.
 
-## Playbook: Inline Frontmatter Vs Data Sidecar
+## Playbook: Inline Frontmatter Vs Companion Data
 
-The rule of thumb is **inline-small, sidecar-large**:
+The rule of thumb is **inline-small, companion-large**:
 
 - **Inline (frontmatter)** when the structured payload is a few dozen fields or a
   handful of small nested objects.
   Authors can see everything in one file; review comments land on the right line;
   readers don’t context-switch.
-- **Data sidecar** when the payload is large, machine-generated, or distracting to a
+- **Companion data** when the payload is large, machine-generated, or distracting to a
   human reader. A reader who opens the Markdown file expects to read prose, not 200 lines
   of YAML.
 
@@ -284,7 +284,8 @@ incident:
   duration_minutes: 38
 ```
 
-A sidecar is right for a large machine-generated payload, such as a backtest result:
+A companion data file is right for a large machine-generated payload, such as a backtest
+result:
 
 ```yaml
 softschema:
@@ -298,13 +299,13 @@ backtest:
 ```
 
 The Markdown file keeps the routing fields (`softschema.contract`, an id, a short
-summary). The full payload lives in the sidecar.
+summary). The full payload lives in the companion data file.
 
-The first Python release supports schema sidecars (the generated JSON Schema YAML files)
-but does not implement a generic data-sidecar loader.
-A host project can define its own data-sidecar convention and resolve the sidecar path
-before calling `validate_values()`. Don’t invent a generic sidecar DSL until two
-artifacts need it.
+The first Python release supports compiled schemas (the generated JSON Schema YAML
+files) but does not implement a generic companion-data loader.
+A host project can define its own companion-data convention and resolve the companion
+data path before calling `validate_values()`. Don’t invent a generic companion-data DSL
+until two artifacts need it.
 
 ## Playbook: Add Python Validation
 
@@ -324,7 +325,7 @@ Wire a Pydantic model to a contract and validate at file boundaries:
        duration_minutes: int = Field(ge=0)
    ```
 
-2. **Compile a JSON Schema sidecar** so non-Python consumers can validate too:
+2. **Compile a JSON Schema** so non-Python consumers can validate too:
 
    ```bash
    uv run softschema compile mycorp.docs.incident:IncidentReview \
@@ -373,14 +374,14 @@ failed” without parsing error strings.
 
 `SoftField` is an optional wrapper over Pydantic’s `Field` that records per-field
 authoring metadata (`group`, `owner`, `tier`, `instruction`, `examples`, `aliases`,
-`repair`). The compiler propagates the metadata verbatim into the JSON Schema sidecar as
-a per-property `x-softschema:` block.
+`repair`). The compiler propagates the metadata verbatim into the compiled schema as a
+per-property `x-softschema:` block.
 The runtime never reads it for validation.
 
 `SoftField` follows the same gradual-adoption rule as the rest of softschema: opt in per
 field, only when a specific downstream consumer reads a specific metadata key.
 The default is plain `Field`. A model whose only consumer is `validate_artifact()` does
-not earn `SoftField`; the metadata would land in the sidecar with no reader.
+not earn `SoftField`; the metadata would land in the compiled schema with no reader.
 
 Consumers that earn an `SoftField` annotation:
 
@@ -454,8 +455,8 @@ section is regenerated from the movie schema.
 
 Two checks belong in CI:
 
-- **Sidecar drift check.** Fail the build when a committed schema sidecar is out of sync
-  with the source model.
+- **Compiled schema drift check.** Fail the build when a committed compiled schema is
+  out of sync with the source model.
 
   ```bash
   uv run softschema compile mycorp.docs.incident:IncidentReview \
@@ -630,8 +631,8 @@ A few patterns help agents do the right thing:
   caller to disambiguate.
   (Unrelated top-level keys like `title:` or `tags:` are fine; the anti-pattern is
   multiple keys that all carry payload values softschema is supposed to validate.)
-- **Putting implementation details in the artifact.** Resolver settings, sidecar paths,
-  language identifiers, and migration state belong in host configuration, not in
+- **Putting implementation details in the artifact.** Resolver settings, compiled-schema
+  paths, language identifiers, and migration state belong in host configuration, not in
   authored documents.
 - **Adding a `softschema:` block to artifacts no one validates.** A contract ID without
   a consumer is decoration.
@@ -645,7 +646,7 @@ Two interchangeable packages implement the language-neutral pattern at exact beh
 parity, Python/Pydantic and TypeScript/Zod.
 The Python public surface:
 
-- `Contract`: maps a contract ID to a Pydantic model and optional JSON Schema sidecar.
+- `Contract`: maps a contract ID to a Pydantic model and optional compiled JSON Schema.
 - `Contracts`: host-owned mapping from contract IDs to contracts.
 - `validate_artifact(path, contract_id=..., registry=...)`: validates a file at a
   boundary; returns a structured `ArtifactValidationResult` with separate `structural`
@@ -653,8 +654,8 @@ The Python public surface:
 - `validate_values(values, model=..., schema=...)`: validates a values dict produced by
   any consumer (frontmatter, body-form runtime, structured-output adapter, hand-written
   fixture).
-- `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML sidecar
-  with canonical-JSON hashing for drift checks.
+- `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML file with
+  canonical-JSON hashing for drift checks.
 
 The TypeScript package mirrors this surface (`validateArtifact`, `validateValues`,
 `compileSchema`) with Zod models; both CLIs expose the same commands.
@@ -681,7 +682,7 @@ assert result.ok
 ```
 
 The same contract ID could be validated by a Zod schema in TypeScript, a JSON Schema
-sidecar in any language, a database record, or a hand-written validator.
+compiled schema in any language, a database record, or a hand-written validator.
 For Python-specific module layout, public API decisions, and dependency boundary, see
 [Python Package Design](softschema-python-design.md).
 

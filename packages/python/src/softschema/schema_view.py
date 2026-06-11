@@ -1,4 +1,4 @@
-"""Read-only view over a compiled JSON Schema sidecar.
+"""Read-only view over a compiled JSON Schema.
 
 `SchemaView` is the single navigation API for downstream consumers (QA rules,
 agent prompts, comparison logic, generated sections). Having one reader prevents
@@ -39,14 +39,14 @@ class FieldInfo:
 
 
 class SchemaView:
-    """Stable navigation API over a JSON Schema 2020-12 sidecar with x-softschema."""
+    """Stable navigation API over a compiled JSON Schema 2020-12 file with x-softschema."""
 
     def __init__(self, schema: dict[str, Any]) -> None:
         self._schema = schema
 
     @classmethod
     def load(cls, schema_path: Path) -> SchemaView:
-        """Load a YAML or JSON schema sidecar from disk."""
+        """Load a compiled YAML or JSON schema from disk."""
         data = read_yaml_file(schema_path)
         if not isinstance(data, dict):
             msg = f"schema at {schema_path} is not a mapping at the root"
@@ -75,7 +75,7 @@ class SchemaView:
 
     @property
     def schema_sha256(self) -> str | None:
-        """The `x-softschema.schema_sha256` hash (None if the sidecar has none)."""
+        """The `x-softschema.schema_sha256` hash (None if the compiled schema has none)."""
         value = self.root_softmeta.get("schema_sha256")
         return value if isinstance(value, str) else None
 

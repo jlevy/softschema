@@ -3,7 +3,7 @@
 `SoftField` is a thin wrapper around Pydantic's ``Field`` that records authoring
 metadata (group, tier, owner, instruction, examples, aliases, repair) under the
 field's ``json_schema_extra``. The compiler propagates it verbatim into the
-generated JSON Schema sidecar as a per-property ``x-softschema:`` block; the
+compiled JSON Schema as a per-property ``x-softschema:`` block; the
 runtime never uses it for validation.
 
 `SoftField` is optional. Reach for it per field, only when a specific downstream
@@ -78,10 +78,10 @@ def SoftField(
     ``ge``, ``min_length``) via ``**field_kwargs``. The annotation lands under
     ``json_schema_extra`` so the standard ``model_json_schema()`` flow (and the
     softschema compiler that wraps it) emits it as a per-property
-    ``x-softschema`` block in the JSON Schema sidecar.
+    ``x-softschema`` block in the compiled JSON Schema.
 
-    Empty optional values are omitted from the emitted metadata so the sidecar
-    stays minimal.
+    Empty optional values are omitted from the emitted metadata so the compiled
+    schema stays minimal.
     """
     meta = SoftFieldMeta(
         group=group,

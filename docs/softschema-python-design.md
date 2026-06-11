@@ -25,7 +25,7 @@ core package.
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
-| `softschema.compile` | Pydantic-to-JSON-Schema sidecar compilation |
+| `softschema.compile` | Pydantic-to-JSON-Schema compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
 
 The package root re-exports the common API:
@@ -84,7 +84,7 @@ A `Contract` carries everything the validator needs to handle one artifact contr
 - `envelope_key`: expected top-level payload key for normal artifacts
 - `status`: `soft`, `permissive`, or `enforced`
 - `profile`: storage profile such as `frontmatter-md` or `pure-yaml`
-- `schema_path`: optional generated JSON Schema sidecar
+- `schema_path`: optional compiled JSON Schema
 
 `Contracts` holds a collection of registered contracts, keyed by `id`. It does not
 expose aliases, compatibility maps, or incremental registration helpers.
@@ -113,7 +113,7 @@ structured data for automation.
 The artifact format is language neutral.
 The Python package validates at two layers:
 
-- Structural validation with a JSON Schema YAML sidecar
+- Structural validation with a compiled JSON Schema YAML file
 - Semantic validation with a Pydantic model
 
 Pydantic can express Python-only invariants.
@@ -134,14 +134,14 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 ```
 
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
-envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
+envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
 When the contract’s status is `enforced`, structural validation applies the
 strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
 schemas that declare `properties` but omit `additionalProperties` are validated as
 `additionalProperties: false`, an explicit `additionalProperties` always wins, and
 free-form mappings are unaffected.
-The overlay is validation-time only; compiled sidecars never change.
+The overlay is validation-time only; compiled schemas never change.
 `validate_structural` exposes the same behavior via its `strict_extras` keyword.
 
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
@@ -154,8 +154,8 @@ rejected as `envelope_missing` / `envelope_ambiguous`, per the spec).
 and the CLI’s `--envelope` handling delegates to them.
 There is no separate value-path resolver.
 A relative `schema_path` is resolved against only the document directory and the current
-working directory, so resolution is predictable and never binds to an unrelated sidecar
-in a parent directory.
+working directory, so resolution is predictable and never binds to an unrelated compiled
+schema in a parent directory.
 
 ### Engine-neutral structural errors
 
@@ -165,9 +165,9 @@ Each violation becomes
 `{kind: "schema_violation", path, validator, validator_value, value, message}` where
 `message` comes from a shared template keyed on the JSON Schema keyword
 (`softschema.errors`). Records are sorted by `(path, validator)`. This keeps structural
-errors byte-identical to the TypeScript port (which validates the same canonical sidecar
-through `ajv`). Semantic errors stay implementation-specific (raw Pydantic errors) and
-are not part of the cross-language contract.
+errors byte-identical to the TypeScript port (which validates the same canonical
+compiled schema through `ajv`). Semantic errors stay implementation-specific (raw
+Pydantic errors) and are not part of the cross-language contract.
 
 ### Alignment with `python-cli-patterns`
 
@@ -266,7 +266,7 @@ Before hashing and serialization, the raw `model_json_schema()` output is run th
 semantic transforms (drop auto-generated `title` keywords, strip the implicit
 `default: null` of optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`)
 and serializes with sorted keys.
-This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic model and
+This is the canonical JSON Schema profile: a schema compiled from a Pydantic model and
 one compiled from the equivalent Zod schema converge to the same canonical schema
 content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the
 YAML serialization bytes may differ).
@@ -279,13 +279,13 @@ for the TypeScript package.
 
 `SoftField` is a thin wrapper over Pydantic’s `Field` that records per-field authoring
 metadata under `json_schema_extra`. The compiler propagates that block verbatim into the
-JSON Schema sidecar as a per-property `x-softschema:` block; the runtime never reads it
+compiled JSON Schema as a per-property `x-softschema:` block; the runtime never reads it
 for validation.
 
 `SoftField` is optional.
 Reach for it per field, only when a specific downstream consumer reads a specific
 metadata key. A model whose only consumer is `validate_artifact()` should stay on plain
-`Field`; the metadata would land in the sidecar with no reader.
+`Field`; the metadata would land in the compiled schema with no reader.
 Blanket-annotating every field with `SoftField` ahead of any consumer is per-field
 clutter that never pays back.
 The movie example annotates only `genres` (one field of ten) for that reason.
@@ -312,7 +312,7 @@ Recognized keys:
 | `tier` | `hard_fact` / `constrained` / `narrative` | How rigorously reviewers and QA should treat the field. |
 | `owner` | `agent` / `postprocess` / `system` / `human` | Who or what produces the value at runtime. Default `agent`. |
 | `instruction` | `str` | Short directive aimed at the agent that fills the field. |
-| `examples` | `list[Any]` | Example values for prompts and documentation. Omitted from the sidecar when empty. |
+| `examples` | `list[Any]` | Example values for prompts and documentation. Omitted from the compiled schema when empty. |
 | `aliases` | `dict[str, list[str]]` | Controlled-vocabulary repair table. Omitted when empty. |
 | `repair` | `none` / `safe_coerce` / `suggest_alias` | How a future repair pass may handle near-miss values. Default `none`. |
 
@@ -342,7 +342,7 @@ Add `SoftField` annotations field by field as the consumer that reads them lands
 
 ### Schema View
 
-`SchemaView` is the single read-only navigator over a compiled JSON Schema sidecar.
+`SchemaView` is the single read-only navigator over a compiled JSON Schema.
 Every downstream consumer (QA rules, agent prompts, comparison logic, generated
 sections) goes through this one API instead of re-parsing the schema in each module.
 That keeps drift out of the readers.
@@ -376,17 +376,17 @@ The first release ships the navigator.
 `view(name)` (named query presets) and `load_urn` (repo-level URN resolution) are
 deferred until a concrete consumer earns them.
 
-Schema sidecars are validation artifacts.
-They are distinct from data sidecars, which store artifact payload values outside the
+Compiled schemas are validation artifacts.
+They are distinct from companion data, which stores artifact payload values outside the
 Markdown frontmatter.
-The first Python release does not implement generic data-sidecar loading; callers should
-keep consumed values in frontmatter unless a host project owns a clearer sidecar
-convention.
+The first Python release does not implement generic companion-data loading; callers
+should keep consumed values in frontmatter unless a host project owns a clearer
+companion-data convention.
 
 The package depends on `frontmatter-format` for Markdown frontmatter and YAML reading.
 That dependency owns frontmatter mechanics; softschema owns the contract, envelope,
 contract, and validation semantics.
-Do not treat `frontmatter-format` as a generic softschema data-sidecar runtime.
+Do not treat `frontmatter-format` as a generic softschema companion-data runtime.
 
 ## Dependency Boundary
 
@@ -416,7 +416,7 @@ boundaries.
 
 ## Deferred
 
-- Sidecar data loading beyond simple JSON Schema sidecars.
+- Companion-data loading beyond compiled JSON Schemas.
 - Agent tool APIs beyond the CLI docs and skill instructions.
 - `softschema init-example` or other artifact scaffolding commands.
 - Generic process graph or structure-report generation.

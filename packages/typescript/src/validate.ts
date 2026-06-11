@@ -1,6 +1,6 @@
 /**
  * Artifact validation: read Markdown frontmatter (or pure YAML), resolve the envelope,
- * and run structural validation against the JSON Schema sidecar via ajv. The result
+ * and run structural validation against the compiled JSON Schema via ajv. The result
  * object serializes (via stableStringify) byte-identically to the Python CLI output.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -473,7 +473,7 @@ export function validateArtifact(
     // (and checked), never validated as payload data. The envelope differs by
     // design: an explicit envelopeKey nests the payload; otherwise the
     // remaining root IS the payload (a pure-yaml file is "the whole document
-    // is the structured payload", e.g. a data sidecar).
+    // is the structured payload", e.g. a companion data file).
     const checked = checkMetadata(docPath, raw, contract, warnings, metadataMode);
     if ("failed" in checked) return checked.failed;
     let values: unknown;

@@ -135,11 +135,12 @@ library surface:
 
 The TypeScript package is a **synchronized port** of the Python one, held to **exact
 behavioral parity**: equivalent CLI inputs, outputs, and flags; equivalent library APIs;
-the same canonical JSON Schema sidecar (content-identical, with an equal `schema_sha256`
-fingerprint over its canonical JSON); and the same engine-neutral validation results.
-Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
-Authoring or validating an artifact is identical regardless of which you run, so a team
-can adopt either runtime, or both, without divergence.
+the same canonical compiled JSON Schema (content-identical, with an equal
+`schema_sha256` fingerprint over its canonical JSON); and the same engine-neutral
+validation results. Only idiomatic surface details differ (snake_case ↔ camelCase,
+Pydantic ↔ Zod).
+Authoring or validating an artifact is identical regardless of which you
+run, so a team can adopt either runtime, or both, without divergence.
 
 The two are **maintained in lockstep**: every behavior change lands in a shared
 golden-test corpus first, then in both packages, and CI fails if their outputs or
@@ -283,7 +284,7 @@ uv run softschema skill --brief
 The examples are plain files under `examples/`. The CLI can print them so an agent or
 human can copy from them, but it does not scaffold or mutate another project.
 
-Compile the example schema sidecar:
+Compile the example schema:
 
 ```bash
 uv run softschema compile examples.movie_page.model:MoviePage \
@@ -294,7 +295,7 @@ uv run softschema compile examples.movie_page.model:MoviePage \
 ## Try the TypeScript Package
 
 The TypeScript CLI takes the same arguments and emits byte-identical output.
-Validate the same artifact against the same language-neutral schema sidecar with a
+Validate the same artifact against the same language-neutral compiled schema with a
 pinned zero-install runner:
 
 ```bash
@@ -312,7 +313,7 @@ npx softschema@latest skill --brief
 ```
 
 Semantic models are written in Zod instead of Pydantic; everything else (flags, result
-JSON, error records, and the compiled sidecar, down to its `schema_sha256`) matches the
+JSON, error records, and the compiled schema, down to its `schema_sha256`) matches the
 Python package exactly.
 See the [TypeScript Design](docs/softschema-typescript-design.md) doc for the Zod model
 shape and the full Python ↔ TypeScript API table.

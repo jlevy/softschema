@@ -1,7 +1,7 @@
 /**
  * Per-field `x-softschema` annotations for Zod source schemas: the idiomatic mirror of
  * Python's `SoftField`. Wraps a Zod type with `.meta()` carrying `description` and an
- * `x-softschema` block; the compiler propagates it verbatim into the JSON Schema sidecar
+ * `x-softschema` block; the compiler propagates it verbatim into the compiled JSON Schema
  * as a per-property `x-softschema:` block. The emitted block and omit-empty rules match
  * the Python implementation exactly.
  */

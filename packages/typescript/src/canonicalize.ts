@@ -1,6 +1,6 @@
 /**
  * Canonical JSON Schema profile shared with the Python implementation. Both compilers
- * run their raw output through this so a Pydantic-compiled and a Zod-compiled sidecar
+ * run their raw output through this so a Pydantic-compiled and a Zod-compiled schema
  * converge to the same canonical schema content with an equal schema_sha256.
  *
  * Transforms (schema-aware): drop auto-generated `title` keywords (never property
@@ -103,7 +103,7 @@ function isNullableUnion(union: Json[]): boolean {
  * schema that declares `properties` but is silent about `additionalProperties` is
  * validated as `additionalProperties: false`. An explicit `additionalProperties` always
  * wins, and object schemas without `properties` (free-form mappings) are unaffected.
- * Validation-time only; never changes compiled sidecars. Mirrors the Python
+ * Validation-time only; never changes compiled schemas. Mirrors the Python
  * `apply_enforced_extras` exactly.
  */
 export function applyEnforcedExtras(schema: Record<string, Json>): Record<string, Json> {

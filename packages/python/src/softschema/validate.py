@@ -6,7 +6,7 @@ Two public entry points:
   :class:`~softschema.models.Contract` (reads ``softschema:`` metadata, resolves
   the envelope, runs structural and semantic validation).
 - :func:`validate_values` validates an already-extracted values mapping against
-  a model, a JSON Schema sidecar, or both.
+  a model, a compiled JSON Schema, or both.
 
 Lower-level helpers (:func:`validate_structural`, :func:`validate_semantic`) are
 public for callers that need a single layer.
@@ -92,7 +92,7 @@ def validate_structural(
     *,
     strict_extras: bool = False,
 ) -> StructuralResult:
-    """Validate values against a JSON Schema YAML or JSON sidecar.
+    """Validate values against a compiled JSON Schema (YAML or JSON).
 
     With ``strict_extras=True`` (the ``status: enforced`` overlay), object
     schemas that declare ``properties`` but omit ``additionalProperties`` are
@@ -323,7 +323,7 @@ def _validate_pure_yaml_artifact(
     The envelope differs by design: with an explicit ``envelope_key`` the named
     key nests the payload; otherwise the remaining root (minus the metadata
     block) IS the payload, because a pure-yaml file is "the whole document is
-    the structured payload" (e.g. a data sidecar), so single-key inference and
+    the structured payload" (e.g. a companion data file), so single-key inference and
     ambiguity rejection do not apply.
     """
     try:
@@ -488,7 +488,7 @@ def _validate_extracted_values(
 
 
 def _resolve_schema_path(path: Path | None, doc_path: Path) -> Path | None:
-    """Resolve a sidecar path, searching only the document directory and cwd.
+    """Resolve a compiled schema path, searching only the document directory and cwd.
 
     The search is intentionally bounded to two locations so resolution is
     predictable and cannot silently bind to an unrelated ``*.schema.yaml`` in a

@@ -78,11 +78,11 @@ exact format rules in `docs/softschema-spec.md`.
 
 Two softschema checks belong in CI for any project that depends on the package.
 
-### Schema sidecar drift
+### Compiled schema drift
 
 A committed `.schema.yaml` file is *generated, but committed*. Run
-`softschema compile ... --check` to fail the build when the committed sidecar drifts
-from the source model:
+`softschema compile ... --check` to fail the build when the committed compiled schema
+drifts from the source model:
 
 ```bash
 uv run softschema compile examples.movie_page.model:MoviePage \
@@ -91,7 +91,7 @@ uv run softschema compile examples.movie_page.model:MoviePage \
 ```
 
 Fix on drift: re-run the same command without `--check` and commit the regenerated
-sidecar.
+compiled schema.
 
 ### Generated-section drift
 
@@ -139,7 +139,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v8
       - run: uv sync --all-extras
-      - name: Sidecar drift check
+      - name: Compiled schema drift check
         run: |
           uv run softschema compile examples.movie_page.model:MoviePage \
             --contract example.movies:MoviePage/v1 \
@@ -159,8 +159,8 @@ For local runs before push, a `pre-commit` config that calls the same drift chec
 repos:
   - repo: local
     hooks:
-      - id: softschema-sidecar-drift
-        name: softschema sidecar drift
+      - id: softschema-compiled-schema-drift
+        name: softschema compiled schema drift
         language: system
         entry: uv run softschema compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check
         pass_filenames: false
@@ -174,7 +174,7 @@ your repository.
 
 softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
 (`softschema`, `softschema-ts`), held to **exact behavioral parity**: equivalent CLI
-inputs/outputs/flags and library APIs, the same canonical JSON Schema sidecar
+inputs/outputs/flags and library APIs, the same canonical compiled JSON Schema
 (content-identical, equal `schema_sha256`), and the same engine-neutral validation
 results. Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
 
@@ -189,7 +189,7 @@ When you change any behavior, follow this loop so the two never drift:
    `SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh`.
 4. **Both green and conformance.** Both golden runs and the cross-implementation
    conformance test (the Zod and Pydantic compilers produce an identical canonical
-   sidecar) pass in CI.
+   compiled schema) pass in CI.
 
 The parity invariants, and where each is enforced:
 

@@ -68,7 +68,7 @@ consume some values reliably.
 - Inspect `$SS docs example` and `$SS docs example-artifact` for the copyable movie
   example.
 - Validate at the boundary with `$SS validate`: `--model` for a Pydantic/Zod model,
-  `--schema` for a sidecar.
+  `--schema` for a compiled schema.
   Run `$SS validate --help` for exact syntax.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.

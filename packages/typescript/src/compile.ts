@@ -1,9 +1,9 @@
 /**
- * Compile a Zod schema to a canonical JSON Schema YAML sidecar, mirroring the Python
+ * Compile a Zod schema to a canonical JSON Schema YAML file, mirroring the Python
  * `compile_model`. The schema_sha256 is computed over the canonical JSON (not the YAML
  * text), so it is the language-neutral fingerprint used for cross-implementation parity.
  *
- * Sidecar *files* are content-identical across languages, not byte-identical: the YAML
+ * Compiled schema *files* are content-identical across languages, not byte-identical: the YAML
  * writers differ in serialization style (indentation, quoting), so `--check` drift
  * compares parsed canonical content, and the schema_sha256 over the canonical JSON is
  * the cross-language fingerprint, independent of YAML formatting.

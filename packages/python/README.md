@@ -6,7 +6,7 @@ The Python package provides:
 - `validate_artifact` for Markdown/YAML artifact validation
 - `validate_structural` for JSON Schema validation
 - `validate_semantic` for Pydantic validation
-- `compile_model` for Pydantic-to-JSON-Schema sidecars
+- `compile_model` for Pydantic-to-JSON-Schema compilation
 - the `softschema` CLI, including bundled docs through `softschema docs` and
   `softschema skill`
 
