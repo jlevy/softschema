@@ -1,5 +1,16 @@
 # softschema
 
+## Quick Start
+
+To set up softschema in a repository with an agent, tell the agent:
+
+> Run `uvx softschema@latest --help` (for the Python implementation) or
+> `npx softschema@latest --help` (for the Node implementation) and follow the
+> instructions to set up softschema for this repo as a skill.
+
+The help output points the agent to `skill --install`, which writes discoverable
+`SKILL.md` mirrors for Codex, Claude Code, Gemini CLI, and other coding agents.
+
 ## What Are Soft Schemas?
 
 Soft schemas are a practice for adding structure gradually to artifacts that mix
@@ -336,15 +347,19 @@ Both packages ship the same [`SKILL.md`](https://agentskills.io) following the o
 Agent Skills standard discovered by Claude Code, Codex, Gemini CLI, Cursor, Copilot, and
 ~20 other coding agents.
 Pointing an agent at the CLI is enough to bootstrap its understanding of the soft-schema
-approach: the `--help` epilog routes it to a brief and the bundled docs.
+approach: the `--help` epilog routes it to `skill --install`, a brief, and the bundled
+docs.
 
 ```bash
 # Python:
-uvx softschema@latest --help            # entry point with bootstrap pointers
+uvx softschema@latest --help            # entry point with skill setup pointers
+uvx softschema@latest skill --install   # install repo-local skill mirrors
 uvx softschema@latest skill --brief     # compact operating brief
 uvx softschema@latest docs guide        # full mental model and adoption path
 
 # TypeScript (same commands, same bundled docs/skill):
+npx softschema@latest --help
+npx softschema@latest skill --install
 npx softschema@latest skill --brief
 npx softschema@latest docs guide
 ```

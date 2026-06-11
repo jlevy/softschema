@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import shutil
 import sys
-import textwrap
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from importlib import resources
@@ -24,6 +24,23 @@ from softschema.compile import compile_model
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
 from softschema.validate import validate_artifact
+
+BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
+BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
+RUNNER_COMMANDS: tuple[str, ...] = ("softschema", "uvx", "npx")
+RUNNER_INVOCATIONS: dict[str, str] = {
+    "softschema": "softschema",
+    "uvx": "uvx softschema@latest",
+    "npx": "npx softschema@latest",
+}
+
+AGENT_HELP_EPILOG = """IMPORTANT for agents:
+  To set up softschema for this repo as a skill, run one command from the repo root:
+    uvx softschema@latest skill --install
+    # or
+    npx softschema@latest skill --install
+  Then read `softschema skill --brief` and `softschema docs --list` for operating rules
+  and bundled docs."""
 
 # Exception families that represent user mistakes (bad files, bad input, bad
 # config) rather than internal bugs.  Caught by the per-subcommand error
@@ -136,11 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="softschema",
         description="Validate and explain soft schema Markdown/YAML artifacts.",
-        epilog=(
-            "IMPORTANT for agents: run `softschema skill --brief` for operating "
-            "rules, then `softschema docs --list` to discover bundled docs "
-            "(`guide`, `spec`, and `example-artifact` are the key ones)."
-        ),
+        epilog=AGENT_HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version",
@@ -211,6 +225,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Do not write; exit 1 if any section is stale.",
     )
     generate_parser.set_defaults(func=_generate_cmd)
+
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Report softschema version and runner availability.",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the environment report as JSON.",
+    )
+    doctor_parser.set_defaults(func=_doctor_cmd)
 
     skill_parser = subparsers.add_parser("skill", help="Print agent-facing guidance.")
     skill_parser.add_argument(
@@ -370,6 +395,51 @@ def _generate_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def _doctor_cmd(args: argparse.Namespace) -> int:
+    report = _doctor_report()
+    if args.json:
+        _write_text(_json(report))
+    else:
+        _write_text(_doctor_text(report))
+    return 0
+
+
+def _doctor_report() -> dict[str, Any]:
+    runners = []
+    for name in RUNNER_COMMANDS:
+        path = _find_runner(name)
+        runners.append({"name": name, "available": path is not None, "path": path})
+    recommended = next(
+        (RUNNER_INVOCATIONS[runner["name"]] for runner in runners if runner["available"]),
+        None,
+    )
+    return {
+        "version": _installed_version(),
+        "runners": runners,
+        "recommended_invocation": recommended,
+    }
+
+
+def _doctor_text(report: dict[str, Any]) -> str:
+    lines = [
+        f"softschema version: {report['version']}",
+        "available runners:",
+    ]
+    for runner in report["runners"]:
+        status = "yes" if runner["available"] else "no"
+        path = f" ({runner['path']})" if runner["path"] else ""
+        lines.append(f"  {runner['name']}: {status}{path}")
+    recommended = report["recommended_invocation"] or "unavailable"
+    lines.append(f"recommended invocation: {recommended}")
+    if report["recommended_invocation"] is None:
+        lines.append("Install uv or Node, then retry.")
+    return "\n".join(lines)
+
+
+def _find_runner(name: str) -> str | None:
+    return shutil.which(name)
+
+
 SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
     Path(".agents/skills/softschema/SKILL.md"),
     Path(".claude/skills/softschema/SKILL.md"),
@@ -491,51 +561,37 @@ def _docs_listing_payload() -> dict[str, Any]:
 
 
 def _brief_skill_text() -> str:
-    return textwrap.dedent("""\
-        # Softschema Skill Brief
+    return (
+        f"# Softschema Skill Brief\n\n{_extract_marked_section(_rendered_skill_text()).strip()}\n"
+    )
 
-        Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
-        consume some values reliably.
 
-        - Read `softschema docs guide` for the mental model.
-        - Read `softschema docs spec` for the exact artifact format.
-        - Inspect `softschema docs example` and `softschema docs example-artifact` for the
-          copyable movie example.
-        - Treat YAML/frontmatter as authoritative.
-        - Do not parse Markdown body prose or tables for consumed values.
-        - Use `softschema.contract` to name the payload contract.
-        - Keep examples copyable; do not scaffold or mutate a target project unless the user
-          explicitly asks for that workflow.
-        """)
+def _extract_marked_section(text: str) -> str:
+    start = text.find(BRIEF_MARKER_START)
+    end = text.find(BRIEF_MARKER_END)
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("skills/softschema/SKILL.md is missing the brief marker block")
+    return text[start + len(BRIEF_MARKER_START) : end]
 
 
 def _read_resource(relative_path: str) -> str:
+    dev_path = _dev_resource_path(relative_path)
+    if dev_path is not None:
+        return dev_path.read_text(encoding="utf-8")
+
     resource_path = resources.files("softschema").joinpath("resources", *Path(relative_path).parts)
     try:
         return resource_path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        pass
-
-    try:
-        dev_root = _dev_repo_root()
-    except FileNotFoundError:
         raise FileNotFoundError(f"bundled softschema resource not found: {relative_path}") from None
 
-    dev_path = dev_root / relative_path
-    if dev_path.is_file():
-        return dev_path.read_text(encoding="utf-8")
 
-    raise FileNotFoundError(f"bundled softschema resource not found: {relative_path}")
-
-
-def _dev_repo_root() -> Path:
+def _dev_resource_path(relative_path: str) -> Path | None:
     for parent in Path(__file__).resolve().parents:
         if (parent / "pyproject.toml").is_file() and (parent / "docs").is_dir():
-            return parent
-    raise FileNotFoundError(
-        "softschema development repo root not found: no ancestor of "
-        f"{Path(__file__).resolve()} contains both pyproject.toml and docs/"
-    )
+            candidate = parent / relative_path
+            return candidate if candidate.is_file() else None
+    return None
 
 
 def _write_text(text: str) -> None:

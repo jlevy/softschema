@@ -5,7 +5,7 @@
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
 import { z } from "zod";
@@ -19,22 +19,39 @@ import { readFrontmatter, validateArtifact, YamlParseError } from "./validate.js
 // package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+const BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->";
+const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
+const RUNNER_COMMANDS = ["softschema", "uvx", "npx"] as const;
+const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
+  softschema: "softschema",
+  uvx: "uvx softschema@latest",
+  npx: "npx softschema@latest",
+};
+
+const AGENT_HELP_EPILOG = `IMPORTANT for agents:
+  To set up softschema for this repo as a skill, run one command from the repo root:
+    uvx softschema@latest skill --install
+    # or
+    npx softschema@latest skill --install
+  Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
+  and bundled docs.`;
+
 /**
- * Read a bundled doc/skill resource by its repo-relative path. Resolves from the package's
- * bundled `resources/` first (so it never depends on the working directory), with a
- * walk-up repo fallback for local development before the resources are built.
+ * Read a doc/skill resource by its repo-relative path. Local checkout runs prefer the
+ * source file so tests catch source drift; installed packages fall back to bundled
+ * `resources/`, so they never depend on the working directory.
  */
 const MAX_RESOURCE_WALK_DEPTH = 6;
 
 function readResource(relPath: string): string {
-  const bundled = join(PACKAGE_ROOT, "resources", relPath);
-  if (existsSync(bundled)) return readFileSync(bundled, "utf8");
   let dir = PACKAGE_ROOT;
   for (let i = 0; i < MAX_RESOURCE_WALK_DEPTH; i++) {
     const candidate = join(dir, relPath);
     if (existsSync(candidate)) return readFileSync(candidate, "utf8");
     dir = resolve(dir, "..");
   }
+  const bundled = join(PACKAGE_ROOT, "resources", relPath);
+  if (existsSync(bundled)) return readFileSync(bundled, "utf8");
   throw new Error(`bundled softschema resource not found: ${relPath}`);
 }
 
@@ -130,22 +147,6 @@ const DOC_TOPICS: DocTopic[] = [
 
 const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
 
-const SKILL_BRIEF = `# Softschema Skill Brief
-
-Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
-consume some values reliably.
-
-- Read \`softschema docs guide\` for the mental model.
-- Read \`softschema docs spec\` for the exact artifact format.
-- Inspect \`softschema docs example\` and \`softschema docs example-artifact\` for the
-  copyable movie example.
-- Treat YAML/frontmatter as authoritative.
-- Do not parse Markdown body prose or tables for consumed values.
-- Use \`softschema.contract\` to name the payload contract.
-- Keep examples copyable; do not scaffold or mutate a target project unless the user
-  explicitly asks for that workflow.
-`;
-
 const SKILL_INSTALL_TARGETS = [
   ".agents/skills/softschema/SKILL.md",
   ".claude/skills/softschema/SKILL.md",
@@ -172,6 +173,19 @@ function errMessage(err: unknown): string {
 
 function renderedSkill(): string {
   return readResource("skills/softschema/SKILL.md").replaceAll("<version>", packageVersion());
+}
+
+function extractMarkedSection(text: string): string {
+  const start = text.indexOf(BRIEF_MARKER_START);
+  const end = text.indexOf(BRIEF_MARKER_END);
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("skills/softschema/SKILL.md is missing the brief marker block");
+  }
+  return text.slice(start + BRIEF_MARKER_START.length, end);
+}
+
+function renderedSkillBrief(): string {
+  return `# Softschema Skill Brief\n\n${extractMarkedSection(renderedSkill()).trim()}\n`;
 }
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
@@ -212,6 +226,54 @@ function runSkillInstall(): number {
 function writeText(text: string): void {
   process.stdout.write(text);
   if (!text.endsWith("\n")) process.stdout.write("\n");
+}
+
+interface RunnerReport {
+  name: (typeof RUNNER_COMMANDS)[number];
+  available: boolean;
+  path: string | null;
+}
+
+interface DoctorReport {
+  version: string;
+  runners: RunnerReport[];
+  recommended_invocation: string | null;
+}
+
+function findExecutable(name: string): string | null {
+  const pathValue = process.env.PATH ?? "";
+  for (const dir of pathValue.split(delimiter)) {
+    if (dir === "") continue;
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function doctorReport(): DoctorReport {
+  const runners = RUNNER_COMMANDS.map((name) => {
+    const path = findExecutable(name);
+    return { name, available: path !== null, path };
+  });
+  const recommended = runners.find((runner) => runner.available)?.name;
+  return {
+    version: packageVersion(),
+    runners,
+    recommended_invocation: recommended === undefined ? null : RUNNER_INVOCATIONS[recommended],
+  };
+}
+
+function doctorText(report: DoctorReport): string {
+  const lines = [`softschema version: ${report.version}`, "available runners:"];
+  for (const runner of report.runners) {
+    const path = runner.path === null ? "" : ` (${runner.path})`;
+    lines.push(`  ${runner.name}: ${runner.available ? "yes" : "no"}${path}`);
+  }
+  lines.push(`recommended invocation: ${report.recommended_invocation ?? "unavailable"}`);
+  if (report.recommended_invocation === null) {
+    lines.push("Install uv or Node, then retry.");
+  }
+  return lines.join("\n");
 }
 
 function readFrontmatterRaw(path: string): Record<string, unknown> | null {
@@ -461,10 +523,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .name("softschema")
     .description("Validate and explain soft schema Markdown/YAML artifacts.")
     .version(`softschema ${packageVersion()}`, "--version")
-    .addHelpText(
-      "afterAll",
-      "\nIMPORTANT for agents: run `softschema skill --brief` for operating rules, then `softschema docs --list` to discover bundled docs (`guide`, `spec`, and `example-artifact` are the key ones).",
-    )
+    .addHelpText("afterAll", `\n${AGENT_HELP_EPILOG}`)
     .exitOverride();
   let exitCode = 0;
 
@@ -519,6 +578,16 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     });
 
   program
+    .command("doctor")
+    .description("Report softschema version and runner availability")
+    .option("--json", "emit the environment report as JSON")
+    .action((opts: { json?: boolean }) => {
+      const report = doctorReport();
+      writeText(opts.json ? stableStringify(report) : doctorText(report));
+      exitCode = 0;
+    });
+
+  program
     .command("skill")
     .option("--brief", "print compact skill guidance")
     .option("--install", "write discoverable skill mirrors into .agents and .claude")
@@ -526,7 +595,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       if (opts.install) {
         exitCode = runSkillInstall();
       } else if (opts.brief) {
-        writeText(SKILL_BRIEF);
+        writeText(renderedSkillBrief());
         exitCode = 0;
       } else {
         writeText(renderedSkill());

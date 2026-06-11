@@ -37,6 +37,22 @@ describe("bundled resources (standalone, outside the repo)", () => {
     if (build.status !== 0) throw new Error(`build failed: ${build.stderr}`);
   }, 120_000);
 
+  test("--help points agents to repo-local skill install", () => {
+    const r = runFromTmp(["--help"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("IMPORTANT for agents");
+    expect(r.stdout).toContain("repo root");
+    expect(r.stdout).toContain("skill --install");
+    expect(r.stdout).toContain("uvx softschema@latest");
+    expect(r.stdout).toContain("npx softschema@latest");
+  });
+
+  test("--version prints 'softschema <version>'", () => {
+    const r = runFromTmp(["--version"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toMatch(/^softschema \d[\w.+-]*$/);
+  });
+
   test("docs guide reads the bundled resource, not a cwd-relative file", () => {
     const r = runFromTmp(["docs", "guide"]);
     expect(r.status).toBe(0);

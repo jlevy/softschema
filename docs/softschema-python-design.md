@@ -162,6 +162,22 @@ to stderr; the package version comes from `importlib.metadata` via
 `softschema-py` (the latter pairs with a future `softschema-ts` for the shared golden
 corpus).
 
+### Skill resource and mirrors
+
+`skills/softschema/SKILL.md` is the source skill.
+`softschema skill --install` writes full generated copies to
+`.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md`.
+
+The project intentionally uses generated copies rather than symlinks because agent
+discovery paths and package registries do not share one portable symlink model.
+Full copies are also easier for users and agents to inspect after installation.
+The mirrors carry a `DO NOT EDIT` marker and are regenerated from the source skill; the
+mirror drift test keeps both mirrors byte-identical.
+
+When adding another agent target, extend `SKILL_INSTALL_TARGETS`, regenerate from the
+source skill, and update the drift test only if the new target cannot use the same
+byte-identical payload.
+
 ## Warning Codes
 
 Non-fatal advisory issues surface as `SchemaWarning` entries on
