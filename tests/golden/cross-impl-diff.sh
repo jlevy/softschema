@@ -67,6 +67,7 @@ diff_cmd "skill"                             skill
 diff_cmd "skill --brief"                     skill --brief
 diff_cmd "generate --check (no drift)"       generate examples/movie_page/README.md --check
 diff_cmd "generate --check (drift)"          generate tests/golden/fixtures/stale-generated.md --check
+diff_cmd "generate (missing file, exit 2)"   generate tests/golden/fixtures/does-not-exist.md
 
 if [ "$fail" -ne 0 ]; then
   echo "cross-impl parity FAILED" >&2

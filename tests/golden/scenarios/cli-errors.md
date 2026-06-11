@@ -84,3 +84,15 @@ $ softschema docs no-such-topic 2>&1
 ...
 ? 2
 ```
+
+# Test: generate on a missing file is a clean usage error (exit 2)
+
+Runtime errors in `generate` exit 2 with the `softschema generate:` prefix; exit 1 is
+reserved for `--check` drift. The tail after the prefix is engine-specific (Python
+`[Errno 2]` vs Node `ENOENT`), so only the stable prefix is asserted.
+
+```console
+$ softschema generate tests/golden/fixtures/does-not-exist.md 2>&1
+softschema generate: [..]
+? 2
+```

@@ -30,10 +30,12 @@ function runFromTmp(args: string[], files: Record<string, string> = {}): RunResu
 }
 
 describe("bundled resources (standalone, outside the repo)", () => {
+  // Building can exceed Bun's default hook timeout on a cold cache or loaded machine,
+  // so the hook gets an explicit generous timeout.
   beforeAll(() => {
     const build = spawnSync("bun", ["run", "build"], { cwd: PACKAGE_ROOT, encoding: "utf8" });
     if (build.status !== 0) throw new Error(`build failed: ${build.stderr}`);
-  });
+  }, 120_000);
 
   test("docs guide reads the bundled resource, not a cwd-relative file", () => {
     const r = runFromTmp(["docs", "guide"]);

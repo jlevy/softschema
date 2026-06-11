@@ -378,8 +378,10 @@ function runGenerate(paths: string[], opts: { check?: boolean }): number {
     try {
       result = regenerate(path, { check: opts.check });
     } catch (err) {
-      process.stderr.write(`error: ${path}: ${errMessage(err)}\n`);
-      return 1;
+      // Runtime errors (missing file, bad marker) are usage failures: exit 2 with the
+      // command prefix, matching the Python CLI. Exit 1 is reserved for drift.
+      process.stderr.write(`softschema generate: ${path}: ${errMessage(err)}\n`);
+      return 2;
     }
     anyDrift = anyDrift || result.drift;
     files.push({
