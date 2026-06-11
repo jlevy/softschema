@@ -5,9 +5,9 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import type { ValidateFunction } from "ajv/dist/2020.js";
 import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
 import { applyEnforcedExtras } from "./canonicalize.js";
