@@ -62,7 +62,7 @@ function readResource(relPath: string): string {
   throw new Error(`bundled softschema resource not found: ${relPath}`);
 }
 
-interface DocTopic {
+export interface DocTopic {
   name: string;
   title: string;
   path: string;
@@ -72,7 +72,7 @@ interface DocTopic {
 // Sorted by name to match the Python CLI's `sorted(DOC_TOPICS)` output.
 // `agents` (AGENTS.md) and `publishing` (release runbook) are intentionally not bundled
 // topics: both are repo/maintainer-internal and have no use inside an installed package.
-const DOC_TOPICS: DocTopic[] = [
+export const DOC_TOPICS: DocTopic[] = [
   {
     name: "development",
     title: "Development",

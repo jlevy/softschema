@@ -158,3 +158,17 @@ describe("pure-yaml metadata rules", () => {
     expect(result.output.values).toEqual({ name: "hi" });
   });
 });
+
+describe("validateArtifact preParsed (single read)", () => {
+  test("uses pre-parsed frontmatter without reopening the file", () => {
+    // A nonexistent path proves the document is not re-read when preParsed is supplied.
+    const result = validateArtifact("/does/not/exist.md", mkContract({ envelopeKey: "payload" }), {
+      preParsed: {
+        hasFence: true,
+        value: { softschema: { contract: "t:X/v1" }, payload: { name: "hi" } },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.output.values).toEqual({ name: "hi" });
+  });
+});

@@ -1,7 +1,8 @@
 # Development
 
 First-time setup of `uv` and Python is covered in [Installation](installation.md).
-Release workflow and PyPI steps are covered in [Publishing](publishing.md).
+Release workflow and PyPI steps are covered in
+[Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
 
 Set up the repo (Python deps, Node tooling for hooks, and the git hooks themselves):
 
@@ -65,7 +66,8 @@ bun run publint     # lint the publishable package layout (run after build)
 
 It publishes to npm as `softschema` (the same name as the PyPI package) and exposes the
 CLI as both `softschema` and `softschema-ts`. The two packages **release together under
-one version number**; see [Publishing](publishing.md).
+one version number**; see
+[Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
 
 Documentation changes should follow `common-doc-guidelines.md`
 (github.com/jlevy/practical-prose).

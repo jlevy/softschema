@@ -48,7 +48,8 @@ It should orient a new visitor, show the main example, and point to the guide an
 rather than repeating their content.
 
 Template workflow docs keep template names: [development.md](development.md),
-[installation.md](installation.md), and [publishing.md](publishing.md).
+[installation.md](installation.md), and
+[publishing.md](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
 Package design details live in this document unless they grow large enough to justify a
 separate reference.
 

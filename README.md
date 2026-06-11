@@ -148,7 +148,8 @@ They release together under **the same version number** on PyPI and npm.
 See
 [Keeping Python and TypeScript in Parity](docs/development.md#keeping-python-and-typescript-in-parity)
 for the development process and the parity invariants CI enforces, and
-[Publishing](docs/publishing.md) for the synchronized release.
+[Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md) for the
+synchronized release.
 
 ## Example Artifact Shape
 
