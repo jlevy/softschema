@@ -363,12 +363,16 @@ Schema, and is never required to be an import path.
     wrapper, not a second code path.
   - `inspect` reports the `schema` pointer alongside `contract` and `status` (cheap, and
     makes the binding visible without validating).
-  - Resolution in the reference CLIs: a relative `schema` resolves from the document’s
-    directory; an absolute path is used as given; a path whose resolution escapes
-    **both** the document directory and the current working directory is rejected (the
-    bounded resolution, so `../../etc/passwd`-style values cannot bind).
-    A resolved path that is missing or unreadable is `schema_missing`; a resolved file
-    that is not valid JSON Schema is `schema_invalid`.
+  - Resolution in the reference CLIs: a metadata `schema` value must be a **relative**
+    path (an absolute value is rejected — use `--schema` for arbitrary paths), resolved
+    from the document’s directory; a path whose normalized resolution escapes **both**
+    the document directory and the current working directory is rejected (the bounded
+    resolution, so `../../etc/passwd`-style values cannot bind).
+    A resolved path that is missing or unreadable is `schema_missing` (the
+    out-of-bounds rejection also reports as `schema_missing`, with a message naming the
+    bound); a resolved file that is not valid JSON Schema is `schema_invalid`.
+    (Resolved in the 0.2.0 pre-release review: the earlier draft said absolute paths
+    were used as given, which contradicted the bound.)
   - Spec level: only that `schema`, when present, is a non-empty string.
     The bounded resolution is the reference behavior, not a conformance requirement (a
     host may resolve differently).
@@ -662,6 +666,16 @@ PR #13 review). Recorded here so the implementation beads inherit the final shap
   (“softschema Spec”), a documented exception — already applied in the Phase 1 sweep.
 - **Backward compatibility: a clean 0.2.0 break, no shims or aliases; clear documented
   errors instead of migration paths** (see Compatibility and Breaking Changes).
+- **`softschema.envelope` joins the metadata block** (0.2.0 pre-release review,
+  maintainer decision): an optional declared envelope key, so multi-key artifacts are
+  fully self-describing and validate with zero flags.
+  The metadata quartet is `contract` / `schema` / `envelope` / `status`.
+  Precedence mirrors `schema` and keeps host-over-document: `--envelope` flag > registry
+  `envelope_key` > `softschema.envelope` > single-key inference.
+  A declared-but-absent envelope key is `envelope_mismatch`.
+- **Metadata `schema` paths are relative-only in the reference CLIs** (same review):
+  absolute values are rejected with a pointer to `--schema`; see the API contract in
+  Design 5.
 
 ## Open Questions
 

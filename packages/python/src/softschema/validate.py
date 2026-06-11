@@ -231,10 +231,15 @@ def _validate_frontmatter_artifact(
         return metadata_result
     metadata = metadata_result
 
-    if contract.envelope_key is not None:
-        if contract.envelope_key not in frontmatter:
-            return _envelope_mismatch_result(doc_path, contract, metadata, warnings, frontmatter)
-        values = frontmatter[contract.envelope_key]
+    # Envelope precedence (host over document): a registry/caller envelope_key,
+    # then the document's own softschema.envelope, then single-key inference.
+    declared_envelope = contract.envelope_key or (metadata.envelope if metadata else None)
+    if declared_envelope is not None:
+        if declared_envelope not in frontmatter:
+            return _envelope_mismatch_result(
+                doc_path, contract, metadata, warnings, frontmatter, declared_envelope
+            )
+        values = frontmatter[declared_envelope]
     else:
         # The spec's envelope rules: exactly one non-softschema top-level key is
         # the envelope by convention; zero or several candidates are rejected.
@@ -284,6 +289,7 @@ def _envelope_mismatch_result(
     metadata: SchemaMetadata | None,
     warnings: list[SchemaWarning],
     root: dict[str, Any],
+    expected_key: str,
 ) -> ArtifactValidationResult:
     actual_keys = [str(key) for key in root if key != "softschema"]
     return ArtifactValidationResult(
@@ -299,8 +305,8 @@ def _envelope_mismatch_result(
             errors=[
                 _error(
                     "envelope_mismatch",
-                    f"contract {contract.id!r} expects {contract.envelope_key!r}",
-                    expected_key=contract.envelope_key,
+                    f"contract {contract.id!r} expects {expected_key!r}",
+                    expected_key=expected_key,
                     actual_keys=actual_keys,
                 )
             ],
@@ -343,10 +349,13 @@ def _validate_pure_yaml_artifact(
         return metadata_result
     metadata = metadata_result
 
-    if contract.envelope_key is not None:
-        if contract.envelope_key not in raw:
-            return _envelope_mismatch_result(doc_path, contract, metadata, warnings, raw)
-        values = raw[contract.envelope_key]
+    declared_envelope = contract.envelope_key or (metadata.envelope if metadata else None)
+    if declared_envelope is not None:
+        if declared_envelope not in raw:
+            return _envelope_mismatch_result(
+                doc_path, contract, metadata, warnings, raw, declared_envelope
+            )
+        values = raw[declared_envelope]
     else:
         values = {key: value for key, value in raw.items() if key != "softschema"}
     if not isinstance(values, dict):
@@ -444,8 +453,11 @@ def _validate_extracted_values(
     metadata: SchemaMetadata | None,
     warnings: list[SchemaWarning],
 ) -> ArtifactValidationResult:
-    schema_path = _resolve_schema_path(contract.schema_path, doc_path)
+    # Schema precedence (host over document): a caller/registry schema_path,
+    # then the document's own softschema.schema binding, then none.
+    metadata_schema = metadata.schema_ref if metadata is not None else None
     if contract.schema_path is not None:
+        schema_path = _resolve_schema_path(contract.schema_path, doc_path)
         if schema_path is None:
             structural = StructuralResult(
                 ok=False,
@@ -461,6 +473,19 @@ def _validate_extracted_values(
             structural = validate_structural(
                 values,
                 schema_path,
+                strict_extras=contract.status == SchemaStatus.enforced,
+            )
+    elif metadata_schema is not None:
+        bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
+        if bound_path is None:
+            structural = StructuralResult(
+                ok=False,
+                errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
+            )
+        else:
+            structural = validate_structural(
+                values,
+                bound_path,
                 strict_extras=contract.status == SchemaStatus.enforced,
             )
     elif contract.model is not None:
@@ -505,6 +530,32 @@ def _resolve_schema_path(path: Path | None, doc_path: Path) -> Path | None:
         if candidate.exists():
             return candidate
     return None
+
+
+def _resolve_metadata_schema(schema_ref: str, doc_path: Path) -> tuple[Path | None, str | None]:
+    """Resolve a document-declared ``softschema.schema`` value, strictly bounded.
+
+    Stricter than :func:`_resolve_schema_path` because the value comes from the
+    document, not the caller: it must be a relative path, resolves from the
+    document's directory, and the normalized result must stay inside the
+    document directory or the working directory (so a document cannot bind an
+    arbitrary file). Returns ``(path, None)`` on success or ``(None, message)``
+    on rejection; every rejection reports as ``schema_missing``.
+    """
+    ref = Path(schema_ref)
+    if ref.is_absolute():
+        return None, f"softschema.schema must be a relative path: {schema_ref}"
+    resolved = (doc_path.parent / ref).resolve()
+    doc_dir = doc_path.parent.resolve()
+    cwd = Path.cwd().resolve()
+    if not (resolved.is_relative_to(doc_dir) or resolved.is_relative_to(cwd)):
+        return None, (
+            "softschema.schema escapes the document directory and the working "
+            f"directory: {schema_ref}"
+        )
+    if not resolved.is_file():
+        return None, f"compiled schema not found: {schema_ref}"
+    return resolved, None
 
 
 def _artifact_failure(

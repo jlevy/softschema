@@ -1,13 +1,23 @@
 /** Public API for softschema. Targets Node.js / Bun runtimes (uses `node:` builtins transitively). */
 export { applyEnforcedExtras, canonicalizeJsonSchema } from "./canonicalize.js";
-export { type CompileOptions, type CompileResult, compileSchema } from "./compile.js";
+export {
+  type CompileOptions,
+  type CompileResult,
+  compileSchema,
+  SOFTSCHEMA_FORMAT_VERSION,
+} from "./compile.js";
 export {
   normalizeAjvError,
   renderStructuralMessage,
   type StructuralErrorRecord,
   structuralErrorRecord,
 } from "./errors.js";
-export { parseSections, type RegenerateResult, regenerate } from "./generate.js";
+export {
+  type GeneratedSection,
+  parseSections,
+  type RegenerateResult,
+  regenerate,
+} from "./generate.js";
 export {
   type Contract,
   parseSchemaMetadata,

@@ -45,7 +45,7 @@ def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n
     path.write_text(f"---\n{frontmatter_yaml}\n---\n{body}")
 
 
-def test_compile_writes_sidecar_and_exits_zero(
+def test_compile_writes_schema_and_exits_zero(
     tmp_path: Path, model_module: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
@@ -61,7 +61,7 @@ def test_compile_writes_sidecar_and_exits_zero(
     assert result["schema_sha256"] is not None
 
 
-def test_compile_check_returns_one_when_sidecar_missing(tmp_path: Path, model_module: Path) -> None:
+def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "missing.schema.yaml"
 
     exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
@@ -70,9 +70,7 @@ def test_compile_check_returns_one_when_sidecar_missing(tmp_path: Path, model_mo
     assert not out.exists()
 
 
-def test_compile_check_returns_zero_when_sidecar_matches(
-    tmp_path: Path, model_module: Path
-) -> None:
+def test_compile_check_returns_zero_when_schema_matches(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
     softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out)])
 

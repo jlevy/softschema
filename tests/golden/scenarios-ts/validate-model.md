@@ -28,6 +28,8 @@ $ softschema validate examples/movie_page/spirited-away.md --model packages/type
   "contract_id": "example.movies:MoviePage/v1",
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
+    "envelope": "movie",
+    "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
   "path": "examples/movie_page/spirited-away.md",
@@ -42,7 +44,7 @@ $ softschema validate examples/movie_page/spirited-away.md --model packages/type
     "engine": "json_schema",
     "errors": [],
     "ok": true,
-    "skipped_reason": "inferred_via_model"
+    "skipped_reason": null
   },
   "values": {
     "cast": [

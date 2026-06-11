@@ -138,7 +138,12 @@ describe("pure-yaml metadata rules", () => {
     const result = validateArtifact(doc, mkContract({ profile: "pure-yaml" }));
     expect(result.ok).toBe(true);
     expect(result.output.values).toEqual({ name: "hello", count: 1 });
-    expect(result.output.document_metadata).toEqual({ contract: "t:X/v1", status: null });
+    expect(result.output.document_metadata).toEqual({
+      contract: "t:X/v1",
+      envelope: null,
+      schema: null,
+      status: null,
+    });
   });
 
   test("a contract mismatch in the block is detected", () => {

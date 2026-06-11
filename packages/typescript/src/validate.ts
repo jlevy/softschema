@@ -3,8 +3,8 @@
  * and run structural validation against the compiled JSON Schema via ajv. The result
  * object serializes (via stableStringify) byte-identically to the Python CLI output.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -273,11 +273,87 @@ function failure(
   });
 }
 
+/** Load a resolved compiled-schema file and run structural validation against it. */
+function structuralAgainstSchemaFile(
+  resolved: string,
+  values: unknown,
+  strictExtras: boolean,
+): StructuralResult {
+  let compiledSchema: unknown;
+  try {
+    compiledSchema = parseYaml(readFileSync(resolved, "utf8"));
+  } catch (err) {
+    if (err instanceof YamlParseError) {
+      return {
+        ok: false,
+        errors: [structuralError("schema_invalid", err.message)],
+        engine: "json_schema",
+        skipped_reason: null,
+      };
+    }
+    throw err;
+  }
+  if (!isMapping(compiledSchema)) {
+    return {
+      ok: false,
+      errors: [
+        structuralError(
+          "schema_invalid",
+          `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`,
+        ),
+      ],
+      engine: "json_schema",
+      skipped_reason: null,
+    };
+  }
+  return validateStructural(values, compiledSchema, { strictExtras });
+}
+
+/** Is `child` inside `base` after normalization? */
+function isContained(base: string, child: string): boolean {
+  const rel = relative(base, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * Resolve a document-declared `softschema.schema` value, strictly bounded.
+ * Stricter than `resolveSchemaPath` because the value comes from the document,
+ * not the caller: it must be relative, resolves from the document's directory,
+ * and the normalized result must stay inside the document directory or the
+ * working directory. Mirrors the Python `_resolve_metadata_schema`.
+ */
+function resolveMetadataSchema(
+  schemaRef: string,
+  docPath: string,
+): { path: string | null; error: string | null } {
+  if (isAbsolute(schemaRef)) {
+    return { path: null, error: `softschema.schema must be a relative path: ${schemaRef}` };
+  }
+  const docDir = resolve(dirname(docPath));
+  const resolved = resolve(docDir, schemaRef);
+  const cwd = resolve(process.cwd());
+  if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
+    return {
+      path: null,
+      error:
+        "softschema.schema escapes the document directory and the working " +
+        `directory: ${schemaRef}`,
+    };
+  }
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+    return { path: null, error: `compiled schema not found: ${schemaRef}` };
+  }
+  return { path: resolved, error: null };
+}
+
 function structuralForValues(
   contract: Contract,
   values: unknown,
   docPath: string,
+  metadata: SchemaMetadata | null,
 ): StructuralResult {
+  // Schema precedence (host over document): a caller/registry schemaPath, then
+  // the document's own softschema.schema binding, then none.
   if (contract.schemaPath !== null) {
     const resolved = resolveSchemaPath(contract.schemaPath, docPath);
     if (resolved === null) {
@@ -292,36 +368,24 @@ function structuralForValues(
         skipped_reason: null,
       };
     }
-    let compiledSchema: unknown;
-    try {
-      compiledSchema = parseYaml(readFileSync(resolved, "utf8"));
-    } catch (err) {
-      if (err instanceof YamlParseError) {
-        return {
-          ok: false,
-          errors: [structuralError("schema_invalid", err.message)],
-          engine: "json_schema",
-          skipped_reason: null,
-        };
-      }
-      throw err;
-    }
-    if (!isMapping(compiledSchema)) {
+    return structuralAgainstSchemaFile(resolved, values, contract.status === "enforced");
+  }
+  const metadataSchema = metadata?.schema ?? null;
+  if (metadataSchema !== null) {
+    const bound = resolveMetadataSchema(metadataSchema, docPath);
+    if (bound.path === null) {
       return {
         ok: false,
         errors: [
-          structuralError(
-            "schema_invalid",
-            `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`,
-          ),
+          structuralError("schema_missing", bound.error ?? "", {
+            path: metadataSchema,
+          }),
         ],
         engine: "json_schema",
         skipped_reason: null,
       };
     }
-    return validateStructural(values, compiledSchema, {
-      strictExtras: contract.status === "enforced",
-    });
+    return structuralAgainstSchemaFile(bound.path, values, contract.status === "enforced");
   }
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
@@ -337,7 +401,7 @@ function validateExtracted(
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
 ): ArtifactValidationResult {
-  const structural = structuralForValues(contract, values, docPath);
+  const structural = structuralForValues(contract, values, docPath, metadata);
   const semantic: SemanticResult =
     semanticModel !== undefined
       ? validateSemantic(values, semanticModel)
@@ -475,20 +539,23 @@ export function validateArtifact(
     const checked = checkMetadata(docPath, raw, contract, warnings, metadataMode);
     if ("failed" in checked) return checked.failed;
     let values: unknown;
-    if (contract.envelopeKey !== null) {
-      if (!(contract.envelopeKey in raw)) {
+    // Envelope precedence (host over document): a registry/caller envelopeKey,
+    // then the document's own softschema.envelope, then the whole root.
+    const declaredEnvelope = contract.envelopeKey ?? checked.metadata?.envelope ?? null;
+    if (declaredEnvelope !== null) {
+      if (!(declaredEnvelope in raw)) {
         const actualKeys = Object.keys(raw).filter((key) => key !== "softschema");
         return failure(
           docPath,
           contract,
           checked.metadata,
           "envelope_mismatch",
-          `contract '${contract.id}' expects '${contract.envelopeKey}'`,
+          `contract '${contract.id}' expects '${declaredEnvelope}'`,
           warnings,
-          { expected_key: contract.envelopeKey, actual_keys: actualKeys },
+          { expected_key: declaredEnvelope, actual_keys: actualKeys },
         );
       }
-      values = raw[contract.envelopeKey];
+      values = raw[declaredEnvelope];
     } else {
       values = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "softschema"));
     }
@@ -557,20 +624,23 @@ export function validateArtifact(
   const metadata = checked.metadata;
 
   let values: unknown;
-  if (contract.envelopeKey !== null) {
-    if (!(contract.envelopeKey in frontmatter)) {
+  // Envelope precedence (host over document): a registry/caller envelopeKey,
+  // then the document's own softschema.envelope, then single-key inference.
+  const declaredEnvelope = contract.envelopeKey ?? metadata?.envelope ?? null;
+  if (declaredEnvelope !== null) {
+    if (!(declaredEnvelope in frontmatter)) {
       const actualKeys = Object.keys(frontmatter).filter((key) => key !== "softschema");
       return failure(
         docPath,
         contract,
         metadata,
         "envelope_mismatch",
-        `contract '${contract.id}' expects '${contract.envelopeKey}'`,
+        `contract '${contract.id}' expects '${declaredEnvelope}'`,
         warnings,
-        { expected_key: contract.envelopeKey, actual_keys: actualKeys },
+        { expected_key: declaredEnvelope, actual_keys: actualKeys },
       );
     }
-    values = frontmatter[contract.envelopeKey];
+    values = frontmatter[declaredEnvelope];
   } else {
     // The spec's envelope rules: exactly one non-softschema top-level key is
     // the envelope by convention; zero or several candidates are rejected.

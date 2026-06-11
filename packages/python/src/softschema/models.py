@@ -50,14 +50,22 @@ class SchemaProfile(StrEnum):
 class SchemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata.
 
+    The recognized keys are the self-description quartet: ``contract`` (what),
+    ``schema`` (where the compiled schema lives), ``envelope`` (which top-level
+    key carries the payload), and ``status`` (how strictly to validate).
     The spec makes unknown keys in the ``softschema:`` block a validation error
     (``extra="forbid"``), and a contract ID must match the enforced grammar
     (see ``_check_contract_id``).
+
+    ``schema_ref`` is aliased because a field literally named ``schema`` would
+    shadow the deprecated ``BaseModel.schema`` method; the YAML key is ``schema``.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     contract_id: str = Field(alias="contract", min_length=1)
+    schema_ref: str | None = Field(alias="schema", default=None, min_length=1)
+    envelope: str | None = Field(default=None, min_length=1)
     status: SchemaStatus | None = None
 
     @field_validator("contract_id")

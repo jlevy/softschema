@@ -56,6 +56,7 @@ Annotated, the parts fit together like this:
 softschema:                          # the metadata block
   contract: example.movies:MoviePage/v1   # the contract ID
   schema: movie-page.schema.yaml          # optional pointer to the compiled schema
+  envelope: movie                         # optional declared envelope key
   status: enforced                        # the status
 movie:                               # the envelope key
   title: Spirited Away               # ── the payload ──
@@ -101,6 +102,7 @@ title: Spirited Away (2001)
 softschema:
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
+  envelope: movie
   status: enforced
 movie:
   title: Spirited Away
@@ -147,6 +149,7 @@ The `softschema` mapping is the recognized metadata block:
 softschema:
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
+  envelope: movie
   status: enforced
 ```
 
@@ -154,17 +157,23 @@ softschema:
 | --- | --- | --- |
 | `contract` | yes for self-describing documents | The contract ID (a stable name for the payload contract). |
 | `schema` | no (recommended for self-validating documents) | A pointer to the compiled schema. |
+| `envelope` | no (recommended when other top-level keys exist) | The declared envelope key. |
 | `status` | no | Boundary maturity: `soft`, `permissive`, or `enforced`. |
 
 A `softschema` block with unknown keys, an unknown `status`, a malformed `contract` (see
-Contract IDs), or a `schema` that is present but not a non-empty string is a validation
-error.
+Contract IDs), or a `schema` or `envelope` that is present but not a non-empty string is
+a validation error.
 
-`contract` names *what* the contract is; `schema` says *where* its compiled schema
-lives. `schema` is optional because many hosts resolve the schema out of band (a
-registry, a build step, a project convention) and reference the contract only by its ID;
-such an artifact carries `contract` alone and is fully conforming.
-See Compiled Schemas for how `schema` is resolved.
+The four keys make an artifact fully self-describing: `contract` names *what* the
+contract is, `schema` says *where* its compiled schema lives, `envelope` says *which*
+top-level key carries the payload, and `status` says *how strictly* to validate.
+`schema` is optional because many hosts resolve the schema out of band (a registry, a
+build step, a project convention) and reference the contract only by its ID; such an
+artifact carries `contract` alone and is fully conforming.
+`envelope` is optional because a single-payload-key artifact needs no designation, and a
+caller can always designate one.
+See Compiled Schemas for how `schema` is resolved and Envelope Selection for how
+`envelope` is applied.
 
 ## Envelope Selection
 
@@ -178,20 +187,34 @@ envelope key are softschema’s concern.
 This lets a softschema artifact coexist with other frontmatter conventions (static-site
 generators, doc indexers, custom metadata) without conflict.
 
+The envelope is designated through this precedence (highest first):
+
+1. An explicit caller designation: the `--envelope` flag, or the envelope argument of a
+   library call.
+2. A host registry binding (a registered contract’s envelope key; library path only).
+3. The document’s own `softschema.envelope` declaration.
+4. Single-key inference: when exactly one non-`softschema` top-level key exists, it is
+   the envelope by convention (no designation required).
+
+Host-controlled designation outranks the document’s declaration for the same reason as
+schema resolution (see Compiled Schemas): a document must not silently re-point a host’s
+validation. In a CLI run with no registry, the chain is `--envelope` >
+`softschema.envelope` > inference.
+
 An implementation must:
 
-- When exactly one non-`softschema` top-level key exists, treat it as the envelope by
-  convention (no caller action required).
-- Allow callers to designate the envelope explicitly (for example via a `--envelope`
-  flag, a registry contract, or a host convention).
-  When multiple non-`softschema` keys exist, the envelope must be designated this way;
-  auto-detection is intentionally not extended to multi-key documents.
+- Apply the precedence above.
+  When multiple non-`softschema` keys exist and nothing above designates the envelope,
+  reject the document as ambiguous; auto-detection is intentionally not extended to
+  multi-key documents.
 - Reject documents that lack the designated envelope key, or that have zero
   non-`softschema` keys when an envelope is required.
 
 For example, the movie artifact above carries both `title:` and `movie:`. With two
-non-`softschema` keys, auto-detection does not apply, so the caller designates the
-payload — `--envelope movie` — and `title:` stays an uninterpreted host key.
+non-`softschema` keys, inference does not apply, so the artifact declares
+`envelope: movie` in its metadata block — `title:` stays an uninterpreted host key, and
+the artifact validates with no flags.
+A caller can still override with `--envelope` on a given run.
 
 ## Contract IDs
 
@@ -265,7 +288,8 @@ compiles to it (provably identically — the conformance machinery guarantees an
 An artifact may bind to its compiled schema with the optional `softschema.schema` key.
 The compiled schema a validator uses is resolved in this precedence (highest first):
 
-1. An explicit `--schema` flag or `schema=` argument.
+1. An explicit caller designation: the `--schema` flag, or the schema argument of a
+   library call.
 2. A host registry binding (a registered contract’s schema path; library path only).
 3. The `softschema.schema` document metadata.
 4. None — a metadata-only check (contract/status/envelope rules, no schema).
@@ -278,8 +302,9 @@ none, which is what lets a self-describing artifact validate with no flags.
 Resolution of a `softschema.schema` value is, by convention, relative to the document
 that carries it; this spec requires only that the value be a non-empty string and leaves
 the exact resolution to the host, because file layout is situational.
-(The reference CLIs resolve a relative value from the document’s directory, bounded so
-it cannot escape both the document directory and the working directory.)
+(The reference CLIs accept only relative values in metadata — an absolute path must use
+`--schema` — resolve them from the document’s directory, and reject a path whose
+normalized result escapes both the document directory and the working directory.)
 
 A compiled schema is not a per-document companion data file.
 The two are unrelated: one schema validates many artifacts, while companion data would
@@ -298,7 +323,7 @@ A validator must reject:
 
 - malformed YAML or frontmatter, including non-mapping frontmatter
 - a `softschema` block with unknown keys, an unknown `status`, a malformed `contract`,
-  or a non-string/empty `schema`
+  or a non-string/empty `schema` or `envelope`
 - a missing envelope when the contract requires one (zero non-`softschema` keys, or the
   designated envelope key is absent)
 - envelope ambiguity when auto-detection is in use (multiple top-level non-`softschema`
@@ -344,15 +369,20 @@ rejected with a message pointing at the rename.)
 The output is normative — equal inputs produce byte-equal output, and an implementation
 is checked against this spec, not the other way around:
 
-- **`enum_table`**: a GFM table with columns `Field` then `Allowed values`; one row per
-  enum-valued property of the schema, in the schema’s property order; the field name in
-  backticks; allowed values comma-space joined in schema order; a property whose enum
-  includes `null` lists the non-null members only; a literal `|` in a value is escaped.
-- **`field_list`**: one `-` bullet per top-level property, in schema order: `` `name` ``
-  — the JSON type, `required` or `optional`, then the property description (omitted,
-  with no trailing separator, when absent).
-- **`vocab`**: the allowed values of the single property addressed by `pointer`,
-  comma-space joined in schema order, on one line.
+- **`enum_table`**: a GFM table with header row `| Field | Allowed values |`; one row
+  per string-enum property of the schema, in the schema’s property order; the field
+  name in backticks; allowed values comma-space joined in schema order; a literal `|`
+  in a value is escaped as `\|`. A property is enum-valued when it carries an
+  all-string `enum`, or the `anyOf: [{enum: …}, {type: "null"}]` nullable shape (whose
+  string-enum branch is rendered); any other enum shape is skipped.
+  With no enum-valued properties the single row is `| _(no enum fields)_ | _(none)_ |`.
+- **`field_list`**: one bullet per top-level property, in schema order:
+  `` - `name` (type, required): description `` — the JSON type label, `required` or
+  `optional`, then `: description` only when the property has one. Nested properties
+  are not listed (they appear through their parent’s type).
+  With no properties the single bullet is `- _(no fields)_`.
+- **`vocab`**: one `` - `value` `` bullet per allowed value of the single property
+  addressed by `pointer`, in schema order.
 
 A renderer must:
 

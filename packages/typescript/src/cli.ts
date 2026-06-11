@@ -318,8 +318,11 @@ class UsageError extends Error {}
 function inferEnvelope(
   frontmatter: Record<string, unknown>,
   override: string | undefined,
+  declared: string | null,
 ): string | null {
+  // Envelope precedence: --envelope flag > document softschema.envelope > inference.
   if (override !== undefined) return override;
+  if (declared !== null) return declared;
   try {
     return inferEnvelopeKey(frontmatter);
   } catch (err) {
@@ -398,7 +401,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     const contract: Contract = {
       id: contractId,
       model: opts.model ?? null,
-      envelopeKey: inferEnvelope(fm, opts.envelope),
+      envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null),
       status,
       profile: "frontmatter-md",
       schemaPath: opts.schema ?? null,
@@ -559,9 +562,10 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   program
     .command("compile")
+    .description("Compile a Zod schema")
     .argument("<model>", "Zod schema as module:export")
-    .requiredOption("--out <path>")
-    .option("--contract <id>")
+    .requiredOption("--out <path>", "output path for the compiled schema")
+    .option("--contract <id>", "contract ID stamped into the compiled schema")
     .option("--check", "do not write; exit 1 on drift")
     .action(async (model: string, opts: { out: string; contract?: string; check?: boolean }) => {
       exitCode = await runCompile(model, opts);
@@ -569,18 +573,34 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   program
     .command("validate")
+    .description(
+      "Validate an artifact. A self-describing artifact (softschema.contract, " +
+        "schema, envelope) needs no flags; flags override the document",
+    )
     .argument("<path>")
-    .option("--contract <id>")
-    .option("--envelope <key>")
-    .option("--model <spec>")
-    .option("--schema <path>")
-    .option("--status <status>")
+    .option("--contract <id>", "override the document contract ID")
+    .option(
+      "--envelope <key>",
+      "override the envelope key (softschema.envelope or single-key inference)",
+    )
+    .option(
+      "--model <spec>",
+      "Zod schema as module:export for semantic validation. Optional. Imports and " +
+        "runs local code; use only with trusted models",
+    )
+    .option(
+      "--schema <path>",
+      "compiled JSON Schema (YAML or JSON). Optional override; without it the " +
+        "document's softschema.schema binding is used when present",
+    )
+    .option("--status <status>", "override the document status")
     .action(async (path: string, opts: ValidateOptions) => {
       exitCode = await runValidate(path, opts);
     });
 
   program
     .command("inspect")
+    .description("Inspect artifact metadata")
     .argument("<path>")
     .action((path: string) => {
       exitCode = runInspect(path);
@@ -588,6 +608,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   program
     .command("docs")
+    .description("Print bundled docs and examples")
     .argument("[topic]", "topic to print")
     .option("--list", "list bundled documentation topics")
     .option("--json", "emit topic metadata (and content when a topic is selected) as JSON")
@@ -601,6 +622,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   program
     .command("generate")
+    .description("Regenerate softschema:generated sections")
     .argument("<paths...>")
     .option("--check", "do not write; exit 1 if any section is stale")
     .action((paths: string[], opts: { check?: boolean }) => {
@@ -619,6 +641,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   program
     .command("skill")
+    .description("Print or install the agent skill")
     .option("--brief", "print compact skill guidance")
     .option("--install", "write discoverable skill mirrors into .agents and .claude")
     .action((opts: { brief?: boolean; install?: boolean }) => {

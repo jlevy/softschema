@@ -71,7 +71,9 @@ function renderEnumTable(view: SchemaView): string {
   const lines = ["| Field | Allowed values |", "| --- | --- |"];
   for (const fieldInfo of view.iterFields()) {
     if (fieldInfo.enum === null) continue;
-    lines.push(`| \`${fieldInfo.name}\` | ${fieldInfo.enum.join(", ")} |`);
+    // Escape literal pipes so a value cannot break the GFM table (matches Python).
+    const values = fieldInfo.enum.map((v) => v.replaceAll("|", "\\|")).join(", ");
+    lines.push(`| \`${fieldInfo.name}\` | ${values} |`);
   }
   if (lines.length === 2) lines.push("| _(no enum fields)_ | _(none)_ |");
   return lines.join("\n");

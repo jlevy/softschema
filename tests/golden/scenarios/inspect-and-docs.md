@@ -18,6 +18,8 @@ $ softschema inspect examples/movie_page/spirited-away.md
   "has_frontmatter": true,
   "metadata": {
     "contract": "example.movies:MoviePage/v1",
+    "envelope": "movie",
+    "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
   "path": "examples/movie_page/spirited-away.md"

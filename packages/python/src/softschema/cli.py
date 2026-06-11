@@ -155,18 +155,33 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    validate_parser = subparsers.add_parser("validate", help="Validate an artifact.")
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help=(
+            "Validate an artifact. A self-describing artifact (softschema.contract, "
+            "schema, envelope) needs no flags; flags override the document."
+        ),
+    )
     validate_parser.add_argument("path", type=Path)
     validate_parser.add_argument("--contract", help="Override the document contract ID.")
-    validate_parser.add_argument("--envelope", help="Override the inferred envelope key.")
+    validate_parser.add_argument(
+        "--envelope",
+        help="Override the envelope key (softschema.envelope or single-key inference).",
+    )
     validate_parser.add_argument(
         "--model",
-        help="Pydantic model as module:Class. Required unless --schema is provided.",
+        help=(
+            "Pydantic model as module:Class for semantic validation. Optional. "
+            "Imports and runs local code; use only with trusted models."
+        ),
     )
     validate_parser.add_argument(
         "--schema",
         type=Path,
-        help="Compiled JSON Schema (YAML or JSON). Required unless --model is provided.",
+        help=(
+            "Compiled JSON Schema (YAML or JSON). Optional override; without it the "
+            "document's softschema.schema binding is used when present."
+        ),
     )
     validate_parser.add_argument(
         "--status",
@@ -177,9 +192,13 @@ def main(argv: list[str] | None = None) -> int:
 
     compile_parser = subparsers.add_parser("compile", help="Compile a Pydantic model.")
     compile_parser.add_argument("model", help="Pydantic model as module:Class.")
-    compile_parser.add_argument("--out", required=True, type=Path)
-    compile_parser.add_argument("--contract")
-    compile_parser.add_argument("--check", action="store_true")
+    compile_parser.add_argument(
+        "--out", required=True, type=Path, help="Output path for the compiled schema."
+    )
+    compile_parser.add_argument("--contract", help="Contract ID stamped into the compiled schema.")
+    compile_parser.add_argument(
+        "--check", action="store_true", help="Do not write; exit 1 on drift."
+    )
     compile_parser.set_defaults(func=_compile_cmd)
 
     inspect_parser = subparsers.add_parser("inspect", help="Inspect artifact metadata.")
@@ -283,7 +302,11 @@ def _infer_validation_binding(
     if contract_id is None:
         raise ValueError("missing --contract because the document has no softschema.contract")
 
-    return contract_id, _status_from_args(args, metadata), _envelope_from_args(args, frontmatter)
+    return (
+        contract_id,
+        _status_from_args(args, metadata),
+        _envelope_from_args(args, frontmatter, metadata),
+    )
 
 
 def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
@@ -294,9 +317,14 @@ def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
     return SchemaStatus.soft
 
 
-def _envelope_from_args(args: argparse.Namespace, frontmatter: dict[str, Any]) -> str | None:
+def _envelope_from_args(
+    args: argparse.Namespace, frontmatter: dict[str, Any], metadata: Any
+) -> str | None:
+    # Envelope precedence: --envelope flag > document softschema.envelope > inference.
     if args.envelope is not None:
         return args.envelope
+    if metadata is not None and metadata.envelope is not None:
+        return metadata.envelope
     try:
         return infer_envelope_key(frontmatter)
     except EnvelopeAmbiguityError as exc:

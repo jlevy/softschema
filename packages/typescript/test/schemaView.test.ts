@@ -4,7 +4,7 @@ import { SchemaView } from "../src/schemaView.js";
 
 const MOVIE_SCHEMA = join(import.meta.dir, "../../../examples/movie_page/movie-page.schema.yaml");
 
-describe("SchemaView (movie sidecar)", () => {
+describe("SchemaView (movie compiled schema)", () => {
   const view = SchemaView.load(MOVIE_SCHEMA);
 
   test("reads contract id and schema hash", () => {

@@ -42,15 +42,32 @@ function contract(o: Partial<Contract> = {}): Contract {
 describe("models", () => {
   test("parseSchemaMetadata shapes", () => {
     expect(parseSchemaMetadata(null)).toBeNull();
-    expect(parseSchemaMetadata("a:B/v1")).toEqual({ contractId: "a:B/v1", status: null });
-    expect(parseSchemaMetadata({ contract: "a:B/v1", status: "enforced" })).toEqual({
+    expect(parseSchemaMetadata("a:B/v1")).toEqual({
       contractId: "a:B/v1",
+      schema: null,
+      envelope: null,
+      status: null,
+    });
+    expect(
+      parseSchemaMetadata({
+        contract: "a:B/v1",
+        schema: "a.schema.yaml",
+        envelope: "data",
+        status: "enforced",
+      }),
+    ).toEqual({
+      contractId: "a:B/v1",
+      schema: "a.schema.yaml",
+      envelope: "data",
       status: "enforced",
     });
     expect(() => parseSchemaMetadata({ status: "enforced" })).toThrow(SchemaMetadataError);
     expect(() => parseSchemaMetadata({ contract: "a", status: "nope" })).toThrow(
       SchemaMetadataError,
     );
+    expect(() => parseSchemaMetadata({ contract: "a", schema: "" })).toThrow(SchemaMetadataError);
+    expect(() => parseSchemaMetadata({ contract: "a", schema: 7 })).toThrow(SchemaMetadataError);
+    expect(() => parseSchemaMetadata({ contract: "a", envelope: "" })).toThrow(SchemaMetadataError);
     expect(() => parseSchemaMetadata(42)).toThrow(SchemaMetadataError);
   });
   test("contract-ID grammar: accepts valid ids (compact and expanded)", () => {
@@ -63,8 +80,9 @@ describe("models", () => {
       "name",
       "com.acme.docs:IncidentReview/1.0",
     ]) {
-      expect(parseSchemaMetadata(id)).toEqual({ contractId: id, status: null });
-      expect(parseSchemaMetadata({ contract: id })).toEqual({ contractId: id, status: null });
+      const expected = { contractId: id, schema: null, envelope: null, status: null };
+      expect(parseSchemaMetadata(id)).toEqual(expected);
+      expect(parseSchemaMetadata({ contract: id })).toEqual(expected);
     }
   });
   test("contract-ID grammar: rejects malformed ids", () => {
@@ -87,8 +105,12 @@ describe("models", () => {
     expect(isSchemaStatus("enforced")).toBe(true);
     expect(isSchemaStatus("x")).toBe(false);
     expect(metadataToOutput(null)).toBeNull();
-    expect(metadataToOutput({ contractId: "a", status: null })).toEqual({
+    expect(
+      metadataToOutput({ contractId: "a", schema: null, envelope: null, status: null }),
+    ).toEqual({
       contract: "a",
+      envelope: null,
+      schema: null,
       status: null,
     });
     expect(contractToOutput(contract({ envelopeKey: "movie", schemaPath: "s.yaml" }))).toEqual({
