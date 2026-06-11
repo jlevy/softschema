@@ -3,15 +3,17 @@ type: is
 id: is-01ktsqsd48t9a10k6080xyh3ag
 title: "P2: Per-language test gaps (TS generate error paths, pure-yaml, skill --install, mirror drift, typecheck test/)"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:34.888Z
-updated_at: 2026-06-11T04:43:55.167Z
+updated_at: 2026-06-11T05:18:53.948Z
+closed_at: 2026-06-11T05:18:53.947Z
+close_reason: null
 ---
 FILE SCOPE: packages/typescript test files, tsconfig.json; packages/python test if needed.
 - Cover generate.ts error paths (missing/unknown kind, missing contract, unterminated marker, renderFieldList, renderVocab).
