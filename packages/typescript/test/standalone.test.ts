@@ -56,13 +56,13 @@ describe("bundled resources (standalone, outside the repo)", () => {
   test("docs guide reads the bundled resource, not a cwd-relative file", () => {
     const r = runFromTmp(["docs", "guide"]);
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("# Softschema Guide");
+    expect(r.stdout).toContain("# softschema Guide");
   });
 
   test("docs spec works from outside the repo", () => {
     const r = runFromTmp(["docs", "spec"]);
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("# Softschema Spec");
+    expect(r.stdout).toContain("# softschema Spec");
   });
 
   test("docs --list --json works from outside the repo", () => {

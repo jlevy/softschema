@@ -29,6 +29,8 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
   "contract_id": "example.movies:MoviePage/v1",
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
+    "envelope": "movie",
+    "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
   "path": "examples/movie_page/spirited-away.md",
@@ -110,6 +112,8 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
   "contract_id": "example.movies:MoviePage/v1",
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
+    "envelope": null,
+    "schema": null,
     "status": "enforced"
   },
   "path": "tests/golden/fixtures/bad-movie.md",
@@ -193,6 +197,8 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
   "contract_id": "example.movies:MoviePage/v1",
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
+    "envelope": "movie",
+    "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
   "path": "examples/movie_page/spirited-away.md",
@@ -245,6 +251,8 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md
   "contract_id": "test.enforced:Record/v1",
   "document_metadata": {
     "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
     "status": "permissive"
   },
   "path": "tests/golden/fixtures/extra-field-permissive.md",

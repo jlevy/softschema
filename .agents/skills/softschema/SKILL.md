@@ -12,7 +12,7 @@ allowed-tools: ["Bash(softschema:*)"]
 Re-run that command to update.
 -->
 
-# Softschema Skill
+# softschema Skill
 
 `softschema` adds and validates structure for Markdown/YAML artifacts that mix prose
 context with machine-readable values.
@@ -64,16 +64,20 @@ consume some values reliably.
 
 - YAML/frontmatter is authoritative for any consumed value.
   Do not parse Markdown body prose or tables for structured fields.
-- Use `softschema.contract` (not `schema`) to name the payload contract.
+- The `softschema:` block is the self-description quartet: `contract` (the payload
+  contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
+  key), `status` (strictness).
+  A fully self-describing artifact validates with `$SS validate doc.md`, no flags.
 - Promote a value into YAML only when something consumes it; leave exploratory or
   judgment-heavy content as prose.
 - Read `$SS docs guide` for the mental model.
 - Read `$SS docs spec` for the exact artifact format.
 - Inspect `$SS docs example` and `$SS docs example-artifact` for the copyable movie
-  example.
-- Validate at the boundary with `$SS validate`: `--model` for a Pydantic/Zod model,
-  `--schema` for a sidecar.
-  Run `$SS validate --help` for exact syntax.
+  example; `$SS docs example-schema` prints its compiled schema.
+- Validate at the boundary with `$SS validate`: no flags for a self-describing artifact;
+  `--schema` to override with a compiled schema; `--model` for a Pydantic/Zod model
+  (imports and runs local code — trusted models only; `--schema` is the safe path for
+  untrusted input). Run `$SS validate --help` for exact syntax.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.
 

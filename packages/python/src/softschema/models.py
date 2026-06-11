@@ -2,11 +2,34 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Enforced contract-ID grammar (the spec's "shape", independent of `status`):
+#   contract-id = [ namespace ":" ] name [ "/" version ]
+#   namespace   = segment *( "." segment )   ; segment = [a-z0-9_]+
+#   name        = [A-Za-z_][A-Za-z0-9_]*
+#   version     = [A-Za-z0-9_.-]+
+# At most one ":" and one "/", no whitespace, no empty segments. Style (UpperCamelCase
+# name, reverse-DNS namespace, short version) stays advisory and is not checked here.
+_CONTRACT_ID_RE = re.compile(
+    r"^(?:[a-z0-9_]+(?:\.[a-z0-9_]+)*:)?[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z0-9_.-]+)?$"
+)
+
+
+def _check_contract_id(value: str) -> str:
+    """Raise if ``value`` violates the enforced contract-ID grammar."""
+    if not _CONTRACT_ID_RE.match(value):
+        raise ValueError(
+            f"malformed contract ID {value!r}: expected [namespace:]Name[/version] "
+            "(namespace lowercase [a-z0-9_], dot-separated; name starts with a letter "
+            "or underscore; at most one ':' and one '/'; no whitespace)"
+        )
+    return value
 
 
 class SchemaStatus(StrEnum):
@@ -27,14 +50,28 @@ class SchemaProfile(StrEnum):
 class SchemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata.
 
+    The recognized keys are the self-description quartet: ``contract`` (what),
+    ``schema`` (where the compiled schema lives), ``envelope`` (which top-level
+    key carries the payload), and ``status`` (how strictly to validate).
     The spec makes unknown keys in the ``softschema:`` block a validation error
-    (``extra="forbid"``), and a contract ID must be a non-empty string.
+    (``extra="forbid"``), and a contract ID must match the enforced grammar
+    (see ``_check_contract_id``).
+
+    ``schema_ref`` is aliased because a field literally named ``schema`` would
+    shadow the deprecated ``BaseModel.schema`` method; the YAML key is ``schema``.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     contract_id: str = Field(alias="contract", min_length=1)
+    schema_ref: str | None = Field(alias="schema", default=None, min_length=1)
+    envelope: str | None = Field(default=None, min_length=1)
     status: SchemaStatus | None = None
+
+    @field_validator("contract_id")
+    @classmethod
+    def _validate_contract_id(cls, value: str) -> str:
+        return _check_contract_id(value)
 
 
 class Contract(BaseModel):

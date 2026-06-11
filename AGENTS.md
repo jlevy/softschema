@@ -4,16 +4,16 @@ This repo teaches and implements the soft schema pattern.
 
 Start here:
 
-- [Softschema Guide](docs/softschema-guide.md): standalone concept and adoption guide
+- [softschema Guide](docs/softschema-guide.md): standalone concept and adoption guide
   for humans and agents.
-- [Softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
+- [softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
 - [Movie page example](examples/movie_page/README.md): complete Python-backed example.
 
 softschema ships two interchangeable implementations with the same CLI and library
 surface: Python/Pydantic (`softschema`, `softschema-py`) and TypeScript/Zod
 (`softschema`, `softschema-ts`). They are held to exact behavioral parity: same flags,
-same canonical JSON Schema sidecar, same validation results, so authoring an artifact is
-identical regardless of which you run.
+same canonical compiled JSON Schema, same validation results, so authoring an artifact
+is identical regardless of which you run.
 
 For implementer reference (only when changing a package itself):
 

@@ -8,14 +8,14 @@ path:
 
 # Test: ambiguous envelope is a usage error (exit 2, message on stderr)
 
-The movie artifact carries two top-level frontmatter keys (`title` and `movie`), so the
-envelope cannot be inferred. The CLI exits 2 and explains how to disambiguate with
-`--envelope`. This message is byte-identical across implementations, so it is asserted in
-full on stderr (`!`).
+The fixture carries two top-level frontmatter keys (`title` and `record`) and declares
+no `softschema.envelope`, so the envelope cannot be inferred. The CLI exits 2 and
+explains how to disambiguate with `--envelope`. This message is byte-identical across
+implementations, so it is asserted in full on stderr (`!`).
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml
-! softschema validate: multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: title, movie)
+$ softschema validate tests/golden/fixtures/multi-key-no-envelope.md
+! softschema validate: multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: title, record)
 ? 2
 ```
 
@@ -27,6 +27,20 @@ prefix is asserted and the tail elided.
 
 ```console
 $ softschema validate tests/golden/fixtures/unknown-metadata-key.md 2>&1
+softschema validate: [..]
+...
+? 2
+```
+
+# Test: a malformed contract ID is rejected by the grammar (exit 2)
+
+The contract ID `bad id with spaces` violates the enforced grammar (whitespace, no
+namespace/name shape). Both CLIs reject it at metadata-parse time with exit 2; the
+diagnostic wording is engine-specific (Pydantic's multi-line report vs a one-line
+message), so the stable prefix is asserted and the tail elided.
+
+```console
+$ softschema validate tests/golden/fixtures/malformed-contract.md --schema examples/movie_page/movie-page.schema.yaml --envelope record 2>&1
 softschema validate: [..]
 ...
 ? 2

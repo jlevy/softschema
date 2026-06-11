@@ -1,9 +1,9 @@
 """Canonical JSON Schema profile shared by every softschema implementation.
 
 `model_json_schema()` (Pydantic) and `z.toJSONSchema()` (Zod) emit the same
-contract in incidentally different shapes. To make the compiled sidecar
+contract in incidentally different shapes. To make the compiled schema
 content-identical across languages (so a Pydantic-compiled and a Zod-compiled
-sidecar share the same ``schema_sha256`` over the canonical JSON), both
+schema share the same ``schema_sha256`` over the canonical JSON), both
 compilers run their raw output through :func:`canonicalize_json_schema` before
 serialization.
 
@@ -146,7 +146,7 @@ def apply_enforced_extras(schema: dict[str, Any]) -> dict[str, Any]:
     ``dict[str, X]``) are unaffected.
 
     This is a validation-time overlay applied by ``validate_structural`` when the
-    effective status is ``enforced``. It never changes compiled sidecars.
+    effective status is ``enforced``. It never changes compiled schemas.
     """
     result = _apply_enforced_extras(schema)
     assert isinstance(result, dict)

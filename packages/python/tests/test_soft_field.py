@@ -1,4 +1,4 @@
-"""SoftField round-trip tests: Pydantic annotation → JSON Schema sidecar."""
+"""SoftField round-trip tests: Pydantic annotation → compiled JSON Schema."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def test_soft_field_propagates_x_softschema_into_compiled_schema(tmp_path: Path)
 
 
 def test_soft_field_omits_empty_optional_metadata(tmp_path: Path) -> None:
-    """Defaults (empty examples/aliases, repair=none) stay out of the sidecar."""
+    """Defaults (empty examples/aliases, repair=none) stay out of the compiled schema."""
     out = tmp_path / "minimal.schema.yaml"
     compile_model(_AnnotatedModel, out, contract_id="example:Annotated/v1")
     schema = _read_yaml(out)
@@ -83,7 +83,7 @@ def test_soft_field_omits_empty_optional_metadata(tmp_path: Path) -> None:
 
 
 def test_soft_field_movie_example_genres_block_present() -> None:
-    """The movie example annotates `genres`; the committed sidecar must show it."""
+    """The movie example annotates `genres`; the committed compiled schema must show it."""
     repo_root = Path(__file__).resolve().parents[3]
     schema_path = repo_root / "examples/movie_page/movie-page.schema.yaml"
     schema = _read_yaml(schema_path)

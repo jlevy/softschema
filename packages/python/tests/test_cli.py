@@ -45,7 +45,7 @@ def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n
     path.write_text(f"---\n{frontmatter_yaml}\n---\n{body}")
 
 
-def test_compile_writes_sidecar_and_exits_zero(
+def test_compile_writes_schema_and_exits_zero(
     tmp_path: Path, model_module: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
@@ -61,7 +61,7 @@ def test_compile_writes_sidecar_and_exits_zero(
     assert result["schema_sha256"] is not None
 
 
-def test_compile_check_returns_one_when_sidecar_missing(tmp_path: Path, model_module: Path) -> None:
+def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "missing.schema.yaml"
 
     exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
@@ -70,9 +70,7 @@ def test_compile_check_returns_one_when_sidecar_missing(tmp_path: Path, model_mo
     assert not out.exists()
 
 
-def test_compile_check_returns_zero_when_sidecar_matches(
-    tmp_path: Path, model_module: Path
-) -> None:
+def test_compile_check_returns_zero_when_schema_matches(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
     softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out)])
 
@@ -146,7 +144,7 @@ def test_docs_prints_bundled_guide(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "# Softschema Guide" in output
+    assert "# softschema Guide" in output
     assert "language-neutral" in output
     assert "## Playbook: Add Python Validation" in output
 
@@ -181,7 +179,7 @@ def test_docs_topic_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
     output = json.loads(capsys.readouterr().out)
     assert output["name"] == "spec"
     assert output["path"] == "docs/softschema-spec.md"
-    assert "# Softschema Spec" in output["content"]
+    assert "# softschema Spec" in output["content"]
 
 
 def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str]) -> None:

@@ -18,6 +18,8 @@ $ softschema inspect examples/movie_page/spirited-away.md
   "has_frontmatter": true,
   "metadata": {
     "contract": "example.movies:MoviePage/v1",
+    "envelope": "movie",
+    "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
   "path": "examples/movie_page/spirited-away.md"
@@ -36,6 +38,7 @@ Available softschema docs:
   example-artifact   Copyable Markdown/YAML artifact.
   example-host       Host registry and validation helper.
   example-model      Pydantic model used by the example.
+  example-schema     Compiled JSON Schema for the example.
   guide              Concepts, mental model, and adoption path.
   installation       Installing softschema for Node or Python.
   python-design      Python package design decisions.
@@ -53,23 +56,27 @@ Copy examples from the printed docs or from the repository files; the CLI does n
 
 ```console
 $ softschema skill --brief
-# Softschema Skill Brief
+# softschema Skill Brief
 
 Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
 consume some values reliably.
 
 - YAML/frontmatter is authoritative for any consumed value.
   Do not parse Markdown body prose or tables for structured fields.
-- Use `softschema.contract` (not `schema`) to name the payload contract.
+- The `softschema:` block is the self-description quartet: `contract` (the payload
+  contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
+  key), `status` (strictness).
+  A fully self-describing artifact validates with `$SS validate doc.md`, no flags.
 - Promote a value into YAML only when something consumes it; leave exploratory or
   judgment-heavy content as prose.
 - Read `$SS docs guide` for the mental model.
 - Read `$SS docs spec` for the exact artifact format.
 - Inspect `$SS docs example` and `$SS docs example-artifact` for the copyable movie
-  example.
-- Validate at the boundary with `$SS validate`: `--model` for a Pydantic/Zod model,
-  `--schema` for a sidecar.
-  Run `$SS validate --help` for exact syntax.
+  example; `$SS docs example-schema` prints its compiled schema.
+- Validate at the boundary with `$SS validate`: no flags for a self-describing artifact;
+  `--schema` to override with a compiled schema; `--model` for a Pydantic/Zod model
+  (imports and runs local code — trusted models only; `--schema` is the safe path for
+  untrusted input). Run `$SS validate --help` for exact syntax.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.
 ? 0
@@ -84,7 +91,8 @@ $ softschema docs --list --json
     "example",
     "example-artifact",
     "example-model",
-    "example-host"
+    "example-host",
+    "example-schema"
   ],
   "scaffolding": false,
   "topics": [
@@ -119,10 +127,16 @@ $ softschema docs --list --json
       "title": "Movie Page Model"
     },
     {
+      "name": "example-schema",
+      "path": "examples/movie_page/movie-page.schema.yaml",
+      "summary": "Compiled JSON Schema for the example.",
+      "title": "Movie Page Compiled Schema"
+    },
+    {
       "name": "guide",
       "path": "docs/softschema-guide.md",
       "summary": "Concepts, mental model, and adoption path.",
-      "title": "Softschema Guide"
+      "title": "softschema Guide"
     },
     {
       "name": "installation",
@@ -146,13 +160,13 @@ $ softschema docs --list --json
       "name": "skill",
       "path": "skills/softschema/SKILL.md",
       "summary": "Portable agent skill instructions.",
-      "title": "Softschema Skill"
+      "title": "softschema Skill"
     },
     {
       "name": "spec",
       "path": "docs/softschema-spec.md",
       "summary": "Language-neutral artifact format.",
-      "title": "Softschema Spec"
+      "title": "softschema Spec"
     },
     {
       "name": "typescript-design",
@@ -169,7 +183,7 @@ $ softschema docs --list --json
 
 ```console
 $ softschema docs spec
-# Softschema Spec
+# softschema Spec
 ...
 ? 0
 ```

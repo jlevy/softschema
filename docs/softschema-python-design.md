@@ -1,7 +1,7 @@
-# Softschema Python Design
+# softschema Python Design
 
-The broader soft schema practice is explained in [Softschema Guide](softschema-guide.md)
-and specified in [Softschema Spec](softschema-spec.md).
+The broader soft schema practice is explained in [softschema Guide](softschema-guide.md)
+and specified in [softschema Spec](softschema-spec.md).
 
 This document covers the Python package that implements the Markdown/YAML validation
 slice of that practice.
@@ -25,7 +25,7 @@ core package.
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
-| `softschema.compile` | Pydantic-to-JSON-Schema sidecar compilation |
+| `softschema.compile` | Pydantic-to-JSON-Schema compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
 
 The package root re-exports the common API:
@@ -40,8 +40,8 @@ The docs have two primary entry points:
 
 | Document | Purpose |
 | --- | --- |
-| [Softschema Guide](softschema-guide.md) | Standalone conceptual reference for humans and agents |
-| [Softschema Spec](softschema-spec.md) | Exact language-neutral artifact format |
+| [softschema Guide](softschema-guide.md) | Standalone conceptual reference for humans and agents |
+| [softschema Spec](softschema-spec.md) | Exact language-neutral artifact format |
 
 The root README is a short subset of the guide.
 It should orient a new visitor, show the main example, and point to the guide and spec
@@ -84,10 +84,22 @@ A `Contract` carries everything the validator needs to handle one artifact contr
 - `envelope_key`: expected top-level payload key for normal artifacts
 - `status`: `soft`, `permissive`, or `enforced`
 - `profile`: storage profile such as `frontmatter-md` or `pure-yaml`
-- `schema_path`: optional generated JSON Schema sidecar
+- `schema_path`: optional compiled JSON Schema
 
 `Contracts` holds a collection of registered contracts, keyed by `id`. It does not
 expose aliases, compatibility maps, or incremental registration helpers.
+
+`SchemaMetadata` represents the document-level `softschema:` block (the self-description
+quartet). Fields:
+
+- `contract_id` (alias `contract`): the contract ID (required).
+- `schema_ref` (alias `schema`): optional relative path to the compiled schema.
+- `envelope`: optional declared envelope key.
+- `status`: optional validation strictness (`soft`, `permissive`, `enforced`).
+
+Serialized as `{contract, envelope, schema, status}` (the alias names).
+`parse_schema_metadata` accepts both the compact string form (contract ID only) and the
+expanded mapping.
 
 ## CLI Resolution
 
@@ -95,10 +107,24 @@ The CLI reads `softschema.contract`, `softschema.status`, and a single top-level
 envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
-Without `--model` or `--schema`, `validate` performs a metadata-only check: the
-frontmatter parses, the `softschema:` block is well-formed (unknown keys and a malformed
-contract are errors), and the envelope resolves; the structural and semantic layers are
-reported as skipped.
+**Schema precedence** (host over document): `--schema` flag > registry
+`Contract.schema_path` (library only) > `softschema.schema` (document metadata) >
+metadata-only (no structural validation).
+
+**Envelope precedence**: `--envelope` flag > registry `envelope_key` >
+`softschema.envelope` (document metadata) > single-key inference (the single
+non-`softschema` top-level key; zero or several candidates are rejected as
+`envelope_missing` / `envelope_ambiguous`).
+
+Document-declared `schema` paths are relative-only, resolved from the document’s
+directory, bounded to the document directory and the current working directory.
+Absolute paths and paths that escape both bounds are rejected as `schema_missing`.
+Absolute paths require `--schema`.
+
+Without `--model` or `--schema`, and when neither the registry nor the document binds a
+schema, `validate` performs a metadata-only check: the frontmatter parses, the
+`softschema:` block is well-formed (unknown keys and a malformed contract are errors),
+and the envelope resolves; the structural and semantic layers are reported as skipped.
 This makes the CLI useful from the `soft` stage, before any schema or model exists.
 Passing `--model` or `--schema` adds the corresponding validation layers.
 
@@ -113,7 +139,7 @@ structured data for automation.
 The artifact format is language neutral.
 The Python package validates at two layers:
 
-- Structural validation with a JSON Schema YAML sidecar
+- Structural validation with a compiled JSON Schema YAML file
 - Semantic validation with a Pydantic model
 
 Pydantic can express Python-only invariants.
@@ -134,14 +160,14 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 ```
 
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
-envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
+envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
 When the contract’s status is `enforced`, structural validation applies the
 strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
 schemas that declare `properties` but omit `additionalProperties` are validated as
 `additionalProperties: false`, an explicit `additionalProperties` always wins, and
 free-form mappings are unaffected.
-The overlay is validation-time only; compiled sidecars never change.
+The overlay is validation-time only; compiled schemas never change.
 `validate_structural` exposes the same behavior via its `strict_extras` keyword.
 
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
@@ -154,8 +180,8 @@ rejected as `envelope_missing` / `envelope_ambiguous`, per the spec).
 and the CLI’s `--envelope` handling delegates to them.
 There is no separate value-path resolver.
 A relative `schema_path` is resolved against only the document directory and the current
-working directory, so resolution is predictable and never binds to an unrelated sidecar
-in a parent directory.
+working directory, so resolution is predictable and never binds to an unrelated compiled
+schema in a parent directory.
 
 ### Engine-neutral structural errors
 
@@ -165,9 +191,9 @@ Each violation becomes
 `{kind: "schema_violation", path, validator, validator_value, value, message}` where
 `message` comes from a shared template keyed on the JSON Schema keyword
 (`softschema.errors`). Records are sorted by `(path, validator)`. This keeps structural
-errors byte-identical to the TypeScript port (which validates the same canonical sidecar
-through `ajv`). Semantic errors stay implementation-specific (raw Pydantic errors) and
-are not part of the cross-language contract.
+errors byte-identical to the TypeScript port (which validates the same canonical
+compiled schema through `ajv`). Semantic errors stay implementation-specific (raw
+Pydantic errors) and are not part of the cross-language contract.
 
 ### Alignment with `python-cli-patterns`
 
@@ -235,7 +261,8 @@ The current first-release kinds:
 | `envelope_not_mapping` | The resolved envelope value is present but is not a mapping. |
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
-| `schema_sidecar_missing` | The contract declared a `schema_path` but the file does not exist or is unreadable. |
+| `schema_missing` | A compiled schema is bound (a `schema_path` or `softschema.schema`) but the file does not exist, is unreadable, or fails bounded resolution (absolute path or path escaping the document directory and working directory). |
+| `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them
@@ -246,7 +273,7 @@ as the documented surface and open an issue if a consumer needs a typed constant
 `softschema compile` emits JSON Schema as YAML:
 
 ```bash
-uv run softschema compile examples.movie_page.model:MoviePage \
+softschema compile examples.movie_page.model:MoviePage \
   --contract example.movies:MoviePage/v1 \
   --out examples/movie_page/movie-page.schema.yaml
 ```
@@ -266,7 +293,7 @@ Before hashing and serialization, the raw `model_json_schema()` output is run th
 semantic transforms (drop auto-generated `title` keywords, strip the implicit
 `default: null` of optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`)
 and serializes with sorted keys.
-This is the canonical JSON Schema profile: a sidecar compiled from a Pydantic model and
+This is the canonical JSON Schema profile: a schema compiled from a Pydantic model and
 one compiled from the equivalent Zod schema converge to the same canonical schema
 content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the
 YAML serialization bytes may differ).
@@ -279,13 +306,13 @@ for the TypeScript package.
 
 `SoftField` is a thin wrapper over Pydantic’s `Field` that records per-field authoring
 metadata under `json_schema_extra`. The compiler propagates that block verbatim into the
-JSON Schema sidecar as a per-property `x-softschema:` block; the runtime never reads it
+compiled JSON Schema as a per-property `x-softschema:` block; the runtime never reads it
 for validation.
 
 `SoftField` is optional.
 Reach for it per field, only when a specific downstream consumer reads a specific
 metadata key. A model whose only consumer is `validate_artifact()` should stay on plain
-`Field`; the metadata would land in the sidecar with no reader.
+`Field`; the metadata would land in the compiled schema with no reader.
 Blanket-annotating every field with `SoftField` ahead of any consumer is per-field
 clutter that never pays back.
 The movie example annotates only `genres` (one field of ten) for that reason.
@@ -312,7 +339,7 @@ Recognized keys:
 | `tier` | `hard_fact` / `constrained` / `narrative` | How rigorously reviewers and QA should treat the field. |
 | `owner` | `agent` / `postprocess` / `system` / `human` | Who or what produces the value at runtime. Default `agent`. |
 | `instruction` | `str` | Short directive aimed at the agent that fills the field. |
-| `examples` | `list[Any]` | Example values for prompts and documentation. Omitted from the sidecar when empty. |
+| `examples` | `list[Any]` | Example values for prompts and documentation. Omitted from the compiled schema when empty. |
 | `aliases` | `dict[str, list[str]]` | Controlled-vocabulary repair table. Omitted when empty. |
 | `repair` | `none` / `safe_coerce` / `suggest_alias` | How a future repair pass may handle near-miss values. Default `none`. |
 
@@ -342,7 +369,7 @@ Add `SoftField` annotations field by field as the consumer that reads them lands
 
 ### Schema View
 
-`SchemaView` is the single read-only navigator over a compiled JSON Schema sidecar.
+`SchemaView` is the single read-only navigator over a compiled JSON Schema.
 Every downstream consumer (QA rules, agent prompts, comparison logic, generated
 sections) goes through this one API instead of re-parsing the schema in each module.
 That keeps drift out of the readers.
@@ -376,17 +403,17 @@ The first release ships the navigator.
 `view(name)` (named query presets) and `load_urn` (repo-level URN resolution) are
 deferred until a concrete consumer earns them.
 
-Schema sidecars are validation artifacts.
-They are distinct from data sidecars, which store artifact payload values outside the
+Compiled schemas are validation artifacts.
+They are distinct from companion data, which stores artifact payload values outside the
 Markdown frontmatter.
-The first Python release does not implement generic data-sidecar loading; callers should
-keep consumed values in frontmatter unless a host project owns a clearer sidecar
-convention.
+The first Python release does not implement generic companion-data loading; callers
+should keep consumed values in frontmatter unless a host project owns a clearer
+companion-data convention.
 
 The package depends on `frontmatter-format` for Markdown frontmatter and YAML reading.
 That dependency owns frontmatter mechanics; softschema owns the contract, envelope,
 contract, and validation semantics.
-Do not treat `frontmatter-format` as a generic softschema data-sidecar runtime.
+Do not treat `frontmatter-format` as a generic softschema companion-data runtime.
 
 ## Dependency Boundary
 
@@ -416,7 +443,7 @@ boundaries.
 
 ## Deferred
 
-- Sidecar data loading beyond simple JSON Schema sidecars.
+- Companion-data loading beyond compiled JSON Schemas.
 - Agent tool APIs beyond the CLI docs and skill instructions.
 - `softschema init-example` or other artifact scaffolding commands.
 - Generic process graph or structure-report generation.

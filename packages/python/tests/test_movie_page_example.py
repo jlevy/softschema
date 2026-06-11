@@ -133,25 +133,30 @@ def test_validate_cli_ignores_unrelated_top_level_keys(capsys) -> None:
     assert exit_code == 0
 
 
-def test_validate_cli_errors_when_envelope_is_ambiguous(capsys) -> None:
-    """Without ``--envelope`` the CLI must refuse to guess between multiple keys.
+def test_movie_page_validates_with_no_flags() -> None:
+    """The flagship artifact is fully self-describing.
 
-    The spec says the envelope must be designated explicitly when multiple
-    non-`softschema` top-level keys exist; auto-detection is intentionally not
-    extended to multi-key documents. The error message lists the candidates.
+    Its metadata quartet (``contract``, ``schema``, ``envelope``, ``status``)
+    binds the compiled schema and designates the payload, so a bare
+    ``softschema validate <doc>`` succeeds even though the artifact also
+    carries a host ``title:`` key.
     """
-    exit_code = softschema_main(
-        [
-            "validate",
-            str(MOVIE_PAGE),
-            "--model",
-            "examples.movie_page.model:MoviePage",
-            "--schema",
-            str(MOVIE_SCHEMA),
-        ]
-    )
+    exit_code = softschema_main(["validate", str(MOVIE_PAGE)])
+    assert exit_code == 0
+
+
+def test_validate_cli_errors_when_envelope_is_ambiguous(capsys) -> None:
+    """Without any designation the CLI must refuse to guess between keys.
+
+    The spec says the envelope must be designated (flag, registry, or
+    ``softschema.envelope``) when multiple non-`softschema` top-level keys
+    exist; auto-detection is intentionally not extended to multi-key
+    documents. The error message lists the candidates.
+    """
+    fixture = ROOT / "tests/golden/fixtures/multi-key-no-envelope.md"
+    exit_code = softschema_main(["validate", str(fixture)])
     assert exit_code == 2
     captured = capsys.readouterr()
     assert "multiple top-level frontmatter keys" in captured.err
-    assert "movie" in captured.err
+    assert "record" in captured.err
     assert "title" in captured.err

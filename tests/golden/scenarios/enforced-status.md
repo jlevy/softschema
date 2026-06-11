@@ -26,6 +26,8 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
   "contract_id": "test.enforced:Record/v1",
   "document_metadata": {
     "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
     "status": "permissive"
   },
   "path": "tests/golden/fixtures/extra-field-permissive.md",
@@ -77,6 +79,8 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
   "contract_id": "test.enforced:Record/v1",
   "document_metadata": {
     "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
     "status": "permissive"
   },
   "path": "tests/golden/fixtures/extra-field-permissive.md",
@@ -160,6 +164,8 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
   "contract_id": "test.enforced:Record/v1",
   "document_metadata": {
     "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
     "status": "enforced"
   },
   "path": "tests/golden/fixtures/extra-field-enforced.md",

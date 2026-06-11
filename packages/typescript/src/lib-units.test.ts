@@ -42,23 +42,75 @@ function contract(o: Partial<Contract> = {}): Contract {
 describe("models", () => {
   test("parseSchemaMetadata shapes", () => {
     expect(parseSchemaMetadata(null)).toBeNull();
-    expect(parseSchemaMetadata("a:B/v1")).toEqual({ contractId: "a:B/v1", status: null });
-    expect(parseSchemaMetadata({ contract: "a:B/v1", status: "enforced" })).toEqual({
+    expect(parseSchemaMetadata("a:B/v1")).toEqual({
       contractId: "a:B/v1",
+      schema: null,
+      envelope: null,
+      status: null,
+    });
+    expect(
+      parseSchemaMetadata({
+        contract: "a:B/v1",
+        schema: "a.schema.yaml",
+        envelope: "data",
+        status: "enforced",
+      }),
+    ).toEqual({
+      contractId: "a:B/v1",
+      schema: "a.schema.yaml",
+      envelope: "data",
       status: "enforced",
     });
     expect(() => parseSchemaMetadata({ status: "enforced" })).toThrow(SchemaMetadataError);
     expect(() => parseSchemaMetadata({ contract: "a", status: "nope" })).toThrow(
       SchemaMetadataError,
     );
+    expect(() => parseSchemaMetadata({ contract: "a", schema: "" })).toThrow(SchemaMetadataError);
+    expect(() => parseSchemaMetadata({ contract: "a", schema: 7 })).toThrow(SchemaMetadataError);
+    expect(() => parseSchemaMetadata({ contract: "a", envelope: "" })).toThrow(SchemaMetadataError);
     expect(() => parseSchemaMetadata(42)).toThrow(SchemaMetadataError);
+  });
+  test("contract-ID grammar: accepts valid ids (compact and expanded)", () => {
+    for (const id of [
+      "Name",
+      "ns:Name",
+      "ns:Name/v1",
+      "ns_x:Na_me",
+      "a.b.c:Name",
+      "name",
+      "com.acme.docs:IncidentReview/1.0",
+    ]) {
+      const expected = { contractId: id, schema: null, envelope: null, status: null };
+      expect(parseSchemaMetadata(id)).toEqual(expected);
+      expect(parseSchemaMetadata({ contract: id })).toEqual(expected);
+    }
+  });
+  test("contract-ID grammar: rejects malformed ids", () => {
+    for (const id of [
+      " ",
+      "bad id",
+      "a : B",
+      ":Name",
+      "a::B",
+      "Name/v1/v2",
+      "Name/",
+      "ns:",
+      "My.Name",
+    ]) {
+      expect(() => parseSchemaMetadata(id)).toThrow(SchemaMetadataError);
+      expect(() => parseSchemaMetadata({ contract: id })).toThrow(SchemaMetadataError);
+    }
   });
   test("status guard + output helpers", () => {
     expect(isSchemaStatus("enforced")).toBe(true);
     expect(isSchemaStatus("x")).toBe(false);
     expect(metadataToOutput(null)).toBeNull();
-    expect(metadataToOutput({ contractId: "a", status: null })).toEqual({
+    expect(
+      metadataToOutput({ contractId: "a", schema: null, envelope: null, status: null }),
+    ).toEqual({
       contract: "a",
+      envelope: null,
+      schema: null,
       status: null,
     });
     expect(contractToOutput(contract({ envelopeKey: "movie", schemaPath: "s.yaml" }))).toEqual({
@@ -232,7 +284,7 @@ describe("compile: write mode + build", () => {
     expect(r.schemaSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(readFileSync(out, "utf8")).toContain("x-softschema");
   });
-  test("check mode reports missing committed sidecar", () => {
+  test("check mode reports missing committed compiled schema", () => {
     const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), { checkOnly: true });
     expect(r.drift).toBe(true);
   });
@@ -330,7 +382,7 @@ describe("validate: artifact error kinds + advisory warning", () => {
       "document-contract-mismatch",
     );
   });
-  test("envelope_mismatch + schema_sidecar_missing", () => {
+  test("envelope_mismatch + schema_missing", () => {
     const em = validateArtifact(
       tmp("d.md", "---\nwrong:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie" }),
@@ -340,10 +392,10 @@ describe("validate: artifact error kinds + advisory warning", () => {
     );
     const sm = validateArtifact(
       tmp("d.md", "---\nmovie:\n  a: 1\n---\n"),
-      contract({ envelopeKey: "movie", schemaPath: "/no/such/sidecar.yaml" }),
+      contract({ envelopeKey: "movie", schemaPath: "/no/such/schema.yaml" }),
     );
     expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
-      "schema_sidecar_missing",
+      "schema_missing",
     );
   });
 });

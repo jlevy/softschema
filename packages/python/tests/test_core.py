@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from softschema import (
     Contract,
@@ -11,6 +11,7 @@ from softschema import (
     SchemaProfile,
     SchemaStatus,
     compile_model,
+    parse_schema_metadata,
     validate_artifact,
     validate_semantic,
     validate_structural,
@@ -261,7 +262,7 @@ def test_validate_artifact_resolves_schema_path_relative_to_doc(tmp_path: Path) 
     assert result.ok
 
 
-def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> None:
+def test_validate_artifact_reports_missing_schema(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(
         doc,
@@ -281,7 +282,7 @@ def test_validate_artifact_reports_missing_schema_sidecar(tmp_path: Path) -> Non
     result = validate_artifact(doc, contract=contract)
 
     assert not result.ok
-    assert result.structural.errors[0]["kind"] == "schema_sidecar_missing"
+    assert result.structural.errors[0]["kind"] == "schema_missing"
     assert result.semantic.skipped_reason == "no_semantic_model"
 
 
@@ -386,3 +387,40 @@ def test_validate_artifact_uses_preread_frontmatter_without_reopening(tmp_path: 
 
     assert result.ok
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+@pytest.mark.parametrize(
+    "contract_id",
+    [
+        "Name",  # bare name
+        "ns:Name",  # namespaced
+        "ns:Name/v1",  # versioned
+        "ns_x:Na_me",  # underscores
+        "a.b.c:Name",  # dotted namespace
+        "name",  # lowercase name (UpperCamelCase is advisory)
+        "com.acme.docs:IncidentReview/1.0",  # dotted version
+    ],
+)
+def test_contract_grammar_accepts_valid_ids(contract_id: str) -> None:
+    metadata = parse_schema_metadata(contract_id)
+    assert metadata is not None
+    assert metadata.contract_id == contract_id
+
+
+@pytest.mark.parametrize(
+    "contract_id",
+    [
+        " ",  # whitespace only
+        "bad id",  # internal whitespace
+        "a : B",  # whitespace around separators
+        ":Name",  # empty namespace segment
+        "a::B",  # repeated colon
+        "Name/v1/v2",  # repeated slash
+        "Name/",  # empty version
+        "ns:",  # missing name
+        "My.Name",  # dots only allowed in the namespace (before the colon)
+    ],
+)
+def test_contract_grammar_rejects_malformed_ids(contract_id: str) -> None:
+    with pytest.raises(ValidationError):
+        parse_schema_metadata(contract_id)

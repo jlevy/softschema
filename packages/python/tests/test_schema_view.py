@@ -27,7 +27,7 @@ def test_root_softmeta_is_language_neutral(view: SchemaView) -> None:
     meta = view.root_softmeta
     assert meta["contract"] == "example.movies:MoviePage/v1"
     assert "softschema_format_version" in meta
-    # No language-specific provenance (e.g. generated_from) leaks into the sidecar.
+    # No language-specific provenance (e.g. generated_from) leaks into the compiled schema.
     assert "generated_from" not in meta
 
 

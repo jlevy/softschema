@@ -41,6 +41,8 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
   "contract_id": "test.errors:Sample/v1",
   "document_metadata": {
     "contract": "test.errors:Sample/v1",
+    "envelope": null,
+    "schema": null,
     "status": "enforced"
   },
   "path": "tests/golden/fixtures/bad-error-norm.md",

@@ -28,10 +28,10 @@ The example deliberately exercises a representative mix of YAML shapes:
 ## Schema Enums
 
 The block below is regenerated from `movie-page.schema.yaml` by
-`uv run softschema generate examples/movie_page/README.md`. CI runs the same command
-with `--check` and fails on drift.
+`softschema generate examples/movie_page/README.md`. CI runs the same command with
+`--check` and fails on drift.
 
-<!-- softschema:generated kind="enum_table" contract="movie-page.schema.yaml" -->
+<!-- softschema:generated kind="enum_table" schema="movie-page.schema.yaml" -->
 | Field | Allowed values |
 | --- | --- |
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
@@ -41,27 +41,29 @@ The example is meant to be copied from the files in this directory or printed th
 the docs CLI:
 
 ```bash
-uv run softschema docs example
-uv run softschema docs example-artifact
-uv run softschema docs example-model
-uv run softschema docs example-host
+softschema docs example
+softschema docs example-artifact
+softschema docs example-model
+softschema docs example-host
 ```
 
-Validate it with:
+Validate it with zero flags (from a repo checkout):
 
 ```bash
-uv run softschema validate examples/movie_page/spirited-away.md \
-  --model examples.movie_page.model:MoviePage \
+softschema validate examples/movie_page/spirited-away.md
+```
+
+The artifact carries the full self-description quartet (`contract`, `schema`,
+`envelope`, `status`) in its `softschema:` block, so `softschema validate` resolves the
+compiled schema and envelope automatically with no flags.
+
+Override flags are still available when a caller needs to override a binding:
+
+```bash
+softschema validate examples/movie_page/spirited-away.md \
   --schema examples/movie_page/movie-page.schema.yaml \
   --envelope movie
 ```
-
-The command reads `softschema.contract` and `softschema.status` from the artifact.
-`--envelope movie` is required here because the artifact also carries a top-level
-`title:` key (a host-specific concern that softschema does not interpret), so the
-envelope can no longer be inferred automatically.
-Override flags are also available for `--contract` and `--status` when callers want to
-override the artifact’s declared values.
 
 A host application usually builds a registry once, then validates files by contract ID:
 
@@ -73,6 +75,9 @@ from examples.movie_page.host_integration import validate_movie_page
 result = validate_movie_page(Path("examples/movie_page/spirited-away.md"))
 assert result.ok
 ```
+
+The import above assumes a repo checkout; see [host_integration.py](host_integration.py)
+for the full source.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

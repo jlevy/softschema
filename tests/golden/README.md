@@ -23,7 +23,7 @@ output, so the published runtime is proven, not just the dev one. (Run `bun run 
 `packages/typescript` first so `dist/cli.js` exists.)
 
 Because the CLI emits deterministic, key-sorted JSON, engine-neutral structural error
-records, and a canonical JSON Schema sidecar, a single expected-output block validates
+records, and a canonical compiled JSON Schema, a single expected-output block validates
 both implementations. Parity is a test pass, not a manual audit.
 
 ## Direct Cross-Implementation Diff
@@ -86,7 +86,7 @@ Otherwise no patterns are needed. Note in particular:
 ## Layout
 
 - `scenarios/`: **neutral** scenarios that run on **every** runtime (py, ts, ts-bun).
-  They use only language-neutral inputs (the JSON Schema sidecar via `--schema`,
+  They use only language-neutral inputs (the compiled JSON Schema via `--schema`,
   `inspect`, `docs`, `skill`, `generate`, `--version`).
 - `scenarios-py/`: Python per-impl scenarios (`compile` from a Pydantic class;
   `validate --model` against a Pydantic model). Run under `py`.
@@ -114,5 +114,5 @@ Otherwise no patterns are needed. Note in particular:
 | `scenarios-ts/validate-model.md` | ts, ts-bun | `validate --model` semantic-ok path (Zod `.mjs`) |
 | `scenarios-ts-bun/compile.md` | ts-bun | same compile output; source is a Zod module (needs a TS runtime) |
 
-Compile parity (content-identical sidecar, equal digest) across languages is
+Compile parity (content-identical compiled schema, equal digest) across languages is
 additionally asserted by the cross-implementation conformance test.
