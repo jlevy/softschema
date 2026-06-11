@@ -53,13 +53,35 @@ function pyTypeName(value: unknown): string {
 /** Raised for a malformed `softschema:` metadata block (→ document_softschema_invalid). */
 export class SchemaMetadataError extends Error {}
 
+// Enforced contract-ID grammar (mirrors Python `_CONTRACT_ID_RE`):
+//   contract-id = [ namespace ":" ] name [ "/" version ]
+//   namespace = segment *( "." segment ), segment = [a-z0-9_]+
+//   name = [A-Za-z_][A-Za-z0-9_]*, version = [A-Za-z0-9_.-]+
+const CONTRACT_ID_RE =
+  /^(?:[a-z0-9_]+(?:\.[a-z0-9_]+)*:)?[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z0-9_.-]+)?$/;
+
+/** Validate the contract-ID grammar; throws on a malformed value. */
+function checkContractId(contract: unknown): string {
+  if (typeof contract !== "string" || contract.length === 0) {
+    throw new SchemaMetadataError("softschema metadata requires a non-empty string 'contract'");
+  }
+  if (!CONTRACT_ID_RE.test(contract)) {
+    throw new SchemaMetadataError(
+      `malformed contract ID '${contract}': expected [namespace:]Name[/version] ` +
+        "(namespace lowercase [a-z0-9_], dot-separated; name starts with a letter or " +
+        "underscore; at most one ':' and one '/'; no whitespace)",
+    );
+  }
+  return contract;
+}
+
 /** Parse compact (string) or expanded (mapping) document-level `softschema:` metadata. */
 export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
   if (raw === null || raw === undefined) {
     return null;
   }
   if (typeof raw === "string") {
-    return { contractId: raw, status: null };
+    return { contractId: checkContractId(raw), status: null };
   }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
@@ -68,10 +90,7 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
     if (unknown.length > 0) {
       throw new SchemaMetadataError(`softschema metadata has unknown keys: ${unknown.join(", ")}`);
     }
-    const contract = obj.contract;
-    if (typeof contract !== "string" || contract.length === 0) {
-      throw new SchemaMetadataError("softschema metadata requires a non-empty string 'contract'");
-    }
+    const contract = checkContractId(obj.contract);
     let status: SchemaStatus | null = null;
     if (obj.status !== undefined && obj.status !== null) {
       if (!isSchemaStatus(obj.status)) {

@@ -53,6 +53,36 @@ describe("models", () => {
     );
     expect(() => parseSchemaMetadata(42)).toThrow(SchemaMetadataError);
   });
+  test("contract-ID grammar: accepts valid ids (compact and expanded)", () => {
+    for (const id of [
+      "Name",
+      "ns:Name",
+      "ns:Name/v1",
+      "ns_x:Na_me",
+      "a.b.c:Name",
+      "name",
+      "com.acme.docs:IncidentReview/1.0",
+    ]) {
+      expect(parseSchemaMetadata(id)).toEqual({ contractId: id, status: null });
+      expect(parseSchemaMetadata({ contract: id })).toEqual({ contractId: id, status: null });
+    }
+  });
+  test("contract-ID grammar: rejects malformed ids", () => {
+    for (const id of [
+      " ",
+      "bad id",
+      "a : B",
+      ":Name",
+      "a::B",
+      "Name/v1/v2",
+      "Name/",
+      "ns:",
+      "My.Name",
+    ]) {
+      expect(() => parseSchemaMetadata(id)).toThrow(SchemaMetadataError);
+      expect(() => parseSchemaMetadata({ contract: id })).toThrow(SchemaMetadataError);
+    }
+  });
   test("status guard + output helpers", () => {
     expect(isSchemaStatus("enforced")).toBe(true);
     expect(isSchemaStatus("x")).toBe(false);

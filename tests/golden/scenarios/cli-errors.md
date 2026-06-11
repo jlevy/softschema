@@ -32,6 +32,20 @@ softschema validate: [..]
 ? 2
 ```
 
+# Test: a malformed contract ID is rejected by the grammar (exit 2)
+
+The contract ID `bad id with spaces` violates the enforced grammar (whitespace, no
+namespace/name shape). Both CLIs reject it at metadata-parse time with exit 2; the
+diagnostic wording is engine-specific (Pydantic's multi-line report vs a one-line
+message), so the stable prefix is asserted and the tail elided.
+
+```console
+$ softschema validate tests/golden/fixtures/malformed-contract.md --schema examples/movie_page/movie-page.schema.yaml --envelope record 2>&1
+softschema validate: [..]
+...
+? 2
+```
+
 # Test: a missing artifact file is a clean usage error (exit 2)
 
 A nonexistent file exits 2 with a one-line message and no stdout, never a traceback. The
