@@ -307,22 +307,55 @@ Schema, and is never required to be an import path.
   Pydantic and Zod are sources; `softschema compile` produces the identical canonical
   schema from either (already enforced by `schema_sha256` conformance).
 
-- **In-document binding** (new, optional): the metadata block gains a `schema` key — a
-  relative path to the compiled schema, resolved from the document’s directory (relative
-  paths only; the bounded resolution prevents surprising binds):
+- **`contract` vs `schema`, and why both:** the two metadata keys play different roles
+  and the distinction is the heart of this design.
+  - `contract` is the **stable, unified identifier** for the payload contract: a logical
+    name (with the UpperCamelCase segment hinting at a Pydantic class, a Zod export, or
+    a precompiled JSON Schema).
+    It is *required* for a self-describing artifact and is the durable handle every
+    binding mechanism keys on.
+    It says *what* contract this is, not *where* the schema lives.
+  - `schema` is an **optional, recommended pointer** to the concrete authoritative
+    schema file. It says *where* (one way of saying where).
+    It is recommended for self-validating artifacts but **never required**, because many
+    applications resolve the schema out of band — a host registry, a build step, a
+    company-wide convention, or some other application-specific mechanism — and
+    reference it only through the `contract` ID. Those artifacts carry `contract` and
+    omit `schema`, and that is fully conforming.
+
+- **In-document binding** (new, optional): the metadata block gains the optional
+  `schema` key.
 
   ```yaml
   softschema:
     contract: example.movies:MoviePage/v1
-    schema: movie-page.schema.yaml
+    schema: movie-page.schema.yaml   # optional; recommended for self-validating artifacts
     status: enforced
   ```
 
-  With it, `softschema validate doc.md` needs no flags.
+  With it, `softschema validate doc.md` needs no flags; without it, validation falls
+  back to a flag, a registry binding, or a metadata-only check.
   Precedence: `--schema` flag > `softschema.schema` metadata > registry `schema_path` >
   none (metadata-only check).
+  The `--schema` flag is therefore an **optional override**: unnecessary when
+  `softschema.schema` is present, but available to point validation at a different
+  schema on a given run (a candidate revision, a stricter variant, or a schema for an
+  artifact whose author omitted the key).
   Unknown-key rejection continues to apply (the known set becomes `contract`, `status`,
   `schema`).
+
+- **Resolution is a convention, not an enforced rule.** By convention the `schema` value
+  is a path to the compiled schema *relative to the document that carries it* (the
+  common case: the schema sits in the same folder or repository as the artifacts it
+  validates). The reference CLIs resolve it that way, bounded to the document directory
+  and the current working directory so a relative path cannot silently bind to an
+  unrelated schema in a parent tree.
+  But the spec **does not mandate a single resolution for every conforming consumer**:
+  how the file is laid out and referenced is too situational across applications, so the
+  relative-from-document rule is recommended (and is what the reference tools do), not a
+  conformance requirement.
+  The spec validates that `schema`, when present, is a non-empty string; it does not
+  dictate that every host resolve it identically.
 
 - **Workflow documentation**: the guide’s validation playbook becomes the canonical loop
   — author the model (Pydantic or Zod) → `softschema compile` → commit the compiled
@@ -445,6 +478,26 @@ reviewed as the behavioral spec.
 
 One PR per phase (or Phase 1+2 stacked if review prefers); 0.2.0 ships after Phase 2
 with both packages in lockstep as usual.
+
+## Resolved Decisions
+
+These were open during drafting and are now settled (maintainer direction); they are
+recorded here so the implementation beads inherit the final shape:
+
+- **`schema` key is recommended, not required.** A self-describing artifact must carry
+  `contract`; `schema` is an optional, recommended pointer.
+  Artifacts that resolve the schema out of band (registry, build step, company
+  convention) carry `contract` alone and are fully conforming.
+  See Design 5.
+- **`--schema` is an optional override, not the primary path.** When `softschema.schema`
+  is present, validation needs no flag; `--schema` exists to point a given run at a
+  different schema (candidate revision, stricter variant, or an artifact whose author
+  omitted the key). Precedence: `--schema` > `softschema.schema` > registry >
+  metadata-only.
+- **Relative-from-document resolution is a convention, not a conformance rule.** The
+  reference CLIs resolve `schema` relative to the document (bounded to doc-dir + cwd),
+  but the spec only requires that `schema`, when present, be a non-empty string.
+  Layout is too situational to mandate one resolution for every consumer.
 
 ## Open Questions
 
