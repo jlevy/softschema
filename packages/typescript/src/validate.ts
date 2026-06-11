@@ -424,7 +424,16 @@ function checkMetadata(
 export function validateArtifact(
   docPath: string,
   contract: Contract,
-  options: { semanticModel?: z.ZodType; metadataMode?: MetadataMode } = {},
+  options: {
+    semanticModel?: z.ZodType;
+    metadataMode?: MetadataMode;
+    /**
+     * An already-parsed frontmatter (from `readFrontmatter`); when supplied for a
+     * frontmatter-md contract the document is not re-read. The CLI passes what it
+     * parsed for binding inference so the file is read once.
+     */
+    preParsed?: RawFrontmatter;
+  } = {},
 ): ArtifactValidationResult {
   const warnings: SchemaWarning[] = [];
   const metadataMode = options.metadataMode ?? "enforced";
@@ -506,22 +515,30 @@ export function validateArtifact(
   }
 
   let parsed: RawFrontmatter;
-  try {
-    parsed = readFrontmatter(docPath);
-  } catch (err) {
-    if (err instanceof YamlParseError) {
-      return failure(docPath, contract, null, "parse_error", err.message);
+  if (options.preParsed !== undefined) {
+    parsed = options.preParsed;
+  } else {
+    try {
+      parsed = readFrontmatter(docPath);
+    } catch (err) {
+      if (err instanceof YamlParseError) {
+        return failure(docPath, contract, null, "parse_error", err.message);
+      }
+      if (
+        err instanceof Error &&
+        "code" in err &&
+        (err.code === "ENOENT" || err.code === "EACCES")
+      ) {
+        return failure(
+          docPath,
+          contract,
+          null,
+          "parse_error",
+          (err as NodeJS.ErrnoException).message,
+        );
+      }
+      throw err;
     }
-    if (err instanceof Error && "code" in err && (err.code === "ENOENT" || err.code === "EACCES")) {
-      return failure(
-        docPath,
-        contract,
-        null,
-        "parse_error",
-        (err as NodeJS.ErrnoException).message,
-      );
-    }
-    throw err;
   }
   const { hasFence, value: frontmatter } = parsed;
   if (!hasFence) {
