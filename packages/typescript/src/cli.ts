@@ -4,7 +4,7 @@
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
@@ -147,12 +147,12 @@ const DOC_TOPICS: DocTopic[] = [
 
 const COPYABLE_EXAMPLES = ["example", "example-artifact", "example-model", "example-host"];
 
-const SKILL_INSTALL_TARGETS = [
+export const SKILL_INSTALL_TARGETS = [
   ".agents/skills/softschema/SKILL.md",
   ".claude/skills/softschema/SKILL.md",
-];
+] as const;
 
-const SKILL_DO_NOT_EDIT_MARKER =
+export const SKILL_DO_NOT_EDIT_MARKER =
   "<!-- DO NOT EDIT: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
 
 function packageVersion(): string {
@@ -189,7 +189,7 @@ function renderedSkillBrief(): string {
 }
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
-function installSkillPayload(rendered: string): string {
+export function installSkillPayload(rendered: string): string {
   const lines = rendered.split("\n");
   let delimiters = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -213,8 +213,13 @@ function runSkillInstall(): number {
     if (existing === payload) {
       status = "unchanged";
     } else {
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, payload);
+      const dir = dirname(target);
+      mkdirSync(dir, { recursive: true });
+      // Atomic write: write to a temp file in the same directory, then rename.
+      // fs.renameSync is atomic on the same filesystem (POSIX guarantee).
+      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
+      writeFileSync(tmp, payload);
+      renameSync(tmp, target);
       status = existing !== null ? "updated" : "created";
     }
     return { path: relative, status };
@@ -342,9 +347,9 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
 
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
-    if (opts.model === undefined && opts.schema === undefined) {
-      throw new UsageError("missing validation implementation; pass --model, --schema, or both");
-    }
+    // Without --model/--schema this is a metadata-only check: frontmatter parses,
+    // the softschema: block is well-formed, and the envelope resolves; structural
+    // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     const frontmatter = readFrontmatterRaw(path);
     if (frontmatter === null) {

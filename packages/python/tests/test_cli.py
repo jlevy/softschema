@@ -357,9 +357,11 @@ def test_validate_exits_two_when_contract_missing(
     assert "--contract" in capsys.readouterr().err
 
 
-def test_validate_exits_two_when_validation_implementation_missing(
+def test_validate_without_model_or_schema_is_a_metadata_only_check(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """A soft-stage artifact (contract, no schema or model yet) validates its
+    metadata and envelope; the structural and semantic layers report skipped."""
     doc = tmp_path / "doc.md"
     write_doc(
         doc,
@@ -374,8 +376,31 @@ def test_validate_exits_two_when_validation_implementation_missing(
 
     exit_code = softschema_main(["validate", str(doc)])
 
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["structural"]["skipped_reason"] == "no_schema"
+    assert result["semantic"]["skipped_reason"] == "no_semantic_model"
+
+
+def test_metadata_only_validate_still_rejects_malformed_metadata(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    doc = tmp_path / "doc.md"
+    write_doc(
+        doc,
+        """
+        softschema:
+          contract: test:Sample/v1
+          bogus: 1
+        sample:
+          name: hello
+        """,
+    )
+
+    exit_code = softschema_main(["validate", str(doc)])
+
     assert exit_code == 2
-    assert "--model" in capsys.readouterr().err
+    assert "softschema validate:" in capsys.readouterr().err
 
 
 def test_validate_exits_two_on_ambiguous_envelope(

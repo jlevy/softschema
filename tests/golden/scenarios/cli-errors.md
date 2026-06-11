@@ -19,11 +19,16 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
 ? 2
 ```
 
-# Test: a validation implementation is required
+# Test: an unknown key in the softschema block is rejected (exit 2)
+
+The spec makes unknown `softschema:` keys a validation error. The diagnostic wording is
+engine-specific (Pydantic's multi-line report vs a one-line message), so the stable
+prefix is asserted and the tail elided.
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --envelope movie
-! softschema validate: missing validation implementation; pass --model, --schema, or both
+$ softschema validate tests/golden/fixtures/unknown-metadata-key.md 2>&1
+softschema validate: [..]
+...
 ? 2
 ```
 

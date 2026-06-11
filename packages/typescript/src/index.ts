@@ -1,5 +1,5 @@
 /** Public API for softschema. */
-export { canonicalizeJsonSchema } from "./canonicalize.js";
+export { applyEnforcedExtras, canonicalizeJsonSchema } from "./canonicalize.js";
 export { type CompileOptions, type CompileResult, compileSchema } from "./compile.js";
 export {
   normalizeAjvError,

@@ -97,3 +97,41 @@ function isNullableUnion(union: Json[]): boolean {
   const hasOther = union.some((e) => isPlainObject(e) && e.type !== "null");
   return hasNull && hasOther;
 }
+
+/**
+ * Return a copy of `schema` with the `status: enforced` strictness overlay: every object
+ * schema that declares `properties` but is silent about `additionalProperties` is
+ * validated as `additionalProperties: false`. An explicit `additionalProperties` always
+ * wins, and object schemas without `properties` (free-form mappings) are unaffected.
+ * Validation-time only; never changes compiled sidecars. Mirrors the Python
+ * `apply_enforced_extras` exactly.
+ */
+export function applyEnforcedExtras(schema: Record<string, Json>): Record<string, Json> {
+  return applyEnforced(schema) as Record<string, Json>;
+}
+
+function applyEnforced(node: Json): Json {
+  if (!isPlainObject(node)) {
+    return node;
+  }
+  const out: Record<string, Json> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (NAME_MAP_KEYWORDS.has(key) && isPlainObject(value)) {
+      const mapped: Record<string, Json> = {};
+      for (const [name, sub] of Object.entries(value)) {
+        mapped[name] = applyEnforced(sub);
+      }
+      out[key] = mapped;
+    } else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) {
+      out[key] = value.map(applyEnforced);
+    } else if (SCHEMA_KEYWORDS.has(key)) {
+      out[key] = applyEnforced(value);
+    } else {
+      out[key] = value;
+    }
+  }
+  if (isPlainObject(out.properties) && !("additionalProperties" in out)) {
+    out.additionalProperties = false;
+  }
+  return out;
+}

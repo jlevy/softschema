@@ -116,6 +116,48 @@ describe("errors: every message template", () => {
       "value {'a': {'b': 2}, 'c': [1, 2]} is not of type 'string'",
     );
   });
+  test("pyRepr number formatting matches Python repr() ground truth", () => {
+    // Ground-truth table verified against CPython 3.11 repr():
+    //   1e-7      -> '1e-07'
+    //   1e16      -> '1e+16'       (integer-valued but abs >= 1e16 → exponential)
+    //   1e15      -> '1000000000000000.0' in Python, but TS cannot add .0 (ss-wbnm)
+    //   0.0001    -> '0.0001'
+    //   0.00001   -> '1e-05'
+    //   inf       -> 'inf'
+    //   nan       -> 'nan'
+    //   -1e-7     -> '-1e-07'
+    //   1.5e16    -> '1.5e+16'
+    //   1.2345678901234568e17 -> '1.2345678901234568e+17'
+    const cases: [number, string][] = [
+      [1e-7, "1e-07"],
+      [1e16, "1e+16"],
+      // 1e15 is the ss-wbnm case: Python says '1000000000000000.0', TS says '1000000000000000'
+      // because YAML int-valued floats lose .0 in JS. This is the documented divergence.
+      [1e15, "1000000000000000"],
+      [0.0001, "0.0001"],
+      [0.00001, "1e-05"],
+      [Infinity, "inf"],
+      [NaN, "nan"],
+      [-1e-7, "-1e-07"],
+      [1.5e16, "1.5e+16"],
+      [1.2345678901234568e17, "1.2345678901234568e+17"],
+      [-Infinity, "-inf"],
+      // Integer-valued below 1e16: plain string
+      [42, "42"],
+      [0, "0"],
+      [-3, "-3"],
+      // Non-integer normal range: plain string
+      [3.14, "3.14"],
+      [0.5, "0.5"],
+      [-0.3, "-0.3"],
+    ];
+    for (const [input, expected] of cases) {
+      // pyRepr is private, so exercise it through renderStructuralMessage
+      const msg = renderStructuralMessage("minimum", input, 0);
+      const reprInMsg = msg.replace("value 0 is less than the minimum of ", "");
+      expect(reprInMsg).toBe(expected);
+    }
+  });
   test("normalizeAjvError reads validator_value from error.schema and value from error.data", () => {
     const rec = normalizeAjvError({
       instancePath: "/release_year",

@@ -112,6 +112,8 @@ An implementation must:
 ## Contract IDs
 
 A contract ID names an artifact payload contract.
+A contract ID must be a non-empty string; anything else is a malformed `contract`
+value. The form below is recommended, not required.
 
 The recommended form is `namespace:UpperCamelCaseName/version`. Examples:
 
@@ -131,9 +133,20 @@ It is not required to be an import path or a class name.
 | `permissive` | Known fields validate; extension fields may be allowed by the source model |
 | `enforced` | The schema is authoritative at the boundary |
 
-`status` records intended maturity.
-It does not change validation behavior by itself; whether a model allows extra fields is
-configured on the source model.
+`status` records intended maturity, and `enforced` tightens validation:
+
+- `soft` and `permissive` do not change validation behavior; whether a model allows
+  extra fields is configured on the source model.
+- `enforced` makes the schema authoritative at the boundary: a conforming validator
+  treats every object schema that declares `properties` but omits
+  `additionalProperties` as `additionalProperties: false`. An explicit
+  `additionalProperties` value in the schema (true, false, or a subschema) always wins,
+  so a schema can opt specific objects out of strictness.
+  Object schemas without `properties` (free-form mappings) are unaffected.
+  The overlay applies at validation time only; it never changes compiled sidecars.
+
+The effective status is resolved by the caller (for example a registry contract or a
+`--status` flag), falling back to the document's declared `softschema.status`.
 
 ## Source of Truth
 
@@ -175,6 +188,8 @@ A validator must reject:
 - a missing or unreadable schema sidecar when the contract declares one
 - a JSON Schema validation failure
 - an implementation-schema validation failure
+- undeclared payload fields rejected by the `enforced` strictness rule (see Status
+  Values)
 
 ## Generated Sections
 

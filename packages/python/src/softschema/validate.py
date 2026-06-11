@@ -23,6 +23,7 @@ from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAMLError
 
+from softschema.canonicalize import apply_enforced_extras
 from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
@@ -85,9 +86,22 @@ class ArtifactValidationResult:
         return [warning.code for warning in self.warnings]
 
 
-def validate_structural(values: Any, schema_yaml_path: Path) -> StructuralResult:
-    """Validate values against a JSON Schema YAML or JSON sidecar."""
+def validate_structural(
+    values: Any,
+    schema_yaml_path: Path,
+    *,
+    strict_extras: bool = False,
+) -> StructuralResult:
+    """Validate values against a JSON Schema YAML or JSON sidecar.
+
+    With ``strict_extras=True`` (the ``status: enforced`` overlay), object
+    schemas that declare ``properties`` but omit ``additionalProperties`` are
+    validated as ``additionalProperties: false``; see
+    :func:`softschema.canonicalize.apply_enforced_extras`.
+    """
     schema = _read_yaml(schema_yaml_path)
+    if strict_extras and isinstance(schema, dict):
+        schema = apply_enforced_extras(schema)
     validator = Draft202012Validator(schema)
     errors = [
         structural_error_record(
@@ -357,7 +371,11 @@ def _validate_extracted_values(
                 ],
             )
         else:
-            structural = validate_structural(values, schema_path)
+            structural = validate_structural(
+                values,
+                schema_path,
+                strict_extras=contract.status == SchemaStatus.enforced,
+            )
     elif contract.model is not None:
         structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
     else:

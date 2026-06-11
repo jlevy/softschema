@@ -258,9 +258,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _validate_cmd(args: argparse.Namespace) -> int:
+    # Without --model/--schema this is a metadata-only check: frontmatter parses,
+    # the softschema: block is well-formed, and the envelope resolves; structural
+    # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     try:
-        if args.model is None and args.schema is None:
-            raise ValueError("missing validation implementation; pass --model, --schema, or both")
         contract_id, status, envelope_key = _infer_validation_binding(args)
         model = _load_model(args.model) if args.model else None
     except (TypeError, ValueError, ValidationError) as exc:

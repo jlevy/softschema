@@ -248,8 +248,12 @@ missing or malformed value, add a Pydantic model (or JSON Schema sidecar), set
 Bugs that used to silently break the consumer now fail loudly.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
-real authoring bugs, flip `status: enforced` and set the source model to
-`extra="forbid"`.
+real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
+fields at the structural boundary (object schemas that are silent about
+`additionalProperties` are treated as closed; an explicit `additionalProperties` in the
+schema still wins).
+Setting the source model to `extra="forbid"` additionally compiles that strictness into
+the sidecar itself and enforces it at the semantic layer.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -357,8 +361,9 @@ Wire a Pydantic model to a contract and validate at file boundaries:
        handle_validation_failure(result)
    ```
 
-5. **Tighten over time.** Start `permissive`; flip to `enforced` and add
-   `extra="forbid"` once authoring is consistently clean.
+5. **Tighten over time.** Start `permissive`; flip to `enforced` once authoring is
+   consistently clean (undeclared fields then fail structural validation), and add
+   `extra="forbid"` to also enforce at the semantic layer.
 
 The `result` object reports `structural` (JSON Schema) and `semantic` (Pydantic) errors
 separately, so callers can distinguish “shape was wrong” from “cross-field invariant

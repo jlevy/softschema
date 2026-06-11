@@ -68,6 +68,9 @@ diff_cmd "skill --brief"                     skill --brief
 diff_cmd "generate --check (no drift)"       generate examples/movie_page/README.md --check
 diff_cmd "generate --check (drift)"          generate tests/golden/fixtures/stale-generated.md --check
 diff_cmd "generate (missing file, exit 2)"   generate tests/golden/fixtures/does-not-exist.md
+diff_cmd "validate (metadata-only, soft stage)" validate tests/golden/fixtures/extra-field-permissive.md
+diff_cmd "validate (enforced overlay rejects extras)" validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml --status enforced
+diff_cmd "validate (document-declared enforced)" validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml
 
 if [ "$fail" -ne 0 ]; then
   echo "cross-impl parity FAILED" >&2

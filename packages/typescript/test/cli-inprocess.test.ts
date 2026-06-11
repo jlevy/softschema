@@ -10,7 +10,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
-import { main } from "../src/cli.ts";
+import { main } from "../src/cli.js";
 
 const REPO = resolve(import.meta.dir, "../../..");
 const MOVIE_DOC = resolve(REPO, "examples/movie_page/spirited-away.md");

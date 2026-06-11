@@ -94,8 +94,12 @@ The CLI reads `softschema.contract`, `softschema.status`, and a single top-level
 envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
-The CLI still needs a validation implementation, such as `--model` or `--schema`,
-because document metadata identifies the contract but does not import code.
+Without `--model` or `--schema`, `validate` performs a metadata-only check: the
+frontmatter parses, the `softschema:` block is well-formed (unknown keys and a
+malformed contract are errors), and the envelope resolves; the structural and semantic
+layers are reported as skipped.
+This makes the CLI useful from the `soft` stage, before any schema or model exists.
+Passing `--model` or `--schema` adds the corresponding validation layers.
 
 `softschema docs` and `softschema skill` are informational commands.
 They print bundled Markdown resources to stdout so agents in installed environments can
@@ -130,6 +134,14 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing schema sidecars, JSON Schema errors, and Pydantic errors.
+
+When the contract's status is `enforced`, structural validation applies the
+strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
+schemas that declare `properties` but omit `additionalProperties` are validated as
+`additionalProperties: false`, an explicit `additionalProperties` always wins, and
+free-form mappings are unaffected.
+The overlay is validation-time only; compiled sidecars never change.
+`validate_structural` exposes the same behavior via its `strict_extras` keyword.
 
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
@@ -195,7 +207,7 @@ if any(w.code.startswith("document-") for w in result.warnings):
 | Code | When it’s emitted |
 | --- | --- |
 | `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
-| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: `status` records intent, not enforcement. |
+| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the `enforced` strict-extras overlay). |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.
