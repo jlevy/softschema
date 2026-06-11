@@ -115,7 +115,10 @@ exclude = [
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "UP", "B", "I"]
+# E/F/UP/B/I plus higher-signal families: flake8-simplify (SIM),
+# comprehensions (C4), Ruff-specific (RUF), flake8-pie (PIE), return (RET),
+# and pytest style (PT). Kept narrow to avoid churn against the house style.
+select = ["E", "F", "UP", "B", "I", "SIM", "C4", "RUF", "PIE", "RET", "PT"]
 ignore = [
     "E501",
     "E402",

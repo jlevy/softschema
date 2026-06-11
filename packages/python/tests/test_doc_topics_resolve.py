@@ -11,7 +11,7 @@ import pytest
 from softschema.cli import DOC_TOPICS, ResourceTopic, _read_resource
 
 
-@pytest.mark.parametrize("name,topic", sorted(DOC_TOPICS.items()), ids=sorted(DOC_TOPICS))
+@pytest.mark.parametrize(("name", "topic"), sorted(DOC_TOPICS.items()), ids=sorted(DOC_TOPICS))
 def test_doc_topic_resolves(name: str, topic: ResourceTopic) -> None:
     content = _read_resource(topic.path)
     assert isinstance(content, str)
