@@ -369,3 +369,20 @@ def test_pure_yaml_explicit_envelope_key_nests_the_payload(tmp_path: Path) -> No
 
     assert result.ok
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_validate_artifact_uses_preread_frontmatter_without_reopening(tmp_path: Path) -> None:
+    """When frontmatter is supplied, validate_artifact does not re-read the file
+    (the CLI passes its single parse). Proven by pointing at a nonexistent path."""
+    contract = Contract(id="example:Sample/v1", model=SampleModel, envelope_key="sample")
+    preread = {
+        "softschema": {"contract": "example:Sample/v1"},
+        "sample": {"name": "hello", "direction": "up", "delta": 1.5},
+    }
+
+    result = validate_artifact(
+        tmp_path / "does-not-exist.md", contract=contract, frontmatter=preread
+    )
+
+    assert result.ok
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}

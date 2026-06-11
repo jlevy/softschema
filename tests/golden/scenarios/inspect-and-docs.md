@@ -31,7 +31,6 @@ $ softschema inspect examples/movie_page/spirited-away.md
 $ softschema docs --list
 Available softschema docs:
 
-  agents             Repo-level agent instructions.
   development        Local development workflow.
   example            Copyable example overview.
   example-artifact   Copyable Markdown/YAML artifact.
@@ -39,7 +38,6 @@ Available softschema docs:
   example-model      Pydantic model used by the example.
   guide              Concepts, mental model, and adoption path.
   installation       Installing softschema for Node or Python.
-  publishing         Release and PyPI workflow.
   python-design      Python package design decisions.
   readme             Short first-visitor overview.
   skill              Portable agent skill instructions.
@@ -91,12 +89,6 @@ $ softschema docs --list --json
   "scaffolding": false,
   "topics": [
     {
-      "name": "agents",
-      "path": "AGENTS.md",
-      "summary": "Repo-level agent instructions.",
-      "title": "Agent Instructions"
-    },
-    {
       "name": "development",
       "path": "docs/development.md",
       "summary": "Local development workflow.",
@@ -137,12 +129,6 @@ $ softschema docs --list --json
       "path": "docs/installation.md",
       "summary": "Installing softschema for Node or Python.",
       "title": "Installation"
-    },
-    {
-      "name": "publishing",
-      "path": "docs/publishing.md",
-      "summary": "Release and PyPI workflow.",
-      "title": "Publishing"
     },
     {
       "name": "python-design",

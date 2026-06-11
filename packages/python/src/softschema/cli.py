@@ -97,11 +97,6 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "docs/installation.md",
         "Installing softschema for Node or Python.",
     ),
-    "publishing": ResourceTopic(
-        "Publishing",
-        "docs/publishing.md",
-        "Release and PyPI workflow.",
-    ),
     "example": ResourceTopic(
         "Movie Page Example",
         "examples/movie_page/README.md",
@@ -127,12 +122,9 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "skills/softschema/SKILL.md",
         "Portable agent skill instructions.",
     ),
-    "agents": ResourceTopic(
-        "Agent Instructions",
-        "AGENTS.md",
-        "Repo-level agent instructions.",
-    ),
 }
+# `agents` (AGENTS.md) and `publishing` (release runbook) are intentionally not bundled
+# topics: both are repo/maintainer-internal and have no use inside an installed package.
 
 
 def _run_cmd(command_name: str, func: Any, args: argparse.Namespace) -> int:
@@ -261,12 +253,11 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # Without --model/--schema this is a metadata-only check: frontmatter parses,
     # the softschema: block is well-formed, and the envelope resolves; structural
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
-    try:
-        contract_id, status, envelope_key = _infer_validation_binding(args)
-        model = _load_model(args.model) if args.model else None
-    except (TypeError, ValueError, ValidationError) as exc:
-        print(f"softschema validate: {exc}", file=sys.stderr)
-        return 2
+    # Read the document once here; both binding inference and validate_artifact
+    # reuse this frontmatter, so the file is parsed a single time.
+    _content, frontmatter = fmf_read(args.path)
+    contract_id, status, envelope_key = _infer_validation_binding(args, frontmatter)
+    model = _load_model(args.model) if args.model else None
     contract = Contract(
         id=contract_id,
         model=model,
@@ -274,13 +265,14 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         schema_path=args.schema,
         status=status,
     )
-    result = validate_artifact(args.path, contract=contract)
+    result = validate_artifact(args.path, contract=contract, frontmatter=frontmatter)
     print(_json(result))
     return 0 if result.ok else 1
 
 
-def _infer_validation_binding(args: argparse.Namespace) -> tuple[str, SchemaStatus, str | None]:
-    _content, frontmatter = fmf_read(args.path)
+def _infer_validation_binding(
+    args: argparse.Namespace, frontmatter: Any
+) -> tuple[str, SchemaStatus, str | None]:
     if not isinstance(frontmatter, dict):
         if args.contract is None:
             raise ValueError("missing --contract because the document has no YAML frontmatter")

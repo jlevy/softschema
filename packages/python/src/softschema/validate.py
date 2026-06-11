@@ -150,6 +150,9 @@ def validate_values(
     return ValidationResult(structural=structural, semantic=semantic)
 
 
+_UNREAD: Any = object()
+
+
 def validate_artifact(
     doc_path: Path,
     *,
@@ -157,8 +160,17 @@ def validate_artifact(
     contract_id: str | None = None,
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
+    frontmatter: Any = _UNREAD,
 ) -> ArtifactValidationResult:
-    """Validate an artifact using a complete schema contract."""
+    """Validate an artifact using a complete schema contract.
+
+    ``frontmatter`` is an optional already-parsed frontmatter mapping (as
+    returned by ``frontmatter_format.fmf_read``); when supplied for a
+    frontmatter-md contract the document is not re-read. A caller that has
+    already parsed the document (the CLI does, to infer the binding) passes it
+    to avoid a second read. ``None`` is a valid value (no frontmatter); the
+    sentinel ``_UNREAD`` means "read the file".
+    """
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
     if contract is None:
@@ -185,7 +197,7 @@ def validate_artifact(
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
         return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode)
-    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode)
+    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, frontmatter)
 
 
 def _validate_frontmatter_artifact(
@@ -193,11 +205,13 @@ def _validate_frontmatter_artifact(
     contract: Contract,
     warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
+    frontmatter: Any = _UNREAD,
 ) -> ArtifactValidationResult:
-    try:
-        _content, frontmatter = _read_frontmatter_doc(doc_path)
-    except (FmFormatError, YAMLError, OSError) as exc:
-        return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+    if frontmatter is _UNREAD:
+        try:
+            _content, frontmatter = _read_frontmatter_doc(doc_path)
+        except (FmFormatError, YAMLError, OSError) as exc:
+            return _artifact_failure(doc_path, contract, "parse_error", str(exc))
     if frontmatter is None:
         return _artifact_failure(
             doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"

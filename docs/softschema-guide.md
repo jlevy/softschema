@@ -696,7 +696,8 @@ For Python-specific module layout, public API decisions, and dependency boundary
 - [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
 - [Installation](installation.md), [Development](development.md), and
-  [Publishing](publishing.md): workflow docs.
+  [Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md):
+  workflow docs.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

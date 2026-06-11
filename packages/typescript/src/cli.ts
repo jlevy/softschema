@@ -16,6 +16,7 @@ import { stableStringify } from "./settings.js";
 import {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
+  type RawFrontmatter,
   readFrontmatter,
   validateArtifact,
   YamlParseError,
@@ -61,7 +62,7 @@ function readResource(relPath: string): string {
   throw new Error(`bundled softschema resource not found: ${relPath}`);
 }
 
-interface DocTopic {
+export interface DocTopic {
   name: string;
   title: string;
   path: string;
@@ -69,13 +70,9 @@ interface DocTopic {
 }
 
 // Sorted by name to match the Python CLI's `sorted(DOC_TOPICS)` output.
-const DOC_TOPICS: DocTopic[] = [
-  {
-    name: "agents",
-    title: "Agent Instructions",
-    path: "AGENTS.md",
-    summary: "Repo-level agent instructions.",
-  },
+// `agents` (AGENTS.md) and `publishing` (release runbook) are intentionally not bundled
+// topics: both are repo/maintainer-internal and have no use inside an installed package.
+export const DOC_TOPICS: DocTopic[] = [
   {
     name: "development",
     title: "Development",
@@ -117,12 +114,6 @@ const DOC_TOPICS: DocTopic[] = [
     title: "Installation",
     path: "docs/installation.md",
     summary: "Installing softschema for Node or Python.",
-  },
-  {
-    name: "publishing",
-    title: "Publishing",
-    path: "docs/publishing.md",
-    summary: "Release and PyPI workflow.",
   },
   {
     name: "python-design",
@@ -376,11 +367,20 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
-    const frontmatter = readFrontmatterRaw(path);
-    if (frontmatter === null) {
-      if (opts.contract === undefined) {
-        throw new UsageError("missing --contract because the document has no YAML frontmatter");
+    // Read the document once here; both binding inference and validateArtifact reuse
+    // this parse (passed as `preParsed`), so the file is parsed a single time.
+    let parsed: RawFrontmatter;
+    try {
+      parsed = readFrontmatter(path);
+    } catch (err) {
+      if (err instanceof YamlParseError) {
+        throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
       }
+      throw err;
+    }
+    const frontmatter = parsed.hasFence ? (parsed.value as Record<string, unknown>) : null;
+    if (frontmatter === null && opts.contract === undefined) {
+      throw new UsageError("missing --contract because the document has no YAML frontmatter");
     }
     const fm = frontmatter ?? {};
     const metadata = parseSchemaMetadata(fm.softschema ?? null);
@@ -403,7 +403,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       profile: "frontmatter-md",
       schemaPath: opts.schema ?? null,
     };
-    const result = validateArtifact(path, contract, { semanticModel });
+    const result = validateArtifact(path, contract, { semanticModel, preParsed: parsed });
     writeText(stableStringify(result.output));
     return result.ok ? 0 : 1;
   } catch (err) {

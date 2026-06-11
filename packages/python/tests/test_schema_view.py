@@ -99,7 +99,7 @@ def test_fields_by_group_owner_tier_filter(view: SchemaView) -> None:
 def test_load_rejects_non_mapping_root(tmp_path: Path) -> None:
     bad = tmp_path / "bad.schema.yaml"
     bad.write_text("- not\n- a\n- mapping\n", encoding="utf-8")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="mapping"):
         SchemaView.load(bad)
 
 

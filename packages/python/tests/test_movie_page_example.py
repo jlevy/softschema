@@ -115,7 +115,8 @@ def test_validate_cli_ignores_unrelated_top_level_keys(capsys) -> None:
     _content, frontmatter = fmf_read(MOVIE_PAGE)
     assert isinstance(frontmatter, dict)
     assert frontmatter.get("title") == "Spirited Away (2001)"
-    assert "softschema" in frontmatter and "movie" in frontmatter
+    assert "softschema" in frontmatter
+    assert "movie" in frontmatter
 
     exit_code = softschema_main(
         [

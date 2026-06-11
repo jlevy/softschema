@@ -70,7 +70,6 @@ packages = ["packages/python/src/softschema"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "README.md" = "softschema/resources/README.md"
-"AGENTS.md" = "softschema/resources/AGENTS.md"
 # Bundle only the public docs. Internal planning under docs/project/ (active
 # specs, reviews, research) stays out of the published wheel.
 "docs/softschema-guide.md" = "softschema/resources/docs/softschema-guide.md"
@@ -79,7 +78,6 @@ packages = ["packages/python/src/softschema"]
 "docs/softschema-typescript-design.md" = "softschema/resources/docs/softschema-typescript-design.md"
 "docs/installation.md" = "softschema/resources/docs/installation.md"
 "docs/development.md" = "softschema/resources/docs/development.md"
-"docs/publishing.md" = "softschema/resources/docs/publishing.md"
 "examples/movie_page/README.md" = "softschema/resources/examples/movie_page/README.md"
 "examples/movie_page/spirited-away.md" = "softschema/resources/examples/movie_page/spirited-away.md"
 "examples/movie_page/model.py" = "softschema/resources/examples/movie_page/model.py"
@@ -115,7 +113,10 @@ exclude = [
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "UP", "B", "I"]
+# E/F/UP/B/I plus higher-signal families: flake8-simplify (SIM),
+# comprehensions (C4), Ruff-specific (RUF), flake8-pie (PIE), return (RET),
+# and pytest style (PT). Kept narrow to avoid churn against the house style.
+select = ["E", "F", "UP", "B", "I", "SIM", "C4", "RUF", "PIE", "RET", "PT"]
 ignore = [
     "E501",
     "E402",
