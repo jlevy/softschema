@@ -120,6 +120,25 @@ precedence above; the movie example validates with zero flags; the golden corpus
 bind/override/reject/escape cases byte-identically on py, ts, and ts-bun plus the
 cross-impl diff; and every user-facing doc teaches the installed-user workflow.
 
+## Release Outcome (2026-06-11)
+
+Released as **0.2.0** to PyPI and npm.
+Staged through PR #14 (`claude/release-0.2.0`): npm `package.json` bumped to 0.2.0, CI
+green across the full matrix (build 3.11–3.14, golden ×3, typescript, cross-impl),
+merged to `main`, tagged `v0.2.0` on the merge commit, and published by `publish.yml`
+over OIDC (PyPI + npm in one run).
+Full validation per the [end-to-end testing runbook](../../e2e-testing.runbook.md): 142
+Python tests, 160 TypeScript tests, golden 46/44/46 (py/ts/ts-bun), cross-impl
+byte-identical, and the clean-environment wheel/tarball/quickstart/skill phases.
+Post-publish, both registries serve 0.2.0 and the published CLIs report
+`softschema 0.2.0`.
+
+Two process corrections fell out of doing the release and are folded into the docs: the
+`format-check` make target now runs the full format pipeline before diffing (it
+previously reported false drift on a clean tree), and the Phase 5 post-publish smoke
+test now overrides the cool-off cutoff to the current instant, runs from outside the
+repo, and passes `--refresh` (the prior `$(date +%F)` form excluded a same-day publish).
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
