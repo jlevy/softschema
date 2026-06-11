@@ -5,7 +5,7 @@ title: "Spec: Softschema review remediation (quality, parity, design alignment)"
 kind: epic
 status: open
 priority: 1
-version: 28
+version: 29
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
@@ -37,7 +37,8 @@ child_order_hints:
   - is-01kt5qsvpsx49ks1gawcqgggkt
   - is-01kt599j6tm153afhrssnsensb
   - is-01ktt2km937gwscjjj37h82nbr
+  - is-01kttea6nky74a0g5etzctd972
 created_at: 2026-06-10T21:41:22.899Z
-updated_at: 2026-06-11T00:51:39.925Z
+updated_at: 2026-06-11T04:16:13.991Z
 ---
 Execute review-2026-06-10-softschema-full-eng-review.md in four phases. See spec for detail. Decisions: status:enforced gets optional teeth; exact parity required (golden under Node+Bun, same scenario files both CLIs, CLI-first). Sequencing via blocker deps.
