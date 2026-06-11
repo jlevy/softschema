@@ -3,9 +3,9 @@ type: is
 id: is-01ktsqq6tmxwsdzynnxad1wv50
 title: "Spec: Softschema review remediation (quality, parity, design alignment)"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 29
+version: 30
 spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
@@ -39,6 +39,8 @@ child_order_hints:
   - is-01ktt2km937gwscjjj37h82nbr
   - is-01kttea6nky74a0g5etzctd972
 created_at: 2026-06-10T21:41:22.899Z
-updated_at: 2026-06-11T04:16:13.991Z
+updated_at: 2026-06-11T06:33:51.927Z
+closed_at: 2026-06-11T06:33:51.927Z
+close_reason: "All four phases complete (Phase 1-4); review, plan, and design changes merged/landed; PR #10 green"
 ---
 Execute review-2026-06-10-softschema-full-eng-review.md in four phases. See spec for detail. Decisions: status:enforced gets optional teeth; exact parity required (golden under Node+Bun, same scenario files both CLIs, CLI-first). Sequencing via blocker deps.
