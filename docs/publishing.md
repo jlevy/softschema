@@ -102,16 +102,25 @@ For each release of version `X.Y.Z`:
    git push origin vX.Y.Z
    ```
 
+   If the environment blocks pushing tags over git (some hosted or proxied checkouts
+   allow branch pushes but reject tag refs with a `403`), skip the `git push` and let
+   the next step create the tag: passing `--target` with the merge-commit SHA to
+   `gh release create` creates the tag at that commit as part of publishing the release.
+
 6. **Create the GitHub release** (this triggers the publish workflow, which publishes to
    both PyPI and npm over OIDC in one run):
 
    ```bash
-   gh release create vX.Y.Z --title "softschema X.Y.Z" --notes "..."
+   gh release create vX.Y.Z --title "softschema X.Y.Z" --notes-file notes.md
+   # when the tag was not pushed in step 5, create it here at the merge commit:
+   gh release create vX.Y.Z --target MERGE_SHA --title "softschema X.Y.Z" --notes-file notes.md
    ```
 
-   Write the notes from the release’s behavior/breaking changes (see prior releases for
-   the shape: a one-line summary, then “Behavior changes”, “Fixes and hardening”, and
-   “Testing and release safety” sections).
+   Write the notes from the release’s behavior and breaking changes (see prior releases
+   for the shape: a one-line summary, then sections for breaking changes, new features,
+   fixes and hardening, and testing and release safety).
+   Use a notes file for multi-section notes; the inline `--notes` flag is fine only for
+   a one-liner.
 
 7. **Watch the workflow** until both `Publish to PyPI` and `Publish to npm` report
    success:
@@ -124,14 +133,20 @@ For each release of version `X.Y.Z`:
    artifacts (end-to-end runbook Phase 5):
 
    ```bash
-   uvx --exclude-newer-package "softschema=$(date +%F)" softschema@X.Y.Z --help
-   npx softschema@X.Y.Z --help
+   cd /tmp                                   # outside the repo: do not inherit its [tool.uv] cool-off
+   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"       # cutoff = now, so a same-day publish is included
+   uvx --refresh --exclude-newer-package "softschema=$ts" softschema@X.Y.Z --version
+   npx -y softschema@X.Y.Z --version
    ```
 
-   (The `--exclude-newer-package` override is needed because the publish workflow sets
-   `UV_EXCLUDE_NEWER` to a 14-day cool-off cutoff for supply-chain hygiene.
-   Anyone consuming the freshly published version with that policy sees the same
-   friction for ~14 days; this is intentional.)
+   The `--exclude-newer-package` override is needed because a freshly published version
+   sits inside the 14-day supply-chain cool-off; anyone consuming it under that policy
+   sees the same friction for ~14 days, which is intentional.
+   Three details matter for the smoke test: use a full timestamp at the current moment
+   (a date-only `$(date +%F)` is midnight UTC and excludes a version published later the
+   same day), run from outside the repo so uv does not apply the project’s own cool-off,
+   and pass `--refresh` so uv does not serve a cached index that predates the publish
+   (see runbook Phase 5).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

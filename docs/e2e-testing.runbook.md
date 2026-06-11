@@ -177,21 +177,39 @@ present on disk.
 
 The tagging and release mechanics live in [publishing.md](publishing.md); this phase is
 what to run **after** `publish.yml` reports success for both registries.
-A just-published version sits inside the 14-day supply-chain cool-off, so pin the
-version and override the cutoff for the Python side:
+
+A just-published version sits inside the 14-day supply-chain cool-off, so the Python
+smoke test must override the cutoff.
+Three details make the difference between a real check and a false “no version” failure:
+
+- **Override the cutoff to *now*, not midnight.** `--exclude-newer-package` excludes
+  releases newer than the given instant.
+  A date-only value (`$(date +%F)`) is midnight UTC, which is *before* a version
+  published later the same day — so it excludes the very release you are verifying.
+  Use a full timestamp at the current moment (`$(date -u +%Y-%m-%dT%H:%M:%SZ)`); “now”
+  is always after the publish.
+- **Run from outside the repo.** From the project tree, uv reads its `[tool.uv]`
+  settings and applies the project’s own cool-off; a neutral directory (`cd /tmp`)
+  avoids that.
+- **`--refresh`** bypasses uv’s cached package index, which may not yet list a release
+  published seconds ago.
 
 ```bash
-uvx --exclude-newer-package "softschema=$(date +%F)" softschema@X.Y.Z --help
-npx softschema@X.Y.Z --help
+cd /tmp
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+uvx --refresh --exclude-newer-package "softschema=$ts" softschema@X.Y.Z --version
+npx -y softschema@X.Y.Z --version
 ```
 
 Then run the quickstart literally against the published artifacts:
 
 ```bash
 cd "$(mktemp -d)"
-uvx --exclude-newer-package "softschema=$(date +%F)" softschema@X.Y.Z docs example-artifact > spirited-away.md
-uvx --exclude-newer-package "softschema=$(date +%F)" softschema@X.Y.Z docs example-schema   > movie-page.schema.yaml
-uvx --exclude-newer-package "softschema=$(date +%F)" softschema@X.Y.Z validate spirited-away.md
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+uvx() { command uvx --refresh --exclude-newer-package "softschema=$ts" "$@"; }
+uvx softschema@X.Y.Z docs example-artifact > spirited-away.md
+uvx softschema@X.Y.Z docs example-schema   > movie-page.schema.yaml
+uvx softschema@X.Y.Z validate spirited-away.md
 ```
 
 Once the release ages past the cool-off, the unpinned `@latest` forms in the README
