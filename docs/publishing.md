@@ -92,9 +92,10 @@ For each release of version `X.Y.Z`:
    SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
    ```
 
-   Optionally smoke-test the built artifacts in clean environments to confirm each CLI
-   loads and the bundled docs/skill are reachable (`npm pack` for the tarball,
-   `uv build` and a fresh venv for the wheel).
+   Then run the manual validation phases that CI cannot cover — clean-environment
+   installs of the wheel and npm tarball, the quickstart as written, and the skill
+   bootstrap — codified in the [end-to-end testing runbook](e2e-testing.runbook.md)
+   (Phases 2–4).
 
 3. **Commit and push** everything to `main` (the working tree must be clean before
    tagging so the Python version derivation is unambiguous).

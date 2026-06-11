@@ -3,6 +3,9 @@
 First-time setup of `uv` and Python is covered in [Installation](installation.md).
 Release workflow and PyPI steps are covered in
 [Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
+The full validation pass — the automated sweep run locally plus the manual
+clean-environment checks CI cannot run — is codified in the
+[end-to-end testing runbook](e2e-testing.runbook.md).
 
 Set up the repo (Python deps, Node tooling for hooks, and the git hooks themselves):
 
