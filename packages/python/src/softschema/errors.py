@@ -36,7 +36,7 @@ def _fmt(value: Any) -> str:
 
 
 def _fmt_list(values: Any) -> str:
-    if isinstance(values, (list, tuple)):
+    if isinstance(values, list | tuple):
         return ", ".join(_fmt(v) for v in values)
     return _fmt(values)
 

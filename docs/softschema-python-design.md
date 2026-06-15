@@ -48,8 +48,7 @@ It should orient a new visitor, show the main example, and point to the guide an
 rather than repeating their content.
 
 Template workflow docs keep template names: [development.md](development.md),
-[installation.md](installation.md), and
-[publishing.md](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
+[installation.md](installation.md), and [publishing.md](publishing.md).
 Package design details live in this document unless they grow large enough to justify a
 separate reference.
 
@@ -183,7 +182,7 @@ A relative `schema_path` is resolved against only the document directory and the
 working directory, so resolution is predictable and never binds to an unrelated compiled
 schema in a parent directory.
 
-### Engine-neutral structural errors
+### Engine-Neutral Structural Errors
 
 Structural validation runs through `jsonschema`, but the error records it returns are
 synthesized by softschema, not passed through from the library.
@@ -204,7 +203,7 @@ to stderr; the package version comes from `importlib.metadata` via
 `softschema-py` (the latter pairs with a future `softschema-ts` for the shared golden
 corpus).
 
-### Skill resource and mirrors
+### Skill Resource and Mirrors
 
 `skills/softschema/SKILL.md` is the source skill.
 `softschema skill --install` writes full generated copies to
@@ -242,7 +241,7 @@ if any(w.code.startswith("document-") for w in result.warnings):
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.
 
-### Structural error kinds
+### Structural Error Kinds
 
 `StructuralResult.errors[*].kind` uses a separate `snake_case` namespace because errors
 are blocking, not advisory.

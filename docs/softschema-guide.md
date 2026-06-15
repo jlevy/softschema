@@ -50,7 +50,7 @@ against a named contract.
 The practice is language neutral; another project could implement it with any of JSON
 Schema, database records, or hand-written validators.
 
-## When To Use It
+## When to Use It
 
 Reach for softschema when all three of these hold:
 
@@ -178,7 +178,7 @@ Picking a version:
 - Additive, optional fields usually don’t need a version bump.
 - Keep versions short (`v1`, `v2`, `1.0`).
 
-## Playbook: Adopt softschema For An Existing Markdown Artifact
+## Playbook: Adopt softschema for an Existing Markdown Artifact
 
 Start with one document type, not a whole repository:
 
@@ -234,7 +234,7 @@ The body stays unchanged.
 A consumer that aggregates incidents now reads `incident.affected_service` from YAML
 instead of trying to grep the body.
 
-## Playbook: Choose Which Values Belong In YAML
+## Playbook: Choose Which Values Belong in YAML
 
 The hardest call in adoption is “what goes in YAML, what stays prose?”
 Use the promotion path step by step:
@@ -270,7 +270,7 @@ file. The contract ID stays; only the shell changes.
 A field is ready to promote when: a consumer extracts it, the value type is stable, and
 emitting it consistently is easier than parsing it from prose.
 
-## Playbook: Inline Frontmatter Vs Companion Data
+## Playbook: Inline Frontmatter vs. Companion Data
 
 The rule of thumb is **inline-small, companion-large**:
 
@@ -397,7 +397,7 @@ The `result` object reports `structural` (JSON Schema) and `semantic` (Pydantic)
 separately, so callers can distinguish “shape was wrong” from “cross-field invariant
 failed” without parsing error strings.
 
-## Playbook: Annotate Fields With SoftField
+## Playbook: Annotate Fields with SoftField
 
 `SoftField` is an optional wrapper over Pydantic’s `Field` that records per-field
 authoring metadata (`group`, `owner`, `tier`, `instruction`, `examples`, `aliases`,
@@ -435,7 +435,7 @@ controlled-vocabulary case.
 The recognized keys and the full call shape are documented in
 [Python Package Design](softschema-python-design.md).
 
-## Playbook: Keep Schema Tables In Sync With Generated Sections
+## Playbook: Keep Schema Tables in Sync with Generated Sections
 
 When a controlled vocabulary or field list appears in two places (a schema and a runbook
 table), it will drift.
@@ -478,7 +478,7 @@ A worked example lives in
 [examples/movie_page/README.md](../examples/movie_page/README.md); the “Schema Enums”
 section is regenerated from the movie schema.
 
-## Playbook: Validate In CI
+## Playbook: Validate in CI
 
 Pin softschema as a dev dependency so CI uses a known version:
 
@@ -521,7 +521,7 @@ Two checks belong in CI:
 For a full GitHub Actions snippet and a `pre-commit` hook example, see the “Continuous
 integration” section of [docs/development.md](development.md).
 
-## Playbook: Migrate An Existing Artifact
+## Playbook: Migrate an Existing Artifact
 
 Take an artifact that doesn’t fit the canonical shape and bring it in line.
 
@@ -631,7 +631,7 @@ The consumer reads YAML now.
 For each migration, set `status: soft` or `permissive` initially.
 Tighten only after existing instances validate cleanly.
 
-## Playbook: Use softschema With Agents
+## Playbook: Use softschema with Agents
 
 softschema is built for documents that humans and coding agents both write.
 A few patterns help agents do the right thing:
@@ -686,7 +686,7 @@ A few patterns help agents do the right thing:
 - **Promoting prose that no consumer reads.** Leave background, analysis, and caveats as
   prose. Promote a value only when a code path, QA check, or aggregation reads it.
 
-## Relationship To The Packages
+## Relationship to the Packages
 
 Two interchangeable packages implement the language-neutral pattern at exact behavioral
 parity, Python/Pydantic and TypeScript/Zod.
@@ -759,8 +759,7 @@ For Python-specific module layout, public API decisions, and dependency boundary
 - [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
 - [Installation](installation.md), [Development](development.md), and
-  [Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md):
-  workflow docs.
+  [Publishing](publishing.md): workflow docs.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

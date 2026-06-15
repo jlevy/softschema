@@ -8,7 +8,6 @@ import { dirname, isAbsolute, join } from "node:path";
 import { writeFileSync } from "atomically";
 import { SchemaView } from "./schemaView.js";
 
-const MARKER_OPEN = /<!--\s*softschema:generated\s+([^>]*?)\s*-->/g;
 const MARKER_CLOSE = "<!-- /softschema:generated -->";
 const ATTR_PATTERN = /([A-Za-z_][A-Za-z0-9_]*)="([^"]*)"/g;
 const KNOWN_ATTRS = new Set(["kind", "schema", "pointer", "sha256"]);
@@ -40,8 +39,9 @@ function parseAttrs(attrString: string): Record<string, string> {
 
 export function parseSections(text: string): GeneratedSection[] {
   const sections: GeneratedSection[] = [];
-  MARKER_OPEN.lastIndex = 0;
-  let openMatch: RegExpExecArray | null = MARKER_OPEN.exec(text);
+  // Local `g`-flag regex: a module-level one would share mutable `lastIndex` state.
+  const markerOpen = /<!--\s*softschema:generated\s+([^>]*?)\s*-->/g;
+  let openMatch: RegExpExecArray | null = markerOpen.exec(text);
   while (openMatch !== null) {
     const contentStart = openMatch.index + openMatch[0].length;
     const closeIndex = text.indexOf(MARKER_CLOSE, contentStart);
@@ -56,15 +56,14 @@ export function parseSections(text: string): GeneratedSection[] {
       attrs: parseAttrs(openMatch[1] as string),
       existingContent: text.slice(contentStart, closeIndex),
     });
-    MARKER_OPEN.lastIndex = closeIndex + MARKER_CLOSE.length;
-    openMatch = MARKER_OPEN.exec(text);
+    markerOpen.lastIndex = closeIndex + MARKER_CLOSE.length;
+    openMatch = markerOpen.exec(text);
   }
   return sections;
 }
 
 function resolveSchemaPath(schema: string, base: string): string {
-  const path = isAbsolute(schema) ? schema : join(base, schema);
-  return path;
+  return isAbsolute(schema) ? schema : join(base, schema);
 }
 
 function renderEnumTable(view: SchemaView): string {

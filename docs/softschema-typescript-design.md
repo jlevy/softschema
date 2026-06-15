@@ -103,6 +103,24 @@ Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`) and `ajv-forma
 `atomically` (the CLI emits only JSON, so no color dependency).
 The shared `tests/golden/` corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
 
+## Packaging
+
+`bunup` builds two entrypoints from `src/index.ts` (the library barrel) and `src/cli.ts`
+(the executable). Two packaging decisions keep the library importable; both are guarded
+by `test/library-entrypoint.test.ts`:
+
+- **No `"sideEffects": false`.** On a pure re-export barrel, that hint makes Bun’s
+  bundler tree-shake the re-exported implementations out of `dist/index.js` while
+  leaving the `export { ... }` names, so `import { validateArtifact } from "softschema"`
+  throws `SyntaxError: Export 'X' is not defined`. Without the hint, `index.js` and
+  `cli.js` share one chunk and every public symbol resolves.
+  Do not re-add the flag.
+- **ESM-safe entrypoint check.** `cli.ts` runs the CLI only when it is the process
+  entrypoint, detected by comparing `pathToFileURL(realpathSync(process.argv[1])).href`
+  with `import.meta.url`. `import.meta.main` is a Bun-only global that the bundler
+  lowers to an always-true CommonJS check, which would run the CLI on a plain `import`.
+  `realpathSync` resolves the symlink that npm/npx install for the bin.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

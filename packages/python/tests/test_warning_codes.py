@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from pydantic import BaseModel
 
 from softschema import (
@@ -129,7 +128,3 @@ def test_no_undocumented_codes_emitted_in_smoke_run(tmp_path: Path) -> None:
         f"Validation emitted codes {sorted(unexpected)} not in WarningCode. "
         "Add the new code to WarningCode and the Warning Codes table, or rename it."
     )
-
-
-if __name__ == "__main__":  # pragma: no cover
-    pytest.main([__file__])

@@ -4,15 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from frontmatter_format import read_yaml_file
 from pydantic import BaseModel, ConfigDict
 
 from softschema import SoftField, compile_model
-
-
-def _read_yaml(path: Path) -> dict:
-    from frontmatter_format import read_yaml_file
-
-    return read_yaml_file(path)
 
 
 class _AnnotatedModel(BaseModel):
@@ -45,7 +40,7 @@ def test_soft_field_propagates_x_softschema_into_compiled_schema(tmp_path: Path)
     out = tmp_path / "annotated.schema.yaml"
     compile_model(_AnnotatedModel, out, contract_id="example:Annotated/v1")
 
-    schema = _read_yaml(out)
+    schema = read_yaml_file(out)
     props = schema["properties"]
 
     assert props["title"]["x-softschema"] == {
@@ -73,7 +68,7 @@ def test_soft_field_omits_empty_optional_metadata(tmp_path: Path) -> None:
     """Defaults (empty examples/aliases, repair=none) stay out of the compiled schema."""
     out = tmp_path / "minimal.schema.yaml"
     compile_model(_AnnotatedModel, out, contract_id="example:Annotated/v1")
-    schema = _read_yaml(out)
+    schema = read_yaml_file(out)
 
     for prop in schema["properties"].values():
         meta = prop.get("x-softschema", {})
@@ -86,7 +81,7 @@ def test_soft_field_movie_example_genres_block_present() -> None:
     """The movie example annotates `genres`; the committed compiled schema must show it."""
     repo_root = Path(__file__).resolve().parents[3]
     schema_path = repo_root / "examples/movie_page/movie-page.schema.yaml"
-    schema = _read_yaml(schema_path)
+    schema = read_yaml_file(schema_path)
     genres_meta = schema["properties"]["genres"].get("x-softschema")
 
     assert genres_meta is not None

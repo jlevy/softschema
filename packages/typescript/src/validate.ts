@@ -22,6 +22,7 @@ import {
   contractToOutput,
   metadataToOutput,
   parseSchemaMetadata,
+  pyTypeName,
   type SchemaMetadata,
   SchemaMetadataError,
   type SchemaWarning,
@@ -73,17 +74,6 @@ export interface ArtifactValidationResult {
 
 export type MetadataMode = "enforced" | "advisory";
 
-/** Python `type(x).__name__` for the type names used in error messages. */
-function pyTypeName(value: unknown): string {
-  if (value === null || value === undefined) return "NoneType";
-  if (Array.isArray(value)) return "list";
-  if (typeof value === "string") return "str";
-  if (typeof value === "boolean") return "bool";
-  if (typeof value === "number") return Number.isInteger(value) ? "int" : "float";
-  if (typeof value === "object") return "dict";
-  return typeof value;
-}
-
 function isMapping(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -108,6 +98,12 @@ function parseYaml(text: string): unknown {
   }
 }
 
+/**
+ * Read the YAML inside a document's leading `---` frontmatter fence. Returns
+ * `hasFence: false` with a null value when there is no fence or the fence is empty (the
+ * caller then treats the file as pure YAML). Throws `YamlParseError` on an unterminated
+ * fence or non-mapping frontmatter, byte-matching the Python `frontmatter_format` errors.
+ */
 function readFrontmatter(path: string): RawFrontmatter {
   const text = readFileSync(path, "utf8");
   const lines = text.split(/\r?\n/);

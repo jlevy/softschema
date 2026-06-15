@@ -46,7 +46,7 @@ export interface Contract {
 }
 
 /** Python `type(x).__name__` for the type names used in error messages. */
-function pyTypeName(value: unknown): string {
+export function pyTypeName(value: unknown): string {
   if (value === null || value === undefined) return "NoneType";
   if (Array.isArray(value)) return "list";
   if (typeof value === "string") return "str";
