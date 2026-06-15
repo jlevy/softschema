@@ -336,11 +336,16 @@ A validator must reject:
   Values)
 
 Validation output is deterministic across conforming implementations: structural error
-records share an engine-neutral shape and message wording, and every number — in an
-error record’s `value`/`validator_value`, in a synthesized message, or in an echoed
-payload — renders in canonical form.
-A whole-valued number carries no trailing fraction (`2`, not `2.0`), so output stays
-byte-identical regardless of how the host language distinguishes integers from floats.
+records share an engine-neutral shape and message wording, and numbers — in an error
+record’s `value`/`validator_value`, in a synthesized message, and in an echoed payload —
+render in a canonical form, where a whole-valued number carries no trailing fraction
+(`2`, not `2.0`).
+Output is byte-identical for every number an implementation can represent exactly:
+integers and whole-valued numbers within the IEEE-754 safe-integer range (`abs < 2^53`),
+and ordinary floats.
+A whole-valued magnitude at or beyond 2^53 is out of scope, because an arbitrary-precision
+integer runtime and a double-only runtime cannot always render it identically; validated
+payloads should avoid such literals.
 
 ## Generated Sections
 

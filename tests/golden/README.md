@@ -59,19 +59,24 @@ Otherwise no patterns are needed. Note in particular:
 - **Number formatting.** Both implementations render numbers to match Python's `repr()`.
   Numbers follow one canonical rule; one genuine edge case remains:
   - **(a) Whole-valued numbers render in canonical form** (`ss-wbnm`, resolved). A
-    whole-valued number below 1e16 renders without a trailing fraction (`2.0` -> `2`) —
-    the JSON-natural form JS emits natively, since it collapses the YAML token `2.0` to
-    `2` at parse. The Python side normalizes its floats to match (`canonical_number` in
-    `errors.py`, applied to error records and the `values` echo), so a whole-number float
-    is byte-identical in a `value`, `validator_value`, or message on both engines.
-    Non-whole floats (`0.3`, `8.6`) keep their fraction. The `error-normalization`
-    scenario exercises this with `ratio: 1.0` failing `minimum: 2.0` (both render `1`/`2`).
-  - **(b) Integer literals >= 2^53 diverge.** Python has arbitrary-precision integers
-    (`repr(10000000000000000)` is `10000000000000000`), while JS collapses large integer
-    literals into IEEE 754 doubles, losing precision. A YAML integer literal like
-    `10000000000000000` stays `int` in Python but becomes a float in JS (same numeric
-    value, different repr). Avoid integer-valued literals >= 2^53 in error-exercising
-    fixtures.
+    whole-valued number below 1e21 renders without a trailing fraction and without an
+    exponent (`2.0` -> `2`, `1.0e16` -> `10000000000000000`) — the form JS emits natively
+    (it has no int/float distinction, and `String()`/`JSON.stringify()` print a
+    whole-valued number in plain integer notation below 1e21). The Python side converts
+    its whole-valued floats below 1e21 to int to match (`canonical_number` in `errors.py`,
+    applied to error records and the `values` echo), so such a number is byte-identical in
+    a `value`, `validator_value`, or message on both engines. Non-whole floats (`0.3`,
+    `8.6`) keep their fraction. The `error-normalization` scenario exercises the small case
+    (`ratio: 1.0` vs `minimum: 2.0`), and `number-large-whole` the large case (`9.0e15` vs
+    `minimum: 1.0e16`, both rendering full integers).
+  - **(b) Non-round integer-valued magnitudes >= 2^53 diverge.** Byte-parity is guaranteed
+    only within the IEEE-754 safe-integer range. Above 2^53 not every integer is
+    representable, so a *non-round* value differs between Python's exact `int`
+    (`9.999999999999998e16` -> `99999999999999984`) and JS's shortest round-trip
+    (`99999999999999980`); likewise a YAML integer literal like `9007199254740993` keeps
+    full precision in Python but loses it as a JS double. Round magnitudes (powers/simple
+    multiples of ten) below 1e21 still match — see (a) — but avoid non-round integer-valued
+    literals >= 2^53 in error-exercising fixtures.
 
 ## Updating
 

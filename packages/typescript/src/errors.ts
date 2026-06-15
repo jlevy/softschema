@@ -19,14 +19,17 @@ export interface StructuralErrorRecord {
 
 /**
  * Format a number in softschema's canonical form (matching Python's `repr()`).
- * Handles NaN, Infinity, and routes through exponential notation for abs >= 1e16
+ * Handles NaN, Infinity, and routes through exponential notation for abs >= 1e21
  * or (0 < abs < 1e-4 and non-integer), matching Python's float repr output.
  *
- * Canonical rule: a whole-valued number below 1e16 renders without a trailing
- * fraction (`2` not `2.0`). JS has no int/float distinction, so this is the
- * natural `String(value)` output here; the Python side normalizes its floats to
- * match (see `canonical_number` in errors.py), so `2.0` and `2` are byte-identical
- * across implementations (ss-wbnm).
+ * Canonical rule: a whole-valued number below 1e21 renders without a trailing fraction
+ * and without an exponent (`2`, `10000000000000000`) — the natural `String(value)`
+ * output, since JS has no int/float distinction and prints whole-valued numbers in
+ * plain integer form below 1e21. The Python side converts its whole-valued floats below
+ * 1e21 to int to match (see `canonical_number` in errors.py), so the two are
+ * byte-identical (ss-wbnm). Exact agreement is guaranteed within the IEEE-754
+ * safe-integer range (abs < 2**53); a larger non-round integer value may differ between
+ * the runtimes (golden README, "Number formatting", edge b).
  */
 function pyReprNumber(value: number): string {
   if (Number.isNaN(value)) return "nan";
@@ -36,7 +39,7 @@ function pyReprNumber(value: number): string {
   const abs = Math.abs(value);
 
   // Exponential formatting for large or small magnitudes (matches Python repr).
-  if (abs >= 1e16 || (abs > 0 && abs < 1e-4 && !Number.isInteger(value))) {
+  if (abs >= 1e21 || (abs > 0 && abs < 1e-4 && !Number.isInteger(value))) {
     // Use JS toExponential() (no fixed precision → shortest representation),
     // then reformat the exponent to Python style: always signed, at least 2 digits.
     const raw = value.toExponential();

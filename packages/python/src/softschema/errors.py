@@ -41,12 +41,22 @@ def canonical_number(value: Any) -> Any:
     JSON does not distinguish ``2`` from ``2.0``; the canonical softschema form
     drops a redundant trailing fraction so numeric values render byte-identically
     across the Python and TypeScript implementations (a YAML ``2.0`` token parses
-    as the integer ``2`` in JS, which has no int/float distinction to lose). A
-    whole-valued float is returned as ``int``; everything else — ``int``, ``bool``,
-    non-whole floats, and floats at or beyond ``1e16`` (where ``repr`` switches to
-    exponential notation, matching the TS formatter) — is returned unchanged.
+    as the integer ``2`` in JS, which has no int/float distinction to lose).
+
+    A whole-valued float below ``1e21`` is returned as ``int`` — that is exactly the
+    range where JavaScript serializes a whole-valued ``number`` in plain integer form
+    (``JSON.stringify``/``String``), so the Python ``int`` repr matches it. At or beyond
+    ``1e21`` JavaScript switches to exponential notation, which Python's float repr also
+    uses, so those floats are left unchanged. Ints, bools, and non-whole floats are
+    returned unchanged.
+
+    Byte-parity is guaranteed within the IEEE-754 safe-integer range (``abs < 2**53``).
+    A larger *non-round* integer-valued magnitude cannot render identically on a
+    double-only runtime and an arbitrary-precision one (Python's exact ``int`` vs JS's
+    shortest round-trip), and is out of scope — see the golden corpus README, "Number
+    formatting", edge (b).
     """
-    if isinstance(value, float) and value.is_integer() and abs(value) < 1e16:
+    if isinstance(value, float) and value.is_integer() and abs(value) < 1e21:
         return int(value)
     return value
 

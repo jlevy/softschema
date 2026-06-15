@@ -31,17 +31,21 @@ def test_canonical_number_drops_trailing_fraction() -> None:
     assert isinstance(canonical_number(2.0), int)
     assert canonical_number(-2.0) == -2
     assert canonical_number(0.0) == 0
-    # 1e15 is whole and below 1e16 -> canonical int (matches JS String(1e15)).
+    # Whole floats below 1e21 become canonical ints (the range where JS renders a
+    # whole-valued number as a plain integer via String()/JSON.stringify()).
     assert canonical_number(1e15) == 1000000000000000
     assert isinstance(canonical_number(1e15), int)
+    assert canonical_number(1e16) == 10000000000000000  # the reviewer's divergence case
+    assert isinstance(canonical_number(1e16), int)
+    assert canonical_number(1e20) == 100000000000000000000
     # Non-whole floats keep their fraction; ints and bools are untouched.
     assert canonical_number(0.3) == 0.3
     assert canonical_number(7) == 7
     assert canonical_number(True) is True
-    # Floats at/beyond 1e16 keep exponential repr (matches the TS formatter).
-    assert canonical_number(1e16) == 1e16
-    assert isinstance(canonical_number(1e16), float)
-    assert repr(canonical_number(1e16)) == "1e+16"
+    # Floats at/beyond 1e21 keep exponential repr (matches the TS formatter and JS String).
+    assert canonical_number(1e21) == 1e21
+    assert isinstance(canonical_number(1e21), float)
+    assert repr(canonical_number(1e21)) == "1e+21"
 
 
 def test_whole_float_renders_canonically_in_messages_and_records() -> None:

@@ -17,16 +17,21 @@ version number.
 - **CLI error boundary no longer masks internal bugs**: The user-error boundary now
   excludes bug-indicator exception types (Python `TypeError`/`KeyError`; JavaScript
   `TypeError`/`RangeError`/`ReferenceError`), so a programmer bug surfaces as a
-  traceback instead of a clean exit 2. Adds an explicit `UsageError` class and documents
-  the 0/1/2 exit-code contract.
+  traceback instead of a clean exit 2. In the TypeScript CLI every per-command handler
+  routes through one shared boundary (`reportUserError`), so a bug thrown deep inside a
+  command — not just one that reaches the top-level guard — crashes rather than being
+  reported as exit 2. Adds an explicit `UsageError` class and documents the 0/1/2
+  exit-code contract.
 - **Supply-chain cool-off config**: The `[tool.uv]` cutoff used a date-only string that
   uv could not parse; it now uses RFC3339 timestamps with a pinned global cutoff, so the
   exception applies to local resolution and the lockfile stays stable.
 - **Canonical number rendering (`ss-wbnm`)**: A whole-valued number now renders in
-  canonical form — without a trailing fraction (`2.0` becomes `2`) — in error records,
-  synthesized messages, and the echoed `values` block.
-  JavaScript emits this form natively; the Python side normalizes its floats to match,
-  so validation output is byte-identical across the two implementations.
+  canonical form — no trailing fraction and no exponent below 1e21 (`2.0` becomes `2`,
+  `1.0e16` becomes `10000000000000000`) — in error records, synthesized messages, and the
+  echoed `values` block. JavaScript emits this form natively; the Python side converts its
+  whole-valued floats to match, so validation output is byte-identical for every number an
+  implementation represents exactly (the IEEE-754 safe-integer range). A non-round
+  integer-valued magnitude at or beyond 2^53 stays runtime-specific and is out of scope.
 
 ### Refactoring
 
