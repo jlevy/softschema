@@ -683,9 +683,15 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       // Commander intended (0 for help/version, non-zero for usage errors).
       return err.exitCode;
     }
+    // Surface programmer bugs (calling a non-function, reading a property of undefined,
+    // out-of-range) as a crash instead of masking them as a clean exit 2. Mirrors the
+    // Python CLI excluding TypeError/KeyError from its user-error boundary.
+    if (err instanceof TypeError || err instanceof RangeError || err instanceof ReferenceError) {
+      throw err;
+    }
     // Top-level backstop (mirrors the Python CLI's per-command error boundary): no
-    // command handler should leak a stack trace. Report a clean one-line message and
-    // exit 2 for any otherwise-unhandled error.
+    // command handler should leak a stack trace from a user mistake. Report a clean
+    // one-line message and exit 2 for any otherwise-unhandled (user) error.
     process.stderr.write(`softschema: ${errMessage(err)}\n`);
     return 2;
   }
