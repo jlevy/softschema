@@ -27,11 +27,13 @@ version number.
   exception applies to local resolution and the lockfile stays stable.
 - **Canonical number rendering (`ss-wbnm`)**: A whole-valued number now renders in
   canonical form — no trailing fraction and no exponent below 1e21 (`2.0` becomes `2`,
-  `1.0e16` becomes `10000000000000000`) — in error records, synthesized messages, and the
-  echoed `values` block. JavaScript emits this form natively; the Python side converts its
-  whole-valued floats to match, so validation output is byte-identical for every number an
-  implementation represents exactly (the IEEE-754 safe-integer range). A non-round
-  integer-valued magnitude at or beyond 2^53 stays runtime-specific and is out of scope.
+  `1.0e16` becomes `10000000000000000`) — in error records, synthesized messages, and
+  the echoed `values` block.
+  JavaScript emits this form natively; the Python side converts its whole-valued floats
+  to match, so validation output is byte-identical for every number an implementation
+  represents exactly (the IEEE-754 safe-integer range).
+  A non-round integer-valued magnitude at or beyond 2^53 stays runtime-specific and is
+  out of scope.
 
 ### Refactoring
 
