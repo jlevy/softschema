@@ -1,6 +1,6 @@
 {
   "name": "softschema",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Soft schema conventions and validation for Markdown/YAML artifacts (TypeScript/Zod).",
   "license": "MIT",
   "author": "Joshua Levy (https://github.com/jlevy)",
@@ -44,7 +44,6 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },

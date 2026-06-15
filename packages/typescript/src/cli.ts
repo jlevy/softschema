@@ -4,9 +4,16 @@
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
@@ -685,8 +692,24 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   return exitCode;
 }
 
-const isMain = import.meta.main ?? process.argv[1]?.endsWith("cli.js");
-if (isMain) {
+// True only when this module is the process entrypoint (`softschema ...` or
+// `node dist/cli.js`), never when imported as a library via the `./cli` subpath.
+// `import.meta.main` does not exist in Node ESM (the bundler lowers it to an
+// always-true CommonJS check), so we compare URLs instead. npm/npx install the bin
+// as a symlink, so argv[1] is resolved through `realpathSync` to match the module's
+// real URL. `realpathSync` throws if argv[1] is not a real path (e.g. a `node -e`
+// snippet's trailing args), in which case this module is not the entrypoint.
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return pathToFileURL(realpathSync(entry)).href === import.meta.url;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   // EPIPE on stdout/stderr: silently exit 0 (expected when piped to head, etc.).
   for (const stream of [process.stdout, process.stderr]) {
     stream.on("error", (err: NodeJS.ErrnoException) => {
