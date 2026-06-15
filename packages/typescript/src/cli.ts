@@ -549,8 +549,10 @@ function runDocsTopic(topic: string, asJson: boolean): number {
   let content: string;
   try {
     content = readResource(found.path);
-  } catch {
-    process.stderr.write(`softschema docs: resource not found: ${found.path}\n`);
+  } catch (err) {
+    // Surface the original failure (e.g. "bundled ... resource not found", a permission
+    // error) rather than a generic one; matches the Python CLI's `softschema docs: <exc>`.
+    process.stderr.write(`softschema docs: ${errMessage(err)}\n`);
     return 2;
   }
   if (asJson) {

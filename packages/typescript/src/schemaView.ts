@@ -5,6 +5,7 @@
  */
 import { readFileSync } from "node:fs";
 import { parse as yamlParse } from "yaml";
+import { isMapping } from "./guards.js";
 
 const X_SOFTSCHEMA = "x-softschema";
 
@@ -23,10 +24,6 @@ export interface FieldInfo {
   softmeta: Record<string, unknown>;
 }
 
-function isObject(value: unknown): value is SchemaNode {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function escapePointerSegment(segment: string): string {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
 }
@@ -39,7 +36,7 @@ function refFromAnyOf(prop: SchemaNode): string | null {
   const anyOf = prop.anyOf;
   if (!Array.isArray(anyOf)) return null;
   for (const entry of anyOf) {
-    if (isObject(entry) && typeof entry.$ref === "string") return entry.$ref;
+    if (isMapping(entry) && typeof entry.$ref === "string") return entry.$ref;
   }
   return null;
 }
@@ -49,13 +46,13 @@ function resolveRef(schema: SchemaNode, ref: string): SchemaNode | null {
   let cur: unknown = schema;
   for (const rawSegment of ref.slice(2).split("/")) {
     const segment = unescapePointerSegment(rawSegment);
-    if (isObject(cur) && segment in cur) {
+    if (isMapping(cur) && segment in cur) {
       cur = cur[segment];
     } else {
       return null;
     }
   }
-  return isObject(cur) ? cur : null;
+  return isMapping(cur) ? cur : null;
 }
 
 function extractType(prop: SchemaNode): string | null {
@@ -68,7 +65,7 @@ function extractType(prop: SchemaNode): string | null {
   const anyOf = prop.anyOf;
   if (Array.isArray(anyOf)) {
     for (const entry of anyOf) {
-      if (isObject(entry) && typeof entry.type === "string" && entry.type !== "null") {
+      if (isMapping(entry) && typeof entry.type === "string" && entry.type !== "null") {
         return entry.type;
       }
     }
@@ -85,7 +82,7 @@ function extractEnum(prop: SchemaNode): string[] | null {
   if (Array.isArray(anyOf)) {
     for (const entry of anyOf) {
       if (
-        isObject(entry) &&
+        isMapping(entry) &&
         Array.isArray(entry.enum) &&
         entry.enum.every((v) => typeof v === "string")
       ) {
@@ -98,7 +95,7 @@ function extractEnum(prop: SchemaNode): string[] | null {
 
 function extractSoftmeta(prop: SchemaNode): Record<string, unknown> {
   const meta = prop[X_SOFTSCHEMA];
-  return isObject(meta) ? { ...meta } : {};
+  return isMapping(meta) ? { ...meta } : {};
 }
 
 export class SchemaView {
@@ -111,7 +108,7 @@ export class SchemaView {
   /** Load a YAML or JSON compiled schema from disk. */
   static load(schemaPath: string): SchemaView {
     const data = yamlParse(readFileSync(schemaPath, "utf8")) as unknown;
-    if (!isObject(data)) {
+    if (!isMapping(data)) {
       throw new Error(`schema at ${schemaPath} is not a mapping at the root`);
     }
     return new SchemaView(data);
@@ -123,7 +120,7 @@ export class SchemaView {
 
   get rootSoftmeta(): Record<string, unknown> {
     const meta = this.schema[X_SOFTSCHEMA];
-    return isObject(meta) ? { ...meta } : {};
+    return isMapping(meta) ? { ...meta } : {};
   }
 
   get contractId(): string | null {
@@ -177,10 +174,10 @@ export class SchemaView {
     out: FieldInfo[],
   ): void {
     const properties = node.properties;
-    if (!isObject(properties)) return;
+    if (!isMapping(properties)) return;
     const requiredSet = new Set(Array.isArray(node.required) ? (node.required as string[]) : []);
     for (const [name, rawProp] of Object.entries(properties)) {
-      if (!isObject(rawProp)) continue;
+      if (!isMapping(rawProp)) continue;
       const { node: prop, ref } = this.maybeResolveRef(rawProp, seenRefs, includeRefs);
       const pointer = `${basePointer}/properties/${escapePointerSegment(name)}`;
       out.push({
@@ -192,7 +189,7 @@ export class SchemaView {
         description: typeof prop.description === "string" ? prop.description : null,
         softmeta: extractSoftmeta(prop),
       });
-      if (includeRefs && isObject(prop.properties)) {
+      if (includeRefs && isMapping(prop.properties)) {
         // Carry the just-followed $ref down the recursion path so a cyclic schema
         // (A -> B -> A) terminates. The augmented set is scoped to this path only, so
         // a $def reused by sibling fields (e.g. Address) still expands under each.

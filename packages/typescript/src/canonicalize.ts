@@ -8,6 +8,8 @@
  * Key ordering is handled at serialization time.
  */
 
+import { isMapping } from "./guards.js";
+
 type Json = unknown;
 
 const NAME_MAP_KEYWORDS = new Set(["properties", "$defs", "definitions", "patternProperties"]);
@@ -27,23 +29,19 @@ export function canonicalizeJsonSchema(schema: Record<string, Json>): Record<str
   return canonicalizeSchema(schema) as Record<string, Json>;
 }
 
-function isPlainObject(value: Json): value is Record<string, Json> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isEmptyDefault(value: Json): boolean {
   if (value === null) return true;
   if (Array.isArray(value)) return value.length === 0;
-  if (isPlainObject(value)) return Object.keys(value).length === 0;
+  if (isMapping(value)) return Object.keys(value).length === 0;
   return false;
 }
 
 function isStringKeyConstraint(value: Json): boolean {
-  return isPlainObject(value) && Object.keys(value).length === 1 && value.type === "string";
+  return isMapping(value) && Object.keys(value).length === 1 && value.type === "string";
 }
 
 function canonicalizeSchema(node: Json): Json {
-  if (!isPlainObject(node)) {
+  if (!isMapping(node)) {
     return node;
   }
   const normalized = normalizeNullableUnion(node);
@@ -62,7 +60,7 @@ function canonicalizeSchema(node: Json): Json {
       out[key] = [...(value as string[])].sort();
       continue;
     }
-    if (NAME_MAP_KEYWORDS.has(key) && isPlainObject(value)) {
+    if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
       const mapped: Record<string, Json> = {};
       for (const [name, sub] of Object.entries(value)) {
         mapped[name] = canonicalizeSchema(sub);
@@ -93,8 +91,8 @@ function normalizeNullableUnion(node: Record<string, Json>): Record<string, Json
 
 function isNullableUnion(union: Json[]): boolean {
   if (union.length !== 2) return false;
-  const hasNull = union.some((e) => isPlainObject(e) && e.type === "null");
-  const hasOther = union.some((e) => isPlainObject(e) && e.type !== "null");
+  const hasNull = union.some((e) => isMapping(e) && e.type === "null");
+  const hasOther = union.some((e) => isMapping(e) && e.type !== "null");
   return hasNull && hasOther;
 }
 
@@ -111,12 +109,12 @@ export function applyEnforcedExtras(schema: Record<string, Json>): Record<string
 }
 
 function applyEnforced(node: Json): Json {
-  if (!isPlainObject(node)) {
+  if (!isMapping(node)) {
     return node;
   }
   const out: Record<string, Json> = {};
   for (const [key, value] of Object.entries(node)) {
-    if (NAME_MAP_KEYWORDS.has(key) && isPlainObject(value)) {
+    if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
       const mapped: Record<string, Json> = {};
       for (const [name, sub] of Object.entries(value)) {
         mapped[name] = applyEnforced(sub);
@@ -130,7 +128,7 @@ function applyEnforced(node: Json): Json {
       out[key] = value;
     }
   }
-  if (isPlainObject(out.properties) && !("additionalProperties" in out)) {
+  if (isMapping(out.properties) && !("additionalProperties" in out)) {
     out.additionalProperties = false;
   }
   return out;
