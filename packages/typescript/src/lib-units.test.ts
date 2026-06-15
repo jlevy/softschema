@@ -168,11 +168,12 @@ describe("errors: every message template", () => {
       "value {'a': {'b': 2}, 'c': [1, 2]} is not of type 'string'",
     );
   });
-  test("pyRepr number formatting matches Python repr() ground truth", () => {
-    // Ground-truth table verified against CPython 3.11 repr():
+  test("pyRepr number formatting matches the canonical (Python repr) ground truth", () => {
+    // Ground-truth table verified against CPython 3.11 repr(), with whole-valued
+    // numbers in softschema's canonical form (no trailing `.0`; ss-wbnm):
     //   1e-7      -> '1e-07'
     //   1e16      -> '1e+16'       (integer-valued but abs >= 1e16 → exponential)
-    //   1e15      -> '1000000000000000.0' in Python, but TS cannot add .0 (ss-wbnm)
+    //   1e15      -> '1000000000000000'  (whole-valued < 1e16 → canonical, no `.0`)
     //   0.0001    -> '0.0001'
     //   0.00001   -> '1e-05'
     //   inf       -> 'inf'
@@ -183,8 +184,9 @@ describe("errors: every message template", () => {
     const cases: [number, string][] = [
       [1e-7, "1e-07"],
       [1e16, "1e+16"],
-      // 1e15 is the ss-wbnm case: Python says '1000000000000000.0', TS says '1000000000000000'
-      // because YAML int-valued floats lose .0 in JS. This is the documented divergence.
+      // 1e15 is the ss-wbnm case: a whole-valued number below 1e16 renders canonically
+      // (no `.0`) on both engines. JS drops it natively; Python's canonical_number
+      // normalizes 1000000000000000.0 to the same string, so the two now agree.
       [1e15, "1000000000000000"],
       [0.0001, "0.0001"],
       [0.00001, "1e-05"],

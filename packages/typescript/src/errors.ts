@@ -18,11 +18,15 @@ export interface StructuralErrorRecord {
 }
 
 /**
- * Format a number the way Python's `repr()` would. Handles NaN, Infinity, and
- * routes through exponential notation for abs >= 1e16 or (0 < abs < 1e-4 and
- * non-integer), matching Python's float repr output. Integer-valued floats
- * below 1e16 render without `.0` (the ss-wbnm limitation: YAML `2.0` parses as
- * JS integer `2`, so `.0` cannot be recovered).
+ * Format a number in softschema's canonical form (matching Python's `repr()`).
+ * Handles NaN, Infinity, and routes through exponential notation for abs >= 1e16
+ * or (0 < abs < 1e-4 and non-integer), matching Python's float repr output.
+ *
+ * Canonical rule: a whole-valued number below 1e16 renders without a trailing
+ * fraction (`2` not `2.0`). JS has no int/float distinction, so this is the
+ * natural `String(value)` output here; the Python side normalizes its floats to
+ * match (see `canonical_number` in errors.py), so `2.0` and `2` are byte-identical
+ * across implementations (ss-wbnm).
  */
 function pyReprNumber(value: number): string {
   if (Number.isNaN(value)) return "nan";

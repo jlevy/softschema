@@ -24,8 +24,10 @@ engine-neutral records, including:
   not `[object Object]`: `label` (an object supplied where a `string` is expected) and
   `choice` (an object-valued `enum`) guard the `pyRepr` object-rendering fix.
 
-The fixture deliberately avoids whole-number floats, whose `2.0`-vs-`2` rendering is a
-known, documented JS limitation (`ss-wbnm`) rather than a fixable divergence.
+The fixture also covers a whole-number float (`ss-wbnm`): `ratio: 1.0` fails `minimum: 2.0`,
+and both the offending value and the bound render in canonical form (`1`, `2`) — a
+whole-valued number drops its trailing fraction — so the `value`, `validator_value`, and
+message stay byte-identical across `jsonschema` and `ajv`.
 
 ```console
 $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/golden/fixtures/error-norm.schema.yaml --contract test.errors:Sample/v1 --envelope data
@@ -73,6 +75,7 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
             "kind": "x"
           },
           "rating": "X",
+          "ratio": 1,
           "scale": 0.3,
           "step": 7,
           "tags": [
@@ -100,6 +103,7 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
             "kind": "x"
           },
           "rating": "X",
+          "ratio": 1,
           "scale": 0.3,
           "step": 7,
           "tags": [
@@ -127,6 +131,7 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
             "kind": "x"
           },
           "rating": "X",
+          "ratio": 1,
           "scale": 0.3,
           "step": 7,
           "tags": [
@@ -191,6 +196,16 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
       },
       {
         "kind": "schema_violation",
+        "message": "value 1 is less than the minimum of 2",
+        "path": [
+          "ratio"
+        ],
+        "validator": "minimum",
+        "validator_value": 2,
+        "value": 1
+      },
+      {
+        "kind": "schema_violation",
         "message": "value 0.3 is not a multiple of 0.5",
         "path": [
           "scale"
@@ -236,6 +251,7 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
       "kind": "x"
     },
     "rating": "X",
+    "ratio": 1,
     "scale": 0.3,
     "step": 7,
     "tags": [

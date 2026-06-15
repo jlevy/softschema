@@ -56,15 +56,16 @@ Otherwise no patterns are needed. Note in particular:
   streams with `2>&1` and asserts the stable `softschema <cmd>:` prefix plus exit code,
   eliding the engine-specific tail with `[..]`/`...`. Where the wording is identical
   (ambiguous envelope, missing implementation) it is asserted in full on stderr (`!`).
-- **Number formatting limitations.** The `pyRepr` formatter in both implementations
-  renders numbers to match Python's `repr()`, but two edge cases cannot be aligned:
-  - **(a) Whole-number floats below 1e16 render without `.0` on TS** (`ss-wbnm`). Python
-    preserves the int/float distinction from the YAML source token
-    (`repr(2.0) == "2.0"`); JS collapses `2.0` to `2` at parse, so a whole-number float
-    renders as `2` on the TypeScript side. Keep golden values that appear in a `value`,
-    `validator_value`, or message as integers or **non-whole** floats (`0.3`, `8.6`) so
-    the corpus stays byte-identical on both engines. Non-error values elsewhere are
-    unaffected.
+- **Number formatting.** Both implementations render numbers to match Python's `repr()`.
+  Numbers follow one canonical rule; one genuine edge case remains:
+  - **(a) Whole-valued numbers render in canonical form** (`ss-wbnm`, resolved). A
+    whole-valued number below 1e16 renders without a trailing fraction (`2.0` -> `2`) —
+    the JSON-natural form JS emits natively, since it collapses the YAML token `2.0` to
+    `2` at parse. The Python side normalizes its floats to match (`canonical_number` in
+    `errors.py`, applied to error records and the `values` echo), so a whole-number float
+    is byte-identical in a `value`, `validator_value`, or message on both engines.
+    Non-whole floats (`0.3`, `8.6`) keep their fraction. The `error-normalization`
+    scenario exercises this with `ratio: 1.0` failing `minimum: 2.0` (both render `1`/`2`).
   - **(b) Integer literals >= 2^53 diverge.** Python has arbitrary-precision integers
     (`repr(10000000000000000)` is `10000000000000000`), while JS collapses large integer
     literals into IEEE 754 doubles, losing precision. A YAML integer literal like

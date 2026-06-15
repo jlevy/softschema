@@ -22,6 +22,11 @@ version number.
 - **Supply-chain cool-off config**: The `[tool.uv]` cutoff used a date-only string that
   uv could not parse; it now uses RFC3339 timestamps with a pinned global cutoff, so the
   exception applies to local resolution and the lockfile stays stable.
+- **Canonical number rendering (`ss-wbnm`)**: A whole-valued number now renders in
+  canonical form — without a trailing fraction (`2.0` becomes `2`) — in error records,
+  synthesized messages, and the echoed `values` block.
+  JavaScript emits this form natively; the Python side normalizes its floats to match,
+  so validation output is byte-identical across the two implementations.
 
 ### Refactoring
 

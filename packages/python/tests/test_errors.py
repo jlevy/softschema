@@ -5,7 +5,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from softschema import compile_model, validate_structural
-from softschema.errors import render_structural_message, structural_error_record
+from softschema.errors import canonical_number, render_structural_message, structural_error_record
 
 
 class Sample(BaseModel):
@@ -22,6 +22,39 @@ def test_render_structural_message_is_engine_neutral() -> None:
         render_structural_message("enum", ["G", "PG"], "X") == "value 'X' is not one of ['G', 'PG']"
     )
     assert render_structural_message("type", "integer", "x") == "value 'x' is not of type 'integer'"
+
+
+def test_canonical_number_drops_trailing_fraction() -> None:
+    # ss-wbnm: a whole-valued float renders in canonical (int) form so it is
+    # byte-identical to the TypeScript impl, which has no float/int distinction.
+    assert canonical_number(2.0) == 2
+    assert isinstance(canonical_number(2.0), int)
+    assert canonical_number(-2.0) == -2
+    assert canonical_number(0.0) == 0
+    # 1e15 is whole and below 1e16 -> canonical int (matches JS String(1e15)).
+    assert canonical_number(1e15) == 1000000000000000
+    assert isinstance(canonical_number(1e15), int)
+    # Non-whole floats keep their fraction; ints and bools are untouched.
+    assert canonical_number(0.3) == 0.3
+    assert canonical_number(7) == 7
+    assert canonical_number(True) is True
+    # Floats at/beyond 1e16 keep exponential repr (matches the TS formatter).
+    assert canonical_number(1e16) == 1e16
+    assert isinstance(canonical_number(1e16), float)
+    assert repr(canonical_number(1e16)) == "1e+16"
+
+
+def test_whole_float_renders_canonically_in_messages_and_records() -> None:
+    # The bound 2.0 and the offending 1.0 both render without a trailing `.0`.
+    assert render_structural_message("minimum", 2.0, 1.0) == "value 1 is less than the minimum of 2"
+    assert render_structural_message("enum", [1.0, 2.0], 3.0) == "value 3 is not one of [1, 2]"
+    record = structural_error_record(
+        path=["ratio"], validator="minimum", validator_value=2.0, value=1.0
+    )
+    # Stored fields are canonicalized too, so they match the message and the TS record.
+    assert record["value"] == 1
+    assert record["validator_value"] == 2
+    assert record["message"] == "value 1 is less than the minimum of 2"
 
 
 def test_structural_error_record_shape() -> None:

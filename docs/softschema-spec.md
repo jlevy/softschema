@@ -335,6 +335,13 @@ A validator must reject:
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
   Values)
 
+Validation output is deterministic across conforming implementations: structural error
+records share an engine-neutral shape and message wording, and every number — in an
+error record’s `value`/`validator_value`, in a synthesized message, or in an echoed
+payload — renders in canonical form.
+A whole-valued number carries no trailing fraction (`2`, not `2.0`), so output stays
+byte-identical regardless of how the host language distinguishes integers from floats.
+
 ## Generated Sections
 
 A conforming implementation may regenerate Markdown sections from a compiled schema

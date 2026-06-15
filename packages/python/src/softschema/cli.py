@@ -21,6 +21,7 @@ from ruamel.yaml import YAMLError
 from strif import atomic_write_text
 
 from softschema.compile import compile_model
+from softschema.errors import canonical_number
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
 from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
@@ -694,7 +695,9 @@ def _plain(value: Any) -> Any:
         return [_plain(item) for item in value]
     if isinstance(value, type):
         return f"{value.__module__}:{value.__name__}"
-    return value
+    # Canonical number form (whole-valued floats without a trailing `.0`) so the
+    # echoed `values` block matches the TypeScript CLI byte-for-byte; see errors.py.
+    return canonical_number(value)
 
 
 if __name__ == "__main__":
