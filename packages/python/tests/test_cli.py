@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from textwrap import dedent
@@ -510,3 +511,41 @@ def test_inspect_malformed_softschema_block_exits_two(
     err = capsys.readouterr().err
     assert "softschema inspect:" in err
     assert "Traceback" not in err
+
+
+def test_run_cmd_surfaces_internal_bugs() -> None:
+    """TypeError/KeyError signal internal bugs and must surface, not be masked as exit 2."""
+
+    def raise_type(_args: object) -> int:
+        raise TypeError("internal bug")
+
+    def raise_key(_args: object) -> int:
+        raise KeyError("missing")
+
+    with pytest.raises(TypeError):
+        cli._run_cmd("validate", raise_type, argparse.Namespace())
+    with pytest.raises(KeyError):
+        cli._run_cmd("validate", raise_key, argparse.Namespace())
+
+
+def test_run_cmd_reports_usage_error_as_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
+    """A UsageError (and any ValueError) is a user mistake: clean one-liner, exit 2."""
+
+    def raise_usage(_args: object) -> int:
+        raise cli.UsageError("bad flag")
+
+    exit_code = cli._run_cmd("validate", raise_usage, argparse.Namespace())
+
+    assert exit_code == 2
+    assert "softschema validate: bad flag" in capsys.readouterr().err
+
+
+def test_prime_prints_skill_and_docs_index(capsys: pytest.CaptureFixture[str]) -> None:
+    """`prime` restores full agent context: skill operating rules + the bundled docs index."""
+    exit_code = softschema_main(["prime"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "softschema" in out  # skill content
+    assert "Available softschema docs:" in out  # docs index
+    assert "Run `softschema docs <topic>`" in out

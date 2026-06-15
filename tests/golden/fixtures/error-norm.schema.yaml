@@ -17,6 +17,9 @@ properties:
   scale:
     type: number
     multipleOf: 0.5
+  ratio:
+    type: number
+    minimum: 2.0
   count:
     type: integer
   rating:

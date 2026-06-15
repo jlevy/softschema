@@ -117,4 +117,4 @@ def parse_schema_metadata(raw: Any) -> SchemaMetadata | None:
     if isinstance(raw, dict):
         return SchemaMetadata.model_validate(raw)
     msg = f"softschema metadata must be a string or mapping, got {type(raw).__name__}"
-    raise TypeError(msg)
+    raise ValueError(msg)

@@ -190,6 +190,31 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Bug-indicator exceptions: a programmer error (calling a non-function, reading a
+ * property of undefined, an out-of-range value), never a user mistake. These must
+ * surface as a crash with a stack trace, not be masked as a clean exit 2. Mirrors the
+ * Python CLI excluding TypeError/KeyError from its user-error boundary.
+ */
+export function isProgrammerBug(err: unknown): boolean {
+  return err instanceof TypeError || err instanceof RangeError || err instanceof ReferenceError;
+}
+
+/**
+ * The per-command error boundary, mirroring the Python CLI's `_run_cmd`. Rethrows
+ * bug-indicator exceptions so a programmer bug thrown anywhere inside a command helper
+ * (validateArtifact, compileSchema, regenerate, metadata parsing, ...) crashes instead
+ * of being reported as a clean user error; every other (user) error — missing or
+ * unreadable file, malformed YAML, bad model spec, `UsageError` — becomes a stable
+ * one-line stderr message and exit 2. `prefix` is the command label after `softschema `
+ * (e.g. `validate`, or `generate: <path>`), matching each command's existing wording.
+ */
+export function reportUserError(prefix: string, err: unknown): number {
+  if (isProgrammerBug(err)) throw err;
+  process.stderr.write(`softschema ${prefix}: ${errMessage(err)}\n`);
+  return 2;
+}
+
 function renderedSkill(): string {
   return readResource("skills/softschema/SKILL.md");
 }
@@ -429,12 +454,12 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     writeText(stableStringify(result.output));
     return result.ok ? 0 : 1;
   } catch (err) {
-    // IO/parse/usage failures (missing or unreadable file, malformed YAML, bad model
-    // spec) are reported as a stable one-line stderr message with exit 2, matching the
-    // Python CLI's error boundary. Exit 1 is reserved for a readable artifact that fails
-    // validation (the result path above). Never an uncaught stack trace.
-    process.stderr.write(`softschema validate: ${errMessage(err)}\n`);
-    return 2;
+    // Exit 1 is reserved for a readable artifact that fails validation (the result path
+    // above). A bug-indicator exception crashes; every other (user) error — missing or
+    // unreadable file, malformed YAML, bad model spec — is a clean one-line stderr
+    // message + exit 2 (see reportUserError). Never an uncaught stack trace for a user
+    // mistake, never a masked exit 2 for a programmer bug.
+    return reportUserError("validate", err);
   }
 }
 
@@ -451,10 +476,9 @@ function runInspect(path: string): number {
     writeText(stableStringify(output));
     return 0;
   } catch (err) {
-    // Missing/unreadable file, malformed YAML, or a malformed softschema block are all
-    // user errors: a one-line stderr message and exit 2, matching the Python CLI.
-    process.stderr.write(`softschema inspect: ${errMessage(err)}\n`);
-    return 2;
+    // Missing/unreadable file, malformed YAML, or a malformed softschema block are user
+    // errors (exit 2); a bug-indicator exception crashes. See reportUserError.
+    return reportUserError("inspect", err);
   }
 }
 
@@ -479,8 +503,7 @@ async function runCompile(
     );
     return result.drift ? 1 : 0;
   } catch (err) {
-    process.stderr.write(`softschema compile: ${errMessage(err)}\n`);
-    return 2;
+    return reportUserError("compile", err);
   }
 }
 
@@ -492,10 +515,10 @@ function runGenerate(paths: string[], opts: { check?: boolean }): number {
     try {
       result = regenerate(path, { check: opts.check });
     } catch (err) {
-      // Runtime errors (missing file, bad marker) are usage failures: exit 2 with the
-      // command prefix, matching the Python CLI. Exit 1 is reserved for drift.
-      process.stderr.write(`softschema generate: ${path}: ${errMessage(err)}\n`);
-      return 2;
+      // Exit 1 is reserved for drift; a bug-indicator exception crashes. Other runtime
+      // errors (missing file, bad marker) are usage failures: exit 2, keeping the path
+      // in the message to match the Python CLI. See reportUserError.
+      return reportUserError(`generate: ${path}`, err);
     }
     anyDrift = anyDrift || result.drift;
     files.push({
@@ -509,7 +532,7 @@ function runGenerate(paths: string[], opts: { check?: boolean }): number {
   return opts.check && anyDrift ? 1 : 0;
 }
 
-function runDocsList(): number {
+function docsListText(): string {
   const width = Math.max(...DOC_TOPICS.map((t) => t.name.length));
   const lines = ["Available softschema docs:", ""];
   for (const t of DOC_TOPICS) {
@@ -520,7 +543,22 @@ function runDocsList(): number {
     "Run `softschema docs <topic>` to print a document.",
     "Copy examples from the printed docs or from the repository files; the CLI does not scaffold or mutate projects.",
   );
-  writeText(lines.join("\n"));
+  return lines.join("\n");
+}
+
+function runDocsList(): number {
+  writeText(docsListText());
+  return 0;
+}
+
+// Full agent context for a fresh session: the skill operating rules plus the bundled docs
+// index. Byte-identical to the Python `prime` command (same SKILL.md, same docs listing).
+function primeText(): string {
+  return `${renderedSkill().trimEnd()}\n\n${docsListText()}`;
+}
+
+function runPrime(): number {
+  writeText(primeText());
   return 0;
 }
 
@@ -549,9 +587,11 @@ function runDocsTopic(topic: string, asJson: boolean): number {
   let content: string;
   try {
     content = readResource(found.path);
-  } catch {
-    process.stderr.write(`softschema docs: resource not found: ${found.path}\n`);
-    return 2;
+  } catch (err) {
+    // Surface the original failure (e.g. "bundled ... resource not found", a permission
+    // error) rather than a generic one; matches the Python CLI's `softschema docs: <exc>`.
+    // A bug-indicator exception crashes instead (see reportUserError).
+    return reportUserError("docs", err);
   }
   if (asJson) {
     writeText(
@@ -649,6 +689,13 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     });
 
   program
+    .command("prime")
+    .description("Print the full agent context: skill rules and the bundled docs index")
+    .action(() => {
+      exitCode = runPrime();
+    });
+
+  program
     .command("doctor")
     .description("Report softschema version and runner availability")
     .option("--json", "emit the environment report as JSON")
@@ -683,9 +730,14 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       // Commander intended (0 for help/version, non-zero for usage errors).
       return err.exitCode;
     }
+    // Surface programmer bugs as a crash instead of masking them as a clean exit 2 (a
+    // backstop; each command's catch already rethrows these via reportUserError).
+    if (isProgrammerBug(err)) {
+      throw err;
+    }
     // Top-level backstop (mirrors the Python CLI's per-command error boundary): no
-    // command handler should leak a stack trace. Report a clean one-line message and
-    // exit 2 for any otherwise-unhandled error.
+    // command handler should leak a stack trace from a user mistake. Report a clean
+    // one-line message and exit 2 for any otherwise-unhandled (user) error.
     process.stderr.write(`softschema: ${errMessage(err)}\n`);
     return 2;
   }

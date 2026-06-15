@@ -21,6 +21,7 @@ from ruamel.yaml import YAMLError
 from strif import atomic_write_text
 
 from softschema.compile import compile_model
+from softschema.errors import canonical_number
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
 from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
@@ -42,19 +43,30 @@ AGENT_HELP_EPILOG = """IMPORTANT for agents:
   Then read `softschema skill --brief` and `softschema docs --list` for operating rules
   and bundled docs."""
 
-# Exception families that represent user mistakes (bad files, bad input, bad
-# config) rather than internal bugs.  Caught by the per-subcommand error
-# boundary so that ordinary mistakes never produce a traceback.
+
+class UsageError(ValueError):
+    """A user/input mistake: bad flags, a bad model spec, or an unusable document.
+
+    Subclasses ``ValueError`` so it is reported through the CLI's user-error boundary
+    (clean one-line message, exit 2) and so library callers that already catch
+    ``ValueError`` keep working.
+    """
+
+
+# Exit codes: 0 ok, 1 validation failure or drift (``--check``), 2 user/usage error.
+# The families below are user mistakes (bad files, bad input, bad config), caught by the
+# per-subcommand error boundary so an ordinary mistake never prints a traceback.
+# ``TypeError`` and ``KeyError`` are deliberately excluded: nothing in the package raises
+# them for user input, so they only ever signal an internal bug and must surface as a
+# traceback rather than be masked as a clean exit 2.
 _USER_ERRORS = (
     OSError,
     FmFormatError,
     YAMLError,
     ModuleNotFoundError,
     ImportError,
-    TypeError,
-    ValueError,
     ValidationError,
-    KeyError,
+    ValueError,
 )
 
 
@@ -242,6 +254,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     generate_parser.set_defaults(func=_generate_cmd)
 
+    prime_parser = subparsers.add_parser(
+        "prime",
+        help="Print the full agent context: skill rules and the bundled docs index.",
+    )
+    prime_parser.set_defaults(func=_prime_cmd)
+
     doctor_parser = subparsers.add_parser(
         "doctor",
         help="Report softschema version and runner availability.",
@@ -299,13 +317,13 @@ def _infer_validation_binding(
 ) -> tuple[str, SchemaStatus, str | None]:
     if not isinstance(frontmatter, dict):
         if args.contract is None:
-            raise ValueError("missing --contract because the document has no YAML frontmatter")
+            raise UsageError("missing --contract because the document has no YAML frontmatter")
         return args.contract, _status_from_args(args, None), args.envelope
 
     metadata = parse_schema_metadata(frontmatter.get("softschema"))
     contract_id = args.contract or (metadata.contract_id if metadata is not None else None)
     if contract_id is None:
-        raise ValueError("missing --contract because the document has no softschema.contract")
+        raise UsageError("missing --contract because the document has no softschema.contract")
 
     return (
         contract_id,
@@ -333,18 +351,16 @@ def _envelope_from_args(
     try:
         return infer_envelope_key(frontmatter)
     except EnvelopeAmbiguityError as exc:
-        raise ValueError(
+        raise UsageError(
             "multiple top-level frontmatter keys; pass --envelope to designate the "
             f"softschema payload (candidates: {', '.join(exc.candidates)})"
         ) from exc
 
 
 def _compile_cmd(args: argparse.Namespace) -> int:
-    try:
-        model = _load_model(args.model)
-    except (TypeError, ValueError) as exc:
-        print(f"softschema compile: {exc}", file=sys.stderr)
-        return 2
+    # Model-load and compile errors (UsageError, OSError, ...) propagate to the shared
+    # `_run_cmd` boundary, which reports them as `softschema compile: ...` and exits 2.
+    model = _load_model(args.model)
     result = compile_model(model, args.out, contract_id=args.contract, check_only=args.check)
     print(_json(result))
     return 1 if result.drift else 0
@@ -395,13 +411,27 @@ def _docs_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def _prime_text() -> str:
+    """Full agent context: the skill operating rules plus the bundled docs index.
+
+    Byte-identical to the TypeScript ``prime`` command (same SKILL.md, same listing).
+    """
+    skill = _read_resource("skills/softschema/SKILL.md")
+    return f"{skill.rstrip()}\n\n{_docs_listing()}"
+
+
+def _prime_cmd(args: argparse.Namespace) -> int:
+    _write_text(_prime_text())
+    return 0
+
+
 def _generate_cmd(args: argparse.Namespace) -> int:
     any_drift = False
     summary: list[dict[str, Any]] = []
     for path in args.paths:
         try:
             result = regenerate(path, check=args.check)
-        except (OSError, ValueError, KeyError) as exc:
+        except (OSError, ValueError) as exc:
             print(f"softschema generate: {path}: {exc}", file=sys.stderr)
             return 2
         any_drift = any_drift or result.drift
@@ -548,7 +578,7 @@ def _skill_cmd(args: argparse.Namespace) -> int:
 def _load_model(spec: str) -> type[BaseModel]:
     module_name, _, attr = spec.partition(":")
     if not module_name or not attr:
-        raise ValueError(f"model spec must be module:Class, got {spec!r}")
+        raise UsageError(f"model spec must be module:Class, got {spec!r}")
     # Make the invoking directory importable so example modules outside the package
     # (e.g. examples.movie_page.model) resolve when running the CLI from a checkout.
     cwd = str(Path.cwd())
@@ -557,9 +587,9 @@ def _load_model(spec: str) -> type[BaseModel]:
     module = importlib.import_module(module_name)
     obj = getattr(module, attr, None)
     if obj is None:
-        raise ValueError(f"{spec!r} has no attribute {attr!r}")
+        raise UsageError(f"{spec!r} has no attribute {attr!r}")
     if not isinstance(obj, type) or not issubclass(obj, BaseModel):
-        raise TypeError(f"{spec!r} is not a Pydantic BaseModel class")
+        raise UsageError(f"{spec!r} is not a Pydantic BaseModel class")
     return obj
 
 
@@ -665,7 +695,9 @@ def _plain(value: Any) -> Any:
         return [_plain(item) for item in value]
     if isinstance(value, type):
         return f"{value.__module__}:{value.__name__}"
-    return value
+    # Canonical number form (whole-valued floats without a trailing `.0`) so the
+    # echoed `values` block matches the TypeScript CLI byte-for-byte; see errors.py.
+    return canonical_number(value)
 
 
 if __name__ == "__main__":

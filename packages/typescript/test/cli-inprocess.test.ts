@@ -90,6 +90,13 @@ describe("cli main() in-process", () => {
     expect(() => JSON.parse(captured())).not.toThrow();
   });
 
+  test("prime exits 0 with the skill rules and the docs index", async () => {
+    expect(await main(argv("prime"))).toBe(0);
+    const out = captured();
+    expect(out).toContain("softschema");
+    expect(out).toContain("Available softschema docs:");
+  });
+
   test("docs <topic> prints a bundled doc (exit 0)", async () => {
     expect(await main(argv("docs", "spec"))).toBe(0);
     expect(captured().length).toBeGreaterThan(0);

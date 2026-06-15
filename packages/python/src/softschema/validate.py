@@ -407,7 +407,7 @@ def _metadata_from_frontmatter(
 ) -> SchemaMetadata | ArtifactValidationResult | None:
     try:
         metadata = parse_schema_metadata(frontmatter.get("softschema"))
-    except (TypeError, ValidationError) as exc:
+    except (ValueError, ValidationError) as exc:
         return _artifact_failure(
             doc_path,
             contract,

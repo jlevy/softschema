@@ -168,33 +168,40 @@ describe("errors: every message template", () => {
       "value {'a': {'b': 2}, 'c': [1, 2]} is not of type 'string'",
     );
   });
-  test("pyRepr number formatting matches Python repr() ground truth", () => {
-    // Ground-truth table verified against CPython 3.11 repr():
+  test("pyRepr number formatting matches the canonical (Python repr) ground truth", () => {
+    // Ground-truth table verified against CPython 3.11 repr(), with whole-valued
+    // numbers in softschema's canonical form (no trailing `.0`, no exponent below
+    // 1e21; ss-wbnm). Python's canonical_number converts whole floats < 1e21 to int,
+    // which serializes the same as JS's native String()/JSON.stringify():
     //   1e-7      -> '1e-07'
-    //   1e16      -> '1e+16'       (integer-valued but abs >= 1e16 → exponential)
-    //   1e15      -> '1000000000000000.0' in Python, but TS cannot add .0 (ss-wbnm)
     //   0.0001    -> '0.0001'
     //   0.00001   -> '1e-05'
-    //   inf       -> 'inf'
-    //   nan       -> 'nan'
-    //   -1e-7     -> '-1e-07'
-    //   1.5e16    -> '1.5e+16'
-    //   1.2345678901234568e17 -> '1.2345678901234568e+17'
+    //   inf / nan / -inf
+    //   1e15      -> '1000000000000000'        (whole-valued, plain integer)
+    //   1e16      -> '10000000000000000'       (whole-valued < 1e21 → plain integer)
+    //   1.5e16    -> '15000000000000000'
+    //   1e20      -> '100000000000000000000'
+    //   1e21      -> '1e+21'                    (>= 1e21 → exponential on both sides)
     const cases: [number, string][] = [
       [1e-7, "1e-07"],
-      [1e16, "1e+16"],
-      // 1e15 is the ss-wbnm case: Python says '1000000000000000.0', TS says '1000000000000000'
-      // because YAML int-valued floats lose .0 in JS. This is the documented divergence.
+      // ss-wbnm: a whole-valued number below 1e21 renders as a plain integer (no `.0`,
+      // no exponent) on both engines. JS does it natively; Python's canonical_number
+      // converts the float to int so the two agree. 1e16 was the reviewer's divergence
+      // (Python used to emit '1e+16' while JS emits the full integer).
       [1e15, "1000000000000000"],
+      [1e16, "10000000000000000"],
+      [1.5e16, "15000000000000000"],
+      [1e20, "100000000000000000000"],
+      // 1e21 is the boundary: JS switches String() to exponential here, and Python's
+      // float repr does too, so canonical_number leaves it a float and both emit '1e+21'.
+      [1e21, "1e+21"],
       [0.0001, "0.0001"],
       [0.00001, "1e-05"],
       [Infinity, "inf"],
       [NaN, "nan"],
       [-1e-7, "-1e-07"],
-      [1.5e16, "1.5e+16"],
-      [1.2345678901234568e17, "1.2345678901234568e+17"],
       [-Infinity, "-inf"],
-      // Integer-valued below 1e16: plain string
+      // Integer-valued in the safe range: plain string
       [42, "42"],
       [0, "0"],
       [-3, "-3"],

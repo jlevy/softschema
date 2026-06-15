@@ -13,6 +13,7 @@ import { writeFileSync } from "atomically";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
+import { isMapping } from "./guards.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
 
 export const SOFTSCHEMA_FORMAT_VERSION = "0.1.0";
@@ -31,10 +32,6 @@ export interface CompileOptions {
   checkOnly?: boolean;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function augmentSchema(
   schema: Record<string, unknown>,
   contractId: string | null,
@@ -47,7 +44,7 @@ function augmentSchema(
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
   // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
   // so custom fields from the raw schema are preserved.
-  const existing = isPlainObject(out["x-softschema"])
+  const existing = isMapping(out["x-softschema"])
     ? (out["x-softschema"] as Record<string, unknown>)
     : {};
   out["x-softschema"] = {

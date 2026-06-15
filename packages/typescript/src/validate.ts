@@ -17,6 +17,7 @@ import {
   normalizeAjvError,
   type StructuralErrorRecord,
 } from "./errors.js";
+import { isMapping } from "./guards.js";
 import {
   type Contract,
   contractToOutput,
@@ -73,10 +74,6 @@ export interface ArtifactValidationResult {
 }
 
 export type MetadataMode = "enforced" | "advisory";
-
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 export interface RawFrontmatter {
   hasFence: boolean;
