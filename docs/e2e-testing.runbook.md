@@ -38,7 +38,7 @@ The automated half of the story runs on every push and PR
 | Python-vs-TypeScript byte parity | `cross-impl` job |
 | Tag ↔ `package.json` version match | `publish.yml` guard |
 
-**Not** covered by CI — the reason this runbook exists:
+**Not** covered by CI—the reason this runbook exists:
 
 - Installing the built wheel and npm tarball into clean environments and running them
   (entry points, bin shebang, bundled docs/skill resources).
@@ -86,7 +86,7 @@ This phase proves the **packaged artifacts** from a real install with no repo on
 the console entry points resolve, the bin shebang runs under plain Node, and the bundled
 docs/skill resources load from inside the installed package.
 
-### Python wheel in a fresh venv
+### Python Wheel in a Fresh Venv
 
 ```bash
 uv build
@@ -103,10 +103,10 @@ venv/bin/softschema validate spirited-away.md   # exit 0, structural ok, zero fl
 cd - && rm -rf "$tmp"
 ```
 
-### npm tarball under plain Node
+### npm Tarball under Plain Node
 
-`npm pack` runs `prepublishOnly` (build + publint), so the tarball is freshly rebuilt
-from source — the same artifact `npm publish` would upload.
+`npm pack` runs `prepublishOnly` (build and publint), so the tarball is freshly rebuilt
+from source—the same artifact `npm publish` would upload.
 Run it under `node` (>= 22.12), the runtime npm users get, not under bun:
 
 ```bash
@@ -153,7 +153,7 @@ diff movie-page.schema.yaml ts-schema.yaml    # byte-identical
 One trap to know about: the artifact names its own schema
 (`schema: movie-page.schema.yaml`), so the schema **must** be saved under that exact
 filename next to the artifact.
-Redirecting it anywhere else makes `validate` fail with `schema_missing` — correct
+Redirecting it anywhere else makes `validate` fail with `schema_missing`—correct
 resolution behavior, broken quickstart.
 If the README quickstart ever changes, re-verify the new text the same way before
 merging it.
@@ -185,7 +185,7 @@ Three details make the difference between a real check and a false “no version
 - **Override the cutoff to *now*, not midnight.** `--exclude-newer-package` excludes
   releases newer than the given instant.
   A date-only value (`$(date +%F)`) is midnight UTC, which is *before* a version
-  published later the same day — so it excludes the very release you are verifying.
+  published later the same day—so it excludes the very release you are verifying.
   Use a full timestamp at the current moment (`$(date -u +%Y-%m-%dT%H:%M:%SZ)`); “now”
   is always after the publish.
 - **Run from outside the repo.** From the project tree, uv reads its `[tool.uv]`

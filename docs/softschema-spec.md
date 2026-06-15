@@ -41,7 +41,7 @@ These terms are used throughout; each is defined here before it appears in a rul
 | **metadata block** | The `softschema:` mapping in the frontmatter (or at the document root for pure YAML). It holds softschema’s own keys, not payload data. |
 | **payload** | The structured values a consumer reads, validated against a contract. |
 | **envelope** | The single top-level key whose value is the payload; the **envelope key** is its name (for example `movie:`). |
-| **contract** | The named payload contract — *what* the payload is. |
+| **contract** | The named payload contract—*what* the payload is. |
 | **contract ID** | The string that names the contract (for example `example.movies:MoviePage/v1`). |
 | **model** | A Pydantic class or Zod schema: a language-specific *source* for a contract. |
 | **compiled schema** | The JSON Schema (written as YAML or JSON) that a model compiles to; the language-neutral form of the contract. |
@@ -212,7 +212,7 @@ An implementation must:
 
 For example, the movie artifact above carries both `title:` and `movie:`. With two
 non-`softschema` keys, inference does not apply, so the artifact declares
-`envelope: movie` in its metadata block — `title:` stays an uninterpreted host key, and
+`envelope: movie` in its metadata block—`title:` stays an uninterpreted host key, and
 the artifact validates with no flags.
 A caller can still override with `--envelope` on a given run.
 
@@ -242,7 +242,7 @@ product-tag `namespace`, and short versions (`v1`, `1.0`). Examples:
 - `com.acme.docs:IncidentReview/1.0`
 
 A contract ID may correspond to a Pydantic class, a Zod export, a precompiled JSON
-Schema, a database record, or a hand-authored validator — all equally valid.
+Schema, a database record, or a hand-authored validator—all equally valid.
 It is not required to be an import path or a class name.
 
 ## Status Values
@@ -282,7 +282,7 @@ Markdown body prose and tables are reader-facing and never authoritative.
 
 A compiled schema is a generated validation contract, usually JSON Schema written as
 YAML. It is the language-neutral form of a contract: a Pydantic class or Zod schema
-compiles to it (provably identically — the conformance machinery guarantees an equal
+compiles to it (provably identically—the conformance machinery guarantees an equal
 `schema_sha256`), and any language can validate against it.
 
 An artifact may bind to its compiled schema with the optional `softschema.schema` key.
@@ -292,7 +292,7 @@ The compiled schema a validator uses is resolved in this precedence (highest fir
    library call.
 2. A host registry binding (a registered contract’s schema path; library path only).
 3. The `softschema.schema` document metadata.
-4. None — a metadata-only check (contract/status/envelope rules, no schema).
+4. None—a metadata-only check (contract/status/envelope rules, no schema).
 
 Host-controlled configuration outranks document metadata on purpose: a document must not
 silently redirect a host’s validation to a schema the host did not choose.
@@ -302,8 +302,8 @@ none, which is what lets a self-describing artifact validate with no flags.
 Resolution of a `softschema.schema` value is, by convention, relative to the document
 that carries it; this spec requires only that the value be a non-empty string and leaves
 the exact resolution to the host, because file layout is situational.
-(The reference CLIs accept only relative values in metadata — an absolute path must use
-`--schema` — resolve them from the document’s directory, and reject a path whose
+(The reference CLIs accept only relative values in metadata—an absolute path must use
+`--schema`—resolve them from the document’s directory, and reject a path whose
 normalized result escapes both the document directory and the working directory.)
 
 A compiled schema is not a per-document companion data file.
@@ -366,8 +366,8 @@ Recognized attributes:
 file path. This is a 0.2.0 change; a marker that still uses `contract="...path..."` is
 rejected with a message pointing at the rename.)
 
-The output is normative — equal inputs produce byte-equal output, and an implementation
-is checked against this spec, not the other way around:
+The output is normative—equal inputs produce byte-equal output, and an implementation is
+checked against this spec, not the other way around:
 
 - **`enum_table`**: a GFM table with header row `| Field | Allowed values |`; one row
   per string-enum property of the schema, in the schema’s property order; the field name
@@ -377,7 +377,7 @@ is checked against this spec, not the other way around:
   branch is rendered); any other enum shape is skipped.
   With no enum-valued properties the single row is `| _(no enum fields)_ | _(none)_ |`.
 - **`field_list`**: one bullet per top-level property, in schema order:
-  `- `name` (type, required): description` — the JSON type label, `required` or
+  `- `name` (type, required): description`—the JSON type label, `required` or
   `optional`, then `: description` only when the property has one.
   Nested properties are not listed (they appear through their parent’s type).
   With no properties the single bullet is `- _(no fields)_`.

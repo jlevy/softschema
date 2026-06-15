@@ -1,10 +1,9 @@
 # Development
 
 First-time setup of `uv` and Python is covered in [Installation](installation.md).
-Release workflow and PyPI steps are covered in
-[Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
-The full validation pass — the automated sweep run locally plus the manual
-clean-environment checks CI cannot run — is codified in the
+Release workflow and PyPI steps are covered in [Publishing](publishing.md).
+The full validation pass—the automated sweep run locally plus the manual
+clean-environment checks CI cannot run—is codified in the
 [end-to-end testing runbook](e2e-testing.runbook.md).
 
 Set up the repo (Python deps, Node tooling for hooks, and the git hooks themselves):
@@ -39,7 +38,7 @@ uv build
 
 The Python package is built from `packages/python/src/softschema`.
 
-### Git hooks (this repo)
+### Git Hooks (This Repo)
 
 Hooks are managed by [lefthook](https://lefthook.dev) (`lefthook.yml`), installed with
 `make hooks-install`. The `pre-commit` hook formats staged changes so commits stay
@@ -69,8 +68,7 @@ bun run publint     # lint the publishable package layout (run after build)
 
 It publishes to npm as `softschema` (the same name as the PyPI package) and exposes the
 CLI as both `softschema` and `softschema-ts`. The two packages **release together under
-one version number**; see
-[Publishing](https://github.com/jlevy/softschema/blob/main/docs/publishing.md).
+one version number**; see [Publishing](publishing.md).
 
 Documentation changes should follow `common-doc-guidelines.md`
 (github.com/jlevy/practical-prose).
@@ -81,7 +79,7 @@ exact format rules in `docs/softschema-spec.md`.
 
 Two softschema checks belong in CI for any project that depends on the package.
 
-### Compiled schema drift
+### Compiled Schema Drift
 
 A committed `.schema.yaml` file is *generated, but committed*. Run
 `softschema compile ... --check` to fail the build when the committed compiled schema
@@ -96,10 +94,10 @@ uv run softschema compile examples.movie_page.model:MoviePage \
 Fix on drift: re-run the same command without `--check` and commit the regenerated
 compiled schema.
 
-### Generated-section drift
+### Generated-Section Drift
 
 If any Markdown file contains `softschema:generated` markers (see the guide’s “Keep
-Schema Tables In Sync With Generated Sections” playbook), run the re-renderer in
+Schema Tables in Sync with Generated Sections” playbook), run the re-renderer in
 `--check` mode so CI fails when the committed section lags behind the schema:
 
 ```bash
@@ -108,7 +106,7 @@ uv run softschema generate examples/movie_page/README.md --check
 
 Fix on drift: re-run without `--check` and commit the regenerated section.
 
-### Artifact validation
+### Artifact Validation
 
 Run `softschema validate` against every artifact under version control whose contract is
 fully defined:
@@ -154,7 +152,7 @@ jobs:
             --schema examples/movie_page/movie-page.schema.yaml
 ```
 
-### Pre-commit hook
+### Pre-Commit Hook
 
 For local runs before push, a `pre-commit` config that calls the same drift check:
 

@@ -1,12 +1,12 @@
 # softschema
 
 Soft schemas: gradual, practical validation for Markdown/YAML artifacts that mix prose
-and structured data — built for humans and coding agents.
+and structured data—built for humans and coding agents.
 
 ## Quick Start
 
 Try it anywhere, with nothing installed but [uv](https://docs.astral.sh/uv/) or Node.
-Print the bundled example artifact and its compiled schema, then validate — the artifact
+Print the bundled example artifact and its compiled schema, then validate—the artifact
 is fully self-describing, so no flags are needed:
 
 ```bash
@@ -35,7 +35,7 @@ flexible document context and machine-readable values.
 The idea is quite simple, but I’ve found it non-obvious enough that coding agents do not
 come up with this approach themselves.
 
-However if given the information and tools in this repo, soft schemas are unreasonably
+However, if given the information and tools in this repo, soft schemas are unreasonably
 effective. Agents become far better at designing and building complex workflows that mix
 structured and unstructured data, such as document processing, data extraction,
 scientific or financial analyses, and many similar applications.
@@ -175,8 +175,8 @@ flags.
 
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
-Contract IDs follow an enforced shape, `[namespace:]Name[/version]` — for example
-`example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0` — naming a payload
+Contract IDs follow an enforced shape, `[namespace:]Name[/version]`—for example
+`example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0`—naming a payload
 contract, not a class or import path.
 
 ## Validate
@@ -192,7 +192,7 @@ softschema validate doc.md --envelope incident          # designate the payload 
 
 `validate` reports structural (JSON Schema) and semantic (Pydantic/Zod model) results
 separately as deterministic JSON. Semantic validation loads a model with
-`--model module:Class` (Python) or `--model path:export` (Zod) — note that `--model`
+`--model module:Class` (Python) or `--model path:export` (Zod)—note that `--model`
 imports and executes local code, so use it only with trusted models; a compiled schema
 via `--schema` executes nothing and is the safe path for untrusted input.
 
@@ -215,10 +215,9 @@ Two supported ways to consume softschema; pick by use:
   npx softschema@latest --help
   ```
 
-The rule of thumb: if softschema runs more than once, or in CI, or you import it — pin
-it. For a quick check or an agent bootstrapping with nothing installed, use a
-zero-install runner.
-See [Installation](docs/installation.md) for details, including the supply-chain
+The rule of thumb: if softschema runs more than once, or in CI, or you import it—pin it.
+For a quick check or an agent bootstrapping with nothing installed, use a zero-install
+runner. See [Installation](docs/installation.md) for details, including the supply-chain
 cool-off that makes `@latest` safe to recommend.
 
 ## Use as a Library
