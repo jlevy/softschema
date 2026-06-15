@@ -538,3 +538,14 @@ def test_run_cmd_reports_usage_error_as_exit_2(capsys: pytest.CaptureFixture[str
 
     assert exit_code == 2
     assert "softschema validate: bad flag" in capsys.readouterr().err
+
+
+def test_prime_prints_skill_and_docs_index(capsys: pytest.CaptureFixture[str]) -> None:
+    """`prime` restores full agent context: skill operating rules + the bundled docs index."""
+    exit_code = softschema_main(["prime"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "softschema" in out  # skill content
+    assert "Available softschema docs:" in out  # docs index
+    assert "Run `softschema docs <topic>`" in out

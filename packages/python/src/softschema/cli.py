@@ -253,6 +253,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     generate_parser.set_defaults(func=_generate_cmd)
 
+    prime_parser = subparsers.add_parser(
+        "prime",
+        help="Print the full agent context: skill rules and the bundled docs index.",
+    )
+    prime_parser.set_defaults(func=_prime_cmd)
+
     doctor_parser = subparsers.add_parser(
         "doctor",
         help="Report softschema version and runner availability.",
@@ -401,6 +407,20 @@ def _docs_cmd(args: argparse.Namespace) -> int:
         )
         return 0
     _write_text(_read_resource(DOC_TOPICS[args.topic].path))
+    return 0
+
+
+def _prime_text() -> str:
+    """Full agent context: the skill operating rules plus the bundled docs index.
+
+    Byte-identical to the TypeScript ``prime`` command (same SKILL.md, same listing).
+    """
+    skill = _read_resource("skills/softschema/SKILL.md")
+    return f"{skill.rstrip()}\n\n{_docs_listing()}"
+
+
+def _prime_cmd(args: argparse.Namespace) -> int:
+    _write_text(_prime_text())
     return 0
 
 

@@ -509,7 +509,7 @@ function runGenerate(paths: string[], opts: { check?: boolean }): number {
   return opts.check && anyDrift ? 1 : 0;
 }
 
-function runDocsList(): number {
+function docsListText(): string {
   const width = Math.max(...DOC_TOPICS.map((t) => t.name.length));
   const lines = ["Available softschema docs:", ""];
   for (const t of DOC_TOPICS) {
@@ -520,7 +520,22 @@ function runDocsList(): number {
     "Run `softschema docs <topic>` to print a document.",
     "Copy examples from the printed docs or from the repository files; the CLI does not scaffold or mutate projects.",
   );
-  writeText(lines.join("\n"));
+  return lines.join("\n");
+}
+
+function runDocsList(): number {
+  writeText(docsListText());
+  return 0;
+}
+
+// Full agent context for a fresh session: the skill operating rules plus the bundled docs
+// index. Byte-identical to the Python `prime` command (same SKILL.md, same docs listing).
+function primeText(): string {
+  return `${renderedSkill().trimEnd()}\n\n${docsListText()}`;
+}
+
+function runPrime(): number {
+  writeText(primeText());
   return 0;
 }
 
@@ -648,6 +663,13 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .option("--check", "do not write; exit 1 if any section is stale")
     .action((paths: string[], opts: { check?: boolean }) => {
       exitCode = runGenerate(paths, opts);
+    });
+
+  program
+    .command("prime")
+    .description("Print the full agent context: skill rules and the bundled docs index")
+    .action(() => {
+      exitCode = runPrime();
     });
 
   program
