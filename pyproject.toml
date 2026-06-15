@@ -46,12 +46,15 @@ dev = [
 ]
 
 [tool.uv]
-# Trusted-package exception to the 14-day supply-chain cool-off. strif is a reviewed,
-# zero-dependency, first-party package, so the latest release is allowed. This records
-# the decision and applies for local resolution; CI sets a global UV_EXCLUDE_NEWER that
-# overrides config, so ci.yml ALSO passes `--exclude-newer-package strif=...` with the
-# same date. Bump the date in both places to adopt a newer strif.
-exclude-newer-package = { strif = "2026-06-03" }
+# Local resolution honors the supply-chain cool-off: cap dependencies at a reviewed
+# cutoff (bump deliberately). strif is a reviewed, zero-dependency, first-party package,
+# so it gets a per-package exception to that cutoff. Both values need a full RFC3339
+# timestamp -- a date-only string fails to parse and uv silently drops the setting. CI
+# sets a global UV_EXCLUDE_NEWER (14 days ago) that overrides `exclude-newer` here, and
+# because that env override also replaces the per-package map, ci.yml re-passes
+# `--exclude-newer-package strif=...` on the CLI. Bump the dates together.
+exclude-newer = "2026-06-02T00:00:00Z"
+exclude-newer-package = { strif = "2026-06-03T00:00:00Z" }
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
