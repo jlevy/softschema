@@ -148,6 +148,15 @@ For each release of version `X.Y.Z`:
    and pass `--refresh` so uv does not serve a cached index that predates the publish
    (see runbook Phase 5).
 
+   Allow for publish propagation: PyPI updates its JSON API
+   (`pypi.org/pypi/softschema/json`) before the **simple index** uv resolves against
+   (`pypi.org/simple/softschema/`), so the first `uvx` run right after the workflow
+   turns green can fail with `no version of softschema==X.Y.Z` even though the release
+   is live. `--refresh` clears uv’s own cache but not PyPI’s CDN edge, so if that
+   happens, wait for the simple index to list the new `.whl`/`.tar.gz` and retry
+   (usually a few seconds).
+   npm propagates quickly and rarely shows this gap.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
