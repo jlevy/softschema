@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from frontmatter_format import fmf_read
 
 from examples.movie_page.host_integration import validate_movie_page
@@ -65,7 +66,9 @@ def test_movie_page_demo_matches_structured_values() -> None:
     assert "| MPAA rating | PG |" in body
 
 
-def test_validate_cli_reads_contract_status_from_demo_yaml(capsys) -> None:
+def test_validate_cli_reads_contract_status_from_demo_yaml(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """`softschema validate` reads contract and status from the document.
 
     The demo artifact carries a top-level `title:` alongside `movie:`, so the
@@ -104,7 +107,7 @@ def test_validate_cli_reads_contract_status_from_demo_yaml(capsys) -> None:
     assert output["values"]["title"] == "Spirited Away"
 
 
-def test_validate_cli_ignores_unrelated_top_level_keys(capsys) -> None:
+def test_validate_cli_ignores_unrelated_top_level_keys(capsys: pytest.CaptureFixture[str]) -> None:
     """Extra top-level frontmatter keys do not cause validation to fail.
 
     softschema must neither forbid nor interpret keys outside the
@@ -145,7 +148,7 @@ def test_movie_page_validates_with_no_flags() -> None:
     assert exit_code == 0
 
 
-def test_validate_cli_errors_when_envelope_is_ambiguous(capsys) -> None:
+def test_validate_cli_errors_when_envelope_is_ambiguous(capsys: pytest.CaptureFixture[str]) -> None:
     """Without any designation the CLI must refuse to guess between keys.
 
     The spec says the envelope must be designated (flag, registry, or

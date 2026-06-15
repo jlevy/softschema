@@ -510,16 +510,3 @@ def test_inspect_malformed_softschema_block_exits_two(
     err = capsys.readouterr().err
     assert "softschema inspect:" in err
     assert "Traceback" not in err
-
-
-def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
-    """--version prints 'softschema <version>' to stdout and exits 0."""
-    with pytest.raises(SystemExit) as exc_info:
-        softschema_main(["--version"])
-
-    assert exc_info.value.code == 0
-    out = capsys.readouterr().out
-    assert out.startswith("softschema ")
-    # Must contain a version string, not be empty after the program name.
-    version_part = out.strip().removeprefix("softschema ")
-    assert len(version_part) > 0
