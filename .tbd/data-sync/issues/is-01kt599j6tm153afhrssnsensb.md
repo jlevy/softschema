@@ -3,9 +3,9 @@ type: is
 id: is-01kt599j6tm153afhrssnsensb
 title: "errors.ts: pyRepr renders whole-number floats without trailing .0"
 kind: bug
-status: open
+status: closed
 priority: 3
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-06-01-softschema-typescript-zod-parity.md
 labels:
   - parity
@@ -13,7 +13,9 @@ labels:
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-02T23:04:27.097Z
-updated_at: 2026-06-15T17:57:02.623Z
+updated_at: 2026-06-15T21:31:09.115Z
+closed_at: 2026-06-15T21:31:09.100Z
+close_reason: Fixed via canonical whole-number rendering (Python normalizes whole-valued floats to match TS's native JSON form); golden + unit coverage added; py/ts/ts-bun byte-identical.
 ---
 pyRepr uses String(2.0)=\"2\" but Python repr(2.0)=\"2.0\". Any whole-valued float bound/value in a message diverges. Partly inherent: JS loses int/float distinction after parse; needs int/float tracking through YAML/JSON parse to fully close.
 
