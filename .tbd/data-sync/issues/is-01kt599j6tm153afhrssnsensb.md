@@ -5,7 +5,7 @@ title: "errors.ts: pyRepr renders whole-number floats without trailing .0"
 kind: bug
 status: open
 priority: 3
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-06-01-softschema-typescript-zod-parity.md
 labels:
   - parity
@@ -13,10 +13,10 @@ labels:
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-02T23:04:27.097Z
-updated_at: 2026-06-10T21:43:12.806Z
+updated_at: 2026-06-15T17:57:02.623Z
 ---
 pyRepr uses String(2.0)=\"2\" but Python repr(2.0)=\"2.0\". Any whole-valued float bound/value in a message diverges. Partly inherent: JS loses int/float distinction after parse; needs int/float tracking through YAML/JSON parse to fully close.
 
 ## Notes
 
-EVALUATED + DOCUMENTED (not fixed). A simple schema/Zod-type-aware fix cannot match Python: Python renders by the parsed value's runtime float-ness (source token), not the declared type, so a type-aware renderer diverges the other way (int 5 in a number field -> '5', not '5.0'). Exact parity requires preserving YAML/JSON source tokens through parse -> serialize -> ajv-unwrap -> error-resolution for BOTH instance values and schema bounds (~150 lines, hot-path risk). Everything else is proven byte-identical (parity probe across all keywords + golden 14/14 on both CLIs), so this lone edge case is documented rather than fixed. Golden corpus normalizes error-case values to integers / non-whole floats (tests/golden/README.md) so the divergence cannot hide. Revisit only if whole-number-float instance values or schema bounds become common in real artifacts.
+v0.2.2 re-evaluation: confirmed in code. normalizeAjvError() receives error.data (instance value) and error.schema (bound) as plain JS numbers; YAML parse already collapsed 2.0 -> 2, so pyRepr cannot recover float-ness. An exact fix requires preserving source-token float/int distinction from BOTH the document YAML parse AND the compiled-schema YAML parse, threaded through ajv into the structural error records, then mirrored in Python -- the ~150-line hot-path change the original analysis flagged. That pipeline is the foundation of the byte-parity invariant (proven across all keywords + golden 14/14), so a bug there risks ALL error rendering, not just this edge case. The golden corpus already normalizes error-case values to avoid whole-number floats, so cross-impl parity holds. RECOMMENDATION: do not force this into the 0.2.2 patch; if desired, schedule as a dedicated, golden-backed change (add whole-number-float scenarios first) outside a patch. Deferred from 0.2.2 pending maintainer go-ahead.

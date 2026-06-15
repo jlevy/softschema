@@ -3,9 +3,9 @@ type: is
 id: is-01ktvqwp37dhdpgtqm6t9j6dkx
 title: "Spec: softschema terminology, spec clarity, and schema linkage"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-06-11-softschema-terminology-and-linkage.md
 labels: []
 dependencies: []
@@ -24,6 +24,8 @@ child_order_hints:
   - is-01ktvrdz6b7r4td8ke7t3f9fkj
   - is-01ktvspjy9dp9akrjcnneneaj6
 created_at: 2026-06-11T16:22:51.226Z
-updated_at: 2026-06-11T16:54:28.552Z
+updated_at: 2026-06-15T17:49:34.224Z
+closed_at: 2026-06-15T17:49:34.224Z
+close_reason: "Epic complete: the terminology/spec-clarity/schema-linkage work (contract-ID grammar, softschema.schema binding, sidecar->compiled-schema + error-kind renames, self-describing artifacts) shipped in v0.2.0. All children closed."
 ---
 Holistic cleanup from maintainer feedback on 0.1.4: naming convention (softschema vs soft schema), installed-user README, spec restructure (terminology-first, genuine examples, full generated-sections definition), enforced contract-ID grammar, JSON-Schema-first linkage with softschema.schema metadata binding, sidecar->compiled-schema rename (incl. error kinds), and compatibility notes for frontmatter-format/sidematter-format/markform. See the spec for full design; sequencing via blockers.
