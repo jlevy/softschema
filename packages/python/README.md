@@ -1,30 +1,47 @@
-# softschema Python Package
+# softschema (Python)
 
-The Python package provides:
+Soft schemas: gradual, practical validation for Markdown/YAML artifacts that mix prose
+and structured data—built for humans and coding agents.
 
-- `Contract` and `Contracts`
-- `validate_artifact` for Markdown/YAML artifact validation
-- `validate_structural` for JSON Schema validation
-- `validate_semantic` for Pydantic validation
-- `compile_model` for Pydantic-to-JSON-Schema compilation
-- the `softschema` CLI, including bundled docs through `softschema docs` and
-  `softschema skill`
+This is the Python implementation of [softschema](https://github.com/jlevy/softschema),
+published on [PyPI](https://pypi.org/project/softschema/). A fully synchronized
+TypeScript implementation is also available on npm.
 
-The package source lives under `packages/python/src/softschema`, but the root
-`pyproject.toml` owns builds and dependency management.
-
-Use the root [softschema Guide](../../docs/softschema-guide.md) for the concept and
-[softschema Spec](../../docs/softschema-spec.md) for the artifact format.
-
-Installed environments can print the same reference material:
+## Install
 
 ```bash
-softschema docs --list
-softschema docs --list --json
-softschema docs guide
-softschema docs example-artifact
-softschema skill --brief
+pip install softschema
+# or:
+uv add softschema
 ```
+
+## Quick Start
+
+```python
+from pathlib import Path
+
+from softschema import validate_artifact
+
+# A self-describing artifact validates with no extra arguments; pass contract=,
+# contract_id=, or registry= to bind a schema explicitly.
+result = validate_artifact(Path("doc.md"))
+```
+
+Or from the command line:
+
+```bash
+softschema validate doc.md
+```
+
+## Documentation
+
+- [softschema Guide](https://github.com/jlevy/softschema/blob/main/docs/softschema-guide.md):
+  the full mental model and adoption playbooks
+- [softschema Spec](https://github.com/jlevy/softschema/blob/main/docs/softschema-spec.md):
+  the exact artifact format and validation rules
+- [Installation](https://github.com/jlevy/softschema/blob/main/docs/installation.md):
+  pinned vs zero-install, uv and Node setup
+- [Repository](https://github.com/jlevy/softschema)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
