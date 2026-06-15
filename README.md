@@ -204,8 +204,8 @@ Two supported ways to consume softschema; pick by use:
   fast, offline, and the only way to `import` it):
 
   ```bash
-  uv add --dev softschema==0.2.1        # Python
-  npm install -D softschema@0.2.1       # Node (or: bun add -d)
+  uv add --dev softschema==0.2.2        # Python
+  npm install -D softschema@0.2.2       # Node (or: bun add -d)
   ```
 
 - **Zero-install** for one-off checks and agent bootstrap:

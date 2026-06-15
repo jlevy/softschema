@@ -4,23 +4,42 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
-## Unreleased (v0.2.2)
+## v0.2.2—2026-06-15
 
 ### Features
 
-- **`softschema prime` command**: New command for project priming
-- **Whole-number-float render parity**: Consistent rendering of whole-number floats
-  across Python and TypeScript
+- **`softschema prime` command**: Prints the full agent context (the skill operating
+  rules plus the bundled docs index), so an agent can restore context without the source
+  checkout. Byte-identical across the Python and TypeScript CLIs.
 
 ### Fixes
 
-- **CLIError and exit-code hierarchy**: Structured error hierarchy with correct exit
-  codes
-- **Narrowed CLI error handling**: More precise error handling in the CLI
+- **CLI error boundary no longer masks internal bugs**: The user-error boundary now
+  excludes bug-indicator exception types (Python `TypeError`/`KeyError`; JavaScript
+  `TypeError`/`RangeError`/`ReferenceError`), so a programmer bug surfaces as a
+  traceback instead of a clean exit 2. Adds an explicit `UsageError` class and documents
+  the 0/1/2 exit-code contract.
+- **Supply-chain cool-off config**: The `[tool.uv]` cutoff used a date-only string that
+  uv could not parse; it now uses RFC3339 timestamps with a pinned global cutoff, so the
+  exception applies to local resolution and the lockfile stays stable.
 
 ### Refactoring
 
-- **Cleanups**: Minor code and structural cleanups
+- **Shared mapping guard**: Consolidated four near-duplicate object guards into one
+  `isMapping` helper (TypeScript).
+- **Preserve original `docs` error**: The `docs` command reports the underlying failure
+  rather than a generic message, matching the Python CLI.
+- **Removed redundant error handling**: Dropped a redundant inner `try/except` in the
+  Python `compile` command.
+
+### Documentation
+
+- **PyPI-focused Python README**: `packages/python/README.md` is now a short PyPI entry
+  point instead of a second full README.
+- **Added `CHANGELOG.md`** following the release-notes guidelines.
+
+**Full commit history**:
+[v0.2.1 … v0.2.2](https://github.com/jlevy/softschema/compare/v0.2.1...v0.2.2)
 
 ## v0.2.1—2026-06-15
 
