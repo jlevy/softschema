@@ -13,12 +13,15 @@ import { writeFileSync } from "atomically";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
+import { normalizePortableValue } from "./core/value-domain.js";
 import { isMapping } from "./guards.js";
 import { validateContractId, validateSchemaId } from "./models.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
 
 export const SOFTSCHEMA_FORMAT_VERSION = "0.1.0";
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
+export const ROOT_COMPILER_METADATA_RESERVED_MESSAGE =
+  "model schema root must not define reserved x-softschema metadata";
 
 export interface CompileResult {
   outPath: string;
@@ -45,13 +48,12 @@ function augmentSchema(
   delete out.$id;
   if (schemaId !== null) out.$id = schemaId;
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
-  // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
-  // so custom fields from the raw schema are preserved.
-  const existing = isMapping(out["x-softschema"])
-    ? (out["x-softschema"] as Record<string, unknown>)
-    : {};
+  // The root block is reserved compiler output. Reject rather than silently merge or
+  // discard model metadata, which could violate the public compiled-schema profile.
+  if (Object.hasOwn(out, "x-softschema")) {
+    throw new Error(ROOT_COMPILER_METADATA_RESERVED_MESSAGE);
+  }
   out["x-softschema"] = {
-    ...existing,
     contract: contractId,
     softschema_format_version: SOFTSCHEMA_FORMAT_VERSION,
   };
@@ -85,7 +87,19 @@ export function buildCanonicalSchema(
     reused: "inline",
     unrepresentable: "throw",
   }) as Record<string, unknown>;
-  const schema = canonicalizeJsonSchema(augmentSchema(raw, checkedContractId, checkedSchemaId));
+  const canonicalSchema = canonicalizeJsonSchema(
+    augmentSchema(raw, checkedContractId, checkedSchemaId),
+  );
+  // Python distinguishes integral floats from integers while JavaScript has one
+  // Number type. Normalize the complete compiled value before hashing and rendering
+  // so JSON-equivalent bounds such as 10.0 and 10 have one portable representation.
+  // The same boundary rejects non-finite and unsafe integer values that cannot retain
+  // an exact language-neutral JSON meaning.
+  const normalizedSchema = normalizePortableValue(canonicalSchema).value;
+  if (!isMapping(normalizedSchema)) {
+    throw new TypeError("compiled schema root must be a mapping");
+  }
+  const schema = normalizedSchema;
   const sha = schemaSha256(schema);
   (schema["x-softschema"] as Record<string, unknown>).schema_sha256 = sha;
   return { schema, sha };

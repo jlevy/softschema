@@ -1,0 +1,367 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "frontmatter-profile-hidden-and-code-point-order",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["content"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/content", "kind": "directory", "device": "1", "inode": "10", "entries": ["𐀀.md", "skip.yml", "dir", "z.markdown", ".private", ".hidden.md", ".md", "UPPER.MD", "A.md"] },
+        { "path": "/work/content/.hidden.md", "kind": "file", "device": "1", "inode": "11" },
+        { "path": "/work/content/.private", "kind": "directory", "device": "1", "inode": "12", "entries": ["note.md"] },
+        { "path": "/work/content/.private/note.md", "kind": "file", "device": "1", "inode": "13" },
+        { "path": "/work/content/A.md", "kind": "file", "device": "1", "inode": "14" },
+        { "path": "/work/content/UPPER.MD", "kind": "file", "device": "1", "inode": "15" },
+        { "path": "/work/content/dir", "kind": "directory", "device": "1", "inode": "16", "entries": ["b.md"] },
+        { "path": "/work/content/dir/b.md", "kind": "file", "device": "1", "inode": "17" },
+        { "path": "/work/content/skip.yml", "kind": "file", "device": "1", "inode": "18" },
+        { "path": "/work/content/z.markdown", "kind": "file", "device": "1", "inode": "19" },
+        { "path": "/work/content/.md", "kind": "file", "device": "1", "inode": "20" },
+        { "path": "/work/content/𐀀.md", "kind": "file", "device": "1", "inode": "21" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/content/.hidden.md", "display_path": "content/.hidden.md" },
+        { "kind": "artifact", "path": "/work/content/.private/note.md", "display_path": "content/.private/note.md" },
+        { "kind": "artifact", "path": "/work/content/A.md", "display_path": "content/A.md" },
+        { "kind": "artifact", "path": "/work/content/dir/b.md", "display_path": "content/dir/b.md" },
+        { "kind": "artifact", "path": "/work/content/z.markdown", "display_path": "content/z.markdown" },
+        { "kind": "artifact", "path": "/work/content/.md", "display_path": "content/.md" },
+        { "kind": "artifact", "path": "/work/content/𐀀.md", "display_path": "content/𐀀.md" }
+      ]
+    },
+    {
+      "id": "pure-yaml-includes-then-excludes",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["data"],
+      "recursive": true,
+      "profile": "pure-yaml",
+      "includes": ["**/*.yaml", "top.?ml"],
+      "excludes": ["private/**", "**/skip.*"],
+      "nodes": [
+        { "path": "/work/data", "kind": "directory", "device": "2", "inode": "1", "entries": ["top.yml", "private", "nested", "doc.md", ".config.yaml"] },
+        { "path": "/work/data/.config.yaml", "kind": "file", "device": "2", "inode": "2" },
+        { "path": "/work/data/doc.md", "kind": "file", "device": "2", "inode": "3" },
+        { "path": "/work/data/nested", "kind": "directory", "device": "2", "inode": "4", "entries": ["skip.yml", "keep.yaml"] },
+        { "path": "/work/data/nested/keep.yaml", "kind": "file", "device": "2", "inode": "5" },
+        { "path": "/work/data/nested/skip.yml", "kind": "file", "device": "2", "inode": "6" },
+        { "path": "/work/data/private", "kind": "directory", "device": "2", "inode": "7", "entries": ["secret.yaml"] },
+        { "path": "/work/data/private/secret.yaml", "kind": "file", "device": "2", "inode": "8" },
+        { "path": "/work/data/top.yml", "kind": "file", "device": "2", "inode": "9" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/data/.config.yaml", "display_path": "data/.config.yaml" },
+        { "kind": "artifact", "path": "/work/data/nested/keep.yaml", "display_path": "data/nested/keep.yaml" },
+        { "kind": "artifact", "path": "/work/data/top.yml", "display_path": "data/top.yml" }
+      ]
+    },
+    {
+      "id": "operand-groups-preserve-command-line-order",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["second", "/outside/item.md", "first"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/second", "kind": "directory", "device": "3", "inode": "1", "entries": ["b.md", "a.md"] },
+        { "path": "/work/second/a.md", "kind": "file", "device": "3", "inode": "2" },
+        { "path": "/work/second/b.md", "kind": "file", "device": "3", "inode": "3" },
+        { "path": "/outside/item.md", "kind": "file", "device": "4", "inode": "1" },
+        { "path": "/work/first", "kind": "directory", "device": "3", "inode": "4", "entries": ["x.md"] },
+        { "path": "/work/first/x.md", "kind": "file", "device": "3", "inode": "5" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/second/a.md", "display_path": "second/a.md" },
+        { "kind": "artifact", "path": "/work/second/b.md", "display_path": "second/b.md" },
+        { "kind": "artifact", "path": "/outside/item.md", "display_path": "/outside/item.md" },
+        { "kind": "artifact", "path": "/work/first/x.md", "display_path": "first/x.md" }
+      ]
+    },
+    {
+      "id": "hardlink-first-identity-and-overlap-dedup",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["alias.md", "dir", "dir", "link.md"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/alias.md", "kind": "file", "device": "5", "inode": "7" },
+        { "path": "/work/dir", "kind": "directory", "device": "5", "inode": "8", "entries": ["a.md"] },
+        { "path": "/work/dir/a.md", "kind": "file", "device": "5", "inode": "7" },
+        { "path": "/work/link.md", "kind": "symlink", "device": "5", "inode": "9", "target": "/work/alias.md" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/alias.md", "display_path": "alias.md" }
+      ]
+    },
+    {
+      "id": "realpath-fallback-first-identity",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["first.md", "second.md"],
+      "recursive": false,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/first.md", "kind": "file", "device": null, "inode": null, "realpath": "/canonical/data.md" },
+        { "path": "/work/second.md", "kind": "file", "device": null, "inode": "0", "realpath": "/canonical/data.md" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/first.md", "display_path": "first.md" }
+      ]
+    },
+    {
+      "id": "explicit-regular-file-symlink-is-allowed",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["link.md"],
+      "recursive": false,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/link.md", "kind": "symlink", "device": "6", "inode": "1", "target": "/targets/item.md" },
+        { "path": "/targets/item.md", "kind": "file", "device": "7", "inode": "2" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/link.md", "display_path": "link.md" }
+      ]
+    },
+    {
+      "id": "discovered-symlinks-are-skipped-and-do-not-count",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["links"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/links", "kind": "directory", "device": "8", "inode": "1", "entries": ["dirlink", "item.md"] },
+        { "path": "/work/links/dirlink", "kind": "symlink", "device": "8", "inode": "2", "target": "/targets/dir" },
+        { "path": "/work/links/item.md", "kind": "symlink", "device": "8", "inode": "3", "target": "/targets/item.md" },
+        { "path": "/targets/dir", "kind": "directory", "device": "8", "inode": "4", "entries": [] },
+        { "path": "/targets/item.md", "kind": "file", "device": "8", "inode": "5" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "input_error", "reason": "no_matches", "message": "artifact directory contains no matching files", "source": "links" }
+      ]
+    },
+    {
+      "id": "explicit-symlink-failures",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["broken.md", "loop.md", "dirlink.md"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/broken.md", "kind": "symlink", "device": "9", "inode": "1", "target": "/missing.md" },
+        { "path": "/work/loop.md", "kind": "symlink", "device": "9", "inode": "2", "target": "/work/loop.md" },
+        { "path": "/work/dirlink.md", "kind": "symlink", "device": "9", "inode": "3", "target": "/targets/dir" },
+        { "path": "/targets/dir", "kind": "directory", "device": "9", "inode": "4", "entries": [] }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "input_error", "reason": "not_found", "message": "artifact path does not exist", "source": "broken.md" },
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "loop.md" },
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "dirlink.md" }
+      ]
+    },
+    {
+      "id": "explicit-input-kinds-and-extension-is-not-inferred",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["dir", "missing", "pipe", "payload.txt"],
+      "recursive": false,
+      "profile": "pure-yaml",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/dir", "kind": "directory", "device": "10", "inode": "1", "entries": [] },
+        { "path": "/work/pipe", "kind": "other", "device": "10", "inode": "2" },
+        { "path": "/work/payload.txt", "kind": "file", "device": "10", "inode": "3" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "input_error", "reason": "directory_requires_recursive", "message": "artifact directory requires --recursive", "source": "dir" },
+        { "kind": "input_error", "reason": "not_found", "message": "artifact path does not exist", "source": "missing" },
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "pipe" },
+        { "kind": "artifact", "path": "/work/payload.txt", "display_path": "payload.txt" }
+      ]
+    },
+    {
+      "id": "injected-filesystem-failures-do-not-add-no-matches",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["readfail", "walk", "fallback.md"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/readfail", "kind": "directory", "device": "11", "inode": "1", "entries": [] },
+        { "path": "/work/walk", "kind": "directory", "device": "11", "inode": "2", "entries": ["gone.md", "ignored.txt", "blocked"] },
+        { "path": "/work/walk/ignored.txt", "kind": "file", "device": "11", "inode": "3" },
+        { "path": "/work/fallback.md", "kind": "file", "device": null, "inode": null, "realpath": "/canonical/fallback.md" }
+      ],
+      "failures": [
+        { "operation": "read_directory", "path": "/work/readfail", "code": "unreadable" },
+        { "operation": "lstat", "path": "/work/walk/blocked", "code": "unreadable" },
+        { "operation": "lstat", "path": "/work/walk/gone.md", "code": "not_found" },
+        { "operation": "realpath", "path": "/work/fallback.md", "code": "unreadable" }
+      ],
+      "expected": [
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "readfail" },
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "walk/blocked" },
+        { "kind": "input_error", "reason": "not_found", "message": "artifact path does not exist", "source": "walk/gone.md" },
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "fallback.md" }
+      ]
+    },
+    {
+      "id": "profile-or-filter-mismatch-is-no-matches",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["only-markdown", "excluded"],
+      "recursive": true,
+      "profile": "pure-yaml",
+      "includes": ["**/*.yaml"],
+      "excludes": ["**"],
+      "nodes": [
+        { "path": "/work/only-markdown", "kind": "directory", "device": "12", "inode": "1", "entries": ["doc.md"] },
+        { "path": "/work/only-markdown/doc.md", "kind": "file", "device": "12", "inode": "2" },
+        { "path": "/work/excluded", "kind": "directory", "device": "12", "inode": "3", "entries": ["data.yaml"] },
+        { "path": "/work/excluded/data.yaml", "kind": "file", "device": "12", "inode": "4" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "input_error", "reason": "no_matches", "message": "artifact directory contains no matching files", "source": "only-markdown" },
+        { "kind": "input_error", "reason": "no_matches", "message": "artifact directory contains no matching files", "source": "excluded" }
+      ]
+    },
+    {
+      "id": "directory-device-inode-cycle-is-skipped",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["cycle"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/cycle", "kind": "directory", "device": "20", "inode": "1", "entries": ["self", "item.md"] },
+        { "path": "/work/cycle/item.md", "kind": "file", "device": "20", "inode": "2" },
+        { "path": "/work/cycle/self", "kind": "directory", "device": "20", "inode": "1", "entries": ["self"] }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/cycle/item.md", "display_path": "cycle/item.md" }
+      ]
+    },
+    {
+      "id": "directory-realpath-fallback-cycle-is-skipped",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["fallback-cycle"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/fallback-cycle", "kind": "directory", "device": null, "inode": null, "realpath": "/canonical/cycle", "entries": ["self", "item.md"] },
+        { "path": "/work/fallback-cycle/item.md", "kind": "file", "device": "21", "inode": "2" },
+        { "path": "/work/fallback-cycle/self", "kind": "directory", "device": null, "inode": "0", "realpath": "/canonical/cycle", "entries": ["self"] }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "/work/fallback-cycle/item.md", "display_path": "fallback-cycle/item.md" }
+      ]
+    },
+    {
+      "id": "directory-realpath-fallback-failure-is-an-input-error",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["identity-failure"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/identity-failure", "kind": "directory", "device": null, "inode": null, "entries": ["item.md"] },
+        { "path": "/work/identity-failure/item.md", "kind": "file", "device": "22", "inode": "2" }
+      ],
+      "failures": [
+        { "operation": "realpath", "path": "/work/identity-failure", "code": "unreadable" }
+      ],
+      "expected": [
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "identity-failure" }
+      ]
+    },
+    {
+      "id": "matching-non-file-is-unreadable-not-no-matches",
+      "platform": "posix",
+      "cwd": "/work",
+      "operands": ["special"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "/work/special", "kind": "directory", "device": "13", "inode": "1", "entries": ["socket.md"] },
+        { "path": "/work/special/socket.md", "kind": "other", "device": "13", "inode": "2" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "input_error", "reason": "unreadable", "message": "artifact path cannot be read", "source": "special/socket.md" }
+      ]
+    },
+    {
+      "id": "windows-display-paths-resolution-and-code-point-order",
+      "platform": "windows",
+      "cwd": "C:\\work",
+      "operands": ["root", "D:\\outside\\item.md", "\\drive-root.md", "C:same-drive.md", "E:drive-relative.md"],
+      "recursive": true,
+      "profile": "frontmatter-md",
+      "includes": [],
+      "excludes": [],
+      "nodes": [
+        { "path": "C:\\work\\root", "kind": "directory", "device": "14", "inode": "1", "entries": ["𐀀.md", ".md", "B.md"] },
+        { "path": "C:\\work\\root\\B.md", "kind": "file", "device": "14", "inode": "2" },
+        { "path": "C:\\work\\root\\.md", "kind": "file", "device": "14", "inode": "3" },
+        { "path": "C:\\work\\root\\𐀀.md", "kind": "file", "device": "14", "inode": "4" },
+        { "path": "D:\\outside\\item.md", "kind": "file", "device": "15", "inode": "1" },
+        { "path": "C:\\drive-root.md", "kind": "file", "device": "16", "inode": "1" },
+        { "path": "C:\\work\\same-drive.md", "kind": "file", "device": "16", "inode": "2" },
+        { "path": "E:\\drive-relative.md", "kind": "file", "device": "17", "inode": "1" }
+      ],
+      "failures": [],
+      "expected": [
+        { "kind": "artifact", "path": "C:\\work\\root\\B.md", "display_path": "root/B.md" },
+        { "kind": "artifact", "path": "C:\\work\\root\\.md", "display_path": "root/.md" },
+        { "kind": "artifact", "path": "C:\\work\\root\\𐀀.md", "display_path": "root/𐀀.md" },
+        { "kind": "artifact", "path": "D:\\outside\\item.md", "display_path": "D:/outside/item.md" },
+        { "kind": "artifact", "path": "C:\\drive-root.md", "display_path": "C:/drive-root.md" },
+        { "kind": "artifact", "path": "C:\\work\\same-drive.md", "display_path": "same-drive.md" },
+        { "kind": "artifact", "path": "E:\\drive-relative.md", "display_path": "E:/drive-relative.md" }
+      ]
+    }
+  ]
+}

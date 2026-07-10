@@ -1,0 +1,60 @@
+{
+  "schema_version": "1",
+  "adapter_protocol": "softschema-vector-adapter-v1",
+  "implementations": [
+    {
+      "id": "python",
+      "runtime": "python",
+      "minimum": "3.11",
+      "tested": ["3.11", "3.12", "3.13", "3.14"],
+      "package": "softschema",
+      "status": "official",
+      "case_operations": ["validate"],
+      "vector_operations": [
+        "canonicalize",
+        "diagnostic-summary",
+        "identity",
+        "metadata",
+        "pattern",
+        "portable-yaml",
+        "validate-structural"
+      ]
+    },
+    {
+      "id": "node",
+      "runtime": "node",
+      "minimum": "22.12",
+      "tested": ["22.12", "24.18"],
+      "package": "softschema",
+      "status": "official",
+      "case_operations": ["validate"],
+      "vector_operations": [
+        "canonicalize",
+        "diagnostic-summary",
+        "identity",
+        "metadata",
+        "pattern",
+        "portable-yaml",
+        "validate-structural"
+      ]
+    },
+    {
+      "id": "bun",
+      "runtime": "bun",
+      "minimum": "1.3.11",
+      "tested": ["1.3.11", "1.3.14"],
+      "package": "softschema",
+      "status": "official",
+      "case_operations": ["validate"],
+      "vector_operations": [
+        "canonicalize",
+        "diagnostic-summary",
+        "identity",
+        "metadata",
+        "pattern",
+        "portable-yaml",
+        "validate-structural"
+      ]
+    }
+  ]
+}

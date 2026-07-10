@@ -1,0 +1,661 @@
+{
+  "schema": {
+    "path": "fixtures/sarif-schema-2.1.0-errata01.json",
+    "sha256": "c3b4bb2d6093897483348925aaa73af03b3e3f4bd4ca38cef26dcb4212a2682e",
+    "source": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json"
+  },
+  "vectors": [
+    {
+      "aggregate_id": "success",
+      "id": "success",
+      "sarif": {
+        "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+        "runs": [
+          {
+            "artifacts": [
+              {
+                "location": {
+                  "uri": "artifacts/legacy.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/valid%20movie.md"
+                }
+              }
+            ],
+            "columnKind": "unicodeCodePoints",
+            "invocations": [
+              {
+                "executionSuccessful": true,
+                "exitCode": 0
+              }
+            ],
+            "properties": {
+              "softschemaFormat": "diagnostic-v1",
+              "softschemaLimits": {
+                "max_bundle_bytes": 67108864,
+                "max_depth": 128,
+                "max_nodes_per_resource": 100000,
+                "max_resource_bytes": 8388608,
+                "max_resources": 256,
+                "max_scalar_codepoints": 1048576
+              },
+              "softschemaProfile": "frontmatter-md",
+              "softschemaSummary": {
+                "exit_code": 0,
+                "input_failed": 0,
+                "passed": 2,
+                "total": 2,
+                "validation_failed": 0
+              }
+            },
+            "results": [
+              {
+                "level": "warning",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 0,
+                        "uri": "artifacts/legacy.md"
+                      },
+                      "region": {
+                        "startColumn": 1,
+                        "startLine": 2
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact metadata uses the legacy format"
+                },
+                "properties": {
+                  "softschemaCategory": "warning",
+                  "softschemaOutcome": "passed",
+                  "softschemaPath": "/softschema",
+                  "softschemaSource": "artifacts/legacy.md"
+                },
+                "ruleId": "softschema.warning.legacy_metadata",
+                "ruleIndex": 0
+              }
+            ],
+            "tool": {
+              "driver": {
+                "informationUri": "https://github.com/jlevy/softschema",
+                "name": "softschema",
+                "rules": [
+                  {
+                    "id": "softschema.warning.legacy_metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "version": "2.1.0"
+      }
+    },
+    {
+      "aggregate_id": "validation-exit-1",
+      "id": "validation-exit-1",
+      "sarif": {
+        "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+        "runs": [
+          {
+            "artifacts": [
+              {
+                "location": {
+                  "uri": "artifacts/bad%20syntax.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/legacy.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/schema%20failure.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/semantic%20%C3%BCnicode.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/structural.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/unbound.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "https://schemas.example/movie%20schema.yaml"
+                }
+              }
+            ],
+            "columnKind": "unicodeCodePoints",
+            "invocations": [
+              {
+                "executionSuccessful": true,
+                "exitCode": 1
+              }
+            ],
+            "properties": {
+              "softschemaFormat": "diagnostic-v1",
+              "softschemaLimits": {
+                "max_bundle_bytes": 67108864,
+                "max_depth": 128,
+                "max_nodes_per_resource": 100000,
+                "max_resource_bytes": 8388608,
+                "max_resources": 256,
+                "max_scalar_codepoints": 1048576
+              },
+              "softschemaProfile": "frontmatter-md",
+              "softschemaSummary": {
+                "exit_code": 1,
+                "input_failed": 0,
+                "passed": 1,
+                "total": 6,
+                "validation_failed": 5
+              }
+            },
+            "results": [
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 5,
+                        "uri": "artifacts/unbound.md"
+                      },
+                      "region": {
+                        "startColumn": 13,
+                        "startLine": 3
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact contract is not registered"
+                },
+                "properties": {
+                  "softschemaCategory": "binding",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaPath": "/softschema/contract",
+                  "softschemaSource": "artifacts/unbound.md"
+                },
+                "ruleId": "softschema.artifact.contract_unknown",
+                "ruleIndex": 0
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 0,
+                        "uri": "artifacts/bad%20syntax.md"
+                      },
+                      "region": {
+                        "startColumn": 7,
+                        "startLine": 4
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact is not valid YAML"
+                },
+                "properties": {
+                  "softschemaCategory": "parse",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaSource": "artifacts/bad syntax.md"
+                },
+                "ruleId": "softschema.parse_error.syntax",
+                "ruleIndex": 1
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 6,
+                        "uri": "https://schemas.example/movie%20schema.yaml"
+                      },
+                      "region": {
+                        "startColumn": 7,
+                        "startLine": 8
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "compiled schema reference is unavailable offline"
+                },
+                "properties": {
+                  "softschemaCategory": "schema",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaSchemaPath": "/properties/director",
+                  "softschemaSchemaSource": "https://schemas.example/movie%20schema.yaml",
+                  "softschemaSource": "artifacts/schema failure.md"
+                },
+                "ruleId": "softschema.schema_invalid.reference",
+                "ruleIndex": 2
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 4,
+                        "uri": "artifacts/structural.md"
+                      },
+                      "region": {
+                        "startColumn": 1,
+                        "startLine": 6
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "required property is missing"
+                },
+                "properties": {
+                  "softschemaCategory": "structural",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaPath": "/movie",
+                  "softschemaSource": "artifacts/structural.md"
+                },
+                "ruleId": "softschema.schema_violation.required",
+                "ruleIndex": 3
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 3,
+                        "uri": "artifacts/semantic%20%C3%BCnicode.md"
+                      },
+                      "region": {
+                        "startColumn": 9,
+                        "startLine": 7
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "year must be after 1888"
+                },
+                "properties": {
+                  "softschemaCategory": "semantic",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaPath": "/movie/year",
+                  "softschemaSource": "artifacts/semantic ünicode.md"
+                },
+                "ruleId": "softschema.semantic.value_error",
+                "ruleIndex": 4
+              },
+              {
+                "level": "warning",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 1,
+                        "uri": "artifacts/legacy.md"
+                      },
+                      "region": {
+                        "startColumn": 1,
+                        "startLine": 2
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact metadata uses the legacy format"
+                },
+                "properties": {
+                  "softschemaCategory": "warning",
+                  "softschemaOutcome": "passed",
+                  "softschemaPath": "/softschema",
+                  "softschemaSource": "artifacts/legacy.md"
+                },
+                "ruleId": "softschema.warning.legacy_metadata",
+                "ruleIndex": 5
+              }
+            ],
+            "tool": {
+              "driver": {
+                "informationUri": "https://github.com/jlevy/softschema",
+                "name": "softschema",
+                "rules": [
+                  {
+                    "id": "softschema.artifact.contract_unknown"
+                  },
+                  {
+                    "id": "softschema.parse_error.syntax"
+                  },
+                  {
+                    "id": "softschema.schema_invalid.reference"
+                  },
+                  {
+                    "id": "softschema.schema_violation.required"
+                  },
+                  {
+                    "id": "softschema.semantic.value_error"
+                  },
+                  {
+                    "id": "softschema.warning.legacy_metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "version": "2.1.0"
+      }
+    },
+    {
+      "aggregate_id": "input-precedence-exit-2",
+      "id": "input-precedence-exit-2",
+      "sarif": {
+        "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+        "runs": [
+          {
+            "artifacts": [
+              {
+                "location": {
+                  "uri": "artifacts/abc%3Adef%20%231.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/empty%20directory"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/semantic%20%C3%BCnicode.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "artifacts/valid%20movie.md"
+                }
+              },
+              {
+                "location": {
+                  "uri": "file://server/share/missing%20file.md"
+                }
+              }
+            ],
+            "columnKind": "unicodeCodePoints",
+            "invocations": [
+              {
+                "executionSuccessful": false,
+                "exitCode": 2
+              }
+            ],
+            "properties": {
+              "softschemaFormat": "diagnostic-v1",
+              "softschemaLimits": {
+                "max_bundle_bytes": 67108864,
+                "max_depth": 128,
+                "max_nodes_per_resource": 100000,
+                "max_resource_bytes": 8388608,
+                "max_resources": 256,
+                "max_scalar_codepoints": 1048576
+              },
+              "softschemaProfile": "frontmatter-md",
+              "softschemaSummary": {
+                "exit_code": 2,
+                "input_failed": 3,
+                "passed": 1,
+                "total": 5,
+                "validation_failed": 1
+              }
+            },
+            "results": [
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 2,
+                        "uri": "artifacts/semantic%20%C3%BCnicode.md"
+                      },
+                      "region": {
+                        "startColumn": 9,
+                        "startLine": 7
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "year must be after 1888"
+                },
+                "properties": {
+                  "softschemaCategory": "semantic",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaPath": "/movie/year",
+                  "softschemaSource": "artifacts/semantic ünicode.md"
+                },
+                "ruleId": "softschema.semantic.value_error",
+                "ruleIndex": 3
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 1,
+                        "uri": "artifacts/empty%20directory"
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact directory contains no matching files"
+                },
+                "properties": {
+                  "softschemaCategory": "input",
+                  "softschemaOutcome": "input_failed",
+                  "softschemaSource": "artifacts/empty directory"
+                },
+                "ruleId": "softschema.input_error.no_matches",
+                "ruleIndex": 0
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 0,
+                        "uri": "artifacts/abc%3Adef%20%231.md"
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact path does not exist"
+                },
+                "properties": {
+                  "softschemaCategory": "input",
+                  "softschemaOutcome": "input_failed",
+                  "softschemaSource": "artifacts/abc:def #1.md"
+                },
+                "ruleId": "softschema.input_error.not_found",
+                "ruleIndex": 1
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 4,
+                        "uri": "file://server/share/missing%20file.md"
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact path cannot be read"
+                },
+                "properties": {
+                  "softschemaCategory": "input",
+                  "softschemaOutcome": "input_failed",
+                  "softschemaSource": "//server/share/missing file.md"
+                },
+                "ruleId": "softschema.input_error.unreadable",
+                "ruleIndex": 2
+              }
+            ],
+            "tool": {
+              "driver": {
+                "informationUri": "https://github.com/jlevy/softschema",
+                "name": "softschema",
+                "rules": [
+                  {
+                    "id": "softschema.input_error.no_matches"
+                  },
+                  {
+                    "id": "softschema.input_error.not_found"
+                  },
+                  {
+                    "id": "softschema.input_error.unreadable"
+                  },
+                  {
+                    "id": "softschema.semantic.value_error"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "version": "2.1.0"
+      }
+    },
+    {
+      "aggregate_id": "unicode-code-point-order",
+      "id": "unicode-code-point-order",
+      "sarif": {
+        "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+        "runs": [
+          {
+            "artifacts": [
+              {
+                "location": {
+                  "uri": "artifacts/order.md"
+                }
+              }
+            ],
+            "columnKind": "unicodeCodePoints",
+            "invocations": [
+              {
+                "executionSuccessful": true,
+                "exitCode": 1
+              }
+            ],
+            "properties": {
+              "softschemaFormat": "diagnostic-v1",
+              "softschemaLimits": {
+                "max_bundle_bytes": 67108864,
+                "max_depth": 128,
+                "max_nodes_per_resource": 100000,
+                "max_resource_bytes": 8388608,
+                "max_resources": 256,
+                "max_scalar_codepoints": 1048576
+              },
+              "softschemaProfile": "frontmatter-md",
+              "softschemaSummary": {
+                "exit_code": 1,
+                "input_failed": 0,
+                "passed": 0,
+                "total": 1,
+                "validation_failed": 1
+              }
+            },
+            "results": [
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 0,
+                        "uri": "artifacts/order.md"
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact contract is not registered"
+                },
+                "properties": {
+                  "softschemaCategory": "binding",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaPath": "/",
+                  "softschemaSource": "artifacts/order.md"
+                },
+                "ruleId": "softschema.artifact.contract_unknown",
+                "ruleIndex": 0
+              },
+              {
+                "level": "error",
+                "locations": [
+                  {
+                    "physicalLocation": {
+                      "artifactLocation": {
+                        "index": 0,
+                        "uri": "artifacts/order.md"
+                      }
+                    }
+                  }
+                ],
+                "message": {
+                  "text": "artifact contract is not registered"
+                },
+                "properties": {
+                  "softschemaCategory": "binding",
+                  "softschemaOutcome": "validation_failed",
+                  "softschemaPath": "/𐀀",
+                  "softschemaSource": "artifacts/order.md"
+                },
+                "ruleId": "softschema.artifact.contract_unknown",
+                "ruleIndex": 0
+              }
+            ],
+            "tool": {
+              "driver": {
+                "informationUri": "https://github.com/jlevy/softschema",
+                "name": "softschema",
+                "rules": [
+                  {
+                    "id": "softschema.artifact.contract_unknown"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "version": "2.1.0"
+      }
+    }
+  ]
+}

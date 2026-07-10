@@ -23,6 +23,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 
 const PACKAGE_ROOT = resolve(import.meta.dir, "..");
 const INDEX = join(PACKAGE_ROOT, "dist", "index.js");
+const NODE = join(PACKAGE_ROOT, "dist", "node.js");
 const CLI = join(PACKAGE_ROOT, "dist", "cli.js");
 
 beforeAll(() => {
@@ -48,6 +49,7 @@ function runConsumer(body: string): RunResult {
 }
 
 const indexUrl = () => pathToFileURL(INDEX).href;
+const nodeUrl = () => pathToFileURL(NODE).href;
 const cliUrl = () => pathToFileURL(CLI).href;
 
 describe("library entrypoint (issue #16)", () => {
@@ -67,6 +69,25 @@ describe("library entrypoint (issue #16)", () => {
     const r = runConsumer(`await import(${JSON.stringify(indexUrl())});\nprocess.stdout.write("index-ok");\n`);
     expect(r.stderr).toBe("");
     expect(r.stdout).toBe("index-ok");
+    expect(r.status).toBe(0);
+  });
+
+  test("Node adapter exposes bounded YAML parsing with source locations", () => {
+    const r = runConsumer(
+      `import { parsePortableYaml, parsePortableYamlWithLocations, SourceMap } ` +
+        `from ${JSON.stringify(nodeUrl())};\n` +
+        `const source = "record:\\n  title: Arrival\\n";\n` +
+        `const plain = parsePortableYaml(source);\n` +
+        `const located = parsePortableYamlWithLocations(source);\n` +
+        `const start = located.sourceMap.span("/record/title")?.start;\n` +
+        `process.stdout.write(JSON.stringify({ plain, same: located.sourceMap instanceof SourceMap, start }));\n`,
+    );
+    expect(r.stderr).toBe("");
+    expect(JSON.parse(r.stdout)).toEqual({
+      plain: { record: { title: "Arrival" } },
+      same: true,
+      start: { line: 2, column: 10 },
+    });
     expect(r.status).toBe(0);
   });
 
@@ -100,6 +121,13 @@ describe("library entrypoint (issue #16)", () => {
       "ArtifactInputErrorRecord",
       "ArtifactStructuralErrorRecord",
       "SemanticIssue",
+      "parsePortableYaml",
+      "parsePortableYamlWithLocations",
+      "ParsedPortableYaml",
+      "JsonValue",
+      "SourceMap",
+      "SourcePoint",
+      "SourceSpan",
     ]) {
       expect(rootDts).toContain(sym);
       expect(dts).toContain(sym);
@@ -123,5 +151,6 @@ describe("library entrypoint (issue #16)", () => {
     expect(coreExports).not.toContain("RuntimeContract");
     expect(coreExports).not.toContain("bindContract");
     expect(coreDts).not.toContain("validateArtifact");
+    expect(coreDts).not.toContain("parsePortableYaml");
   });
 });

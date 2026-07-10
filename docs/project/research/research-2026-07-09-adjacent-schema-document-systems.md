@@ -436,9 +436,9 @@ softschema’s differentiator: strict validation that does not take over the doc
 
 ## Next Steps
 
-- [ ] Use these decisions in `ss-v6bv` when restructuring the guide, README, and agent
+- [x] Use these decisions in `ss-v6bv` when restructuring the guide, README, and agent
   skill.
-- [ ] Add explicit network-free resolver and trust-boundary requirements to the relevant
+- [x] Add explicit network-free resolver and trust-boundary requirements to the relevant
   v0.3 normative design work.
 - [ ] Evaluate adapter recipes only after the portable conformance kit and diagnostics
   contract are stable.

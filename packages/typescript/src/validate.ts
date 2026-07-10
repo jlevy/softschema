@@ -3,7 +3,7 @@
  * and run structural validation against the compiled JSON Schema via ajv. The result
  * object serializes (via stableStringify) byte-identically to the Python CLI output.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -13,6 +13,7 @@ import {
   ENFORCEMENT_UNSUPPORTED_MESSAGE,
   EnforcementUnsupportedError,
 } from "./canonicalize.js";
+import { compareUnicodeCodePoints } from "./core/canonical-json.js";
 import { EnvelopeAmbiguityError, inferEnvelopeKey } from "./core/envelope.js";
 import type {
   ArtifactInputErrorRecord,
@@ -31,6 +32,7 @@ import type {
   ValidationResult,
   ValidationResultLegacyWire,
 } from "./core/results.js";
+import { SourceMap } from "./core/source-map.js";
 import type { JsonObject, JsonValue } from "./core/value-domain.js";
 import {
   collapseAdditionalProperties,
@@ -56,14 +58,16 @@ import {
   validateContractId,
   validateSchemaId,
 } from "./models.js";
+import { isFileSystemError } from "./node-errors.js";
 import { firstUnsupportedPattern } from "./portable-pattern.js";
 import { RuntimeContract } from "./runtime-contract.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
   normalizePortableValue,
+  type ParsedPortableYaml,
   PortableValueError,
   PortableYamlSyntaxError,
-  parsePortableYaml,
+  parsePortableYamlWithLocations,
   resolveValidationLimits,
   type ValidationLimitOverrides,
 } from "./yaml-value-domain.js";
@@ -94,6 +98,28 @@ export type {
 } from "./core/results.js";
 
 const JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
+const FILE_READ_CHUNK_BYTES = 64 * 1024;
+
+/** Read no more than one byte beyond a trusted resource limit. */
+export function readBoundedBytes(path: string, maxBytes: number): Uint8Array {
+  const handle = openSync(path, "r");
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total <= maxBytes) {
+      const remaining = maxBytes + 1 - total;
+      const chunk = Buffer.allocUnsafe(Math.min(FILE_READ_CHUNK_BYTES, remaining));
+      const count = readSync(handle, chunk, 0, chunk.byteLength, null);
+      if (count === 0) break;
+      chunks.push(chunk.subarray(0, count));
+      total += count;
+    }
+  } finally {
+    closeSync(handle);
+  }
+  if (total > maxBytes) throw new PortableValueError("maximum resource size exceeded");
+  return Buffer.concat(chunks, total);
+}
 
 const ARTIFACT_PARSE_MESSAGES: Record<ArtifactParseReason, string> = {
   frontmatter: "artifact frontmatter delimiters are malformed",
@@ -105,6 +131,8 @@ const ARTIFACT_INPUT_MESSAGES: Record<ArtifactInputReason, string> = {
   not_found: "artifact path does not exist",
   unreadable: "artifact path cannot be read",
   directory_requires_recursive: "artifact directory requires --recursive",
+  no_matches: "artifact directory contains no matching files",
+  discovery_limit: "artifact discovery limit exceeded",
 };
 
 /**
@@ -148,8 +176,17 @@ function parseYaml(
   validationLimits: ValidationLimitOverrides = {},
   encodedSize?: number,
 ): unknown {
+  return parseYamlWithLocations(text, validationLimits, encodedSize).value;
+}
+
+function parseYamlWithLocations(
+  text: string,
+  validationLimits: ValidationLimitOverrides = {},
+  encodedSize?: number,
+  lineOffset = 0,
+): ParsedPortableYaml {
   try {
-    return parsePortableYaml(text, validationLimits, { encodedSize });
+    return parsePortableYamlWithLocations(text, validationLimits, { encodedSize, lineOffset });
   } catch (err) {
     if (err instanceof PortableYamlSyntaxError) {
       throw new YamlParseError(err.message, {
@@ -162,6 +199,10 @@ function parseYaml(
   }
 }
 
+export interface LocatedRawFrontmatter extends RawFrontmatter {
+  readonly sourceMap: SourceMap;
+}
+
 /**
  * Read the YAML inside a document's leading `---` frontmatter fence. Returns
  * `hasFence: false` with a null value when there is no fence or the fence is empty (the
@@ -172,18 +213,27 @@ function readFrontmatter(
   path: string,
   validationLimits: ValidationLimitOverrides = {},
 ): RawFrontmatter {
+  const located = readFrontmatterWithLocations(path, validationLimits);
+  return { hasFence: located.hasFence, value: located.value };
+}
+
+/** Read exact frontmatter source once while retaining immutable key/value spans. */
+export function readFrontmatterWithLocations(
+  path: string,
+  validationLimits: ValidationLimitOverrides = {},
+): LocatedRawFrontmatter {
   if (statSync(path).isDirectory()) throw new ArtifactDirectoryError();
   const limits = resolveValidationLimits(validationLimits);
-  const encoded = readFileSync(path);
-  if (encoded.byteLength > limits.maxResourceBytes) {
-    throw new PortableValueError("maximum resource size exceeded");
-  }
+  const encoded = readBoundedBytes(path, limits.maxResourceBytes);
   const text = decodeUtf8(encoded);
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return { hasFence: false, value: null };
+  const lines = sourceLines(text);
+  if (lines[0] === undefined || !isFrontmatterFence(text, lines[0])) {
+    return { hasFence: false, value: null, sourceMap: SourceMap.empty() };
+  }
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
+    const line = lines[i];
+    if (line !== undefined && isFrontmatterFence(text, line)) {
       end = i;
       break;
     }
@@ -196,21 +246,64 @@ function readFrontmatter(
   }
   // Empty frontmatter (end-fence at line 1, zero content lines between fences):
   // Python's fmf_read returns metadata=None → no_frontmatter.
-  if (end === 1) return { hasFence: false, value: null };
-  const parsed = parsePortableYaml(lines.slice(1, end).join("\n"), validationLimits, {
-    encodedSize: encoded.byteLength,
-    lineOffset: 1,
-  });
-  if (!isMapping(parsed)) {
+  if (end === 1) return { hasFence: false, value: null, sourceMap: SourceMap.empty() };
+  const opening = lines[0];
+  const closing = lines[end];
+  if (opening === undefined || closing === undefined) throw new Error("frontmatter scan failed");
+  const yamlText = text.slice(opening.end, closing.start);
+  const parsed = parseYamlWithLocations(yamlText, validationLimits, encoded.byteLength, 1);
+  if (!isMapping(parsed.value)) {
     // frontmatter-format's fmf_read rejects non-mapping frontmatter: a whitespace-only
     // block (YAML `null`), a list, or a bare scalar. Match its message and Python class
     // names (`NoneType`, `list`, `str`, …) so the parse error is byte-identical to the
     // Python CLI across every entrypoint (ss-eero / ss-7cbb).
     throw new ArtifactRootError(
-      `Expected YAML metadata to be a dict, got <class '${pyTypeName(parsed)}'>: \`${path}\``,
+      `Expected YAML metadata to be a dict, got <class '${pyTypeName(parsed.value)}'>: \`${path}\``,
+      locationOptions(parsed.sourceMap),
     );
   }
-  return { hasFence: true, value: parsed };
+  return { hasFence: true, value: parsed.value, sourceMap: parsed.sourceMap };
+}
+
+interface SourceLine {
+  readonly start: number;
+  readonly contentEnd: number;
+  readonly end: number;
+}
+
+function sourceLines(text: string): SourceLine[] {
+  const lines: SourceLine[] = [];
+  let start = 0;
+  let index = 0;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === "\r" || character === "\n") {
+      const contentEnd = index;
+      index += character === "\r" && text[index + 1] === "\n" ? 2 : 1;
+      lines.push({ start, contentEnd, end: index });
+      start = index;
+    } else {
+      const codePoint = text.codePointAt(index) as number;
+      index += codePoint > 0xffff ? 2 : 1;
+    }
+  }
+  if (start < text.length || lines.length === 0) {
+    lines.push({ start, contentEnd: text.length, end: text.length });
+  }
+  return lines;
+}
+
+function lineContent(text: string, line: SourceLine): string {
+  return text.slice(line.start, line.contentEnd);
+}
+
+function isFrontmatterFence(text: string, line: SourceLine): boolean {
+  return lineContent(text, line).replace(/^[ \t]+|[ \t]+$/g, "") === "---";
+}
+
+function locationOptions(sourceMap: SourceMap): { line?: number; column?: number } {
+  const start = sourceMap.span("")?.start;
+  return start === undefined ? {} : { line: start.line, column: start.column };
 }
 
 function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
@@ -453,17 +546,6 @@ interface SchemaChild {
   schema: SchemaResource;
 }
 
-function compareUnicode(left: string, right: string): number {
-  const leftPoints = [...left].map((value) => value.codePointAt(0) as number);
-  const rightPoints = [...right].map((value) => value.codePointAt(0) as number);
-  const length = Math.min(leftPoints.length, rightPoints.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = (leftPoints[index] as number) - (rightPoints[index] as number);
-    if (difference !== 0) return difference;
-  }
-  return leftPoints.length - rightPoints.length;
-}
-
 function schemaChildren(
   schema: Record<string, unknown>,
   path: readonly (string | number)[],
@@ -482,7 +564,7 @@ function schemaChildren(
         }
       }
     } else if (isMapping(value)) {
-      for (const name of Object.keys(value).sort(compareUnicode)) {
+      for (const name of Object.keys(value).sort(compareUnicodeCodePoints)) {
         const item = value[name];
         if (isSchemaResource(item)) {
           children.push({ path: [...path, keyword, name], schema: item });
@@ -645,7 +727,7 @@ function buildSchemaBundleIndex(
   });
   if (error !== null) return { bundle: null, error };
 
-  for (const uri of Object.keys(resources).sort(compareUnicode)) {
+  for (const uri of Object.keys(resources).sort(compareUnicodeCodePoints)) {
     const resource = resources[uri] as SchemaResource;
     error = walkSchemaResources(resource, {
       path: [],
@@ -662,9 +744,9 @@ function buildSchemaBundleIndex(
 
   references.sort(
     (left, right) =>
-      compareUnicode(left.origin, right.origin) ||
-      compareUnicode(left.schemaPath, right.schemaPath) ||
-      compareUnicode(left.reference, right.reference),
+      compareUnicodeCodePoints(left.origin, right.origin) ||
+      compareUnicodeCodePoints(left.schemaPath, right.schemaPath) ||
+      compareUnicodeCodePoints(left.reference, right.reference),
   );
   const legacyExternal = references.find(
     (reference) => reference.legacyRoot && !reference.reference.startsWith("#"),
@@ -1081,7 +1163,13 @@ export function artifactErrorRecord(
   if (error instanceof ArtifactFrontmatterError) {
     return artifactParseErrorRecord(source, "frontmatter");
   }
-  if (error instanceof ArtifactRootError) return artifactParseErrorRecord(source, "root");
+  if (error instanceof ArtifactRootError) {
+    return artifactParseErrorRecord(source, "root", {
+      line: error.line,
+      column: error.column,
+      includeLocation: options.includeLocation,
+    });
+  }
   if (error instanceof ArtifactDirectoryError) {
     return artifactInputErrorRecord(source, "directory_requires_recursive");
   }
@@ -1099,8 +1187,8 @@ export function artifactErrorRecord(
       includeLocation: options.includeLocation,
     });
   }
-  if (error instanceof Error && "code" in error) {
-    const code = (error as NodeJS.ErrnoException).code;
+  if (isFileSystemError(error)) {
+    const { code } = error;
     if (code === "EISDIR") return artifactInputErrorRecord(source, "directory_requires_recursive");
     if (code === "ENOENT" || code === "ENOTDIR") {
       return artifactInputErrorRecord(source, "not_found");
@@ -1133,13 +1221,30 @@ export function readPureYamlArtifact(
   path: string,
   validationLimits: ValidationLimitOverrides = {},
 ): JsonObject {
+  return readPureYamlArtifactWithLocations(path, validationLimits).value;
+}
+
+export interface LocatedYamlArtifact {
+  readonly value: JsonObject;
+  readonly sourceMap: SourceMap;
+}
+
+/** Read one bounded pure-YAML artifact and retain its immutable source map. */
+export function readPureYamlArtifactWithLocations(
+  path: string,
+  validationLimits: ValidationLimitOverrides = {},
+): LocatedYamlArtifact {
   if (statSync(path).isDirectory()) throw new ArtifactDirectoryError();
-  const encoded = readFileSync(path);
-  const raw = parseYaml(decodeUtf8(encoded), validationLimits, encoded.byteLength);
-  if (!isMapping(raw)) {
-    throw new ArtifactRootError(`YAML root is ${pyTypeName(raw)}, expected mapping`);
+  const limits = resolveValidationLimits(validationLimits);
+  const encoded = readBoundedBytes(path, limits.maxResourceBytes);
+  const parsed = parseYamlWithLocations(decodeUtf8(encoded), limits, encoded.byteLength);
+  if (!isMapping(parsed.value)) {
+    throw new ArtifactRootError(
+      `YAML root is ${pyTypeName(parsed.value)}, expected mapping`,
+      locationOptions(parsed.sourceMap),
+    );
   }
-  return raw as JsonObject;
+  return { value: parsed.value as JsonObject, sourceMap: parsed.sourceMap };
 }
 
 /** Load a resolved compiled-schema file and run structural validation against it. */
@@ -1152,10 +1257,11 @@ function structuralAgainstSchemaFile(
   let compiledSchema: unknown;
   let encodedSchemaSize = 0;
   try {
-    const encoded = readFileSync(resolved);
+    const limits = resolveValidationLimits(validationLimits);
+    const encoded = readBoundedBytes(resolved, limits.maxResourceBytes);
     encodedSchemaSize = encoded.byteLength;
     const text = decodeUtf8(encoded);
-    compiledSchema = parseYaml(text, validationLimits, encoded.byteLength);
+    compiledSchema = parseYaml(text, limits, encoded.byteLength);
   } catch (err) {
     if (err instanceof PortableValueError) {
       return schemaFailure("value_domain", err.path);
@@ -1196,9 +1302,33 @@ function resolveMetadataSchema(
   if (isAbsolute(schemaRef)) {
     return { path: null, error: `softschema.schema must be a relative path: ${schemaRef}` };
   }
-  const docDir = resolve(dirname(docPath));
-  const resolved = resolve(docDir, schemaRef);
-  const cwd = resolve(process.cwd());
+  const lexicalDocDir = resolve(dirname(docPath));
+  const lexicalResolved = resolve(lexicalDocDir, schemaRef);
+  const lexicalCwd = resolve(process.cwd());
+  let docDir: string;
+  let resolved: string;
+  let cwd: string;
+  try {
+    docDir = realpathSync(lexicalDocDir);
+    cwd = realpathSync(lexicalCwd);
+    resolved = realpathSync(lexicalResolved);
+  } catch (err) {
+    if (isFileSystemError(err)) {
+      if (
+        !isContained(lexicalDocDir, lexicalResolved) &&
+        !isContained(lexicalCwd, lexicalResolved)
+      ) {
+        return {
+          path: null,
+          error:
+            "softschema.schema escapes the document directory and the working " +
+            `directory: ${schemaRef}`,
+        };
+      }
+      return { path: null, error: `compiled schema not found: ${schemaRef}` };
+    }
+    throw err;
+  }
   if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
     return {
       path: null,
@@ -1207,7 +1337,7 @@ function resolveMetadataSchema(
         `directory: ${schemaRef}`,
     };
   }
-  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+  if (!statSync(resolved).isFile()) {
     return { path: null, error: `compiled schema not found: ${schemaRef}` };
   }
   return { path: resolved, error: null };

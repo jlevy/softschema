@@ -1,9 +1,9 @@
 # Release-Boundary Risk Review
 
-**Reviewed:** July 9, 2026\
-**Scope:** `ss-o21w`, the minimum dual-registry pre-publish boundary\
-**Status:** Code complete; registry identity claims and first-run CI validation remain
-release gates
+**Reviewed:** July 9, 2026; final boundary pass July 10, 2026\
+**Scope:** `ss-o21w` and the final dual-registry recovery/publication closures\
+**Status:** Code complete; immutable-release policy, the protected GitHub environment,
+registry identity claims, and first-run CI validation remain release gates
 
 ## Decision
 
@@ -13,7 +13,10 @@ once, inventories and hashes the primary subjects, generates artifact-specific S
 SBOMs, and transfers the result to an unprivileged installed-artifact smoke job.
 PyPI and npm jobs receive only the tested transfer and registry OIDC permission.
 They do not check out source, resolve project dependencies, rebuild, or execute package
-lifecycle scripts.
+lifecycle scripts. The final boundary pass also binds every recovery bootstrap to the
+exact workflow commit before parsing or execution, authenticates the checksum inventory
+itself, preflights extraction depth and implied-directory budgets before writes, and
+rechecks immutable-release policy immediately before final publication.
 
 Do not use this path for a release until the two registry trusted-publisher records have
 been re-certified with the `pypi` and `npm` environment claims and one pull request has
@@ -33,6 +36,8 @@ live claims could not be inspected.
 | Source-checkout or consumer-resource shadowing | Wheel/npm resources are package-rooted; installed smoke uses a nested unrelated directory containing malicious colliding docs/skill paths | Installed wheel/npm smoke under Python, Node, and Bun |
 | Digest cycle | Build metadata hashes only source inputs; the external manifest hashes primary subjects but not itself; checksums are generated last | Determinism and manifest tests |
 | Partial or hidden transfer | Python builds outside the transfer directory with no generated `.gitignore`; manifest rejects unexpected top-level subjects; recursive checksums cover nested smoke controls | Workflow regression tests |
+| Recovery bootstrap or checksum substitution | The checksum, archive, and frozen driver each require exact workflow/ref/commit attestations before parsing or execution; checksum names and bytes are bounded and closed | Recovery-order and hostile-checksum workflow tests |
+| Archive path amplification | Recovery preflights depth, file count, conflicting file/directory paths, and every unique implied directory before any archive-driven write | Deep and sparse-parent archive tests |
 | OIDC claim overreach | Workflow default is `{}`; only registry jobs receive `id-token: write`; both use tag-scoped GitHub environments with maintainer approval | GitHub API plus static workflow test |
 
 ## Live GitHub State
@@ -53,6 +58,12 @@ The main ruleset requires all Python, golden, TypeScript, cross-implementation, 
 cross-platform artifact-smoke contexts.
 Confirm that the expanded names match the first pull-request run exactly; a missing
 context blocks merge and must be corrected in the ruleset rather than bypassed.
+The same environment inventory did not contain `github-release`; the workflow names it,
+but its required reviewer, `v*` restriction, and administrator-bypass policy remain an
+explicit live gate rather than a verified control.
+The immutable-releases API returned `false`, so both workflow mutation checks currently
+fail closed. The Pages API returned 404; neither result is evidence of a configured
+publication surface.
 
 ## Residual Risks
 
@@ -64,11 +75,14 @@ context blocks merge and must be corrected in the ruleset rather than bypassed.
    but floating `python:3.13-slim` image.
    PyPI recommends the action and its OIDC protocol is not reimplemented here.
    Re-review this residual whenever the action pin changes.
-3. **Same-run artifact service is a platform trust root.** Full SHA checks protect
-   action source, while GitHub still owns the artifact service, runner images, runtime
-   token, and OIDC issuer.
-   Checksums and manifest validation detect transfer corruption inside the modeled
-   boundary, not a total GitHub compromise.
+3. **The initial draft freeze still depends on Actions retention.** Full SHA checks
+   protect action source, while GitHub still owns the artifact service, runner images,
+   runtime token, and OIDC issuer.
+   The protected draft job converts the 90-day transfer into attested release recovery
+   assets; later jobs can restore the exact frozen bytes after the Actions copy expires.
+   Provision and re-read the protected `github-release` environment before tagging; the
+   first approval must then occur before that expiry because no release mutation is
+   authorized before the environment gate.
 4. **Single-maintainer approval is not two-person control.** Environment approval is a
    deliberate pause and audit record, but the current maintainer can approve a release
    they initiated. Add a second reviewer when the project has another trusted releaser.
@@ -83,8 +97,13 @@ context blocks merge and must be corrected in the ruleset rather than bypassed.
 - [ ] Sign in to PyPI and set workflow `publish.yml`, environment `pypi`.
 - [ ] Sign in to npm and set workflow `publish.yml`, environment `npm`, allowed action
   `npm publish`.
+- [ ] Create and re-read environment `github-release`; require a reviewer, restrict it
+  to `v*` tags, and disallow administrator bypass.
+- [ ] Enable repository immutable releases and re-read the API until it returns `true`.
 - [ ] Run `workflow_dispatch`; confirm build, manifest, SBOM, transfer, and installed
   smoke jobs pass while both publisher jobs are skipped.
+- [ ] In a non-publishing fixture run, remove the Actions candidate after the draft
+  freezes and confirm a failed-job rerun restores the attested recovery bundle.
 - [ ] Prepare candidate release metadata and run the protected-tag path only after all
   gates above are checked.
 

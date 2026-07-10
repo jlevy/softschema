@@ -271,7 +271,8 @@ def test_docs_prints_bundled_guide(capsys: pytest.CaptureFixture[str]) -> None:
     output = capsys.readouterr().out
     assert "# softschema Guide" in output
     assert "language-neutral" in output
-    assert "## Playbook: Add Python Validation" in output
+    assert "## Adopt One Existing Artifact" in output
+    assert "## Define a Contract in Python or TypeScript" in output
 
 
 def test_docs_prints_copyable_movie_artifact(capsys: pytest.CaptureFixture[str]) -> None:
@@ -412,7 +413,7 @@ def test_skill_uses_capability_checked_pinned_runners(
     assert "uvx --from 'softschema==0.2.2' softschema doctor --json" in output
     assert "npx --yes softschema@0.2.2 doctor --json" in output
     assert "bunx --bun softschema@0.2.2 doctor --json" in output
-    assert "Select a Capable Command" in output
+    assert "Qualify a Runner" in output
     assert "validate --help" in output
     assert "installed or upgraded to a release" in output
     assert "$SS" not in output

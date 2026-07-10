@@ -33,6 +33,7 @@ PUBLIC_BOOTSTRAP_DOCS = (
     ROOT / "docs/softschema-guide.md",
     ROOT / "docs/e2e-testing.runbook.md",
     ROOT / "docs/publishing.md",
+    ROOT / "packages/python/README.md",
     ROOT / "packages/typescript/README.md",
     ROOT / "SUPPLY-CHAIN-SECURITY.md",
     SKILL,
@@ -212,12 +213,19 @@ def test_public_bootstrap_docs_have_no_unpinned_latest_claims() -> None:
     npm_pin = release["packages"]["npm"]["pin"]
     for path in (
         ROOT / "README.md",
+        ROOT / "docs/e2e-testing.runbook.md",
         ROOT / "docs/installation.md",
         ROOT / "docs/softschema-guide.md",
-        ROOT / "packages/typescript/README.md",
         SKILL,
     ):
         text = path.read_text(encoding="utf-8")
-        if path != ROOT / "packages/typescript/README.md":
-            assert f"softschema=={python_pin}" in text, path
+        assert f"softschema=={python_pin}" in text, path
         assert f"softschema@{npm_pin}" in text, path
+
+    package_versions = release["packages"]
+    assert f"softschema=={package_versions['python']['version']}" in (
+        ROOT / "packages/python/README.md"
+    ).read_text(encoding="utf-8")
+    assert f"softschema@{package_versions['npm']['version']}" in (
+        ROOT / "packages/typescript/README.md"
+    ).read_text(encoding="utf-8")

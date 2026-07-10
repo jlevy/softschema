@@ -1,0 +1,27 @@
+id: diagnostic-jsonl
+description: A one-file JSONL request opts into the diagnostic-v1 wire contract.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+- diagnostic-v1
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 0047f24fbbffb35202a734f1b8b30f22a123b190d480edcca689d11dd576a6c0
+  schema:
+    path: schema.yaml
+    sha256: 66c0581c834a40856caecf97b0e04ee17fa69790ff9c0c80981239b7922ba166
+  resources: []
+options:
+  contract: example.conformance:Diagnostic/v1
+  envelope: record
+  status: enforced
+  output_format: jsonl
+expected:
+  exit_code: 0
+  schema: validation-result-diagnostic-v1.schema.json#/$defs/jsonlRecord
+  result:
+    path: expected.json
+    sha256: ec25a15c73d25ed0c0683fbfed92094dbc4710b6927ea1f9dbef9df77b6d4996

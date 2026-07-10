@@ -23,6 +23,8 @@
     ],
     "output_formats": [
       "json",
+      "jsonl",
+      "sarif",
       "text"
     ]
   },

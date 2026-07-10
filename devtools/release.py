@@ -154,16 +154,17 @@ def _expected_subject_kinds(coordinates: ReleaseCoordinates) -> dict[str, Subjec
     }
 
 
-def load_and_validate_metadata(root: Path) -> dict[str, Any]:
-    """Load root logical metadata and enforce its cross-field release invariants."""
-    metadata_path = root / "release-metadata.json"
-    value = _strict_json(metadata_path)
-    if not isinstance(value, dict):
-        raise ReleaseError("release-metadata.json must contain an object")
-    corpus = load_corpus()
-    _validate(value, "release-metadata.schema.json", corpus)
+def _release_order(logical_version: str) -> tuple[int, int, int, int, int]:
+    match = TAG_PATTERN.fullmatch(f"v{logical_version}")
+    if match is None:  # release_coordinates owns the public error message
+        raise ReleaseError(f"invalid logical version: {logical_version!r}")
+    major, minor, patch = (int(match.group(name)) for name in ("major", "minor", "patch"))
+    rc = match.group("rc")
+    return (major, minor, patch, 1 if rc is None else 0, 0 if rc is None else int(rc))
 
-    metadata = cast(dict[str, Any], value)
+
+def _validate_package_coordinates(metadata: dict[str, Any]) -> None:
+    """Validate build versions separately from last registry-verified bootstrap pins."""
     coordinates = release_coordinates(f"v{metadata['logical_version']}")
     packages = metadata["packages"]
     expected_versions = {
@@ -177,8 +178,41 @@ def load_and_validate_metadata(root: Path) -> dict[str, Any]:
                 f"{ecosystem} version {package['version']!r} does not map from "
                 f"logical version {coordinates.logical_version!r}"
             )
-        if package["pin"] != package["version"]:
-            raise ReleaseError(f"{ecosystem} pin must equal its immutable package version")
+
+    try:
+        pinned = release_coordinates(f"v{packages['npm']['pin']}")
+    except ReleaseError as exc:
+        raise ReleaseError("npm bootstrap pin must be a stable logical version") from exc
+    if pinned.prerelease:
+        raise ReleaseError("bootstrap pins must identify a stable verified release")
+    if packages["python"]["pin"] != pinned.python_version:
+        raise ReleaseError("Python and npm bootstrap pins must map to the same release")
+    if _release_order(pinned.logical_version) > _release_order(coordinates.logical_version):
+        raise ReleaseError("bootstrap pins cannot be newer than the source release")
+    state = metadata["release_state"]
+    if state == "candidate" and pinned.logical_version == coordinates.logical_version:
+        raise ReleaseError("candidate bootstrap pins must remain on the prior verified release")
+    if (
+        state == "released"
+        and not coordinates.prerelease
+        and pinned.logical_version != coordinates.logical_version
+    ):
+        raise ReleaseError("released bootstrap pins must identify the verified release")
+
+
+def load_and_validate_metadata(root: Path) -> dict[str, Any]:
+    """Load root logical metadata and enforce its cross-field release invariants."""
+    metadata_path = root / "release-metadata.json"
+    value = _strict_json(metadata_path)
+    if not isinstance(value, dict):
+        raise ReleaseError("release-metadata.json must contain an object")
+    corpus = load_corpus()
+    _validate(value, "release-metadata.schema.json", corpus)
+
+    metadata = cast(dict[str, Any], value)
+    coordinates = release_coordinates(f"v{metadata['logical_version']}")
+    packages = metadata["packages"]
+    _validate_package_coordinates(metadata)
 
     package_manifest_path = root / "packages" / "typescript" / "package.json"
     package_manifest = _strict_json(package_manifest_path)
@@ -216,34 +250,19 @@ def _conformance_files(root: Path, corpus: Corpus) -> list[Path]:
     conformance = root / "conformance"
     if not conformance.is_dir():
         raise ReleaseError(f"missing conformance directory: {conformance}")
-    files = {
-        conformance / "README.md",
-        conformance / "manifest.yaml",
-        conformance / "run.py",
-    }
-    files.update(conformance / entry["path"] for entry in corpus.manifest["schemas"])
-    for case_path, case in corpus.cases:
-        files.add(case_path)
-        case_directory = case_path.parent
-        references = [
-            case["inputs"]["artifact"],
-            case["inputs"]["schema"],
-            case["expected"]["result"],
-            *[resource["file"] for resource in case["inputs"]["resources"]],
-        ]
-        files.update(case_directory / reference["path"] for reference in references)
+    files = {*corpus.archive_files, conformance / "manifest.lock.json"}
 
     for path in files:
         if path.is_symlink() or not path.is_file():
             raise ReleaseError(f"conformance closure contains an unsafe file: {path}")
     actual_case_files = {
         path
-        for directory in (conformance / "schemas", conformance / "cases")
-        for path in directory.rglob("*")
+        for path in conformance.rglob("*")
         if path.is_file()
         and "__pycache__" not in path.parts
         and path.suffix not in {".pyc", ".pyo"}
         and not path.name.startswith(".")
+        and not any(part in {"agent-skills", "skill-installer"} for part in path.parts)
     }
     extra = actual_case_files - files
     if extra:
@@ -252,7 +271,12 @@ def _conformance_files(root: Path, corpus: Corpus) -> list[Path]:
     return sorted(files, key=lambda path: path.relative_to(root).as_posix())
 
 
-def build_conformance_archive(root: Path, destination: Path) -> None:
+def build_conformance_archive(
+    root: Path,
+    destination: Path,
+    *,
+    digest_output: Path | None = None,
+) -> str:
     """Create a byte-reproducible gzip-compressed tar of the conformance kit."""
     corpus = load_corpus()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -273,6 +297,13 @@ def build_conformance_archive(root: Path, destination: Path) -> None:
             info.uname = ""
             info.gname = ""
             archive.addfile(info, fileobj=_BytesReader(data))
+    digest = _sha256_file(destination)
+    if digest_output is not None:
+        digest_output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = digest_output.with_name(f".{digest_output.name}.tmp")
+        temporary.write_text(f"{digest}  {destination.name}\n", encoding="utf-8")
+        temporary.replace(digest_output)
+    return digest
 
 
 class _BytesReader:
@@ -405,6 +436,7 @@ def _parser() -> argparse.ArgumentParser:
 
     archive = commands.add_parser("archive-conformance", help="build the deterministic kit")
     archive.add_argument("output", type=Path)
+    archive.add_argument("--sha256-output", type=Path)
 
     build = commands.add_parser("build-metadata", help="derive and write build metadata")
     build.add_argument("output", type=Path)
@@ -457,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
         print(_json_text(metadata), end="")
         return 0
     if args.command == "archive-conformance":
-        build_conformance_archive(root, args.output)
+        build_conformance_archive(root, args.output, digest_output=args.sha256_output)
         return 0
     if args.command == "build-metadata":
         value = build_metadata(

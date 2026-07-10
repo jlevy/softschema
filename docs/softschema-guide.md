@@ -1,99 +1,88 @@
 # softschema Guide
 
-Soft schemas are a practice for adding structure gradually to artifacts that mix human
-context and machine-readable values.
-This guide is the operational reference for humans and coding agents adopting the
-pattern.
+A soft schema adds structure to a document only when a real consumer needs it.
+softschema applies that practice to Markdown/frontmatter and pure YAML: YAML carries
+authoritative machine-readable values, while Markdown prose remains inert and free to
+carry context, judgment, and explanation.
 
-For the exact file format and validation rules, see
-[softschema Spec](softschema-spec.md).
-Two interchangeable implementations ship here, at exact behavioral parity: see
-[Python Package Design](softschema-python-design.md) and
-[TypeScript Package Design](softschema-typescript-design.md).
+This guide covers adoption and day-to-day use.
+The [Spec](softschema-spec.md) defines exact language-neutral behavior, the
+[Library API](api.md) shows Python and TypeScript integration, and the
+[runtime design references](#implementation-and-project-references) explain package
+internals.
 
-## Quick Start for Agents
+## Quick Start
 
-To set up softschema in a repository with an agent, tell the agent:
+The pinned commands use the latest published stable release and print their own
+compatible example inputs:
 
-> Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or
-> `npx --yes softschema@0.2.2 --help` (Node), then follow the instructions to set up
-> softschema for this repo as a skill.
+<!-- BEGIN SOFTSCHEMA CLAIM guide-python-pin -->
+```bash
+uvx --from 'softschema==0.2.2' softschema docs example-artifact > report.md
+uvx --from 'softschema==0.2.2' softschema docs example-schema > report.schema.yaml
+uvx --from 'softschema==0.2.2' softschema validate report.md
+```
+<!-- END SOFTSCHEMA CLAIM guide-python-pin -->
 
-The help output points the agent to the repo-local skill install command and the bundled
-docs it should read next.
+<!-- BEGIN SOFTSCHEMA CLAIM guide-npm-pin -->
+```bash
+npx --yes softschema@0.2.2 docs example-artifact > report.md
+npx --yes softschema@0.2.2 docs example-schema > report.schema.yaml
+npx --yes softschema@0.2.2 validate report.md
+```
+<!-- END SOFTSCHEMA CLAIM guide-npm-pin -->
 
-## What softschema Is
+This source branch documents an unreleased 0.3 candidate.
+See [Migrating to 0.3](migration-0.3.md) before applying source-branch behavior to a
+published 0.2 installation.
 
-A **soft schema** is structure added to a document gradually, rather than imposed all at
-once. The term is relative to a *hard* schema: instead of declaring a rigid contract
-before any data exists and rejecting anything that doesn’t fit, you start with readable
-prose and promote values into validated structure only as a consumer needs them.
+For an agent, start at the same capability-aware help path:
 
-This matters most for artifacts that mix human context with machine-readable values,
-such as a Markdown document with a block of YAML frontmatter.
-The prose carries background, judgment, and caveats; the YAML carries the few values
-code reads. Either side can grow at any time: a human or agent can add more context to
-the prose, promote another value into YAML, or raise how strictly that value is
-validated, all without rewriting the artifact.
+> Run one exact-pinned `softschema --help` command above, then follow its instructions
+> to inspect capabilities and preview a project skill install.
 
-Structure is a tradeoff.
-It makes values reliable for code and lets validation catch errors at a boundary, but it
-costs authoring effort and can force false precision on content that isn’t settled.
-Soft schemas let a project move along that spectrum field by field, picking the point
-that fits the application instead of committing to all-prose or all-data up front.
+## When a Soft Schema Fits
 
-**Soft schemas** name the general practice.
-**softschema** is the implementation in this repository: conventions and tools for the
-Markdown-plus-YAML case, shipped as two interchangeable packages held to exact
-behavioral parity, Python/Pydantic and TypeScript/Zod, that validate the YAML payload
-against a named contract.
-The practice is language neutral; another project could implement it with any of JSON
-Schema, database records, or hand-written validators.
+Use softschema when:
 
-## When to Use It
+- a human or agent writes an artifact that should remain readable as a document;
+- code, QA, aggregation, or another agent consumes specific values from it; and
+- the boundary between prose and structured values will evolve.
 
-Reach for softschema when all three of these hold:
+A common case is an artifact passed between workflow steps.
+One step contributes narrative context; the next step consumes a few identifiers,
+statuses, measurements, or decisions.
+Keeping both in one reviewable file avoids a second data store while letting the handoff
+fail clearly when consumed values are missing or malformed.
 
-- A human or agent produces the document and the content reads like a document.
-- A piece of code, a QA check, or an aggregation needs to consume a few specific values
-  from it.
-- You want the document to stay readable as the values are formalized.
+Use something simpler when:
 
-A common case is the file artifacts that pass between steps of an agent process or
-pipeline.
-Each artifact mixes the prose context one step produces with the few structured
-values the next step consumes; softschema keeps both in one file and validates the
-consumed values at the handoff.
+- no downstream consumer reads structured values: ordinary Markdown conventions are
+  enough;
+- the artifact is already pure data and needs none of softschema’s identity, metadata,
+  or result conventions: use JSON Schema directly; or
+- the shape changes on every instance: leave it as prose until a stable consumer
+  boundary appears.
 
-Skip softschema when:
-
-- The artifact is already pure structured data and does not need softschema’s contract,
-  metadata, or result conventions (use JSON Schema directly).
-- No downstream consumer reads structured values from the document (a convention is
-  enough; you don’t need a contract).
-- The values change shape every time the document is written (the shape isn’t stable
-  enough to name a contract yet).
-
-The promotion path softschema fits into:
+The usual progression is:
 
 ```text
 prose
-  → expected sections and vocabulary       (convention only, no contract)
-  → YAML/frontmatter values for consumed fields  (soft → permissive)
-  → schema validation at boundaries        (enforced)
-  → pure data or deterministic code        (no body left to keep)
+  -> expected headings and vocabulary
+  -> YAML for the few consumed values
+  -> schema validation at file boundaries
+  -> stricter validation as the contract settles
+  -> pure data when useful prose no longer remains
 ```
 
-You can stop at any step.
-Many useful artifacts stay in the middle indefinitely.
+Stop wherever the artifact remains useful.
+A document can stay in the middle for its entire life.
 
-## The Basic Artifact Pattern
+## The Source-of-Truth Rule
 
-Markdown with YAML frontmatter containing a versioned `softschema` block and one payload
-envelope key. The block declares `format: "1"` plus the descriptive fields `contract`,
-`schema`, `envelope`, and `status`. Additional frontmatter keys (such as `title`,
-`description`, or `tags` for a static-site generator, indexer, or other host convention)
-are fine and ignored by softschema:
+Every consumed value belongs in YAML. The Markdown body may repeat or interpret that
+value for readers, but tools must not scrape the body, tables, headings, or generated
+prose for structured fields.
 
 ```markdown
 ---
@@ -107,77 +96,55 @@ movie:
   title: Spirited Away
   release_year: 2001
   runtime_minutes: 125
-  mpaa_rating: PG
   directors:
     - Hayao Miyazaki
-  genres:
-    - Animation
-    - Adventure
-    - Family
-  synopsis: >
-    Ten-year-old Chihiro stumbles into a spirit world and must work in a magical
-    bathhouse to free her parents and return home.
-  cast:
-    - actor: Rumi Hiiragi
-      character: Chihiro / Sen
-    - actor: Miyu Irino
-      character: Haku
-  ratings:
-    rotten_tomatoes:
-      critics_percent: 96
-      audience_percent: 96
-      critic_review_count: 225
-    imdb:
-      score: 8.6
-      total_votes: 850000
+  genres: [Animation, Adventure, Family]
 ---
 # Spirited Away (2001)
 
-Hayao Miyazaki’s animated fantasy follows ten-year-old Chihiro into a spirit world, where
-she works in a bathhouse for the gods to free her parents from a witch’s curse. It won the
-2003 Academy Award for Best Animated Feature.
+Hayao Miyazaki's animated fantasy follows Chihiro into a spirit world. It won the 2003
+Academy Award for Best Animated Feature.
 ```
 
-The `softschema:` block carries the artifact-format version and the descriptive fields:
-`contract` (the contract ID), `schema` (relative path to the compiled schema),
-`envelope` (which top-level key holds the payload), and `status` (validation
-strictness). A fully self-describing artifact like this one validates with no flags:
-`softschema validate spirited-away.md`.
+The `movie` mapping is the payload.
+The Academy Award belongs only to the narrative because no consumer needs it as data.
+A future consumer can promote that fact into YAML without rewriting the rest of the
+document.
 
-Use the exact quoted value `format: "1"` in newly authored artifacts.
-An absent `format` keeps existing artifacts on the legacy grammar; it is not an alias
-for the package or contract version.
-Format 1 may also carry one `extensions` mapping whose keys are canonical lowercase
-reverse-DNS or HTTPS namespaces.
-Validators preserve these opaque portable values but ignore them during core validation.
-See [Metadata](softschema-spec.md#metadata) for the exact negotiation and namespace
-rules.
+The `softschema` block describes the artifact:
 
-The body overlaps with the YAML without mirroring it field for field: the prose adds the
-film’s Oscar win, which no structured field carries, while a consumer reads only the
-YAML.
+- `format` selects the metadata grammar.
+  New artifacts use the exact quoted string `"1"`; absence selects the legacy grammar.
+- `contract` names the payload contract.
+- `schema` binds a compiled JSON Schema relative to the artifact.
+- `envelope` identifies the top-level payload key.
+- `status` selects `soft`, `permissive`, or `enforced` validation.
+- `extensions` may hold namespaced portable data in format 1. It never loads code or
+  changes core validation.
 
-The example illustrates the YAML shapes a softschema artifact can carry: constrained
-integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`), lists of strings
-(`directors`, `genres`), a list of structured records (`cast`), nested objects
-(`ratings.rotten_tomatoes`, `ratings.imdb`), and optional fields.
+Only `contract` is required in a format-1 block.
+A host registry or explicit CLI flags may supply the other bindings.
+Additional top-level keys such as a site generator’s `title` or `tags` remain outside
+the selected envelope and are not interpreted by softschema.
 
-The full example, model, and generated JSON Schema live under
-[examples/movie_page/](../examples/movie_page/README.md).
+## Artifact Profiles
 
-## Use Pure YAML When There Is No Body
+Profiles select storage shape, not contract semantics.
 
-The `pure-yaml` profile keeps the same contract identity, metadata, validation layers,
-and deterministic result shape for an artifact that has no Markdown body.
-Select it explicitly; a `.yaml` or `.yml` suffix never changes the default
-`frontmatter-md` profile:
+### Markdown With Frontmatter
+
+`frontmatter-md` is the default.
+YAML between the opening and closing delimiters holds metadata and payload; everything
+after the delimiter is inert Markdown.
 
 ```bash
-softschema validate report.yaml --profile pure-yaml
+softschema validate report.md
 ```
 
-The root `softschema` block is metadata and is not part of the payload.
-Without an envelope, every other root key belongs to one payload mapping:
+### Pure YAML
+
+Use `pure-yaml` explicitly when no Markdown body remains.
+A filename suffix never selects it:
 
 ```yaml
 softschema:
@@ -191,74 +158,72 @@ directors:
   - Hayao Miyazaki
 ```
 
-`softschema.format` selects the metadata grammar; `--profile` selects the storage shape.
-They are independent, so format 1 works with either profile and never selects one.
-
-Declare `softschema.envelope` when the payload is nested under one root key.
-As with the Markdown profile, command-line `--contract`, `--schema`, `--status`, and
-`--envelope` values take precedence over metadata.
-Contract identity validation still rejects a document whose declared contract differs
-from the selected contract.
-A plain mapping with no `softschema` block also works when the caller supplies its
-binding flags or resolves a contract in library code.
-
-Use this profile when a document-oriented workflow reaches a stage where no prose body
-remains but still benefits from softschema’s contract and result conventions.
-For data that needs neither those conventions nor a document transition path, direct
-JSON Schema validation is simpler.
-
-The bundled `example-pure-yaml` and `example-schema` topics are copyable inputs:
-
 ```bash
-softschema docs example-pure-yaml > spirited-away.yaml
-softschema docs example-schema > movie-page.schema.yaml
-softschema validate spirited-away.yaml --profile pure-yaml
+softschema validate report.yaml --profile pure-yaml
 ```
 
-## Contract IDs
+The root `softschema` mapping is metadata.
+Without an explicit envelope, every other root key is the payload.
+With `softschema.envelope`, the named key is the payload just as in frontmatter.
 
-A contract ID names an artifact payload contract, not an implementation.
-Recommended form: `namespace:UpperCamelCaseName/version`. Examples:
+`softschema.format` and `--profile` are independent.
+Format 1 works with both profiles; the format never implies a storage shape.
+
+## Portable Values
+
+Both runtimes accept the same bounded JSON-compatible YAML domain:
+
+- mappings with string keys, arrays, strings, booleans, null, and finite binary64
+  numbers;
+- mathematically integral values only within the inclusive JavaScript safe-integer
+  range; and
+- ordinary Unicode scalar values, subject to byte, node, depth, resource, and scalar
+  budgets.
+
+Duplicate keys, non-string keys, aliases, merge keys, custom tags, cycles, non-finite
+numbers, unsafe integral values, and invalid Unicode scalars fail before they can become
+ordinary runtime objects.
+Date- and timestamp-looking YAML 1.2 Core scalars remain strings.
+Numeric negative zero normalizes to ordinary zero.
+
+These are parser and security boundaries, so they apply to both artifact-format
+grammars. The [Spec](softschema-spec.md#portable-yaml-value-domain) gives exact limits,
+numeric rules, and failure shapes.
+
+## Contract and Schema Identity
+
+A contract ID names a payload contract, not an implementation or URI. Recommended form:
+`namespace:UpperCamelCaseName/version`.
 
 - `example.movies:MoviePage/v1`
-- `example.docs:IncidentReview/v1`
-- `com.acme.docs:IncidentReview/1.0`
+- `mycorp.runbooks:IncidentReview/v2`
+- `com.example.docs:DecisionRecord/1.0`
 
-The name can resemble a class or type name.
-It is not required to resolve to a class in any language; the same contract may map to
-Pydantic, Zod, JSON Schema, a database record, or a hand-written validator.
+Use `example.*` only in examples, a stable project namespace internally, and reverse DNS
+when contracts cross organizations.
+Bump the contract version when existing consumers cannot accept the new payload shape.
 
-Picking a namespace:
+JSON Schema resource identity is separate.
+A compiler stores the logical ID in `x-softschema.contract` and emits `$id` only when
+the caller supplies a canonical HTTPS or URN `schema_id`/`schemaId`. This prevents a
+convenient class-like contract name from silently becoming a reference base.
 
-- Use a short product or repository tag for internal use (`mycorp.runbooks`).
-- Use reverse-DNS when the contract may travel between organizations (`com.acme.docs`).
-- Use `example.*` only for documentation and demos.
+Validation resolves fragments and already-loaded explicit resources.
+It never fetches HTTP, file, or relative schema resources.
+A URI identifies data; it does not grant I/O.
 
-Picking a version:
+## Adopt One Existing Artifact
 
-- Bump the version when the contract changes in a way that breaks existing consumers.
-- Additive, optional fields usually don’t need a version bump.
-- Keep versions short (`v1`, `v2`, `1.0`).
+Start with a single document family:
 
-## Playbook: Adopt softschema for an Existing Markdown Artifact
-
-Start with one document type, not a whole repository:
-
-1. **Pick the artifact.** Choose one Markdown file (or family of files) that humans or
-   agents already write and that a downstream consumer reads.
-2. **List the consumed values.** Find every value a code path, QA check, or aggregation
-   actually reads from the document.
-   Anything else stays prose.
-3. **Move the consumed values into YAML frontmatter** under one envelope key (for
-   example, `movie:` for a movie page, `incident:` for an incident review).
-4. **Add `softschema.contract`** with a stable contract ID.
-5. **Pick a status.** Start with `status: soft` (no validation) or `status: permissive`
-   (validate known fields, allow unknown).
-   Save `enforced` for later.
-6. **Leave the body alone.** Headings, prose, and tables for human readers stay.
-7. **Validate at the boundary** (next playbook) and tighten over time.
-
-Worked example for an incident review:
+1. Identify the values a downstream consumer actually reads.
+2. Put those values, and only those values, in one YAML payload mapping.
+3. Add a stable `softschema.contract` and select the payload envelope.
+4. Start at `soft` when the binding is only descriptive, or `permissive` when known
+   fields should validate while unknown fields remain allowed.
+5. Bind a reviewed compiled schema or trusted source model.
+6. Validate at the file boundary and feed structured failures back to the author.
+7. Move to `enforced` only when unknown fields represent bugs.
 
 Before:
 
@@ -273,14 +238,15 @@ Duration: 38 minutes
 ...
 ```
 
-After (status soft; only the consumed values are in YAML):
+After:
 
 ```markdown
 ---
 softschema:
   format: "1"
-  contract: mycorp.docs:IncidentReview/v1
-  status: soft
+  contract: example.operations:IncidentReview/v1
+  envelope: incident
+  status: permissive
 incident:
   id: 2026-04-12-search-latency
   affected_service: search-api
@@ -293,224 +259,184 @@ incident:
 ...
 ```
 
-The body stays unchanged.
-A consumer that aggregates incidents now reads `incident.affected_service` from YAML
-instead of trying to grep the body.
+The consumer now reads `incident.affected_service`. The summary remains prose.
 
-## Playbook: Choose Which Values Belong in YAML
+## Decide What Belongs in YAML
 
-The hardest call in adoption is “what goes in YAML, what stays prose?”
-Use the promotion path step by step:
+Promote a field when all three are true:
 
-**Step 1: prose only.** The artifact has no contract, no frontmatter, just a Markdown
-body. This is fine when no code or aggregation reads the document.
+1. a consumer reads it;
+2. its type and meaning are stable enough to name; and
+3. emitting it is more reliable than parsing prose.
 
-**Step 2: conventions.** Add a `## Summary` section, a glossary, or a fixed set of
-expected headings. No validation, no frontmatter.
-Good for human review consistency.
-Stay here until a consumer actually reads a value out.
+Keep background, reasoning, uncertainty, alternatives, and unconsumed detail in prose.
+Avoid adding a contract block as decoration to documents nobody validates.
 
-**Step 3: frontmatter values.** As soon as one consumer needs a specific value, promote
-that field (and only that field) into YAML frontmatter under an envelope key.
-Add `softschema.contract` and `status: soft`. The rest of the document stays prose.
+Use **inline-small, companion-large** as a review heuristic.
+A few dozen fields or small nested objects fit in frontmatter.
+Large machine-generated arrays or results usually belong in a companion YAML/JSON file
+resolved by the host before `validate_values`. softschema deliberately has no generic
+companion-data loader or resolver DSL.
 
-**Step 4: schema validation at boundaries.** When the consumer has been burned by a
-missing or malformed value, add a Pydantic model (or compiled schema), set
-`status: permissive`, and validate at file boundaries.
-Bugs that used to silently break the consumer now fail loudly.
+## Define a Contract in Python or TypeScript
 
-**Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
-real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
-fields at the structural boundary (object schemas that are silent about
-`additionalProperties` are treated as closed; an explicit `additionalProperties` in the
-schema still wins). Setting the source model to `extra="forbid"` additionally compiles
-that strictness into the compiled schema itself and enforces it at the semantic layer.
+The complete movie example keeps equivalent source models side by side.
+Both compile to the same canonical schema and hash.
 
-**Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
-more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
-file. The contract ID stays; only the shell changes.
+### Python and Pydantic
 
-A field is ready to promote when: a consumer extracts it, the value type is stable, and
-emitting it consistently is easier than parsing it from prose.
+```python
+from typing import Literal
 
-## Playbook: Inline Frontmatter vs. Companion Data
+from pydantic import BaseModel, ConfigDict, Field
 
-The rule of thumb is **inline-small, companion-large**:
+class IncidentReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-- **Inline (frontmatter)** when the structured payload is a few dozen fields or a
-  handful of small nested objects.
-  Authors can see everything in one file; review comments land on the right line;
-  readers don’t context-switch.
-- **Companion data** when the payload is large, machine-generated, or distracting to a
-  human reader. A reader who opens the Markdown file expects to read prose, not 200 lines
-  of YAML.
-
-Inline is right when the payload is compact:
-
-```yaml
-incident:
-  id: 2026-04-12-search-latency
-  affected_service: search-api
-  severity: SEV-2
-  duration_minutes: 38
+    id: str
+    affected_service: str
+    severity: Literal["SEV-1", "SEV-2", "SEV-3"]
+    duration_minutes: int = Field(ge=0)
 ```
 
-A companion data file is right for a large machine-generated payload, such as a backtest
-result:
-
-```yaml
-softschema:
-  format: "1"
-  contract: mycorp.runs:BacktestReport/v1
-backtest:
-  run_id: 2026-04-12T18-03-00Z
-  summary: "regression vs baseline"
-  data:
-    path: backtest-2026-04-12.values.yaml
-    sha256: abc123...
+```bash
+softschema-py compile package.incident:IncidentReview \
+  --contract example.operations:IncidentReview/v1 \
+  --schema-id https://example.com/schemas/incident-review/v1 \
+  --out incident-review.schema.yaml
 ```
 
-The Markdown file keeps the routing fields (`softschema.contract`, an id, a short
-summary). The full payload lives in the companion data file.
+### TypeScript and Zod
 
-The first Python release supports compiled schemas (the generated JSON Schema YAML
-files) but does not implement a generic companion-data loader.
-A host project can define its own companion-data convention and resolve the companion
-data path before calling `validate_values()`. Don’t invent a generic companion-data DSL
-until two artifacts need it.
+```ts
+import { z } from "zod";
 
-## Playbook: Add Python Validation
+export const IncidentReview = z.strictObject({
+  id: z.string(),
+  affected_service: z.string(),
+  severity: z.enum(["SEV-1", "SEV-2", "SEV-3"]),
+  duration_minutes: z.int().min(0),
+});
+```
 
-Wire a Pydantic model to a contract and validate at file boundaries:
+Under Node, compile the model to `.js` or `.mjs` first.
+Bun may load direct `.ts`:
 
-1. **Define the model.** One Pydantic class per envelope payload, with `extra="forbid"`
-   on nested classes when the structure is settled.
+```bash
+bunx --bun softschema compile ./incident.ts:IncidentReview \
+  --contract example.operations:IncidentReview/v1 \
+  --schema-id https://example.com/schemas/incident-review/v1 \
+  --out incident-review.schema.yaml
+```
 
-   ```python
-   from pydantic import BaseModel, ConfigDict, Field
+Model compilation and `--model` validation import and execute local code.
+Use them only for trusted source.
+A compiled schema validates untrusted artifacts without executing a Pydantic or Zod
+module.
 
-   class IncidentReview(BaseModel):
-       model_config = ConfigDict(extra="forbid")
-       id: str
-       affected_service: str
-       severity: Literal["SEV-1", "SEV-2", "SEV-3"]
-       duration_minutes: int = Field(ge=0)
-   ```
+## Integrate With a Host
 
-2. **Compile a JSON Schema** so non-Python consumers can validate too:
+Application code owns contract bindings.
+Artifact metadata is a fallback and cannot silently redirect a complete host contract.
 
-   ```bash
-   softschema compile mycorp_docs.incident:IncidentReview \
-     --contract mycorp.docs:IncidentReview/v1 \
-     --out schemas/incident-review.v1.schema.yaml
-   ```
+### Python
 
-   **Trust note:** `--model` imports and executes local Python code.
-   Use it only with trusted models.
-   For untrusted input, use `--schema` with a compiled JSON Schema instead.
+```python
+from pathlib import Path
 
-3. **Bind artifacts to their schema.** Add `schema:` (and `envelope:` when needed) to
-   each artifact’s `softschema:` block so `softschema validate <doc>` works with no
-   flags:
+from softschema import Contract, Contracts, SchemaStatus
+from softschema.runtime import validate_artifact
 
-   ```yaml
-   softschema:
-     format: "1"
-     contract: mycorp.docs:IncidentReview/v1
-     schema: schemas/incident-review.v1.schema.yaml
-     envelope: incident
-     status: permissive
-   ```
+CONTRACT_ID = "example.operations:IncidentReview/v1"
+registry = Contracts()
+registry.register(
+    Contract(
+        id=CONTRACT_ID,
+        model=IncidentReview,
+        envelope_key="incident",
+        status=SchemaStatus.enforced,
+        schema_path=Path("incident-review.schema.yaml"),
+    )
+)
+result = validate_artifact(path, contract_id=CONTRACT_ID, registry=registry)
+```
 
-   The path is relative to the document’s directory.
+### TypeScript
 
-4. **Register a `Contract`** in your host startup (the library/host path, which outranks
-   the document’s binding):
+```ts
+import { defineContractDescriptor } from "softschema/core";
+import { bindContract, validateArtifact } from "softschema/node";
 
-   ```python
-   from softschema import Contract, Contracts, SchemaStatus
+const descriptor = defineContractDescriptor({
+  id: "example.operations:IncidentReview/v1",
+  model: "./incident.js:IncidentReview",
+  envelopeKey: "incident",
+  status: "enforced",
+  profile: "frontmatter-md",
+  schemaPath: "incident-review.schema.yaml",
+});
+const contract = bindContract(descriptor, IncidentReview);
+const result = validateArtifact("incident.md", contract);
+```
 
-   def build_registry() -> Contracts:
-       registry = Contracts()
-       registry.register(
-           Contract(
-               id="mycorp.docs:IncidentReview/v1",
-               model=IncidentReview,
-               envelope_key="incident",
-               status=SchemaStatus.permissive,
-               schema_path=Path("schemas/incident-review.v1.schema.yaml"),
-           )
-       )
-       return registry
-   ```
+For values produced by a different trusted parser, call `validate_values` or
+`validateValues`. See the [Library API](api.md) for offline resources, portable-core
+imports, limits, and result types.
 
-5. **Validate at the boundary** (anywhere your host opens a file from disk, a queue, or
-   an upload):
+## Validate Collections and CI
 
-   ```python
-   from softschema import validate_artifact
-   result = validate_artifact(path, contract_id=..., registry=build_registry())
-   if not result.ok:
-       handle_validation_failure(result)
-   ```
+One explicit file with JSON output keeps the legacy single-result contract:
 
-6. **Tighten over time.** Start `permissive`; flip to `enforced` once authoring is
-   consistently clean (undeclared fields then fail structural validation), and add
-   `extra="forbid"` to also enforce at the semantic layer.
+```bash
+softschema validate docs/incidents/2026-04-12.md
+```
 
-The `result` object reports `structural` (JSON Schema) and `semantic` (Pydantic) errors
-separately, so callers can distinguish “shape was wrong” from “cross-field invariant
-failed” without parsing error strings.
+Multiple operands or directory discovery select diagnostic-v1. One profile applies to
+the whole invocation:
 
-## Playbook: Annotate Fields with SoftField
+```bash
+softschema validate docs/incidents --recursive --profile frontmatter-md
+softschema validate data --recursive --profile pure-yaml --format jsonl
+softschema validate docs --recursive --include '**/*.md' --exclude 'archive/**'
+softschema validate docs --recursive --format sarif > softschema.sarif
+```
 
-`SoftField` is an optional wrapper over Pydantic’s `Field` that records per-field
-authoring metadata (`group`, `owner`, `tier`, `instruction`, `examples`, `aliases`,
-`repair`). The compiler propagates the metadata verbatim into the compiled schema as a
-per-property `x-softschema:` block.
-The runtime never reads it for validation.
+Directory discovery is deterministic, skips discovered symlinks, deduplicates canonical
+file identities, and reports a no-match input error rather than a false green run.
+Includes and excludes are operand-relative, case-sensitive portable globs and require
+`--recursive`.
 
-`SoftField` follows the same gradual-adoption rule as the rest of softschema: opt in per
-field, only when a specific downstream consumer reads a specific metadata key.
-The default is plain `Field`. A model whose only consumer is `validate_artifact()` does
-not earn `SoftField`; the metadata would land in the compiled schema with no reader.
+Exit precedence is stable:
 
-Consumers that earn an `SoftField` annotation:
+- 2 if any input cannot be selected or read;
+- otherwise 1 if any readable artifact fails parsing or validation; and
+- otherwise 0.
 
-- **Template generator.** Emits section headers from `group` and inline format hints
-  from `instruction` and `examples`. Useful when authors fill a Markdown or YAML
-  template by hand and the template currently carries those hints in comments that drift
-  from the model.
-- **Agent prompt builder.** Filters by `owner` so the agent only sees fields it owns,
-  with `instruction` text rendered as guidance.
-  Postprocess- and system-filled fields stay out of the prompt entirely.
-- **Tier-aware QA.** Routes checks by `tier`: strict equality on `hard_fact`, enum or
-  range on `constrained`, LLM-judged review on `narrative`. Lets a single QA harness
-  scale without one rule per field.
-- **Generated runbook sections.** `softschema generate` reads `group` for `enum_table`
-  and `field_list`, and a specific pointer for `kind="vocab"`.
+Processing continues so JSON, JSONL, and SARIF report partial success honestly.
+JSONL contains one self-contained result per line and no summary line.
 
-The light-touch end of the spectrum is plain `Field` everywhere, with no `SoftField` at
-all. The structured end is `SoftField` on every field, justified by several wired
-readers. Most projects sit in the middle, with a handful of `SoftField` annotations on
-the fields that one or two consumers care about and plain `Field` everywhere else.
-The movie example sits near the light-touch end, annotating only `genres` for the
-controlled-vocabulary case.
+In CI, pin the package in the project’s lockfile and check three boundaries:
 
-The recognized keys and the full call shape are documented in
-[Python Package Design](softschema-python-design.md).
+```bash
+# Compiled model and committed schema still agree.
+softschema-py compile package.incident:IncidentReview \
+  --contract example.operations:IncidentReview/v1 \
+  --out incident-review.schema.yaml --check
 
-## Playbook: Keep Schema Tables in Sync with Generated Sections
+# Every artifact validates in one deterministic invocation.
+softschema validate docs/incidents --recursive --profile frontmatter-md
 
-When a controlled vocabulary or field list appears in two places (a schema and a runbook
-table), it will drift.
-Generated sections solve this by making the runbook table a deterministic projection of
-the schema.
+# Generated reader-facing schema projections have not drifted.
+softschema generate docs/incident-template.md --check
+```
 
-Wrap any Markdown block you want regenerated:
+## Generate Reader-Facing Schema Sections
+
+When a runbook table or vocabulary duplicates a schema, place it inside a generated
+section:
 
 ```markdown
-<!-- softschema:generated kind="enum_table" schema="schemas/incident.schema.yaml" -->
+<!-- softschema:generated kind="enum_table" schema="incident-review.schema.yaml" -->
 
 | Field | Allowed values |
 | --- | --- |
@@ -519,316 +445,128 @@ Wrap any Markdown block you want regenerated:
 <!-- /softschema:generated -->
 ```
 
-Then re-render in place:
+`softschema generate file.md` updates the section; `--check` reports drift without
+writing. Supported projections are `enum_table`, `field_list`, and a pointer-selected
+`vocab`. The [Movie Page Example](../examples/movie_page/README.md) contains a live
+generated enum table.
+
+## Use softschema With Coding Agents
+
+Install the portable routing skill only after reviewing its target plan:
 
 ```bash
-softschema generate path/to/runbook.md
+softschema doctor --json
+softschema skill --install --project --dry-run --text
+softschema skill --install --project --text
+softschema skill --brief
+softschema docs --list --json
 ```
 
-CI runs the same command with `--check`, which exits non-zero if any block has drifted
-from the current schema:
+The skill teaches three jobs and routes details to the CLI:
+
+- author a contract or artifact;
+- validate or consume an artifact; and
+- change softschema itself using the repository’s golden-first parity process.
+
+Tell an authoring agent the source-of-truth rule explicitly and validate immediately
+after it writes. Structured reason codes and source positions are more actionable than a
+free-text request to “fix the document.”
+
+See [Coding-Agent Compatibility](agent-compatibility.md) for Codex, Claude Code, Gemini
+CLI, GitHub Copilot, Cursor, Windsurf, OpenCode, Aider, Cline, and Roo Code paths,
+evidence labels, imports, and scope rules.
+
+## Trust the Processing Stage, Not the File Extension
+
+- Parsing a bounded softschema YAML payload is an inert data operation.
+- Validating a reviewed compiled schema performs no retrieval or model execution.
+- Loading a Pydantic or Zod model executes trusted local code.
+- Rendering MDX/Markdoc, executing notebook cells, or running a configuration language
+  belongs to a separate host and trust boundary.
+- Installing an Agent Skill changes executable influence for future agent sessions and
+  requires ownership and scope review.
+
+See [Security](../SECURITY.md) for the full boundary and the published 0.2.2
+limitations.
+
+## Relationship to Adjacent Systems
+
+softschema owns a narrow layer: **strict values, inert prose, portable schema**.
+
+- Astro collections and Contentlayer own application content pipelines and generated
+  data APIs.
+- MDX, Markdoc, and Jupyter own body syntax, rendering, or execution.
+- CUE, Dhall, Nickel, and Pkl own configuration evaluation, composition, and imports.
+
+Those systems offer useful ideas—typed access, editor feedback, positioned diagnostics,
+offline bundles, and integrity policies—but replacing softschema’s contract with any one
+framework or evaluator would weaken language neutrality.
+Integrations should be thin adapters that produce JSON-compatible values before body
+execution, not new core syntax or implicit resolvers.
+
+The dated
+[adjacent-systems research](project/research/research-2026-07-09-adjacent-schema-document-systems.md)
+compares authoring ergonomics, prose fidelity, contract portability, execution risk,
+tooling, agent use, migration cost, and offline behavior using primary sources.
+
+## Language-Neutral Conformance
+
+The root `conformance/` source kit lets a third implementation validate schemas,
+vectors, digests, offline bundles, and expected results without importing Pydantic or
+Zod. The official adapters execute it under Python, Node, and Bun:
 
 ```bash
-softschema generate path/to/runbook.md --check
+uv run --locked --no-sync python conformance/run.py --check-only
+uv run --locked --no-sync python conformance/run.py --implementation all
 ```
 
-Available `kind` values:
-
-- `enum_table`: one row per enum field in the schema (`Field`, `Allowed values`).
-- `field_list`: one bullet per top-level field (name, type, required, description).
-- `vocab`: enum values for one specific field; requires a `pointer="/properties/foo"`
-  attribute.
-
-A worked example lives in
-[examples/movie_page/README.md](../examples/movie_page/README.md); the “Schema Enums”
-section is regenerated from the movie schema.
-
-## Playbook: Validate in CI
-
-Pin softschema as a dev dependency so CI uses a known version:
+The standard-library consumer verifies an extracted release archive, whose exact
+inventory intentionally excludes source-only fixtures and build support files:
 
 ```bash
-# Python
-uv add --dev softschema==0.2.0
-
-# Node
-npm i -D softschema@0.2.0
+mkdir -p extracted-kit
+tar -xf conformance-kit.tar.gz -C extracted-kit
+cd extracted-kit
+python conformance/consumer.py --json
 ```
 
-Two checks belong in CI:
-
-- **Compiled schema drift check.** Fail the build when a committed compiled schema is
-  out of sync with the source model.
-
-  ```bash
-  softschema compile mycorp_docs.incident:IncidentReview \
-    --contract mycorp.docs:IncidentReview/v1 \
-    --out schemas/incident-review.v1.schema.yaml --check
-  ```
-
-  **Trust note:** `--model` imports and executes local Python code.
-  Use it only with trusted models.
-  For untrusted input, use `--schema` with a compiled JSON Schema instead.
-
-- **Artifact validation.** When artifacts carry the format identifier and descriptive
-  metadata (`contract`, `schema`, `envelope`, `status`), validation needs no per-file
-  flags. A simple glob validates an entire directory:
-
-  ```bash
-  for f in docs/artifacts/*.md; do
-    softschema validate “$f”
-  done
-  ```
-
-  Override flags (`--schema`, `--envelope`, `--model`) are still available when an
-  artifact does not self-describe or the host needs to override a binding.
-
-For a full GitHub Actions snippet and a `pre-commit` hook example, see the “Continuous
-integration” section of [docs/development.md](development.md).
-
-## Playbook: Migrate an Existing Artifact
-
-Take an artifact that doesn’t fit the canonical shape and bring it in line.
-
-The current artifact shape is:
-
-- A format-1 `softschema:` block with `contract` and, as needed, `schema`, `envelope`,
-  and `status`, plus a designated envelope key at the top level.
-- All consumed values live under the envelope key.
-- Body prose is reader-facing only.
-
-Additional top-level keys (such as `title:`, `description:`, `tags:`, `pinned:`, or
-other host-specific frontmatter conventions) are allowed and are not interpreted by
-softschema.
-Only the `softschema` block and the envelope key are softschema’s concern, so
-an artifact can mix softschema with whatever metadata a static-site generator, indexer,
-or other tool already expects.
-
-Common before/after migrations:
-
-**Payload values scattered at the root → values under an envelope.**
-
-Before (payload fields directly at the root, no `softschema:` block, no envelope):
-
-```yaml
----
-title: Spirited Away
-release_year: 2001
-ratings:
-  ...
----
-```
-
-After (a `softschema:` block plus an envelope key wrap the payload; unrelated keys could
-still sit alongside):
-
-```yaml
----
-softschema:
-  format: "1"
-  contract: example.movies:MoviePage/v1
-  status: permissive
-movie:
-  title: Spirited Away
-  release_year: 2001
-  ratings:
-    ...
----
-```
-
-**Values mixed with metadata at the frontmatter root → values under an envelope.**
-
-Before:
-
-```yaml
----
-contract: example.movies:MoviePage/v1
-status: enforced
-title: Spirited Away
-release_year: 2001
----
-```
-
-After:
-
-```yaml
----
-softschema:
-  format: "1"
-  contract: example.movies:MoviePage/v1
-  status: enforced
-movie:
-  title: Spirited Away
-  release_year: 2001
----
-```
-
-**Body table treated as data → values in YAML, table becomes a projection.**
-
-Before (a consumer was grepping the Markdown table):
-
-```markdown
-| Field | Value |
-| --- | --- |
-| Title | Spirited Away |
-| Release year | 2001 |
-```
-
-After:
-
-```markdown
----
-softschema:
-  format: "1"
-  contract: example.movies:MoviePage/v1
-movie:
-  title: Spirited Away
-  release_year: 2001
----
-# Spirited Away (2001)
-
-| Field | Value |
-| --- | --- |
-| Title | Spirited Away |
-| Release year | 2001 |
-```
-
-The table stays for readers but is no longer the source of truth.
-The consumer reads YAML now.
-
-For each migration, set `status: soft` or `permissive` initially.
-Tighten only after existing instances validate cleanly.
-
-## Playbook: Use softschema with Agents
-
-softschema is built for documents that humans and coding agents both write.
-A few patterns help agents do the right thing:
-
-- **Point the agent at the skill and docs.** When the CLI is installed:
-
-  ```bash
-  softschema skill --brief
-  softschema docs --list --json
-  softschema docs guide
-  softschema docs spec
-  softschema docs example-artifact
-  softschema docs example-pure-yaml
-  ```
-
-  These commands print bundled material from the installed wheel; no source checkout is
-  needed.
-
-- **Tell the agent to write YAML, not body tables.** The most common failure mode is an
-  agent that adds nicely-formatted Markdown tables to the body instead of populating the
-  YAML payload. The rule is one-line: structured values go in YAML; the body is
-  reader-facing only.
-
-- **Run validation in the agent’s feedback loop.** When an agent emits an artifact,
-  immediately call `softschema validate ...` and feed the structured error report back.
-  Validation failures named in JSON are more actionable than free-text “your output was
-  wrong.”
-
-- **Start permissive, then enforce.** When piloting agent-authored artifacts, set
-  `status: permissive`. Once the agent emits consistently good documents, flip to
-  `enforced`.
+Source schemas intentionally keep `urn:softschema:draft:*` identifiers.
+The HTTPS namespace recorded in the manifest is a publication target, not a live
+contract, until static hosting returns the exact candidate bytes with verified content
+type and digest.
+Consumers of the source candidate should use the local manifest and lock
+data.
 
 ## Common Mistakes
 
-- **Parsing the Markdown body.** Body tables and prose exist for human readers.
-  Tools that try to extract structured values from them break the moment a human edits
-  the surrounding prose.
-- **Hardening too early.** Going straight to `enforced` on a brand-new schema makes
-  every agent-authored slip a failure.
-  Start `permissive` and graduate once the failure pattern is real bugs, not minor
-  variance.
-- **Splitting a payload across multiple envelopes.** A softschema artifact has a single
-  envelope key beside `softschema:`. Splitting payload across two envelopes forces every
-  caller to disambiguate.
-  (Unrelated top-level keys like `title:` or `tags:` are fine; the anti-pattern is
-  multiple keys that all carry payload values softschema is supposed to validate.)
-- **Putting implementation details in the artifact.** Resolver settings, compiled-schema
-  paths, language identifiers, and migration state belong in host configuration, not in
-  authored documents.
-- **Adding a `softschema:` block to artifacts no one validates.** A contract ID without
-  a consumer is decoration.
-  Add structure because something reads it.
-- **Promoting prose that no consumer reads.** Leave background, analysis, and caveats as
-  prose. Promote a value only when a code path, QA check, or aggregation reads it.
+- **Scraping the body:** readers may edit prose or tables without changing the payload.
+- **Structuring unconsumed detail:** a field without a consumer adds authoring cost but
+  no reliability.
+- **Hardening too early:** start permissive and enforce only after unknown fields mean
+  bugs rather than exploration.
+- **Confusing identities:** `softschema.contract`, `softschema.schema`, and JSON Schema
+  `$id` answer different questions.
+- **Inferring a profile from a suffix:** always select `pure-yaml` explicitly.
+- **Trusting a model path:** model imports execute code; schema-only validation does
+  not.
+- **Adding hidden retrieval:** remote schemas and configuration imports need an explicit
+  policy outside the core validator.
+- **Guessing agent paths:** use documented targets and dry-run instead of writing every
+  directory a product might scan.
 
-## Relationship to the Packages
+## Implementation and Project References
 
-Two interchangeable packages implement the language-neutral pattern at exact behavioral
-parity, Python/Pydantic and TypeScript/Zod.
-The Python public surface:
-
-- `Contract`: maps a contract ID to a Pydantic model and optional compiled JSON Schema.
-- `Contracts`: host-owned mapping from contract IDs to contracts.
-- `validate_artifact(path, contract_id=..., registry=...)`: validates a file at a
-  boundary; returns a structured `ArtifactValidationResult` with separate `structural`
-  and `semantic` reports.
-- `validate_values(values, model=..., schema=...)`: validates a values dict produced by
-  any consumer (frontmatter, body-form runtime, structured-output adapter, hand-written
-  fixture).
-- `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML file with
-  canonical-JSON hashing for drift checks.
-
-The TypeScript package mirrors this surface (`validateArtifact`, `validateValues`,
-`compileSchema`) with Zod models; both CLIs expose the same commands.
-
-The CLI mirrors the library: `softschema validate`, `softschema compile`,
-`softschema inspect`, `softschema generate`, `softschema docs`, `softschema skill`.
-
-A host application typically registers complete contracts during startup and validates
-artifacts at file boundaries:
-
-```python
-from pathlib import Path
-
-from softschema import Contract, Contracts, SchemaStatus, validate_artifact
-
-def build_registry() -> Contracts:
-    registry = Contracts()
-    registry.register(
-        Contract(
-            id="mycorp.docs:IncidentReview/v1",
-            model=IncidentReview,
-            envelope_key="incident",
-            status=SchemaStatus.permissive,
-            schema_path=Path("schemas/incident-review.v1.schema.yaml"),
-        )
-    )
-    return registry
-
-registry = build_registry()
-result = validate_artifact(
-    Path("docs/incidents/2026-04-12.md"),
-    contract_id="mycorp.docs:IncidentReview/v1",
-    registry=registry,
-)
-assert result.ok
-```
-
-When the registered contract does not pin `schema_path` or `envelope_key`,
-`validate_artifact` honors the document’s `softschema.schema` and `softschema.envelope`
-as fallbacks.
-
-The same contract ID could be validated by a Zod schema in TypeScript, a JSON Schema
-compiled schema in any language, a database record, or a hand-written validator.
-For Python-specific module layout, public API decisions, and dependency boundary, see
-[Python Package Design](softschema-python-design.md).
-
-## Further Reading
-
-- [softschema Spec](softschema-spec.md): exact artifact format and validation
-  expectations.
-- [Python Package Design](softschema-python-design.md): Python module layout, public
-  API, and implementation decisions.
-- [TypeScript Package Design](softschema-typescript-design.md): the Zod port and the
-  Python ↔ TypeScript API parity table.
-- [Movie Page Example](../examples/movie_page/README.md): the complete public example
-  backing the snippets above.
-- [Installation](installation.md), [Development](development.md), and
-  [Publishing](publishing.md): workflow docs.
+- [Spec](softschema-spec.md): exact artifact grammar, profiles, portable values,
+  metadata, schema policy, diagnostics, and compatibility
+- [Library API](api.md): paired public entrypoints and examples
+- [Python Design](softschema-python-design.md): modules, adapters, Pydantic, and CLI
+- [TypeScript Design](softschema-typescript-design.md): core/Node split, Zod bindings,
+  model policy, and result types
+- [Movie Page Example](../examples/movie_page/README.md): complete paired source
+- [Installation](installation.md): dependency and zero-install choices
+- [Migrating to 0.3](migration-0.3.md), [Security](../SECURITY.md), and
+  [Changelog](../CHANGELOG.md): compatibility and release context
+- [Development](development.md): golden-first parity and repository checks
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

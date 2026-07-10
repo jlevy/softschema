@@ -21,7 +21,8 @@ from typing import Any, Literal, Never
 from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 from frontmatter_format import FmFormatError
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, _keywords, _utils
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from referencing import Registry, Resource
 from referencing.exceptions import NoSuchResource
@@ -47,6 +48,7 @@ from softschema.core.results import (
 from softschema.core.results import (
     ValidationResult as ValidationResult,
 )
+from softschema.core.source_map import SourceMap
 from softschema.errors import (
     SchemaInvalidReason,
     schema_invalid_error,
@@ -67,18 +69,26 @@ from softschema.patterns import first_unsupported_pattern, lower_schema_patterns
 from softschema.registry import Contracts
 from softschema.value_domain import (
     DEFAULT_VALIDATION_LIMITS,
+    ParsedPortableYaml,
     PortableValueError,
     PortableYamlSyntaxError,
     ValidationLimits,
     normalize_portable_value,
     parse_portable_yaml,
+    parse_portable_yaml_with_locations,
 )
 
 JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
 SchemaResource = bool | dict[str, Any]
 SchemaResources = Mapping[str, SchemaResource]
 ArtifactParseReason = Literal["frontmatter", "syntax", "root", "value_domain"]
-ArtifactInputReason = Literal["not_found", "unreadable", "directory_requires_recursive"]
+ArtifactInputReason = Literal[
+    "not_found",
+    "unreadable",
+    "directory_requires_recursive",
+    "no_matches",
+    "discovery_limit",
+]
 
 ARTIFACT_PARSE_MESSAGES: dict[ArtifactParseReason, str] = {
     "frontmatter": "artifact frontmatter delimiters are malformed",
@@ -90,6 +100,8 @@ ARTIFACT_INPUT_MESSAGES: dict[ArtifactInputReason, str] = {
     "not_found": "artifact path does not exist",
     "unreadable": "artifact path cannot be read",
     "directory_requires_recursive": "artifact directory requires --recursive",
+    "no_matches": "artifact directory contains no matching files",
+    "discovery_limit": "artifact discovery limit exceeded",
 }
 
 
@@ -99,6 +111,47 @@ class ArtifactFrontmatterError(FmFormatError):
 
 class ArtifactRootError(FmFormatError):
     """A readable artifact parsed successfully but its YAML root is not a mapping."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        line: int | None = None,
+        column: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.line = line
+        self.column = column
+
+
+class _LocatedStructuralError(dict[str, Any]):
+    """Legacy dict record carrying a non-wire offending-property source hint."""
+
+    __slots__ = ("offending_property",)
+
+    def __init__(
+        self,
+        *args: Any,
+        offending_property: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.offending_property = offending_property
+
+
+def structural_error_offending_property(error: Mapping[str, Any]) -> str | None:
+    """Return an internal source hint without extending the structural wire record."""
+    value = getattr(error, "offending_property", None)
+    return value if isinstance(value, str) else None
+
+
+@dataclass(frozen=True)
+class LocatedFrontmatter:
+    """Legacy frontmatter result plus immutable source spans for its YAML value."""
+
+    content: str
+    value: Any | None
+    source_map: SourceMap
 
 
 @dataclass(frozen=True)
@@ -281,8 +334,8 @@ def _validate_structural_schema(
                     default_specification=DRAFT202012,
                 ),
             )
-        validator = Draft202012Validator(schema_for_engine, registry=registry)
-        engine_errors = list(validator.iter_errors(values))
+        engine_validator = Draft202012Validator(schema_for_engine, registry=registry)
+        engine_errors = list(engine_validator.iter_errors(values))
     except Exception as exc:
         reference = _reference_from_exception(exc)
         if reference is not None:
@@ -302,17 +355,52 @@ def _validate_structural_schema(
         if validator == "pattern" and isinstance(validator_value, str):
             validator_value = pattern_reversals.get(validator_value, validator_value)
         errors.append(
-            structural_error_record(
-                path=list(error.absolute_path),
-                validator=validator,
-                validator_value=validator_value,
-                value=error.instance,
+            _LocatedStructuralError(
+                structural_error_record(
+                    path=list(error.absolute_path),
+                    validator=validator,
+                    validator_value=validator_value,
+                    value=error.instance,
+                ),
+                offending_property=_offending_property(engine_validator, error, validator),
             )
         )
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
     return StructuralResult(ok=not errors, errors=errors)
+
+
+def _offending_property(
+    engine_validator: Draft202012Validator,
+    error: JsonSchemaValidationError,
+    keyword: str,
+) -> str | None:
+    """Choose the first portable key from jsonschema's structured evaluation state."""
+    if keyword not in {"additionalProperties", "unevaluatedProperties"}:
+        return None
+    if not isinstance(error.instance, dict) or not isinstance(error.schema, dict):
+        return None
+    try:
+        if keyword == "additionalProperties":
+            candidates = list(_utils.find_additional_properties(error.instance, error.schema))
+        else:
+            current = engine_validator.evolve(schema=error.schema)
+            find_evaluated_keys: Any = vars(_keywords)["find_evaluated_property_keys_by_schema"]
+            evaluated = set(find_evaluated_keys(current, error.instance, error.schema))
+            candidates = [key for key in error.instance if key not in evaluated]
+            if error.validator_value is not False:
+                candidates = [
+                    key
+                    for key in candidates
+                    if not current.evolve(schema=error.validator_value).is_valid(
+                        error.instance[key]
+                    )
+                ]
+    except Exception:
+        return None
+    string_candidates = [key for key in candidates if isinstance(key, str)]
+    return min(string_candidates) if string_candidates else None
 
 
 def _schema_preflight(
@@ -1406,7 +1494,13 @@ def artifact_error_record(
     if isinstance(error, ArtifactFrontmatterError):
         return artifact_parse_error_record(source, "frontmatter")
     if isinstance(error, ArtifactRootError):
-        return artifact_parse_error_record(source, "root")
+        return artifact_parse_error_record(
+            source,
+            "root",
+            line=error.line,
+            column=error.column,
+            include_location=include_location,
+        )
     if isinstance(error, PortableYamlSyntaxError):
         return artifact_parse_error_record(
             source,
@@ -1455,35 +1549,83 @@ def _read_frontmatter_doc(
     path: Path,
     limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> tuple[str, Any | None]:
-    if path.is_dir():
-        raise IsADirectoryError(path)
-    encoded = path.read_bytes()
-    if len(encoded) > limits.max_resource_bytes:
-        raise PortableValueError("maximum resource size exceeded")
+    located = read_frontmatter_with_locations(path, limits)
+    return located.content, located.value
+
+
+def read_frontmatter_with_locations(
+    path: Path,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+) -> LocatedFrontmatter:
+    """Read frontmatter once while retaining exact key/value source spans."""
+    encoded = _read_bounded_bytes(path, limits.max_resource_bytes)
     text = encoded.decode("utf-8-sig")
-    lines = text.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return text, None
-    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"), -1)
+    # Python's ``str.splitlines`` treats U+0085/U+2028/U+2029 as line breaks, while
+    # the portable source model permits only CR, LF, and CRLF. Fence recognition must
+    # use that same model or a separator outside YAML could create a Python-only fence.
+    lines = _portable_source_lines(text)
+    if not lines or not _is_frontmatter_fence(lines[0]):
+        return LocatedFrontmatter(text, None, SourceMap.empty())
+    end = next(
+        (index for index, line in enumerate(lines[1:], 1) if _is_frontmatter_fence(line)),
+        -1,
+    )
     if end < 0:
         raise ArtifactFrontmatterError(
             f"Delimiter `---` for end of frontmatter not found: `{path}`"
         )
     body = "".join(lines[end + 1 :])
     if end == 1:
-        return body, None
-    frontmatter = parse_portable_yaml(
+        return LocatedFrontmatter(body, None, SourceMap.empty())
+    parsed = parse_portable_yaml_with_locations(
         "".join(lines[1:end]),
         limits=limits,
         encoded_size=len(encoded),
         line_offset=1,
     )
+    frontmatter = parsed.value
     if not isinstance(frontmatter, dict):
+        start = parsed.source_map.span("")
         raise ArtifactRootError(
             "Expected YAML metadata to be a dict, got "
-            f"<class '{type(frontmatter).__name__}'>: `{path}`"
+            f"<class '{type(frontmatter).__name__}'>: `{path}`",
+            line=start.start.line if start is not None else None,
+            column=start.start.column if start is not None else None,
         )
-    return body, frontmatter
+    return LocatedFrontmatter(body, frontmatter, parsed.source_map)
+
+
+def _portable_source_lines(text: str) -> list[str]:
+    """Split source only at CR, LF, or CRLF while retaining each terminator."""
+    lines: list[str] = []
+    start = 0
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if character == "\r":
+            index += 2 if text[index + 1 : index + 2] == "\n" else 1
+            lines.append(text[start:index])
+            start = index
+        elif character == "\n":
+            index += 1
+            lines.append(text[start:index])
+            start = index
+        else:
+            index += 1
+    if start < len(text) or not lines:
+        lines.append(text[start:])
+    return lines
+
+
+def _is_frontmatter_fence(line: str) -> bool:
+    """Recognize a delimiter using only portable horizontal ASCII whitespace."""
+    if line.endswith("\r\n"):
+        content = line[:-2]
+    elif line.endswith(("\r", "\n")):
+        content = line[:-1]
+    else:
+        content = line
+    return content.strip(" \t") == "---"
 
 
 def read_frontmatter(
@@ -1494,35 +1636,58 @@ def read_frontmatter(
     return _read_frontmatter_doc(path, limits)
 
 
-def _read_yaml(
-    path: Path,
-    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
-) -> Any:
-    value, _size = _read_yaml_resource(path, limits)
-    return value
-
-
 def read_yaml_artifact(
     path: Path,
     limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> dict[str, Any]:
     """Read one bounded pure-YAML artifact and require a mapping root."""
-    value = _read_yaml(path, limits)
-    if not isinstance(value, dict):
-        raise ArtifactRootError(f"YAML root is {type(value).__name__}, expected mapping")
+    parsed = read_yaml_artifact_with_locations(path, limits)
+    value = parsed.value
+    assert isinstance(value, dict)
     return value
 
 
+def read_yaml_artifact_with_locations(
+    path: Path,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+) -> ParsedPortableYaml:
+    """Read one bounded pure-YAML artifact and retain its source map."""
+    encoded = _read_bounded_bytes(path, limits.max_resource_bytes)
+    parsed = parse_portable_yaml_with_locations(
+        encoded.decode("utf-8-sig"),
+        limits=limits,
+        encoded_size=len(encoded),
+    )
+    value = parsed.value
+    if not isinstance(value, dict):
+        start = parsed.source_map.span("")
+        raise ArtifactRootError(
+            f"YAML root is {type(value).__name__}, expected mapping",
+            line=start.start.line if start is not None else None,
+            column=start.start.column if start is not None else None,
+        )
+    return parsed
+
+
 def _read_yaml_resource(path: Path, limits: ValidationLimits) -> tuple[Any, int]:
-    if path.is_dir():
-        raise IsADirectoryError(path)
-    encoded = path.read_bytes()
+    encoded = _read_bounded_bytes(path, limits.max_resource_bytes)
     value = parse_portable_yaml(
         encoded.decode("utf-8-sig"),
         limits=limits,
         encoded_size=len(encoded),
     )
     return value, len(encoded)
+
+
+def _read_bounded_bytes(path: Path, max_bytes: int) -> bytes:
+    """Read at most one byte beyond a trusted resource limit."""
+    if path.is_dir():
+        raise IsADirectoryError(path)
+    with path.open("rb") as stream:
+        encoded = stream.read(max_bytes + 1)
+    if len(encoded) > max_bytes:
+        raise PortableValueError("maximum resource size exceeded")
+    return encoded
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

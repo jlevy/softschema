@@ -4,6 +4,12 @@
 # `bun test --coverage` runs (CI + `bun run test:cov`).
 coverageThreshold = { lines = 0.70, functions = 0.70 }
 coverageSkipTestFiles = true
-# Entrypoint tests build the package in-process. Generated bundles are validated by
-# packaging and architecture tests, but they are not source coverage subjects.
-coveragePathIgnorePatterns = ["dist/**"]
+# Entrypoint tests build the package in-process. Generated bundles and integration tests'
+# runtime copies under platform temporary directories are validated behaviorally, but
+# they are not package-source coverage subjects. Without the latter exclusions, Bun can
+# apply per-file thresholds to a second temporary copy and fail after every test passes.
+coveragePathIgnorePatterns = [
+  "dist/**",
+  "**/softschema-example-*/**",
+  "**/softschema model path */**",
+]

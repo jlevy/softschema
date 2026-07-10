@@ -1,14 +1,17 @@
 # Movie Page Example
 
-This example is deliberately small and complete:
+This example is deliberately small, complete, and paired across both official runtimes:
 
-- [model.py](model.py) contains the Pydantic model.
-- [host_integration.py](host_integration.py) shows how a host application registers the
-  complete contract and validates an artifact at a file boundary.
+- [model.py](model.py) and [model.ts](model.ts) contain equivalent Pydantic and Zod
+  models.
+- [host_integration.py](host_integration.py) and
+  [host_integration.ts](host_integration.ts) show idiomatic host-owned bindings and
+  file-boundary validation.
 - [spirited-away.md](spirited-away.md) contains the Markdown artifact.
 - [spirited-away.yaml](spirited-away.yaml) contains the same payload as a pure YAML
   artifact with no Markdown body.
-- `movie-page.schema.yaml` is generated from the model.
+- `movie-page.schema.yaml` is the shared compiled schema.
+  Both models compile to the same canonical content and `schema_sha256`.
 
 The Markdown body reads like a compact movie page: a short synopsis, a details table,
 the lead cast, and a ratings summary.
@@ -42,8 +45,26 @@ The block below is regenerated from `movie-page.schema.yaml` by
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
 <!-- /softschema:generated -->
 
-The example is meant to be copied from the files in this directory or printed through
-the docs CLI:
+Compile either trusted model and check the same committed schema:
+
+```bash
+# Python/Pydantic
+softschema-py compile examples.movie_page.model:MoviePage \
+  --contract example.movies:MoviePage/v1 \
+  --out examples/movie_page/movie-page.schema.yaml --check
+
+# TypeScript/Zod under Bun (from a project with softschema and Zod installed)
+bunx --bun softschema compile examples/movie_page/model.ts:MoviePage \
+  --contract example.movies:MoviePage/v1 \
+  --out examples/movie_page/movie-page.schema.yaml --check
+```
+
+Node users compile `model.ts` to `.js` or `.mjs` first.
+Model loading executes local code; use these commands only with a trusted model.
+Repository development checks the copyable TypeScript model and host through
+`bun test test/movie-page-example.test.ts` from `packages/typescript`.
+
+The files are copyable directly or through the docs CLI:
 
 ```bash
 softschema docs example
@@ -75,7 +96,7 @@ softschema validate examples/movie_page/spirited-away.md \
   --envelope movie
 ```
 
-A host application usually builds a registry once, then validates files by contract ID:
+A Python host usually builds a registry once, then validates files by contract ID:
 
 ```python
 from pathlib import Path
@@ -88,6 +109,18 @@ assert result.ok
 
 The import above assumes a repo checkout; see [host_integration.py](host_integration.py)
 for the full source.
+
+A TypeScript host binds the serializable descriptor to its Zod model once:
+
+```ts
+import { validateMoviePage } from "./host_integration.js";
+
+const result = validateMoviePage("spirited-away.md");
+if (!result.ok) throw new Error(JSON.stringify(result.output));
+```
+
+See [host_integration.ts](host_integration.ts) for the descriptor, bound runtime
+contract, portable path resolution, and full return type.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

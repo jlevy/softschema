@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from frontmatter_format import read_yaml_file
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from softschema import (
     Contract,
@@ -39,6 +40,28 @@ class EnvelopeModel(BaseModel):
     sample: SampleModel
 
 
+class NumericSchemaModel(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [2.0, 2.5], "x-integral-number": -0.0})
+
+    score: float = Field(ge=-0.0, le=10.0)
+
+
+class UnsafeNumericSchemaModel(BaseModel):
+    score: float = Field(le=1e20)
+
+
+class CustomRootCompilerMetadataModel(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"x-softschema": {"custom": True}})
+
+    name: str
+
+
+class NonMappingRootCompilerMetadataModel(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"x-softschema": "invalid"})
+
+    name: str
+
+
 def test_compile_writes_json_schema_with_independent_ids(tmp_path: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
 
@@ -55,6 +78,48 @@ def test_compile_writes_json_schema_with_independent_ids(tmp_path: Path) -> None
     assert "contract: example:Sample/v1" in result.schema_yaml
     assert "schema_sha256" in result.schema_yaml
     assert result.schema_sha256 is not None
+
+
+def test_compile_normalizes_all_integral_json_numbers_before_hashing(tmp_path: Path) -> None:
+    out = tmp_path / "numeric.schema.yaml"
+
+    result = compile_model(NumericSchemaModel, out, contract_id="example:Numeric/v1")
+    schema = read_yaml_file(out)
+
+    assert schema["properties"]["score"]["minimum"] == 0
+    assert isinstance(schema["properties"]["score"]["minimum"], int)
+    assert schema["properties"]["score"]["maximum"] == 10
+    assert isinstance(schema["properties"]["score"]["maximum"], int)
+    assert schema["examples"] == [2, 2.5]
+    assert schema["x-integral-number"] == 0
+    assert schema["x-softschema"]["schema_sha256"] == result.schema_sha256
+
+
+def test_compile_rejects_numbers_without_an_exact_portable_representation(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "unsafe.schema.yaml"
+
+    with pytest.raises(ValueError, match="outside the safe range"):
+        compile_model(UnsafeNumericSchemaModel, out, contract_id="example:Unsafe/v1")
+
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "model",
+    [CustomRootCompilerMetadataModel, NonMappingRootCompilerMetadataModel],
+)
+def test_compile_rejects_model_supplied_root_compiler_metadata(
+    tmp_path: Path,
+    model: type[BaseModel],
+) -> None:
+    out = tmp_path / "reserved.schema.yaml"
+
+    with pytest.raises(ValueError, match="reserved x-softschema metadata"):
+        compile_model(model, out, contract_id="example:Reserved/v1")
+
+    assert not out.exists()
 
 
 def test_validate_structural_and_semantic(tmp_path: Path) -> None:

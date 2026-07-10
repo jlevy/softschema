@@ -1,0 +1,125 @@
+schema_version: "1"
+claims:
+  python.pin:
+    source:
+      path: release-metadata.json
+      pointer: /packages/python/pin
+    targets:
+      - path: README.md
+        marker: python-pin
+      - path: docs/softschema-guide.md
+        marker: guide-python-pin
+      - path: docs/installation.md
+        marker: installation-python-pin
+  npm.pin:
+    source:
+      path: release-metadata.json
+      pointer: /packages/npm/pin
+    targets:
+      - path: README.md
+        marker: npm-pin
+      - path: docs/softschema-guide.md
+        marker: guide-npm-pin
+      - path: docs/installation.md
+        marker: installation-npm-pin
+  python.version:
+    source:
+      path: release-metadata.json
+      pointer: /packages/python/version
+    targets:
+      - path: packages/python/README.md
+        marker: python-version
+  npm.version:
+    source:
+      path: release-metadata.json
+      pointer: /packages/npm/version
+    targets:
+      - path: packages/typescript/README.md
+        marker: npm-version
+  conformance.status:
+    source:
+      path: release-metadata.json
+      pointer: /conformance/status
+    targets:
+      - path: README.md
+        marker: conformance-status
+  conformance.version:
+    source:
+      path: release-metadata.json
+      pointer: /conformance/version
+    targets:
+      - path: README.md
+        marker: conformance-version
+  runtime.python-minimum:
+    source:
+      path: release-metadata.json
+      pointer: /runtimes/python/minimum
+    targets:
+      - path: README.md
+        marker: python-minimum
+  runtime.node-minimum:
+    source:
+      path: release-metadata.json
+      pointer: /runtimes/node/minimum
+    targets:
+      - path: README.md
+        marker: node-minimum
+  runtime.bun-minimum:
+    source:
+      path: release-metadata.json
+      pointer: /runtimes/bun/minimum
+    targets:
+      - path: README.md
+        marker: bun-minimum
+  profiles:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /profiles
+    targets:
+      - path: docs/softschema-spec.md
+        marker: supported-profiles
+  defaults:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /defaults
+    targets:
+      - path: docs/softschema-spec.md
+        marker: artifact-defaults
+  exit-codes:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /exit_codes
+    targets:
+      - path: docs/softschema-spec.md
+        marker: exit-codes
+  result-formats:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /result_formats
+    targets:
+      - path: docs/softschema-spec.md
+        marker: result-formats
+  policy.references:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /policies/references
+    targets:
+      - path: docs/softschema-spec.md
+        marker: reference-policy
+  policy.resource-bundles:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /policies/resource_bundles
+    targets:
+      - path: docs/softschema-spec.md
+        marker: resource-bundle-policy
+  agent-install-destinations:
+    source:
+      path: conformance/manifest.yaml
+      pointer: /agent_install_destinations
+    targets:
+      - path: docs/agent-compatibility.md
+        marker: agent-target-table
+
+# This document follows common-doc-guidelines.md.
+# See github.com/jlevy/practical-prose and review guidelines before editing.

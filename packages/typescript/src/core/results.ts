@@ -149,4 +149,9 @@ export interface RawFrontmatter {
 }
 
 export type ArtifactParseReason = "frontmatter" | "syntax" | "root" | "value_domain";
-export type ArtifactInputReason = "not_found" | "unreadable" | "directory_requires_recursive";
+export type ArtifactInputReason =
+  | "not_found"
+  | "unreadable"
+  | "directory_requires_recursive"
+  | "no_matches"
+  | "discovery_limit";

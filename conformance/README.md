@@ -1,34 +1,105 @@
-# Softschema Conformance Kit (Draft)
+# softschema Conformance Kit
 
-This directory is the language-neutral contract and case corpus for softschema.
-It is unreleased infrastructure while the 0.3 behavior is being defined.
-Draft schema identifiers use `urn:softschema:draft:` and are not stable public
-identifiers.
+This directory is the versioned, language-neutral contract and case corpus for
+softschema. It separates portable semantics from Python/Pydantic and TypeScript/Zod
+implementation details.
+The reference CLI goldens in `tests/golden/` remain the byte-for-byte compatibility
+suite; this kit is the contract a third implementation can consume on its own.
 
-The existing `tests/golden/` corpus remains the byte-for-byte CLI compatibility suite.
-This kit instead describes semantics that another implementation can consume without
-using Python or TypeScript model source.
+The source kit is a publication candidate, not a released namespace.
+Its schemas retain `urn:softschema:draft:` identifiers until every final HTTPS URL
+serves exact candidate bytes.
+`publication.json` records that gate, and `publication.py` stages the final-ID bytes
+without rewriting source schemas.
 
-Run the integrity checks and all currently supported implementations:
+## Run the Kit
+
+Validate integrity without executing an implementation:
 
 ```bash
-uv run python conformance/run.py --check-only
-uv run python conformance/run.py --implementation all
+uv run --locked --no-sync python conformance/run.py --check-only
 ```
 
-The runner validates every schema against the Draft 2020-12 metaschema, validates the
-manifest and case descriptors, and checks every declared SHA-256 digest.
-It then executes every `ready` case against the selected CLI. `--implementation all`
-selects Python, Node, and Bun; the summary reports ready and pending case counts
-separately.
+Build the TypeScript package, then execute every ready artifact case, portable-core
+vector, and doctor claim under Python, Node, and Bun:
 
-Behavior-specific beads extend the draft cases and finalize their owned schemas.
-The foundation may carry `execution.status: pending` negative vectors whose owning bead
-has not implemented the behavior yet; the runner validates their files, digests,
-descriptor, and expected-result schema but does not execute them.
-The owner changes a vector to `ready` only with the behavior implementation.
-The kit receives immutable HTTPS identifiers and a standalone archive only after the
-full semantic contract is settled.
+```bash
+cd packages/typescript
+bun run build
+cd ../..
+uv run --locked --no-sync python conformance/run.py --implementation all
+```
+
+An extracted release archive can verify itself without installing softschema or a YAML
+library:
+
+```bash
+python conformance/consumer.py --json
+```
+
+The standard-library consumer verifies the sorted path, size, and SHA-256 inventory in
+`manifest.lock.json`. Authenticate the archive’s external SHA-256 before trusting that
+internal lock.
+
+## Contents
+
+- `manifest.yaml` records versions, policies, defaults, exit/result contracts, coverage,
+  schemas, cases, vector suites, and support artifacts
+- `schemas/` contains Draft 2020-12 contracts, including the optional `x-softschema`
+  annotation-vocabulary metaschema and the explicit offline bundle shape
+- `cases/` exercises artifact parsing, both storage profiles, metadata, validation,
+  legacy JSON, diagnostic-v1 JSONL, schema errors, formats, regexes, and identities
+- `vectors/` exercises runtime-neutral core operations through a strict JSON adapter
+- `implementations.json` declares the official Python, Node, and Bun execution matrix
+- `evolution.json` defines independent kit versioning and immutable-path rules
+- `WALKTHROUGH.md` is the third-implementation protocol
+
+Case and vector order is significant and deterministic.
+Resources are data supplied in the descriptor; a URI never authorizes network,
+filesystem, package, or implicit relative retrieval.
+Missing resources fail closed.
+
+## Publication Gate
+
+Build the version-preserving static candidate in an empty directory:
+
+```bash
+python conformance/publication.py build publication-out
+```
+
+Before deployment, reconstruct the complete append-only Pages namespace and reject any
+conflicting bytes:
+
+```bash
+python conformance/publication.py verify-predeploy publication-out \
+  --promotion-marker conformance/publication-promoted.sha256
+```
+
+`publication-index.json` inventories every deployed file, not only `schema/v1/`. The
+predeploy gate verifies and retains each live entry before it adds new paths, so a
+deployment cannot delete an older version or unrelated root file.
+Every declared file path is immutable; the root index changes only by adding entries.
+
+The promotion marker is absent before the first deployment.
+That is the only state in which a wholly absent live namespace is accepted.
+After every live verification, independently review the generated marker from the
+workflow artifact and commit its root `publication-index.json` digest as
+`conformance/publication-promoted.sha256` through protected `main` before running the
+workflow again. The marker binds the complete prior namespace, so a missing, changed, or
+incomplete root index and every outage fail closed.
+
+The Pages workflow performs this check from protected `main`, deploys the reconstructed
+namespace, and verifies the live marker and every declared file:
+
+```bash
+python conformance/publication.py verify-live publication-out \
+  --promotion-marker conformance/publication-promoted.sha256
+```
+
+Promotion requires status 200, zero redirects, a declared media type, and byte-for-byte
+SHA-256 equality for the root namespace index and every declared file.
+Until that sequence succeeds against `https://jlevy.github.io/softschema/schema/v1/`,
+draft URNs remain authoritative and no stable public schema ID is claimed.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

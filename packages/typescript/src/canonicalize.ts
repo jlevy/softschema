@@ -8,6 +8,7 @@
  * `oneOf` unions to `anyOf`. Key ordering is handled at serialization time.
  */
 
+import { compareUnicodeCodePoints } from "./core/canonical-json.js";
 import { isMapping } from "./guards.js";
 
 type Json = unknown;
@@ -99,7 +100,7 @@ function canonicalizeSchema(node: Json, root: Record<string, Json>): Json {
     if (key === "propertyNames" && isStringKeyConstraint(value)) continue;
     if (key === "required" && Array.isArray(value)) {
       // `required` is a set; sort it so cross-language field order is irrelevant.
-      out[key] = [...(value as string[])].sort();
+      out[key] = [...(value as string[])].sort(compareUnicodeCodePoints);
       continue;
     }
     if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {

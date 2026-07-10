@@ -54,6 +54,30 @@ export {
 } from "../portable-pattern.js";
 export { Contracts } from "../registry.js";
 export { canonicalJson, stableStringify } from "./canonical-json.js";
+export {
+  DIAGNOSTIC_FORMAT,
+  type DiagnosticAggregateV1,
+  type DiagnosticCategory,
+  type DiagnosticJsonlRecordV1,
+  type DiagnosticLimitsWire,
+  type DiagnosticOutcome,
+  type DiagnosticResultV1,
+  type DiagnosticRuleFamily,
+  type DiagnosticSeverity,
+  type DiagnosticSummaryV1,
+  type DiagnosticV1,
+  type DiagnosticValidationWire,
+  type DiagnosticWarningWire,
+  diagnosticRuleId,
+  projectDiagnosticAggregate,
+  projectDiagnosticResult,
+  projectDiagnosticSarif,
+  projectValidationWire,
+  SARIF_SCHEMA_URI,
+  SARIF_VERSION,
+  serializeDiagnosticJsonl,
+  validationLimitsWire,
+} from "./diagnostics.js";
 export { EnvelopeAmbiguityError, inferEnvelopeKey } from "./envelope.js";
 export type {
   ArtifactInputErrorRecord,
@@ -78,6 +102,14 @@ export type {
   ValidationResult,
   ValidationResultLegacyWire,
 } from "./results.js";
+export {
+  jsonPointer,
+  type NodeSource,
+  type SourceAnchor,
+  SourceMap,
+  type SourcePoint,
+  type SourceSpan,
+} from "./source-map.js";
 export {
   canonicalPortableJsonSize,
   DEFAULT_VALIDATION_LIMITS,

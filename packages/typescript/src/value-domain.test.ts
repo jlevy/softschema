@@ -250,9 +250,38 @@ test("materialized values reject cycles, non-JSON types, and unsafe integers", (
   expect(normalizePortableValue(withHiddenMetadata).value).toEqual({ type: "object" });
 
   const withAccessor = { type: "object" } as Record<string, unknown>;
+  let accessorCalls = 0;
   Object.defineProperty(withAccessor, "unsafe", {
     enumerable: true,
-    get: () => "must not run",
+    get: () => {
+      accessorCalls += 1;
+      return "must not run";
+    },
   });
   expect(() => normalizePortableValue(withAccessor)).toThrow(PortableValueError);
+  expect(accessorCalls).toBe(0);
+
+  const sparse = new Array(1);
+  const inherited = new Array(1);
+  const inheritedPrototype = Object.create(Array.prototype) as Record<string, unknown>;
+  inheritedPrototype[0] = "must not materialize";
+  Object.setPrototypeOf(inherited, inheritedPrototype);
+  const accessorArray: unknown[] = [];
+  Object.defineProperty(accessorArray, "0", {
+    enumerable: true,
+    get: () => {
+      accessorCalls += 1;
+      return "must not run";
+    },
+  });
+  for (const value of [sparse, inherited, accessorArray]) {
+    expect(() => normalizePortableValue(value)).toThrow(PortableValueError);
+  }
+  expect(accessorCalls).toBe(0);
+
+  for (const invalidScalar of ["\ud800", "\udc00", "\ud800x"]) {
+    expect(() => normalizePortableValue(invalidScalar)).toThrow(PortableValueError);
+    expect(() => parsePortableYaml(`value: "${invalidScalar}"\n`)).toThrow(PortableValueError);
+    expect(() => normalizePortableValue({ [invalidScalar]: true })).toThrow(PortableValueError);
+  }
 });

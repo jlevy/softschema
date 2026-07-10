@@ -144,9 +144,11 @@ def _assert_inventory_and_metadata(
         allowed_sdist_roots = {
             ".gitignore",
             "AGENTS.md",
+            "CHANGELOG.md",
             "LICENSE",
             "PKG-INFO",
             "README.md",
+            "SECURITY.md",
             "build-constraints.txt",
             "build-metadata.json",
             "build-requirements.in",

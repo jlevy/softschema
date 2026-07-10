@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "current": "0.0.0-draft.1",
+  "target_release": "1.0.0",
+  "identifier_status": "draft-until-live-verification",
+  "versioning": {
+    "patch": "adds cases without changing existing outcomes",
+    "minor": "adds backward-compatible capabilities or schemas",
+    "major": "changes an existing result, schema, or wire shape"
+  },
+  "immutability": {
+    "versioned_paths": true,
+    "published_bytes": "never mutate",
+    "replacement": "publish a new version"
+  },
+  "history": [
+    {
+      "version": "0.0.0-draft.1",
+      "status": "draft",
+      "compatibility": "initial"
+    }
+  ]
+}

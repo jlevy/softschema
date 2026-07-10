@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "target_namespace": "https://jlevy.github.io/softschema/schema/v1/",
+  "version": "v1",
+  "source_identifier_status": "draft-until-live-verification",
+  "promotion_gate": {
+    "status": "external-verification-required",
+    "http_status": 200,
+    "redirects": 0,
+    "content_types": ["application/json", "application/schema+json"],
+    "digest": "sha256-byte-equality"
+  }
+}

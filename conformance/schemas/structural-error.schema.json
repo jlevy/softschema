@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:structural-error:v0",
-  "title": "Draft softschema structural error",
+  "title": "softschema structural error",
   "$defs": {
     "jsonPointer": {
       "type": "string",
@@ -83,6 +83,7 @@
                 "enum": [
                   "invalid_root_id",
                   "invalid_nested_id",
+                  "invalid_registry_key",
                   "resource_id_mismatch",
                   "duplicate_resource_id",
                   "root_resource_collision",

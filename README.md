@@ -1,150 +1,49 @@
 # softschema
 
-Soft schemas: gradual, practical validation for Markdown/YAML artifacts that mix prose
-and structured data—built for humans and coding agents.
+softschema validates Markdown/frontmatter and pure YAML artifacts without turning their
+prose into a programming language or database.
 
-## Quick Start
+The rule is simple: **put every value a downstream tool consumes in YAML; leave
+explanations, judgment, and context as prose.** Name the YAML payload with a contract,
+validate it at the boundary, and add structure only when a real consumer needs it.
 
-Try it anywhere, with nothing installed but [uv](https://docs.astral.sh/uv/) or Node.
-Print the bundled example artifact and its compiled schema, then validate—the artifact
-is fully self-describing, so no flags are needed:
+## Try It
 
+The pinned commands use the latest published stable package.
+They print a copyable artifact and its compiled JSON Schema, then validate with no
+project setup:
+
+<!-- BEGIN SOFTSCHEMA CLAIM python-pin -->
 ```bash
 uvx --from 'softschema==0.2.2' softschema docs example-artifact > spirited-away.md
 uvx --from 'softschema==0.2.2' softschema docs example-schema > movie-page.schema.yaml
 uvx --from 'softschema==0.2.2' softschema validate spirited-away.md
 ```
+<!-- END SOFTSCHEMA CLAIM python-pin -->
 
-(Or `npx --yes softschema@0.2.2 ...` for the Node implementation; the two are
-interchangeable.)
-
-When an artifact has no Markdown body, use the explicit `pure-yaml` profile.
-The file extension never selects it:
-
+<!-- BEGIN SOFTSCHEMA CLAIM npm-pin -->
 ```bash
-softschema docs example-pure-yaml > spirited-away.yaml
-softschema docs example-schema > movie-page.schema.yaml
-softschema validate spirited-away.yaml --profile pure-yaml
+npx --yes softschema@0.2.2 docs example-artifact > spirited-away.md
+npx --yes softschema@0.2.2 docs example-schema > movie-page.schema.yaml
+npx --yes softschema@0.2.2 validate spirited-away.md
 ```
+<!-- END SOFTSCHEMA CLAIM npm-pin -->
 
-In this profile, the root `softschema` block is metadata and the remaining mapping is
-the payload unless the metadata or command names an envelope.
+This development branch contains the unreleased 0.3 behavior described in the
+[changelog](CHANGELOG.md) and [migration guide](docs/migration-0.3.md).
+A source fix is not an available package update until the release metadata, registries,
+and published artifacts are verified.
 
-To set up softschema in a repository with an agent, tell the agent:
+Release metadata currently reports conformance
+<!-- BEGIN SOFTSCHEMA CLAIM conformance-status -->`unavailable`<!-- END SOFTSCHEMA CLAIM conformance-status -->
+at version
 
-> Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or
-> `npx --yes softschema@0.2.2 --help` (Node), then follow the instructions to set up
-> softschema for this repo as a skill.
+<!-- BEGIN SOFTSCHEMA CLAIM conformance-version -->`0.0.0-draft.1`<!-- END SOFTSCHEMA CLAIM conformance-version -->.
 
-The help output points the agent to `skill --install`, which writes discoverable
-`SKILL.md` mirrors for Codex, Claude Code, Gemini CLI, and other coding agents.
-
-## What Are Soft Schemas?
-
-Soft schemas are a practice for adding structure gradually to artifacts that mix
-flexible document context and machine-readable values.
-
-The idea is quite simple, but I’ve found it non-obvious enough that coding agents do not
-come up with this approach themselves.
-
-However, if given the information and tools in this repo, soft schemas are unreasonably
-effective. Agents become far better at designing and building complex workflows that mix
-structured and unstructured data, such as document processing, data extraction,
-scientific or financial analyses, and many similar applications.
-
-**Soft schemas** are what we call the general practice.
-**softschema** is the name of this repository’s Markdown-and-YAML spec and the matching
-`softschema` CLI that implements it.
-
-## How Do Soft Schemas Work?
-
-The practice is very simple and language neutral.
-The simplest approach is to use artifacts in a process or pipeline that are Markdown
-documents with YAML frontmatter.
-The YAML carries selected structured values.
-The Markdown body stays readable for humans and agents and offers additional context.
-There are no strict rules about duplicating content between Markdown and YAML, but you
-can gradually adjust and enforce rules.
-
-A *hard* schema imposes structure up front: define a rigid contract, then reject
-anything that doesn’t fit.
-That suits data that is already uniform, but it is a poor fit for documents a human or
-agent writes, where most of the content is prose and only a few values need to be
-machine-readable.
-
-A *soft* schema lets you add structure gradually to the artifacts that pass between
-steps of a workflow.
-
-Structure runs along a spectrum, and each value moves along it only when it earns the
-move:
-
-```text
-plain Markdown prose
-  -> plain Markdown with a few YAML frontmatter values for specific fields
-  -> plain Markdown with more YAML fields and a bit of loose validation
-  -> plain Markdown with YAML frontmatter fully validated against JSON Schema (or Pydantic/Zod)
-  -> plain Markdown with separate structured data files or database records
-```
-
-The structured values live in the YAML payload, the boundary a tool reads, while the
-prose body stays unconstrained.
-Validation rules can be easily removed or changed if greater flexibility is needed.
-
-Promote a value into YAML when a tool reads it, validate it at the boundary when
-correctness matters, and tighten enforcement over time.
-Each promotion buys efficiency for some downstream consumer, so structure and efficiency
-grow together, value by value.
-
-Start with processes and data defined in Markdown with data right in the text.
-Have coding agents try them.
-Only add structure when it pays for itself.
-
-## When and Why Are Soft Schemas Useful?
-
-You should consider using soft schemas if:
-
-1. You wish to have coding agents perform complex processing workflows involving both
-   data and documents
-
-2. Some aspects of the workflow involve structured data that is processed efficiently
-   via code and some aspects are ill-defined
-
-3. The boundary between structured and unstructured data might evolve as you scale and
-   improve the workflows
-
-A plain text document offers flexible context for humans and agents.
-Structured records are far better when code or agents need to read values consistently
-and efficiently.
-
-Balancing these needs is often difficult and the source of significant complexity.
-
-Some engineers see the goal of productionizing an agent workflow as the process of
-converting it to reusable code or structured forms, like relational database schemas.
-
-But the reality is that *prematurely structuring data* before you understand the
-structures that best serve a workflow involving code and agents has a cost.
-At the same time, *poorly defined structure* has costs in consistency and efficiency.
-
-What is actually needed is **gradual addition of structure** and **flexible addition of
-textual context** at any time.
-
-Soft schemas are simple habits and conventions to make the boundary between structured
-and unstructured data easier to adjust in either direction as a workflow’s needs for
-flexibility, consistency, and efficiency evolve (code vs LLM calls).
-Keeping prose and structured values in one artifact is more convenient and
-context-efficient. A reader (human or agent) has only one place to look, and information
-can stay as loose prose until a downstream consumer needs it in more formal schemas.
-
-## The Artifact Shape
-
-The default shape is Markdown with YAML frontmatter.
-The `softschema:` block declares the quoted artifact format `"1"`: `contract` names the
-payload contract, `schema` points at the compiled JSON Schema (relative to the
-document), `envelope` names the payload key, and `status` sets validation strictness:
+## Artifact Shape
 
 ```markdown
 ---
-title: Spirited Away (2001)
 softschema:
   format: "1"
   contract: example.movies:MoviePage/v1
@@ -154,190 +53,124 @@ softschema:
 movie:
   title: Spirited Away
   release_year: 2001
-  runtime_minutes: 125
-  mpaa_rating: PG
-  directors:
-    - Hayao Miyazaki
-  genres: [Animation, Adventure, Family]
-  ratings:
-    imdb:
-      score: 8.6
-      total_votes: 850000
+  directors: [Hayao Miyazaki]
 ---
-# Spirited Away (2001)
+# Spirited Away
 
-*Spirited Away* is Hayao Miyazaki's animated fantasy about ten-year-old Chihiro, who
-slips into a spirit world and takes a job in a bathhouse for the gods to free her
-parents from the witch Yubaba.
-It won the 2003 Academy Award for Best Animated Feature.
+Hayao Miyazaki's animated fantasy follows Chihiro into a spirit world. It won the 2003
+Academy Award for Best Animated Feature.
 ```
 
-New artifacts use the exact quoted string `format: "1"`. Existing artifacts without a
-format remain on the legacy grammar; the artifact format is independent of package and
-contract versions. See the [softschema Spec](docs/softschema-spec.md#metadata) for
-extension namespaces and negotiation rules.
+The `movie` mapping is authoritative structured data.
+The body remains inert, reader-facing Markdown; softschema never scrapes its prose or
+tables for values. `contract` names the payload contract, not a Python class, TypeScript
+export, schema path, or JSON Schema `$id`.
 
-The YAML payload is authoritative; a consumer reads it.
-The Markdown body overlaps with it but is for human readers: the prose adds context like
-the film’s Academy Award (which no structured field carries), and the full example’s
-body mirrors some YAML fields as tables for the reader’s convenience.
+New artifacts use the exact quoted `format: "1"`. Existing artifacts without `format`
+use the legacy metadata grammar.
+See the [Spec](docs/softschema-spec.md) for exact profiles, limits, identity, reference,
+regex, format, extension, and result rules.
 
-Only the `softschema` block and the declared envelope key (`movie:` above) are
-softschema’s concern.
-Additional top-level frontmatter keys, such as the `title:` above (or `description:`,
-`tags:`, or any other host-specific metadata), are a separate concern: softschema
-neither forbids nor interprets them, so an artifact can coexist with whatever
-frontmatter conventions a static-site generator, doc indexer, or other tool already
-expects. Because the artifact declares `envelope: movie`, validation still needs no
-flags.
+## Pick a Runtime
 
-Every key after `contract` is optional; a minimal artifact carries `contract` alone and
-binds its schema some other way (a `--schema` flag, or a host registry in library use).
-Contract IDs follow an enforced shape, `[namespace:]Name[/version]`—for example
-`example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0`—naming a payload
-contract, not a class or import path.
+| Runtime | Package and commands | Trusted model source |
+| --- | --- | --- |
+| Python 3.11+ / Pydantic | PyPI `softschema`; `softschema` or `softschema-py` | `.py` model import |
+| Node 22.12+ / Zod | npm `softschema`; `softschema` or `softschema-ts` | built `.js` or `.mjs` |
+| Bun 1.3.11+ / Zod | npm `softschema`; `bunx --bun softschema` | `.js`, `.mjs`, or direct `.ts` |
 
-## Validate
+The machine-checked runtime floors are Python
 
-A self-describing artifact validates with no flags; flags override the document when you
-need to point a run elsewhere:
+<!-- BEGIN SOFTSCHEMA CLAIM python-minimum -->`3.11`<!-- END SOFTSCHEMA CLAIM python-minimum -->,
+
+Node
+
+<!-- BEGIN SOFTSCHEMA CLAIM node-minimum -->`22.12`<!-- END SOFTSCHEMA CLAIM node-minimum -->,
+
+and Bun
+
+<!-- BEGIN SOFTSCHEMA CLAIM bun-minimum -->`1.3.11`<!-- END SOFTSCHEMA CLAIM bun-minimum -->.
+
+Both implementations use the same artifact contract, CLI behavior, canonical compiled
+JSON Schema, normalized results, and conformance vectors.
+Library names remain idiomatic: snake_case/Pydantic in Python and camelCase/Zod in
+TypeScript.
+
+## Validate Files
 
 ```bash
-softschema validate doc.md                              # uses the document's bindings
-softschema validate doc.md --schema candidate.schema.yaml   # try a different schema
-softschema validate doc.md --envelope incident          # designate the payload key
+softschema validate report.md
+softschema validate report.yaml --profile pure-yaml
+softschema validate docs --recursive --profile frontmatter-md --format json
+softschema validate data --recursive --profile pure-yaml --format jsonl
+softschema validate docs --recursive --format sarif > softschema.sarif
 ```
 
-`validate` reports structural (JSON Schema) and semantic (Pydantic/Zod model) results
-separately as deterministic JSON. Semantic validation loads a model with
-`--model module:Class` (Python) or `--model path:export` (Zod)—note that `--model`
-imports and executes local code, so use it only with trusted models; a compiled schema
-via `--schema` executes nothing and is the safe path for untrusted input.
+`frontmatter-md` is the default.
+A `.yaml` or `.yml` suffix never selects `pure-yaml`. One explicit file with JSON output
+retains the legacy result contract.
+Multiple or discovered paths use diagnostic-v1; JSONL emits one self-contained result
+per line, and SARIF carries source positions for code-scanning tools.
 
-## Install
+Validation is offline: fragments and already-loaded explicit resources are available,
+but a schema URI never authorizes HTTP, file, or implicit relative-path retrieval.
+`--model` imports and executes trusted local code.
+Use a reviewed compiled schema for untrusted artifacts.
 
-Two supported ways to consume softschema; pick by use:
-
-- **Pin it as a dependency** for projects, CI gates, and library use (reproducible,
-  fast, offline, and the only way to `import` it):
-
-  ```bash
-  uv add --dev softschema==0.2.2        # Python
-  npm install -D softschema@0.2.2       # Node (or: bun add -d)
-  ```
-
-- **Zero-install** for one-off checks and agent bootstrap:
-
-  ```bash
-  uvx --from 'softschema==0.2.2' softschema --help
-  npx --yes softschema@0.2.2 --help
-  ```
-
-The rule of thumb: if softschema runs more than once, or in CI, or you import it—pin it.
-For a quick check or an agent bootstrapping with nothing installed, use a zero-install
-runner with the exact pins above.
-See [Installation](docs/installation.md) for details about pins and optional
-consumer-side release-age policies.
-
-## Use as a Library
-
-Both packages expose the same surface (idiomatic per language).
-Register contracts at startup and validate at file boundaries:
+## Use the Libraries
 
 ```python
-from pathlib import Path
-from softschema import Contract, Contracts, validate_artifact
+from softschema import Contract, Contracts
+from softschema.runtime import validate_artifact
 
 registry = Contracts()
-registry.register(Contract(id="mycorp.docs:IncidentReview/v1", model=IncidentReview,
-                           envelope_key="incident"))
-result = validate_artifact(Path("incident.md"),
-                           contract_id="mycorp.docs:IncidentReview/v1",
+registry.register(Contract(id="example.movies:MoviePage/v1", model=MoviePage,
+                           envelope_key="movie", schema_path="movie-page.schema.yaml"))
+result = validate_artifact(path, contract_id="example.movies:MoviePage/v1",
                            registry=registry)
 ```
 
 ```ts
-import { validateArtifact } from "softschema";
+import { defineContractDescriptor } from "softschema/core";
+import { bindContract, validateArtifact } from "softschema/node";
 
-const result = validateArtifact("incident.md", contract);
+const descriptor = defineContractDescriptor({
+  id: "example.movies:MoviePage/v1", model: "./model.js:MoviePage",
+  envelopeKey: "movie", status: "enforced", profile: "frontmatter-md",
+  schemaPath: "movie-page.schema.yaml",
+});
+const result = validateArtifact("report.md", bindContract(descriptor, MoviePage));
 ```
 
-A host registry’s bindings outrank the document’s own (`softschema.schema`/`envelope`),
-so a document cannot silently redirect a host’s validation; a contract registered
-without a schema path lets self-describing documents bind themselves.
-See the [softschema Guide](docs/softschema-guide.md) for the full playbooks.
+See the [Library API](docs/api.md) and paired
+[Movie Page Example](examples/movie_page/README.md).
 
-## Use as an Agent Skill
+## Install the Agent Skill
 
-Both packages ship the same [`SKILL.md`](https://agentskills.io) following the open
-Agent Skills standard discovered by Claude Code, Codex, Gemini CLI, Cursor, Copilot, and
-~20 other coding agents.
-Pointing an agent at the CLI is enough to bootstrap its understanding of the soft-schema
-approach: the `--help` epilog routes it to `skill --install`, a brief, and the bundled
-docs.
+The portable Agent Skills file is a concise routing layer over the CLI and bundled docs.
+Preview project scope and ownership before writing:
 
 ```bash
-# Python:
-uvx --from 'softschema==0.2.2' softschema --help
-uvx --from 'softschema==0.2.2' softschema skill --install --project --dry-run
-uvx --from 'softschema==0.2.2' softschema skill --brief
-uvx --from 'softschema==0.2.2' softschema docs guide
-
-# TypeScript (same commands, same bundled docs/skill):
-npx --yes softschema@0.2.2 --help
-npx --yes softschema@0.2.2 skill --install --project --dry-run
-npx --yes softschema@0.2.2 skill --brief
-npx --yes softschema@0.2.2 docs guide
+softschema skill --install --project --dry-run --text
+softschema skill --install --project --text
 ```
 
-Self-install the skill into a project so any agent working in the repo finds it natively
-(either package writes the identical mirrors):
+The default project targets are `.agents/skills/softschema/SKILL.md` and
+`.claude/skills/softschema/SKILL.md`. Explicit selectors support nine documented native
+skill hosts; Aider uses an explicit read recipe.
+See [Coding-Agent Compatibility](docs/agent-compatibility.md) for evidence and limits.
 
-```bash
-uvx --from 'softschema==0.2.2' softschema skill --install --project
-# or: npx --yes softschema@0.2.2 skill --install --project
-# writes:
-#   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
-#   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
-```
+## Documentation
 
-Both mirrors carry a `DO NOT EDIT` marker.
-Re-run `skill --install` to refresh after upgrading the CLI.
-
-## Two Synchronized Implementations
-
-softschema ships **two complete, fully supported implementations** with the same CLI and
-library surface:
-
-- **Python / Pydantic**: [`softschema`](docs/softschema-python-design.md) on PyPI (run
-  as `softschema` or `softschema-py`).
-- **TypeScript / Zod**: [`softschema`](docs/softschema-typescript-design.md) on npm (run
-  as `softschema` or `softschema-ts`).
-
-The two are held to **exact behavioral parity**: equivalent CLI inputs, outputs, and
-flags; equivalent library APIs; the same canonical compiled JSON Schema
-(content-identical, with an equal `schema_sha256` fingerprint); and the same
-engine-neutral validation results.
-Every behavior change lands in a shared golden-test corpus first, then in both packages,
-and CI fails if their outputs or compiled schemas drift.
-They release together under the same version number on PyPI and npm.
-
-## Further Reading
-
-- [softschema Guide](docs/softschema-guide.md): the full mental model and adoption
-  playbooks.
-- [softschema Spec](docs/softschema-spec.md): the exact artifact format and validation
-  rules.
-- [Movie Page Example](examples/movie_page/README.md): the complete example backing the
-  snippets above.
-- [Installation](docs/installation.md): pinned vs zero-install, uv and Node setup.
-
-## Development and Contributing
-
-Repo setup, common commands, CI checks, the parity process, and the release workflow
-live in [Development](docs/development.md).
-The Python and TypeScript implementations must be kept in exact sync: any behavior
-change goes through the shared golden corpus first and then lands in both packages.
+- [Guide](docs/softschema-guide.md): mental model, adoption, authoring, validation, CI,
+  agents, and alternatives
+- [Spec](docs/softschema-spec.md): normative language-neutral behavior
+- [Library API](docs/api.md): paired Python and TypeScript integration
+- [Python Design](docs/softschema-python-design.md) and
+  [TypeScript Design](docs/softschema-typescript-design.md): runtime internals
+- [Security](SECURITY.md), [0.3 Migration](docs/migration-0.3.md), and
+  [Changelog](CHANGELOG.md): trust, compatibility, and release delta
+- [Development](docs/development.md): parity workflow and repository checks
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

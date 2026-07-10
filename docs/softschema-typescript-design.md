@@ -6,14 +6,15 @@ document covers the TypeScript package, `softschema`, which implements the same
 Markdown/YAML validation slice as the [Python package](softschema-python-design.md)
 using Zod instead of Pydantic.
 
-The two implementations are held to **exact behavioral parity**: equivalent CLI
-inputs/outputs/flags and equivalent library APIs, the same canonical compiled JSON
-Schema (content-identical, equal `schema_sha256` over its canonical JSON; the YAML
-serialization bytes may differ, and `--check` drift compares parsed canonical content),
-and the same engine-neutral validation results.
-Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
-Parity is enforced by the shared golden corpus and a cross-implementation conformance
-test; see the parity development process in [development.md](development.md).
+The two implementations share CLI behavior, canonical compiled JSON Schema
+(content-identical, equal `schema_sha256` over canonical JSON), portable validation
+semantics, and engine-neutral wire results.
+The YAML serialization bytes may differ, and `--check` drift compares parsed canonical
+content. Their library APIs remain idiomatic to each host: TypeScript exposes
+descriptors, bindings, and Node/Bun adapters rather than translating every Pydantic
+method. Shared behavior is enforced by the golden corpus and cross-implementation
+conformance tests; see the parity development process in
+[development.md](development.md).
 
 ## Modules
 
@@ -31,10 +32,13 @@ test; see the parity development process in [development.md](development.md).
 | `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic` |
 | `yaml-value-domain` | Bounded portable-YAML parsing, materialized-value normalization, and `ValidationLimits` |
 | `portable-pattern` | `portable-regex-v1` parsing, matching, and schema-position traversal |
+| `core/diagnostics` | Pure diagnostic-v1, JSONL, and SARIF projection |
+| `core/source-map` | Runtime-neutral source positions and JSON-path anchors |
+| `artifact-discovery` | Deterministic path/glob discovery and file identity |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a compiled schema |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
-| `cli` | `commander` program: `validate`, `compile`, `inspect`, `docs`, `generate`, `skill` |
+| `cli` | `commander` program: validation, compilation, inspection, docs, diagnostics, doctor, and skill commands |
 
 ## Architecture Boundaries
 
@@ -161,7 +165,7 @@ are identical.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
-| `validate_artifact` | `validateArtifact` | same result JSON, `kind`s, warnings, `metadataMode` |
+| `validate_artifact` | `validateArtifact` | TypeScript wraps the shared legacy wire as `{ok, output}`; `output` has the same result JSON, `kind`s, warnings, and `metadataMode` semantics |
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping |
 | `validate_structural` | `validateStructural` | jsonschema ↔ ajv; identical error records |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
@@ -181,43 +185,37 @@ are identical.
 
 ## Result Shape and CLI Output
 
-`validateArtifact` returns a result whose serialized form is byte-identical to Python’s
-(`contract`, `contract_id`, `document_metadata`, `path`, `profile`, `semantic`,
-`status`, `structural`, `values`, `warnings`). Structural errors are engine-neutral
-records (`{ kind, path, validator, validator_value, value, message }`) with
-softschema-synthesized messages, sorted by `(path, validator)`. CLI JSON uses a
-`stableStringify` that matches Python’s
-`json.dumps(..., indent=2, sort_keys=True, ensure_ascii=False)`; exit codes are `0` ok /
-`1` validation failure or drift / `2` usage error.
+`validateArtifact` returns `ArtifactValidationResult { ok, output }`. `ok` is the
+aggregate success flag; `output` is the typed legacy single-artifact wire (`contract`,
+`contract_id`, `document_metadata`, `path`, `profile`, `semantic`, `status`,
+`structural`, `values`, `warnings`). Callers must retain and inspect `output` on failure
+instead of assuming failed validation throws.
+One explicit file with JSON output emits those `output` bytes.
+Structural errors are engine-neutral discriminated records with softschema-owned
+messages and deterministic ordering; semantic Zod issue detail remains
+implementation-specific.
 
-The public declarations mirror the conformance schemas instead of exposing opaque
-`Record<string, unknown>` results.
-`ValidationResultLegacyWire` names the complete legacy serializer; `StructuralIssue` is
-the discriminated union of schema violations, invalid-schema records, enforcement
-failures, artifact failures, and artifact parse/input records; `SemanticIssue` names the
-Zod issue projection.
-Contract and metadata blocks use `ContractWire` and `SchemaMetadataWire`. The
-artifact-error branch retains JSON-compatible extension fields because its conformance
-schema explicitly allows them.
-These types describe the existing wire bytes; they do not introduce the future
-diagnostic-v1 serializer.
+Multi-path and directory requests project those same typed results into diagnostic-v1.
+Aggregate JSON adds limits, summary, per-input outcomes, and positioned diagnostics.
+JSONL emits one independently self-describing record per result and no summary record.
+SARIF 2.1.0 is a deterministic projection with stable rules, percent-encoded artifact
+URIs, and Unicode-code-point columns.
+Input errors continue alongside readable files; exit precedence is 2 for any input
+error, otherwise 1 for any readable failure, otherwise 0.
 
-`normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
-the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for
-every keyword; ajv’s per-key `additionalProperties` errors are collapsed to one.
+The explicit portable serializer does not delegate key ordering to `JSON.stringify`. It
+orders keys by Unicode scalar value, handles integer-like keys without JavaScript’s
+property reordering, emits the Python-compatible binary64 spelling, validates dense
+plain data without invoking getters, rejects cycles and unsupported runtime values, and
+owns compact hashes, pretty CLI JSON, and JSONL framing.
+Mathematically integral values outside the safe-integer interval fail the shared value
+boundary before serialization.
 
-One known divergence remains (`ss-wbnm`): JS collapses a whole-number float (`2.0`, the
-schema bound `10.0`) to `2`/`10` at parse, while Python preserves the float from the
-YAML source token (`repr(2.0) == "2.0"`), so such a value renders without its `.0` in a
-TypeScript `value`/`validator_value`/message.
-A schema-type-aware fix cannot match Python (Python’s rendering follows the parsed
-value’s runtime type, not the declared type), so an exact fix requires preserving source
-tokens through parse → serialize → ajv; that is disproportionate for an edge case where
-all other golden CLI output and error rendering is byte-identical.
-(Compiled schema YAML files are content-identical rather than byte-identical; see
-above.) The golden corpus keeps error-case values integer or non-whole-float so it stays
-byte-identical on both engines (see `tests/golden/README.md`). Full analysis in the
-parity plan (epic `ss-jgkf`).
+`ValidationResultLegacyWire`, diagnostic aggregate/record types, structural unions,
+semantic issue types, contract/metadata wires, and SARIF projection inputs mirror the
+versioned conformance schemas rather than exposing opaque `Record<string, unknown>`
+results. `normalizeAjvError()` reads Ajv’s verbose schema and data values and collapses
+per-key `additionalProperties` records so they match Python’s normalized result.
 
 ## Toolchain
 
@@ -235,6 +233,12 @@ Readable frontmatter, syntax, root, and value-domain failures are `parse_error` 
 and exit 1; missing, unreadable, and unexpanded-directory paths are `input_error`
 records and exit 2. The CLI accepts an explicit `--profile frontmatter-md|pure-yaml`,
 defaults to `frontmatter-md`, and never infers the profile from an extension.
+
+For batch work, the filesystem adapter applies the shared portable glob grammar,
+display-path sorting, file-identity deduplication, and explicit/discovered symlink
+rules. The YAML adapter retains source spans until diagnostic projection.
+Parser and discovery mechanics stay outside `softschema/core`; diagnostic construction
+itself is pure core logic and shares vectors with Python.
 
 ## Trusted Model Modules
 

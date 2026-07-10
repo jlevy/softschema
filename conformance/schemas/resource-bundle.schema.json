@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:resource-bundle:v0",
+  "title": "explicit closed offline schema bundle",
+  "description": "A data-only bundle. Implementations must not retrieve missing resources.",
+  "type": "object",
+  "required": ["root", "resources"],
+  "properties": {
+    "root": { "$ref": "#/$defs/schemaResource" },
+    "resources": {
+      "type": "object",
+      "maxProperties": 255,
+      "propertyNames": {
+        "type": "string",
+        "description": "Canonical absolute HTTPS or URN identifier lexical profile; implementations also apply canonical identity normalization.",
+        "pattern": "^(?:https://[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?|urn:[a-z0-9][a-z0-9-]{0,31}:[A-Za-z0-9._~!$&'()*+,;=:@%/?-]+)$"
+      },
+      "additionalProperties": { "$ref": "#/$defs/schemaResource" }
+    }
+  },
+  "$defs": {
+    "schemaResource": {
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "object" }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,287 @@
+{
+  "format": "portable-yaml-parity-edges-v1",
+  "compact_flow_policy": {
+    "message": "plain compact flow mapping values must be separated after ':'",
+    "rejected": [
+      {
+        "id": "plain-flow-map-empty-value",
+        "yaml": "{a:}",
+        "line": 1,
+        "column": 3
+      },
+      {
+        "id": "plain-flow-sequence-pair-empty-value",
+        "yaml": "[a:]",
+        "line": 1,
+        "column": 3
+      },
+      {
+        "id": "plain-flow-map-empty-value-before-comma",
+        "yaml": "{first:, second: value}",
+        "line": 1,
+        "column": 7
+      }
+    ],
+    "accepted": [
+      {
+        "id": "separated-flow-map-empty-value",
+        "yaml": "{a: }",
+        "value": { "a": null }
+      },
+      {
+        "id": "separated-flow-sequence-pair-empty-value",
+        "yaml": "[a: ]",
+        "value": [{ "a": null }]
+      },
+      {
+        "id": "quoted-flow-map-empty-value",
+        "yaml": "{\"a\":}",
+        "value": { "a": null }
+      },
+      {
+        "id": "plain-colon-content",
+        "yaml": "[a:null, https://example.test/path]",
+        "value": ["a:null", "https://example.test/path"]
+      }
+    ]
+  },
+  "composer_syntax_errors": [
+    {
+      "id": "invalid-block-scalar-header-with-error-code",
+      "yaml": "value: |+0\r\n x\r\n",
+      "message": "invalid YAML syntax",
+      "line": 1,
+      "column": 10,
+      "cli": {
+        "kind": "parse_error",
+        "reason": "syntax",
+        "message": "artifact is not valid YAML",
+        "exit_code": 1
+      }
+    }
+  ],
+  "empty_null_anchors": [
+    {
+      "id": "block-map-eof",
+      "yaml": "value:",
+      "value": { "value": null },
+      "anchors": [
+        {
+          "pointer": "/value",
+          "span": {
+            "start": { "line": 1, "column": 7 },
+            "end": { "line": 1, "column": 7 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "block-map-crlf",
+      "yaml": "value:\r\n",
+      "value": { "value": null },
+      "anchors": [
+        {
+          "pointer": "/value",
+          "span": {
+            "start": { "line": 2, "column": 1 },
+            "end": { "line": 2, "column": 1 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "block-map-comment-eof",
+      "yaml": "value: # empty",
+      "value": { "value": null },
+      "anchors": [
+        {
+          "pointer": "/value",
+          "span": {
+            "start": { "line": 1, "column": 8 },
+            "end": { "line": 1, "column": 8 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "quoted-hash-key-empty-value-eof",
+      "yaml": "\"a # b\":",
+      "value": { "a # b": null },
+      "anchors": [
+        {
+          "pointer": "/a # b",
+          "span": {
+            "start": { "line": 1, "column": 9 },
+            "end": { "line": 1, "column": 9 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "block-sequence-eof",
+      "yaml": "-",
+      "value": [null],
+      "anchors": [
+        {
+          "pointer": "/0",
+          "span": {
+            "start": { "line": 1, "column": 2 },
+            "end": { "line": 1, "column": 2 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "block-sequence-crlf",
+      "yaml": "-\r\n",
+      "value": [null],
+      "anchors": [
+        {
+          "pointer": "/0",
+          "span": {
+            "start": { "line": 2, "column": 1 },
+            "end": { "line": 2, "column": 1 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "nested-block-sequence-crlf-diagnostic",
+      "yaml": "values:\r\n  -\r\n",
+      "value": { "values": [null] },
+      "anchors": [
+        {
+          "pointer": "/values/0",
+          "span": {
+            "start": { "line": 3, "column": 1 },
+            "end": { "line": 3, "column": 1 }
+          }
+        }
+      ],
+      "diagnostic": {
+        "path": "/values/0",
+        "line": 3,
+        "column": 1
+      }
+    },
+    {
+      "id": "block-sequence-comment-eof",
+      "yaml": "- # empty",
+      "value": [null],
+      "anchors": [
+        {
+          "pointer": "/0",
+          "span": {
+            "start": { "line": 1, "column": 3 },
+            "end": { "line": 1, "column": 3 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "block-sequence-comment-crlf",
+      "yaml": "- # empty\r\n",
+      "value": [null],
+      "anchors": [
+        {
+          "pointer": "/0",
+          "span": {
+            "start": { "line": 2, "column": 1 },
+            "end": { "line": 2, "column": 1 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-map-eof",
+      "yaml": "{value: }",
+      "value": { "value": null },
+      "anchors": [
+        {
+          "pointer": "/value",
+          "span": {
+            "start": { "line": 1, "column": 9 },
+            "end": { "line": 1, "column": 9 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-map-before-trailing-crlf",
+      "yaml": "{value: }\r\n",
+      "value": { "value": null },
+      "anchors": [
+        {
+          "pointer": "/value",
+          "span": {
+            "start": { "line": 1, "column": 9 },
+            "end": { "line": 1, "column": 9 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-map-crlf-before-delimiter",
+      "yaml": "{value:\r\n}\r\n",
+      "value": { "value": null },
+      "anchors": [
+        {
+          "pointer": "/value",
+          "span": {
+            "start": { "line": 2, "column": 1 },
+            "end": { "line": 2, "column": 1 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-sequence-pair-eof",
+      "yaml": "[value: ]",
+      "value": [{ "value": null }],
+      "anchors": [
+        {
+          "pointer": "/0/value",
+          "span": {
+            "start": { "line": 1, "column": 9 },
+            "end": { "line": 1, "column": 9 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-sequence-pair-crlf-before-delimiter",
+      "yaml": "[value:\r\n]\r\n",
+      "value": [{ "value": null }],
+      "anchors": [
+        {
+          "pointer": "/0/value",
+          "span": {
+            "start": { "line": 2, "column": 1 },
+            "end": { "line": 2, "column": 1 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow-map-comma-and-eof",
+      "yaml": "{a: , b: }",
+      "value": { "a": null, "b": null },
+      "anchors": [
+        {
+          "pointer": "/a",
+          "span": {
+            "start": { "line": 1, "column": 5 },
+            "end": { "line": 1, "column": 5 }
+          }
+        },
+        {
+          "pointer": "/b",
+          "span": {
+            "start": { "line": 1, "column": 10 },
+            "end": { "line": 1, "column": 10 }
+          }
+        }
+      ]
+    }
+  ]
+}

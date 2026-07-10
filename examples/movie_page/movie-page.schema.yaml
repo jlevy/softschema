@@ -17,8 +17,8 @@ $defs:
     properties:
       score:
         description: IMDb rating on a 0-10 scale.
-        maximum: 10.0
-        minimum: 0.0
+        maximum: 10
+        minimum: 0
         type: number
       total_votes:
         minimum: 0
@@ -129,5 +129,5 @@ required:
 type: object
 x-softschema:
   contract: example.movies:MoviePage/v1
-  schema_sha256: b4268cf5fbeee92c3644a8d1d6e1581d70a497069307785979786d544ac6ca82
+  schema_sha256: a8e4d444e314a34b3ad2eb48a7ec124fcacc601bdd522035283a7583f5930521
   softschema_format_version: 0.1.0

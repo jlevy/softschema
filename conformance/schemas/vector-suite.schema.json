@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:vector-suite:v0",
+  "title": "language-neutral portable-core vector suite",
+  "type": "object",
+  "required": ["format", "id", "operation", "cases"],
+  "properties": {
+    "format": { "const": "softschema-vector-suite-v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "description": { "type": "string", "minLength": 1 },
+    "operation": {
+      "enum": [
+        "canonicalize",
+        "diagnostic-summary",
+        "identity",
+        "metadata",
+        "pattern",
+        "portable-yaml",
+        "validate-structural"
+      ]
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "input", "expected"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "description": { "type": "string", "minLength": 1 },
+          "input": { "type": "object" },
+          "expected": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "operation": { "const": "canonicalize" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["schema"],
+                  "properties": {
+                    "schema": { "type": "object" },
+                    "instances": { "type": "array" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "diagnostic-summary" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["profile", "results"],
+                  "properties": {
+                    "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+                    "results": { "type": "array", "minItems": 1 }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "identity" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["kind", "value"],
+                  "properties": {
+                    "kind": { "enum": ["contract", "extension", "schema"] },
+                    "value": true
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "metadata" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["raw"],
+                  "properties": { "raw": true },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "pattern" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["pattern"],
+                  "properties": {
+                    "pattern": { "type": "string" },
+                    "value": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "portable-yaml" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "text": { "type": "string" },
+                    "limits": { "type": "object" },
+                    "include_location": { "type": "boolean" },
+                    "source_pointers": {
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": { "type": "string" }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "validate-structural" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "cases": {
+            "items": {
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "required": ["schema", "values"],
+                  "properties": {
+                    "schema": { "type": "object" },
+                    "values": true,
+                    "resources": { "type": "object" },
+                    "strict_extras": { "type": "boolean" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

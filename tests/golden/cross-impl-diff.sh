@@ -29,21 +29,27 @@ fi
 
 export NO_COLOR=1
 fail=0
+case_number=0
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/softschema-cross-impl.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
 
 # Compare stdout + exit code of one neutral invocation across both CLIs.
 diff_cmd() {
   local desc="$1"
   shift
-  local pout pcode tout tcode
-  pout=$("$PY" "$@" 2>/dev/null)
+  local pcode tcode pout tout
+  case_number=$((case_number + 1))
+  pout="$tmpdir/$case_number.python.stdout"
+  tout="$tmpdir/$case_number.typescript.stdout"
+  "$PY" "$@" >"$pout" 2>/dev/null
   pcode=$?
-  tout=$("${TS[@]}" "$@" 2>/dev/null)
+  "${TS[@]}" "$@" >"$tout" 2>/dev/null
   tcode=$?
-  if [ "$pout" = "$tout" ] && [ "$pcode" = "$tcode" ]; then
+  if cmp -s "$pout" "$tout" && [ "$pcode" = "$tcode" ]; then
     echo "ok   (exit $pcode)  $desc"
   else
     echo "DIFF (py exit $pcode, ts exit $tcode)  $desc"
-    diff <(printf '%s\n' "$pout") <(printf '%s\n' "$tout") | head -40
+    diff -u "$pout" "$tout" | head -40
     fail=1
   fi
 }
@@ -75,6 +81,10 @@ diff_cmd "generate (missing file, exit 2)"   generate tests/golden/fixtures/does
 diff_cmd "validate (metadata-only, soft stage)" validate tests/golden/fixtures/extra-field-permissive.md
 diff_cmd "validate (enforced overlay rejects extras)" validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml --status enforced
 diff_cmd "validate (document-declared enforced)" validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml
+diff_cmd "batch diagnostic JSON (mixed pass/fail)" validate "$MOVIE" "$BAD" --schema "$SCHEMA" --contract example.movies:MoviePage/v1 --envelope movie
+diff_cmd "batch diagnostic JSONL (mixed pass/fail)" validate "$MOVIE" "$BAD" --schema "$SCHEMA" --contract example.movies:MoviePage/v1 --envelope movie --format jsonl
+diff_cmd "batch diagnostic SARIF (mixed pass/fail)" validate "$MOVIE" "$BAD" --schema "$SCHEMA" --contract example.movies:MoviePage/v1 --envelope movie --format sarif
+diff_cmd "batch recursive no-match" validate tests/golden/fixtures/batch-no-match --recursive
 
 if [ "$fail" -ne 0 ]; then
   echo "cross-impl parity FAILED" >&2

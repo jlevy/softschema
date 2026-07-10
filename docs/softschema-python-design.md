@@ -29,6 +29,9 @@ core package.
 | `softschema.patterns` | `portable-regex-v1` parsing, matching, schema traversal, and private Python-engine lowering |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
+| `softschema.core.diagnostics` | Pure diagnostic-v1, JSONL, and SARIF projection |
+| `softschema.core.source_map` | Runtime-neutral source positions and JSON-path anchors |
+| `softschema.runtime.discovery` | Deterministic path/glob discovery and file identity |
 | `softschema.compile` | Pydantic-to-JSON-Schema compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
 
@@ -96,12 +99,17 @@ additive exports.
 
 ## Documentation Structure
 
-The docs have two primary entry points:
+The public docs divide by audience and change cadence:
 
 | Document | Purpose |
 | --- | --- |
-| [softschema Guide](softschema-guide.md) | Standalone conceptual reference for humans and agents |
+| [README](../README.md) | Short first-visitor orientation and verified quick start |
+| [softschema Guide](softschema-guide.md) | Adoption and operational workflows for humans and agents |
 | [softschema Spec](softschema-spec.md) | Exact language-neutral artifact format |
+| [Library API](api.md) | Paired Python and TypeScript integration |
+| [Python Design](softschema-python-design.md) / [TypeScript Design](softschema-typescript-design.md) | Runtime-specific implementation decisions |
+| [0.3 Migration](migration-0.3.md) / [Changelog](../CHANGELOG.md) | Compatibility history and release delta |
+| [Agent Compatibility](agent-compatibility.md) | Dated product discovery, targets, and evidence |
 
 The root README is a short subset of the guide.
 It should orient a new visitor, show the main example, and point to the guide and spec
@@ -112,8 +120,8 @@ Template workflow docs keep template names: [development.md](development.md),
 Package design details live in this document unless they grow large enough to justify a
 separate reference.
 
-`AGENTS.md` and `skills/softschema/SKILL.md` point agents to the guide first, then the
-spec, then the example.
+`AGENTS.md` and `skills/softschema/SKILL.md` route agents to the smallest relevant
+guide, spec, API, example, or development topic.
 This keeps the agent entry points short while making the repo usable as a transferable
 skill.
 
@@ -124,6 +132,7 @@ softschema docs --list
 softschema docs --list --json
 softschema docs guide
 softschema docs spec
+softschema docs api
 softschema docs example-artifact
 softschema skill --brief
 ```
@@ -201,6 +210,12 @@ Passing `--model` or `--schema` adds the corresponding validation layers.
 `validate --profile frontmatter-md|pure-yaml` selects the artifact shape explicitly; the
 default is `frontmatter-md`, and extensions do not select a profile.
 
+`validate` accepts multiple file operands and recursive directory discovery.
+The filesystem adapter owns portable include/exclude globs, display paths, identity
+deduplication, symlink policy, and deterministic ordering.
+The CLI projects typed core results as aggregate diagnostic-v1 JSON, self-contained
+JSONL records, or SARIF. One explicit file with JSON retains the legacy serializer.
+
 `softschema docs` and `softschema skill` are informational commands.
 They print bundled Markdown resources to stdout so agents in installed environments can
 discover the guide, spec, skill, and copyable examples without knowing the source
@@ -240,10 +255,10 @@ Library callers may pass a `ValidationLimits` override; CLI validation always us
 `DEFAULT_VALIDATION_LIMITS`.
 
 When the contract’s status is `enforced`, structural validation applies the
-strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
-schemas that declare `properties` but omit `additionalProperties` are validated as
-`additionalProperties: false`, an explicit `additionalProperties` always wins, and
-free-form mappings are unaffected.
+composition-aware overlay in `softschema.canonicalize`. It closes only object evaluation
+boundaries whose property set is safe, respects explicit `additionalProperties` and
+`unevaluatedProperties`, traverses the supported applicator surface, and returns
+`enforcement_unsupported` instead of partially tightening an unknown composition.
 The overlay is validation-time only; compiled schemas never change.
 `validate_structural` exposes the same behavior via its `strict_extras` keyword.
 
@@ -274,28 +289,30 @@ Pydantic errors) and are not part of the cross-language contract.
 
 ### Alignment with `python-cli-patterns`
 
-The CLI follows the house Python-CLI conventions: exit codes `0` success / `1`
-validation failure or drift / `2` usage error; structured data to stdout and diagnostics
-to stderr; the package version comes from `importlib.metadata` via
-`uv-dynamic-versioning`. The package installs two console scripts, `softschema` and
-`softschema-py` (the latter pairs with a future `softschema-ts` for the shared golden
-corpus).
+The CLI follows the house Python-CLI conventions: exit codes `0` success / `1` readable
+parse, validation, or drift failure / `2` invocation or input-access failure; structured
+data to stdout and diagnostics to stderr; the package version comes from
+`importlib.metadata` via `uv-dynamic-versioning`. The package installs two console
+scripts, `softschema` and `softschema-py` (the latter pairs with npm’s `softschema-ts`
+in the shared golden corpus).
 
 ### Skill Resource and Mirrors
 
 `skills/softschema/SKILL.md` is the source skill.
-`softschema skill --install` writes full generated copies to
-`.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md`.
+With no selector, `softschema skill --install` writes full generated copies to
+`.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md`. Explicit
+selectors replace that pair with native targets from `agent-targets-v1`; global scope is
+never inferred.
 
 The project intentionally uses generated copies rather than symlinks because agent
 discovery paths and package registries do not share one portable symlink model.
 Full copies are also easier for users and agents to inspect after installation.
-The mirrors carry a `DO NOT EDIT` marker and are regenerated from the source skill; the
-mirror drift test keeps both mirrors byte-identical.
-
-When adding another agent target, extend `SKILL_INSTALL_TARGETS`, regenerate from the
-source skill, and update the drift test only if the new target cannot use the same
-byte-identical payload.
+Managed copies carry a `DO NOT EDIT` marker and are regenerated from the source skill.
+Before any write, the installer resolves scope and canonical paths, locks every selected
+base, and accepts only an absent target, identical bytes, or a byte-exact known prior
+emission. Dry-run creates nothing.
+Staging, replacement, rollback, residue repair, and manifest digests make reruns
+deterministic without offering a force-clobber path.
 
 ## Warning Codes
 
@@ -314,7 +331,7 @@ if any(w.code.startswith("document-") for w in result.warnings):
 | Code | When it’s emitted |
 | --- | --- |
 | `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
-| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the `enforced` strict-extras overlay). |
+| `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the composition-aware `enforced` overlay). |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.
@@ -495,19 +512,19 @@ and `Literal[...] | None`. For every genuine union, `json_type` and `enum` remai
 types for syntax or value-domain failures, and raises `ValueError` for a non-mapping
 root.
 
-The first release ships the navigator.
+The package ships the navigator.
 `view(name)` (named query presets) and `load_urn` (repo-level URN resolution) are
 deferred until a concrete consumer earns them.
 
 Compiled schemas are validation artifacts.
 They are distinct from companion data, which stores artifact payload values outside the
 Markdown frontmatter.
-The first Python release does not implement generic companion-data loading; callers
-should keep consumed values in frontmatter unless a host project owns a clearer
-companion-data convention.
+The package does not implement generic companion-data loading; callers should keep
+consumed values in frontmatter unless a host project owns a clearer companion-data
+convention.
 
 The package depends on `frontmatter-format` for Markdown frontmatter and YAML reading.
-That dependency owns frontmatter mechanics; softschema owns the contract, envelope,
+That dependency owns frontmatter mechanics; softschema owns the metadata, envelope,
 contract, and validation semantics.
 Do not treat `frontmatter-format` as a generic softschema companion-data runtime.
 

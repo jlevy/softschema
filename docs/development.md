@@ -56,12 +56,17 @@ make build
 Direct commands:
 
 ```bash
+uv sync --all-extras --no-install-project
+uv pip install --no-build-isolation --no-deps --editable .
 uv run python devtools/lint.py --check
 uv run pytest
 uv run softschema docs --list
 uv run softschema docs --list --json
 uv run softschema skill --brief
 uv build --build-constraint build-constraints.txt --require-hashes
+uv run python conformance/run.py --check-only
+uv run python devtools/public_claims.py --check
+uv run python devtools/sync_agent_instructions.py --check
 ```
 
 The Python package is built from `packages/python/src/softschema`.
@@ -72,8 +77,9 @@ Hooks are managed by [lefthook](https://lefthook.dev) (`lefthook.yml`), installe
 `make hooks-install`. The `pre-commit` hook formats staged changes so commits stay
 clean:
 
-- **Markdown:** delegates to `make format` (pinned `flowmark-rs` and
-  `softschema generate`); the single source of truth, the same command you run locally.
+- **Markdown:** delegates to `make format` (pinned `flowmark-rs`, generated sections,
+  skill mirrors, and native agent adapters); the single source of truth, the same
+  command you run locally.
 - **Python:** `ruff format` and `ruff check --fix` on staged `*.py`.
 - **TypeScript:** `biome check --write` on staged files in `packages/typescript`.
 
@@ -100,8 +106,10 @@ one version number**; see [Publishing](publishing.md).
 
 Documentation changes should follow `common-doc-guidelines.md`
 (github.com/jlevy/practical-prose).
-Keep the README short, keep conceptual guidance in `docs/softschema-guide.md`, and keep
-exact format rules in `docs/softschema-spec.md`.
+Keep the README short, adoption guidance in `docs/softschema-guide.md`, exact behavior
+in `docs/softschema-spec.md`, public integration in `docs/api.md`, runtime internals in
+the two design references, and compatibility history in `docs/migration-0.3.md` and
+`CHANGELOG.md`.
 
 ## Continuous Integration
 
@@ -136,18 +144,18 @@ Fix on drift: re-run without `--check` and commit the regenerated section.
 
 ### Artifact Validation
 
-Run `softschema validate` against every artifact under version control whose contract is
-fully defined:
+Run one deterministic batch against every artifact under version control whose contract
+is fully defined:
 
 ```bash
-uv run softschema validate examples/movie_page/spirited-away.md \
-  --model examples.movie_page.model:MoviePage \
-  --schema examples/movie_page/movie-page.schema.yaml
+uv run softschema validate examples/movie_page/spirited-away.md
+uv run softschema validate docs/artifacts --recursive --profile frontmatter-md
 ```
 
-`validate` reads `softschema.contract`, `softschema.status`, and the single top-level
-envelope key from the artifact by default.
-`--contract`, `--status`, and `--envelope` are override flags.
+The public movie artifact declares its contract, schema, envelope, and status.
+Override flags remain available for a host-owned binding.
+A directory or multi-path request uses diagnostic-v1 and returns exit 2 for any input
+error, otherwise 1 for any readable failure, otherwise 0.
 
 ### GitHub Actions
 
@@ -165,19 +173,18 @@ jobs:
   softschema:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8
-      - run: uv sync --all-extras
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - run: |
+          uv sync --all-extras --no-install-project
+          uv pip install --no-build-isolation --no-deps --editable .
       - name: Compiled schema drift check
         run: |
           uv run softschema compile examples.movie_page.model:MoviePage \
             --contract example.movies:MoviePage/v1 \
             --out examples/movie_page/movie-page.schema.yaml --check
       - name: Validate example artifact
-        run: |
-          uv run softschema validate examples/movie_page/spirited-away.md \
-            --model examples.movie_page.model:MoviePage \
-            --schema examples/movie_page/movie-page.schema.yaml
+        run: uv run softschema validate examples/movie_page/spirited-away.md
 ```
 
 ### Pre-Commit Hook
@@ -202,10 +209,12 @@ your repository.
 ## Keeping Python and TypeScript in Parity
 
 softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
-(`softschema`, `softschema-ts`), held to **exact behavioral parity**: equivalent CLI
-inputs/outputs/flags and library APIs, the same canonical compiled JSON Schema
-(content-identical, equal `schema_sha256`), and the same engine-neutral validation
-results. Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
+(`softschema`, `softschema-ts`), held to **shared contract parity**: equivalent CLI
+inputs, outputs, and flags; the same canonical compiled JSON Schema (content-identical,
+equal `schema_sha256`); and the same engine-neutral validation results.
+Library APIs are idiomatic host-language surfaces over those shared semantics, not
+method-for-method translations (Pydantic ↔ Zod, snake_case ↔ camelCase, and
+runtime-specific adapters).
 
 When you change any behavior, follow this loop so the two never drift:
 
@@ -228,8 +237,10 @@ The parity invariants, and where each is enforced:
 | Engine-neutral structural errors | shared message templates (`errors`), the golden corpus |
 | Byte-identical neutral CLI output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
 | Equal flag/command surface | per-impl and neutral golden scenarios |
-| Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
-| Skill mirrors never go stale | the mirror drift test (`tests/test_skill_mirror_drift.py`) |
+| Bundled docs/skill resolve from the package | package artifact smokes and doc-topic tests |
+| Skill mirrors never go stale | `packages/python/tests/test_skill_mirror_drift.py` and bootstrap tests |
+| Public claims and native instruction adapters stay current | `devtools/public_claims.py`, `devtools/sync_agent_instructions.py` |
+| Paired public Pydantic/Zod model remains equal | `packages/typescript/test/movie-page-example.test.ts` |
 
 Semantic invariants that JSON Schema cannot express (Pydantic validators ↔ Zod
 refinements) are implementation-specific by design and tested per-language, not in the

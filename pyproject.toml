@@ -2,7 +2,7 @@
 name = "softschema"
 description = "Soft schema conventions and validation tools for Markdown/YAML artifacts"
 authors = [{ name = "Joshua Levy" }]
-readme = "README.md"
+readme = "packages/python/README.md"
 license = "MIT"
 requires-python = ">=3.11,<4.0"
 dynamic = ["version"]
@@ -84,21 +84,28 @@ packages = ["packages/python/src/softschema"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "README.md" = "softschema/resources/README.md"
+"CHANGELOG.md" = "softschema/resources/CHANGELOG.md"
+"SECURITY.md" = "softschema/resources/SECURITY.md"
 "release-metadata.json" = "softschema/resources/release-metadata.json"
 "build-metadata.json" = "softschema/resources/build-metadata.json"
 # Bundle only the public docs. Internal planning under docs/project/ (active
 # specs, reviews, research) stays out of the published wheel.
+"docs/agent-compatibility.md" = "softschema/resources/docs/agent-compatibility.md"
+"docs/api.md" = "softschema/resources/docs/api.md"
 "docs/softschema-guide.md" = "softschema/resources/docs/softschema-guide.md"
 "docs/softschema-spec.md" = "softschema/resources/docs/softschema-spec.md"
 "docs/softschema-python-design.md" = "softschema/resources/docs/softschema-python-design.md"
 "docs/softschema-typescript-design.md" = "softschema/resources/docs/softschema-typescript-design.md"
 "docs/installation.md" = "softschema/resources/docs/installation.md"
 "docs/development.md" = "softschema/resources/docs/development.md"
+"docs/migration-0.3.md" = "softschema/resources/docs/migration-0.3.md"
 "examples/movie_page/README.md" = "softschema/resources/examples/movie_page/README.md"
 "examples/movie_page/spirited-away.md" = "softschema/resources/examples/movie_page/spirited-away.md"
 "examples/movie_page/spirited-away.yaml" = "softschema/resources/examples/movie_page/spirited-away.yaml"
 "examples/movie_page/model.py" = "softschema/resources/examples/movie_page/model.py"
+"examples/movie_page/model.ts" = "softschema/resources/examples/movie_page/model.ts"
 "examples/movie_page/host_integration.py" = "softschema/resources/examples/movie_page/host_integration.py"
+"examples/movie_page/host_integration.ts" = "softschema/resources/examples/movie_page/host_integration.ts"
 "examples/movie_page/movie-page.schema.yaml" = "softschema/resources/examples/movie_page/movie-page.schema.yaml"
 "skills" = "softschema/resources/skills"
 
@@ -106,7 +113,9 @@ packages = ["packages/python/src/softschema"]
 include = [
     "README.md",
     "AGENTS.md",
+    "CHANGELOG.md",
     "LICENSE",
+    "SECURITY.md",
     "build-constraints.txt",
     "build-metadata.json",
     "build-requirements.in",

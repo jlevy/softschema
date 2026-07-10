@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:metadata:v0",
-  "title": "Draft softschema artifact metadata negotiation",
+  "title": "softschema artifact metadata negotiation",
   "oneOf": [
     { "$ref": "urn:softschema:draft:conformance:metadata-legacy:v0" },
     { "$ref": "urn:softschema:draft:conformance:metadata-v1:v0" }

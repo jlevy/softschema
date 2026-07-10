@@ -1,0 +1,106 @@
+{
+  "format": "canonical-json-adversarial-v1",
+  "cases": [
+    {
+      "id": "unicode-integer-and-pointer-key-order",
+      "value": {
+        "2": "two",
+        "10": "ten",
+        "01": "leading-zero",
+        "": "bmp-private",
+        "𐀀": "astral-low",
+        "😀": "astral-face",
+        "é": "precomposed",
+        "é": "decomposed",
+        "": "empty",
+        "/": "slash",
+        "~": "tilde",
+        "a/b": "pointer-slash",
+        "a~b": "pointer-tilde",
+        "\u0000key": "nul-key",
+        "nested": {
+          "2": 2,
+          "10": 10,
+          "😀a": 3,
+          "😀": 2,
+          "": 1
+        }
+      },
+      "compact": "{\"\":\"empty\",\"\\u0000key\":\"nul-key\",\"/\":\"slash\",\"01\":\"leading-zero\",\"10\":\"ten\",\"2\":\"two\",\"a/b\":\"pointer-slash\",\"a~b\":\"pointer-tilde\",\"é\":\"decomposed\",\"nested\":{\"10\":10,\"2\":2,\"\":1,\"😀\":2,\"😀a\":3},\"~\":\"tilde\",\"é\":\"precomposed\",\"\":\"bmp-private\",\"𐀀\":\"astral-low\",\"😀\":\"astral-face\"}",
+      "pretty": "{\n  \"\": \"empty\",\n  \"\\u0000key\": \"nul-key\",\n  \"/\": \"slash\",\n  \"01\": \"leading-zero\",\n  \"10\": \"ten\",\n  \"2\": \"two\",\n  \"a/b\": \"pointer-slash\",\n  \"a~b\": \"pointer-tilde\",\n  \"é\": \"decomposed\",\n  \"nested\": {\n    \"10\": 10,\n    \"2\": 2,\n    \"\": 1,\n    \"😀\": 2,\n    \"😀a\": 3\n  },\n  \"~\": \"tilde\",\n  \"é\": \"precomposed\",\n  \"\": \"bmp-private\",\n  \"𐀀\": \"astral-low\",\n  \"😀\": \"astral-face\"\n}",
+      "sha256": "3b35d86cb4706cf4df70f8b7c11c3cc3651dacde49d99e5751f46d4dd014a30b"
+    },
+    {
+      "id": "control-and-literal-unicode-strings",
+      "value": {
+        "controls": "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f",
+        "escapes": "quote=\" backslash=\\ slash=/ backspace=\b formfeed=\f newline=\n return=\r tab=\t",
+        "unicode": "precomposed=é decomposed=é separators=\u2028\u2029 snowman=☃ face=😀"
+      },
+      "compact": "{\"controls\":\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\",\"escapes\":\"quote=\\\" backslash=\\\\ slash=/ backspace=\\b formfeed=\\f newline=\\n return=\\r tab=\\t\",\"unicode\":\"precomposed=é decomposed=é separators=\u2028\u2029 snowman=☃ face=😀\"}",
+      "pretty": "{\n  \"controls\": \"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\",\n  \"escapes\": \"quote=\\\" backslash=\\\\ slash=/ backspace=\\b formfeed=\\f newline=\\n return=\\r tab=\\t\",\n  \"unicode\": \"precomposed=é decomposed=é separators=\u2028\u2029 snowman=☃ face=😀\"\n}",
+      "sha256": "aa160741b2e7feaa8fe2443f9fce4b5bccec769f8e33d48643aab92b266a9562"
+    },
+    {
+      "id": "normalized-float-and-exponent-boundaries",
+      "value": [
+        -0.0,
+        0.0,
+        1.0,
+        -1.0,
+        9007199254740991,
+        -9007199254740991,
+        5e-324,
+        -5e-324,
+        1e-323,
+        2.2250738585072014e-308,
+        1e-07,
+        -1e-07,
+        1e-06,
+        1e-05,
+        9.999999999999999e-05,
+        0.0001,
+        0.00010000000000000002,
+        0.30000000000000004,
+        0.9999999999999999,
+        1.0000000000000002,
+        1.2345678901234567,
+        4503599627370495.5
+      ],
+      "compact": "[0,0,1,-1,9007199254740991,-9007199254740991,5e-324,-5e-324,1e-323,2.2250738585072014e-308,1e-07,-1e-07,1e-06,1e-05,9.999999999999999e-05,0.0001,0.00010000000000000002,0.30000000000000004,0.9999999999999999,1.0000000000000002,1.2345678901234567,4503599627370495.5]",
+      "pretty": "[\n  0,\n  0,\n  1,\n  -1,\n  9007199254740991,\n  -9007199254740991,\n  5e-324,\n  -5e-324,\n  1e-323,\n  2.2250738585072014e-308,\n  1e-07,\n  -1e-07,\n  1e-06,\n  1e-05,\n  9.999999999999999e-05,\n  0.0001,\n  0.00010000000000000002,\n  0.30000000000000004,\n  0.9999999999999999,\n  1.0000000000000002,\n  1.2345678901234567,\n  4503599627370495.5\n]",
+      "sha256": "09a76bc5473bfe7b72d6bfa94854d8414234a8b155b90299ea29b9fecb527960"
+    },
+    {
+      "id": "empty-and-nested-containers",
+      "value": {
+        "array": [[], {}, null, false, true, "", 0],
+        "object": {
+          "": {},
+          "x": []
+        }
+      },
+      "compact": "{\"array\":[[],{},null,false,true,\"\",0],\"object\":{\"\":{},\"x\":[]}}",
+      "pretty": "{\n  \"array\": [\n    [],\n    {},\n    null,\n    false,\n    true,\n    \"\",\n    0\n  ],\n  \"object\": {\n    \"\": {},\n    \"x\": []\n  }\n}",
+      "sha256": "2764e491254b349b1a25b78af3bf2507facbb89ae76a812383639bbabf6adabb"
+    },
+    {
+      "id": "escaped-pointer-shaped-nesting",
+      "value": {
+        "a/b": {
+          "~key": [
+            {
+              "~0": "tilde",
+              "~1": "slash",
+              "/": "root"
+            }
+          ]
+        },
+        "a~b": "peer"
+      },
+      "compact": "{\"a/b\":{\"~key\":[{\"/\":\"root\",\"~0\":\"tilde\",\"~1\":\"slash\"}]},\"a~b\":\"peer\"}",
+      "pretty": "{\n  \"a/b\": {\n    \"~key\": [\n      {\n        \"/\": \"root\",\n        \"~0\": \"tilde\",\n        \"~1\": \"slash\"\n      }\n    ]\n  },\n  \"a~b\": \"peer\"\n}",
+      "sha256": "45a047106fd2a006e769ba2078aaa949ab8eeafb6e16c9c84e68dfda1c781e67"
+    }
+  ]
+}

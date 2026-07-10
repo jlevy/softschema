@@ -1,47 +1,361 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:validation-result-diagnostic-v1:v0",
-  "title": "Draft diagnostic-v1 aggregate validation result",
-  "type": "object",
-  "required": ["format", "ok", "results", "summary"],
-  "properties": {
-    "format": { "const": "diagnostic-v1" },
-    "ok": { "type": "boolean" },
-    "results": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["source", "input", "validation"],
-        "properties": {
-          "source": { "type": "string", "minLength": 1 },
-          "input": {
-            "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0"
-          },
-          "validation": {
-            "oneOf": [
-              { "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0" },
-              { "type": "null" }
-            ]
+  "title": "diagnostic-v1 aggregate validation result",
+  "$defs": {
+    "jsonPointer": {
+      "type": "string",
+      "pattern": "^(?:/(?:[^~/]|~[01])*)*$"
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "max_resource_bytes",
+        "max_bundle_bytes",
+        "max_resources",
+        "max_nodes_per_resource",
+        "max_depth",
+        "max_scalar_codepoints"
+      ],
+      "properties": {
+        "max_resource_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_bundle_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_resources": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_nodes_per_resource": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_scalar_codepoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["category", "rule_id", "severity", "message", "source"],
+      "properties": {
+        "category": {
+          "enum": [
+            "input",
+            "parse",
+            "binding",
+            "schema",
+            "structural",
+            "semantic",
+            "warning"
+          ]
+        },
+        "rule_id": {
+          "type": "string",
+          "pattern": "^softschema\\.(?:input_error|parse_error|schema_invalid|schema_violation|artifact|semantic|warning)\\.[a-z0-9][a-z0-9_.-]*$"
+        },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "message": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/jsonPointer" },
+        "schema_source": { "type": "string", "minLength": 1 },
+        "schema_path": { "$ref": "#/$defs/jsonPointer" },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      },
+      "dependentRequired": { "column": ["line"] },
+      "allOf": [
+        {
+          "if": { "properties": { "category": { "const": "input" } }, "required": ["category"] },
+          "then": { "properties": { "rule_id": { "pattern": "^softschema\\.input_error\\." } } }
+        },
+        {
+          "if": { "properties": { "category": { "const": "parse" } }, "required": ["category"] },
+          "then": { "properties": { "rule_id": { "pattern": "^softschema\\.parse_error\\." } } }
+        },
+        {
+          "if": { "properties": { "category": { "const": "binding" } }, "required": ["category"] },
+          "then": { "properties": { "rule_id": { "pattern": "^softschema\\.artifact\\." } } }
+        },
+        {
+          "if": { "properties": { "category": { "const": "schema" } }, "required": ["category"] },
+          "then": { "properties": { "rule_id": { "pattern": "^softschema\\.schema_invalid\\." } } }
+        },
+        {
+          "if": { "properties": { "category": { "const": "structural" } }, "required": ["category"] },
+          "then": {
+            "properties": {
+              "rule_id": {
+                "pattern": "^softschema\\.(?:schema_violation|artifact)\\."
+              }
+            }
           }
         },
-        "additionalProperties": false
-      }
+        {
+          "if": { "properties": { "category": { "const": "semantic" } }, "required": ["category"] },
+          "then": { "properties": { "rule_id": { "pattern": "^softschema\\.semantic\\." } } }
+        },
+        {
+          "if": { "properties": { "category": { "const": "warning" } }, "required": ["category"] },
+          "then": { "properties": { "rule_id": { "pattern": "^softschema\\.warning\\." } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "validation": {
+      "type": "object",
+      "required": [
+        "contract",
+        "contract_id",
+        "document_metadata",
+        "semantic",
+        "status",
+        "structural",
+        "warnings"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/contract"
+        },
+        "contract_id": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/contract_id"
+        },
+        "document_metadata": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/document_metadata"
+        },
+        "semantic": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/semantic"
+        },
+        "status": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/status"
+        },
+        "structural": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/structural"
+        },
+        "warnings": {
+          "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0#/properties/warnings"
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["outcome", "input", "validation", "diagnostics"],
+      "properties": {
+        "outcome": { "enum": ["passed", "validation_failed", "input_failed"] },
+        "input": {
+          "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0"
+        },
+        "validation": {
+          "oneOf": [{ "$ref": "#/$defs/validation" }, { "type": "null" }]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diagnostic" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "const": "passed" } }, "required": ["outcome"] },
+          "then": {
+            "properties": {
+              "input": {
+                "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0#/$defs/success"
+              },
+              "validation": {
+                "allOf": [
+                  { "$ref": "#/$defs/validation" },
+                  {
+                    "properties": {
+                      "structural": {
+                        "properties": { "ok": { "const": true } },
+                        "required": ["ok"]
+                      },
+                      "semantic": {
+                        "properties": { "ok": { "const": true } },
+                        "required": ["ok"]
+                      }
+                    }
+                  }
+                ]
+              },
+              "diagnostics": {
+                "not": { "contains": { "properties": { "severity": { "const": "error" } } } }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "input_failed" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0#/$defs/inputError"
+              },
+              "validation": { "type": "null" },
+              "diagnostics": {
+                "contains": {
+                  "properties": {
+                    "category": { "const": "input" },
+                    "severity": { "const": "error" }
+                  },
+                  "required": ["category", "severity"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "validation_failed" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "diagnostics": {
+                "contains": {
+                  "properties": { "severity": { "const": "error" } },
+                  "required": ["severity"]
+                }
+              }
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "input": {
+                    "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0#/$defs/parseError"
+                  },
+                  "validation": { "type": "null" }
+                }
+              },
+              {
+                "properties": {
+                  "input": {
+                    "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0#/$defs/success"
+                  },
+                  "validation": { "type": "null" },
+                  "diagnostics": {
+                    "contains": {
+                      "properties": { "category": { "const": "binding" } },
+                      "required": ["category"]
+                    }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "input": {
+                    "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0#/$defs/success"
+                  },
+                  "validation": {
+                    "allOf": [
+                      { "$ref": "#/$defs/validation" },
+                      {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "structural": {
+                                "properties": { "ok": { "const": false } },
+                                "required": ["ok"]
+                              }
+                            }
+                          },
+                          {
+                            "properties": {
+                              "semantic": {
+                                "properties": { "ok": { "const": false } },
+                                "required": ["ok"]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
     },
     "summary": {
       "type": "object",
-      "required": ["total", "passed", "validation_failed", "input_failed"],
+      "required": ["total", "passed", "validation_failed", "input_failed", "exit_code"],
       "properties": {
         "total": { "type": "integer", "minimum": 0 },
         "passed": { "type": "integer", "minimum": 0 },
         "validation_failed": { "type": "integer", "minimum": 0 },
-        "input_failed": { "type": "integer", "minimum": 0 }
+        "input_failed": { "type": "integer", "minimum": 0 },
+        "exit_code": { "enum": [0, 1, 2] }
       },
       "additionalProperties": false
     },
-    "limits": {
+    "jsonlRecord": {
       "type": "object",
-      "additionalProperties": { "type": "integer", "minimum": 0 }
+      "required": ["format", "profile", "limits", "result"],
+      "properties": {
+        "format": { "const": "diagnostic-v1" },
+        "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+        "limits": { "$ref": "#/$defs/limits" },
+        "result": { "$ref": "#/$defs/result" }
+      },
+      "additionalProperties": false
     }
   },
+  "type": "object",
+  "required": ["format", "profile", "limits", "ok", "results", "summary"],
+  "properties": {
+    "format": { "const": "diagnostic-v1" },
+    "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+    "limits": { "$ref": "#/$defs/limits" },
+    "ok": { "type": "boolean" },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/result" }
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "ok": { "const": true },
+        "summary": {
+          "properties": { "exit_code": { "const": 0 } },
+          "required": ["exit_code"]
+        }
+      }
+    },
+    {
+      "properties": {
+        "ok": { "const": false },
+        "summary": {
+          "properties": { "exit_code": { "enum": [1, 2] } },
+          "required": ["exit_code"]
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

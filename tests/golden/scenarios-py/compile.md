@@ -21,7 +21,7 @@ $ softschema compile examples.movie_page.model:MoviePage --contract example.movi
   "drift": false,
   "drift_diff": null,
   "out_path": "examples/movie_page/movie-page.schema.yaml",
-  "schema_sha256": "b4268cf5fbeee92c3644a8d1d6e1581d70a497069307785979786d544ac6ca82",
+  "schema_sha256": "a8e4d444e314a34b3ad2eb48a7ec124fcacc601bdd522035283a7583f5930521",
   "schema_yaml": [..]
 }
 ? 0
@@ -38,7 +38,7 @@ $ softschema compile examples.movie_page.model:MoviePage --contract wrong:Movie/
   "drift": true,
   "drift_diff": "committed schema at examples/movie_page/movie-page.schema.yaml differs from compile output",
   "out_path": "examples/movie_page/movie-page.schema.yaml",
-  "schema_sha256": "134b0ef3a22cb6d102cd69a68ee3cae0a7e42cdf4f8b4fbac3c17258fe4b0c54",
+  "schema_sha256": "a903e54b6fd7afe7de93e47a701e534fb862a7d46bc779f276e675b7071b4df9",
   "schema_yaml": [..]
 }
 ? 1

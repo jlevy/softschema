@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:artifact-input-result-v1:v0",
-  "title": "Draft discriminated artifact input result",
+  "title": "discriminated artifact input result",
   "$defs": {
     "location": {
       "type": "object",
@@ -65,7 +65,15 @@
       "required": ["kind", "reason", "message", "source"],
       "properties": {
         "kind": { "const": "input_error" },
-        "reason": { "enum": ["not_found", "unreadable", "directory_requires_recursive"] },
+        "reason": {
+          "enum": [
+            "not_found",
+            "unreadable",
+            "directory_requires_recursive",
+            "no_matches",
+            "discovery_limit"
+          ]
+        },
         "message": { "type": "string", "minLength": 1 },
         "source": { "type": "string", "minLength": 1 }
       },
@@ -81,6 +89,14 @@
         {
           "if": { "properties": { "reason": { "const": "directory_requires_recursive" } }, "required": ["reason"] },
           "then": { "properties": { "message": { "const": "artifact directory requires --recursive" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "no_matches" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact directory contains no matching files" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "discovery_limit" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact discovery limit exceeded" } } }
         }
       ],
       "additionalProperties": false

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:doctor-result:v0",
-  "title": "Draft softschema discovery doctor result",
+  "title": "softschema discovery doctor result",
   "type": "object",
   "required": ["protocol_version", "package", "runtime", "capabilities"],
   "properties": {

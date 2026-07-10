@@ -174,12 +174,24 @@ test("frontmatter limit locations include the document offset", () => {
 
 test("artifact error normalizer covers unreadable and invalid UTF-8", () => {
   const source = tempPath("artifact.md");
-  expect(artifactErrorRecord(source, Object.assign(new Error("platform prose"), { code: "EACCES" }))).toEqual({
+  const accessError = Object.assign(new Error("platform prose"), {
+    code: "EACCES",
+    errno: -13,
+    path: source,
+    syscall: "open",
+  });
+  expect(artifactErrorRecord(source, accessError)).toEqual({
     kind: "input_error",
     reason: "unreadable",
     message: "artifact path cannot be read",
     source,
   });
+  expect(
+    artifactErrorRecord(
+      source,
+      Object.assign(new Error("invalid YAML"), { code: "UNEXPECTED_TOKEN" }),
+    ),
+  ).toBeNull();
 
   writeFileSync(source, Uint8Array.from([0x2d, 0x2d, 0x2d, 0x0a, 0xff, 0x0a]));
   const result = validateArtifact(source, contract("frontmatter-md"));

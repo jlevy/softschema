@@ -5,6 +5,7 @@
  * record shape. Output must be byte-identical across implementations.
  */
 import type { ErrorObject } from "ajv";
+import { compareUnicodeCodePoints } from "./core/canonical-json.js";
 import type { JsonValue } from "./core/value-domain.js";
 
 export const SCHEMA_VIOLATION_KIND = "schema_violation";
@@ -74,6 +75,13 @@ export interface SchemaViolationErrorRecord {
  * @deprecated Use `SchemaViolationErrorRecord`. Kept as the v0.2 public type name.
  */
 export type StructuralErrorRecord = SchemaViolationErrorRecord;
+
+const offendingPropertyKeys = new WeakMap<object, string>();
+
+/** Return the non-wire offending-property hint retained from structured engine data. */
+export function structuralErrorOffendingProperty(record: object): string | undefined {
+  return offendingPropertyKeys.get(record);
+}
 
 /**
  * Format a number in softschema's canonical form (matching Python's `repr()`).
@@ -240,12 +248,27 @@ function decodePointerToken(token: string): string {
  */
 export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
   const path = error.instancePath.split("/").slice(1).map(decodePointerToken);
-  return structuralErrorRecord({
+  const record = structuralErrorRecord({
     path,
     validator: error.keyword,
     validatorValue: error.schema,
     value: error.data,
   });
+  const offendingProperty = ajvOffendingProperty(error);
+  if (offendingProperty !== undefined) offendingPropertyKeys.set(record, offendingProperty);
+  return record;
+}
+
+function ajvOffendingProperty(error: ErrorObject): string | undefined {
+  const field =
+    error.keyword === "additionalProperties"
+      ? "additionalProperty"
+      : error.keyword === "unevaluatedProperties"
+        ? "unevaluatedProperty"
+        : null;
+  if (field === null) return undefined;
+  const params = error.params as Record<string, unknown>;
+  return typeof params[field] === "string" ? params[field] : undefined;
 }
 
 /**
@@ -260,7 +283,7 @@ export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
 export function collapseAdditionalProperties(
   records: StructuralErrorRecord[],
 ): StructuralErrorRecord[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, StructuralErrorRecord>();
   return records.filter((record) => {
     if (
       record.validator !== "additionalProperties" &&
@@ -269,8 +292,20 @@ export function collapseAdditionalProperties(
       return true;
     }
     const key = JSON.stringify([record.path, record.validator]);
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const retained = seen.get(key);
+    if (retained !== undefined) {
+      const retainedProperty = offendingPropertyKeys.get(retained);
+      const candidateProperty = offendingPropertyKeys.get(record);
+      if (
+        candidateProperty !== undefined &&
+        (retainedProperty === undefined ||
+          compareUnicodeCodePoints(candidateProperty, retainedProperty) < 0)
+      ) {
+        offendingPropertyKeys.set(retained, candidateProperty);
+      }
+      return false;
+    }
+    seen.set(key, record);
     return true;
   });
 }

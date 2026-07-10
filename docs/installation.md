@@ -1,86 +1,132 @@
 # Installation
 
-softschema ships two interchangeable implementations with the same CLI and library
-surface: Python/Pydantic on PyPI and TypeScript/Zod on npm.
-Pick the runtime you already have; both validate against the same canonical schema.
+softschema ships a Python/Pydantic package on PyPI and a TypeScript/Zod package on npm.
+Choose the runtime already present in the host project.
+Both implement the same artifact, CLI, compiled-schema, result, and conformance
+contracts.
 
-## Two Ways to Consume It
+## Choose Persistent or Zero-Install Use
 
-|  | Pin as a dependency | Zero-install (`uvx` / `npx`) |
+|  | Project dependency | Exact-pinned zero-install runner |
 | --- | --- | --- |
-| **For** | Projects, CI gates, library use | One-off checks, agent bootstrap |
-| **Reproducible** | Yes—the version is locked in `uv.lock` / `package-lock.json` | Only if you pin the runner (`uvx --from 'softschema==0.2.2' softschema`) |
-| **Fast / offline** | Yes—the binary is already on disk | Cold-start fetch; needs the network |
-| **Library import** | Yes—the only way | No |
+| Best for | CI, repeated validation, library imports | One-off checks and agent bootstrap |
+| Reproducibility | Lockfile plus exact dependency constraint | Exact package pin in every invocation |
+| Offline use | Available after the project install | Requires a prior cache or network fetch |
+| Library import | Yes | No stable project dependency |
 
-The rule of thumb: **if softschema runs more than once, or in CI, or you import it—pin
-it as a dependency.
-For a quick one-off or an agent bootstrapping with nothing installed,
-use a zero-install runner**, pinned where the result must be repeatable.
+If softschema runs repeatedly, is imported, or gates CI, add it to the project and
+commit the lockfile.
+Use zero-install for a temporary check or an agent in an ephemeral environment.
 
-## Pin as a Dependency
+## Pin a Project Dependency
 
-Python (a dev dependency, or a persistent user tool):
+<!-- BEGIN SOFTSCHEMA CLAIM installation-python-pin -->
+```bash
+# Python/Pydantic
+uv add --dev softschema==0.2.2
+uv run softschema --help
+```
+<!-- END SOFTSCHEMA CLAIM installation-python-pin -->
+
+<!-- BEGIN SOFTSCHEMA CLAIM installation-npm-pin -->
+```bash
+# Node/Zod
+npm install --save-dev --save-exact softschema@0.2.2
+npx softschema --help
+```
+<!-- END SOFTSCHEMA CLAIM installation-npm-pin -->
+
+`bun add --dev --exact softschema@<pin>` and an exact pnpm dependency are equivalent
+when those are the project’s package managers.
+Do not resolve a second copy through `npx` after pinning; the unqualified
+`npx softschema` command uses the local dependency.
+
+## Run Without Adding a Dependency
 
 ```bash
-uv add --dev softschema==0.2.2      # project dev dependency; run via `uv run softschema`
-uv tool install softschema          # persistent CLI on your PATH
+# Python
+uvx --from 'softschema==0.2.2' softschema --help
+
+# Node
+npx --yes softschema@0.2.2 --help
+
+# Bun, including direct trusted .ts model loading
+bunx --bun softschema@0.2.2 --help
 ```
 
-Node (>= 22.12):
+The exact ecosystem pins come from `release-metadata.json`. Development checkouts keep
+the last resolvable published pair; they never generate a fallback to an unpublished VCS
+or prerelease version.
+Update the pin and lockfile deliberately after reviewing a new release.
+
+## Work From This Source Checkout
+
+Repository development uses locked third-party dependencies without letting the build
+backend resolve a second environment:
 
 ```bash
-npm install -D softschema@0.2.2     # or: pnpm add -D / bun add -d
-npx softschema --help               # resolves the local pinned copy
+uv sync --all-extras --no-install-project
+uv pip install --no-build-isolation --no-deps --editable .
+
+cd packages/typescript
+bun install --frozen-lockfile
 ```
 
-## Zero-Install
+These commands install development source, not a published security update.
+The root `release-metadata.json` distinguishes development, candidate, and released
+bytes.
+
+## Set Up a Coding Agent
+
+From a non-home Git repository, first inspect capabilities and preview every write:
 
 ```bash
-uvx --from 'softschema==0.2.2' softschema --help  # Python, ephemeral
-npx --yes softschema@0.2.2 --help                 # Node, ephemeral
+softschema doctor --json
+softschema skill --install --project --dry-run --text
+softschema skill --install --project --text
 ```
 
-The exact pins come from the repository’s `release-metadata.json`. Update them
-deliberately when adopting a newer release.
+With no selector, project mode writes the portable `.agents/skills` target and the
+Claude `.claude/skills` mirror.
+Explicit `--agent NAME` selectors replace that pair; `--all-agents` selects the nine
+native targets in [Coding-Agent Compatibility](agent-compatibility.md).
 
-## Quick Start for Agents
-
-To set up softschema in a repository with an agent, tell the agent:
-
-> Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or
-> `npx --yes softschema@0.2.2 --help` (Node), then follow the instructions to set up
-> softschema for this repo as a skill.
-
-The help output points the agent to `skill --install`, which writes
-`.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md` from the
-repository root.
-
-## Installing uv
-
-softschema’s Python implementation is easiest to run with
-[uv](https://docs.astral.sh/uv/). Install it on macOS or Linux:
+Global installation is never inferred.
+It requires `--global` plus explicit selectors or `--all-agents`, resolves each actual
+personal base, and applies containment, ownership, and lock checks independently:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+softschema skill --install --global --agent codex --dry-run --text
 ```
 
-Or with Homebrew:
+Project mode outside Git requires an explicit destination and acknowledgment:
 
 ```bash
-brew install uv
+softschema skill --install --project --no-repo-check --dir /absolute/project --dry-run --text
 ```
 
-## Pins and Release-age Policies
+Project installation always refuses the filesystem root and actual home directory.
+The installer never overwrites unmanaged, locally modified, unknown, or newer-format
+content.
 
-The bootstrap commands use immutable ecosystem-specific pins.
-A consumer may also use npm’s `--before` / `NPM_CONFIG_BEFORE`, pnpm’s
-`minimumReleaseAge`, or uv’s `--exclude-newer` as a separate defense-in-depth policy.
-Such a policy is controlled by the consumer and cannot make an unpinned command
-reproducible or safe on their behalf.
-Review and update the pin explicitly when adopting a newer version.
-See [supply-chain-hardening](https://github.com/jlevy/supply-chain-hardening) for the
-rationale.
+## Install uv
+
+The Python commands require
+[uv](https://docs.astral.sh/uv/getting-started/installation/). Use Astral’s documented
+installer or a trusted system package manager, then verify the binary and version before
+running a project command.
+
+## Supply-Chain Policy
+
+An exact pin makes the selected package deterministic; a release-age policy is a
+separate defense. Consumers may apply uv `exclude-newer`, npm `--before`, or pnpm
+`minimumReleaseAge` according to their own threat model.
+An age policy does not make an unpinned runner reproducible, and a package cannot
+guarantee the consumer’s ambient configuration.
+
+See [Supply-Chain Security](../SUPPLY-CHAIN-SECURITY.md) for this repository’s build and
+dependency controls and [Security](../SECURITY.md) before processing hostile input with
+the published 0.2.2 release.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

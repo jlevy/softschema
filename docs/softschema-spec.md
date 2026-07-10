@@ -72,10 +72,26 @@ movie:                               # the envelope key
 
 A conforming artifact uses one of two profiles:
 
+<!-- BEGIN SOFTSCHEMA CLAIM supported-profiles -->
+
 | Profile | Description |
 | --- | --- |
 | `frontmatter-md` | Markdown file with YAML frontmatter. The frontmatter carries the payload; the body is reader-facing prose. |
 | `pure-yaml` | YAML file with no Markdown body. The whole document is the payload. |
+
+<!-- END SOFTSCHEMA CLAIM supported-profiles -->
+
+The language-neutral defaults are:
+
+<!-- BEGIN SOFTSCHEMA CLAIM artifact-defaults -->
+
+| Setting | Default |
+| --- | --- |
+| Artifact profile | `frontmatter-md` |
+| Validation status | `soft` |
+| Newly authored artifact format | `1` |
+
+<!-- END SOFTSCHEMA CLAIM artifact-defaults -->
 
 The `frontmatter-md` profile is the primary shape, and the rest of this spec is written
 for it; “frontmatter” there means “the document root” for a `pure-yaml` artifact.
@@ -118,6 +134,19 @@ Plain date-looking and timestamp-looking scalars remain strings.
 Numeric scalars are interpreted from their exact spelling before binary64 conversion.
 Every numeric spelling of negative zero normalizes to `0`.
 
+Literal U+0085 (NEXT LINE), U+2028 (LINE SEPARATOR), and U+2029 (PARAGRAPH SEPARATOR)
+are not portable YAML source characters and must be rejected before parsing, with the
+character’s source position.
+Their escaped forms in double-quoted YAML, such as `\u0085`, remain valid and
+materialize the corresponding Unicode string value.
+Portable source coordinates recognize only LF, CR, and CRLF as line breaks.
+
+An unquoted plain scalar ending in `:` immediately before a flow delimiter (`,`, `]`, or
+`}`) is not portable because common YAML 1.2 parsers disagree about whether it is a
+scalar or an empty mapping value.
+Forms such as `{a:}` and `[a:]` are syntax errors.
+Separate an intended empty value (`{a: }` or `[a: ]`) or quote the key.
+
 The default limits are:
 
 - 8 MiB of encoded input per artifact or schema resource
@@ -127,7 +156,8 @@ The default limits are:
 - a maximum representation depth of 128
 - 1 MiB of Unicode code points per scalar
 
-Byte limits apply before parsing.
+File-backed inputs are read only through the limit plus one byte, so byte limits apply
+before whole-file allocation, decoding, or parsing.
 Node, depth, scalar, alias, and merge checks apply before ordinary object construction.
 Already-materialized library resources are sized as compact, key-sorted UTF-8 JSON after
 normalization. Trusted library callers may set explicit lower or higher limits through
@@ -153,6 +183,8 @@ It never exposes YAML-parser or operating-system prose in the result:
 | `input_error/not_found` | `artifact path does not exist` | 2 |
 | `input_error/unreadable` | `artifact path cannot be read` | 2 |
 | `input_error/directory_requires_recursive` | `artifact directory requires --recursive` | 2 |
+| `input_error/no_matches` | `artifact directory contains no matching files` | 2 |
+| `input_error/discovery_limit` | `artifact discovery limit exceeded` | 2 |
 
 Every record carries `source`. A value-domain record also carries an RFC 6901 `path`.
 The typed parsing boundary retains line and column information when the YAML parser
@@ -164,7 +196,79 @@ defaults to `frontmatter-md`. It does not infer a profile from a filename extens
 `.yaml` or `.yml` artifact still uses `frontmatter-md` unless the invocation includes
 `--profile pure-yaml`.
 
+## Batch Discovery and Diagnostic Results
+
+`validate` accepts one or more path operands.
+A directory requires `--recursive`. One explicit profile applies to the complete
+invocation: recursive `frontmatter-md` discovers `.md` and `.markdown`, while
+`pure-yaml` discovers `.yaml` and `.yml`. Repeatable `--include` and `--exclude`
+patterns refine recursive discovery and must not infer a profile.
+
+Portable globs match the normalized `/`-separated path relative to each directory
+operand, case-sensitively.
+They support `*`, `?`, character classes, and `**` only as a complete path segment.
+Excludes win; hidden entries are ordinary candidates.
+Empty, absolute, drive-qualified, backslash-containing, dot-segment, unterminated-class,
+and partial-globstar patterns are invocation errors.
+Include/exclude flags require `--recursive`.
+
+Operands retain command-line order.
+Each directory is enumerated by case-sensitive Unicode code-point order over its display
+spelling. The first occurrence of a canonical file identity wins global deduplication.
+Implementations should prefer a stable device/inode identity and otherwise use canonical
+realpath. Discovered symlinks are not followed.
+An explicit symlink to a regular file is permitted after canonical target and access
+checks; a broken explicit symlink is `not_found`, while a loop, directory, or other
+non-file is `unreadable`.
+
+Recursive discovery has two fixed per-operand traversal budgets: a maximum directory
+depth of 64, with the operand root at depth 0, and at most 100,000 encountered directory
+entries. Implementations detect directory revisits by stable filesystem identity and do
+not recurse into the same directory identity twice.
+Exceeding either budget produces `input_error/discovery_limit`; it does not return a
+partial operand result.
+Entry-count exhaustion anchors the error to the containing directory; depth exhaustion
+anchors it to the first over-depth directory in normal sorted traversal.
+Later command-line operands continue normally.
+
+Output compatibility depends on the request shape, not the number of resulting files:
+
+<!-- BEGIN SOFTSCHEMA CLAIM result-formats -->
+
+- one explicit file with JSON output uses `validation-result-legacy`;
+- multiple operands or directory expansion uses aggregate `diagnostic-v1` JSON;
+- `--format jsonl` writes one self-contained `diagnostic-v1-record` per result and no
+  summary record; and
+- `--format sarif` writes `sarif-2.1.0` (SARIF 2.1.0) with stable rules, percent-encoded
+  artifact URIs, and `columnKind: unicodeCodePoints`.
+
+<!-- END SOFTSCHEMA CLAIM result-formats -->
+
+A one-file JSONL or SARIF request opts into diagnostic-v1. Missing, unreadable,
+unexpanded-directory, and no-match inputs produce per-path input records while other
+inputs continue.
+
+<!-- BEGIN SOFTSCHEMA CLAIM exit-codes -->
+Exit 0 means every selected artifact passed.
+Exit 1 means at least one readable artifact failed parsing or validation.
+Exit 2 means at least one input could not be selected or read.
+Aggregate precedence is 2, then 1, then 0.
+<!-- END SOFTSCHEMA CLAIM exit-codes -->
+
+Diagnostic positions are one-based.
+Columns count Unicode code points; a leading BOM has no width; CRLF is one line break.
+Existing-key errors anchor to the key, exact instance-path errors to the value,
+missing-property errors to the containing object, and unavailable paths to the nearest
+mapped ancestor. Frontmatter positions are computed from the exact raw YAML substring,
+including its final newline.
+An implicit null has a zero-width value span at its syntactic boundary: the flow
+delimiter, comment start, EOF, or the first column after a terminating LF, CR, or CRLF.
+
 ## Frontmatter Artifact Shape
+
+A frontmatter fence scanner recognizes only LF, CR, and CRLF line breaks.
+An opening or closing delimiter line is exactly `---` surrounded only by optional ASCII
+space or tab; U+0085, U+2028, and U+2029 cannot create or terminate a fence.
 
 A genuine artifact (a trimmed `examples/movie_page/spirited-away.md`):
 
@@ -385,13 +489,15 @@ It is not required to be an import path or a class name.
 
 - `soft` and `permissive` do not change validation behavior; whether a model allows
   extra fields is configured on the source model.
-- `enforced` makes the schema authoritative at the boundary: a conforming validator
-  treats every object schema that declares `properties` but omits `additionalProperties`
-  as `additionalProperties: false`. An explicit `additionalProperties` value in the
-  schema (true, false, or a subschema) always wins, so a schema can opt specific objects
-  out of strictness. Object schemas without `properties` (free-form mappings) are
-  unaffected. The overlay applies at validation time only; it never changes the compiled
-  schema.
+- `enforced` makes the schema authoritative at object evaluation boundaries whose
+  declared property set can be closed without changing composition semantics.
+  It uses `unevaluatedProperties: false` where safe; an explicit `additionalProperties`
+  or `unevaluatedProperties` at that boundary wins.
+  A validator must traverse the supported Draft 2020-12 applicator surface, including
+  `allOf`, unions, conditionals, `dependentSchemas`, tuples, and `$defs`, or return
+  `enforcement_unsupported`. It must never close one branch in a way that rejects a
+  property evaluated by a sibling branch.
+  The overlay applies only to validation and never changes the compiled schema.
 
 The effective status is resolved by the caller (for example a registry contract or a
 `--status` flag), falling back to the document’s declared `softschema.status`.
@@ -438,6 +544,64 @@ A compiled schema is not a per-document companion data file.
 The two are unrelated: one schema validates many artifacts, while companion data would
 pair with a single document.
 This spec does not standardize a companion-data discovery mechanism (see Compatibility).
+
+### Schema Profile and Offline References
+
+The compiled-schema dialect is JSON Schema Draft 2020-12. `$schema` may be absent or
+equal the official 2020-12 URI. A root schema must be a mapping; boolean schemas remain
+valid in subschema positions.
+Hand-authored roots may omit `x-softschema`, while official compiler output must carry a
+valid annotation block and its logical contract ID. Root `x-softschema` is reserved
+compiler output. A source model that attempts to supply its own root block must fail
+compilation before any file write.
+Per-property `x-softschema` annotations remain valid authoring metadata and are
+preserved in compiled properties.
+
+A schema resource identity is a canonical absolute HTTPS or URN identifier with no
+non-empty fragment. It is separate from `x-softschema.contract`. Nested `$id` values may
+be relative and resolve against their containing resource; duplicate resolved identities
+are invalid. A root without `$id` has no synthetic filesystem or working-directory base.
+
+<!-- BEGIN SOFTSCHEMA CLAIM reference-policy -->
+The reference policy is `offline-only-v1`: fragment references are available, but
+validation performs no HTTP, HTTPS, file, or implicit relative-file retrieval.
+<!-- END SOFTSCHEMA CLAIM reference-policy -->
+
+<!-- BEGIN SOFTSCHEMA CLAIM resource-bundle-policy -->
+Explicit supplied resources use `explicit-closed-bundle-v1`. A trusted library caller
+may provide an already-loaded mapping from canonical absolute URI to a schema mapping or
+boolean. Each resource passes the same value-domain, limit, dialect, metaschema,
+identity, pattern, and no-retrieval checks as the root.
+The mapping key is authoritative; a resource `$id` must be absent or canonically equal
+to it.
+<!-- END SOFTSCHEMA CLAIM resource-bundle-policy -->
+
+Through 0.3, `legacy-0.2` accepts official older compiler output only when root `$id`
+equals the valid logical ID in `x-softschema.contract`. That identity is opaque and
+non-resolving, and only fragment references are available.
+New compilation does not emit this shape.
+
+Every invalid compiled schema produces a `schema_invalid` structural record with a
+constant message and RFC 6901 `schema_path`. Engine exception prose is not portable
+output:
+
+| Reason | Constant message | Additional field |
+| --- | --- | --- |
+| `syntax` | `compiled schema is not valid YAML or JSON` | None |
+| `value_domain` | `compiled schema contains a non-portable YAML value` | None |
+| `root` | `compiled schema root must be a mapping` | None |
+| `dialect` | `compiled schema uses an unsupported JSON Schema dialect` | `dialect` |
+| `metaschema` | `compiled schema does not conform to Draft 2020-12` | None |
+| `identity` | `compiled schema resource identity is invalid` | `detail` |
+| `profile` | `compiled schema is outside the softschema profile` | `detail` |
+| `pattern` | `compiled schema contains an unsupported or invalid pattern` | `pattern` |
+| `reference` | `compiled schema reference is unavailable offline` | `reference` |
+| `compile` | `compiled schema could not be compiled` | None |
+
+Applying `enforced` to an unsupported composition produces `enforcement_unsupported`
+with the constant message `enforced validation cannot be applied safely to this schema`.
+Semantic model validation may still run independently when the caller supplied a trusted
+model.
 
 ### Portable Regular Expressions
 
@@ -550,16 +714,14 @@ A validator must reject:
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
   Values)
 
-Validation output is deterministic across conforming implementations: structural error
-records share an engine-neutral shape and message wording, and numbers — in an error
-record’s `value`/`validator_value`, in a synthesized message, and in an echoed payload —
-render in a canonical form, where a whole-valued number carries no trailing fraction
-(`2`, not `2.0`). Output is byte-identical for every number an implementation can
-represent exactly: integers and whole-valued numbers within the IEEE-754 safe-integer
-range (`abs < 2^53`), and ordinary floats.
-A whole-valued magnitude at or beyond 2^53 is out of scope, because an
-arbitrary-precision integer runtime and a double-only runtime cannot always render it
-identically; validated payloads should avoid such literals.
+Validation output is deterministic across conforming implementations.
+Structural error records share an engine-neutral shape and message wording.
+One explicit serializer orders object keys by Unicode scalar value, emits portable
+finite binary64 numbers with the shared spelling, rejects invalid runtime objects, and
+produces the compact bytes used for hashing plus the pretty JSON and JSONL bytes used by
+the CLI. Mathematically integral values outside `[-9007199254740991, 9007199254740991]`
+fail the portable value boundary rather than entering output.
+Whole-valued accepted numbers carry no trailing fraction (`2`, not `2.0`).
 
 ## Generated Sections
 

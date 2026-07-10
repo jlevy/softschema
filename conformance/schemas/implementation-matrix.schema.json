@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:implementation-matrix:v0",
+  "title": "supported implementation matrix",
+  "type": "object",
+  "required": ["schema_version", "adapter_protocol", "implementations"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "adapter_protocol": { "const": "softschema-vector-adapter-v1" },
+    "implementations": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "allOf": [
+        { "contains": { "properties": { "id": { "const": "python" } }, "required": ["id"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "id": { "const": "node" } }, "required": ["id"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "id": { "const": "bun" } }, "required": ["id"] }, "minContains": 1, "maxContains": 1 }
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "runtime",
+          "minimum",
+          "tested",
+          "package",
+          "status",
+          "case_operations",
+          "vector_operations"
+        ],
+        "properties": {
+          "id": { "enum": ["python", "node", "bun"] },
+          "runtime": { "enum": ["python", "node", "bun"] },
+          "minimum": { "type": "string", "minLength": 1 },
+          "tested": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "package": { "const": "softschema" },
+          "status": { "const": "official" },
+          "case_operations": {
+            "type": "array",
+            "contains": { "const": "validate" },
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "vector_operations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "canonicalize",
+                "diagnostic-summary",
+                "identity",
+                "metadata",
+                "pattern",
+                "portable-yaml",
+                "validate-structural"
+              ]
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "id": { "const": "python" },
+              "runtime": { "const": "python" }
+            },
+            "required": ["id", "runtime"]
+          },
+          {
+            "properties": {
+              "id": { "const": "node" },
+              "runtime": { "const": "node" }
+            },
+            "required": ["id", "runtime"]
+          },
+          {
+            "properties": {
+              "id": { "const": "bun" },
+              "runtime": { "const": "bun" }
+            },
+            "required": ["id", "runtime"]
+          }
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

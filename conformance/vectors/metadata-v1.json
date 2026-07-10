@@ -1,0 +1,106 @@
+{
+  "format": "softschema-vector-suite-v1",
+  "id": "metadata-v1",
+  "description": "Legacy and format-1 metadata negotiation and opaque extensions.",
+  "operation": "metadata",
+  "cases": [
+    {
+      "id": "absent",
+      "input": { "raw": null },
+      "expected": { "ok": true, "value": null }
+    },
+    {
+      "id": "legacy-compact",
+      "input": { "raw": "example.docs:Record/v1" },
+      "expected": {
+        "ok": true,
+        "value": {
+          "contract": "example.docs:Record/v1",
+          "schema": null,
+          "envelope": null,
+          "status": null
+        }
+      }
+    },
+    {
+      "id": "legacy-expanded",
+      "input": {
+        "raw": {
+          "contract": "example.docs:Record/v1",
+          "schema": "record.schema.yaml",
+          "envelope": "record",
+          "status": "enforced"
+        }
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "contract": "example.docs:Record/v1",
+          "schema": "record.schema.yaml",
+          "envelope": "record",
+          "status": "enforced"
+        }
+      }
+    },
+    {
+      "id": "format-one",
+      "input": {
+        "raw": {
+          "format": "1",
+          "contract": "example.docs:Record/v1",
+          "extensions": {
+            "com.example.review": { "enabled": true, "labels": ["ready", 2, null] }
+          }
+        }
+      },
+      "expected": {
+        "ok": true,
+        "value": {
+          "contract": "example.docs:Record/v1",
+          "schema": null,
+          "envelope": null,
+          "status": null,
+          "format": "1",
+          "extensions": {
+            "com.example.review": { "enabled": true, "labels": ["ready", 2, null] }
+          }
+        }
+      }
+    },
+    {
+      "id": "numeric-format-rejected",
+      "input": { "raw": { "format": 1, "contract": "example.docs:Record/v1" } },
+      "expected": { "ok": false }
+    },
+    {
+      "id": "future-format-rejected",
+      "input": { "raw": { "format": "2", "contract": "example.docs:Record/v1" } },
+      "expected": { "ok": false }
+    },
+    {
+      "id": "extensions-require-format-one",
+      "input": {
+        "raw": { "contract": "example.docs:Record/v1", "extensions": {} }
+      },
+      "expected": { "ok": false }
+    },
+    {
+      "id": "unknown-top-level-key-rejected",
+      "input": {
+        "raw": { "format": "1", "contract": "example.docs:Record/v1", "future": true }
+      },
+      "expected": { "ok": false }
+    },
+    {
+      "id": "invalid-extension-namespace-rejected",
+      "input": {
+        "raw": {
+          "format": "1",
+          "contract": "example.docs:Record/v1",
+          "extensions": { "Example.Invalid": true }
+        }
+      },
+      "expected": { "ok": false }
+    }
+  ]
+}

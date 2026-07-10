@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:build-metadata:v0",
-  "title": "Draft non-self-referential softschema build metadata",
+  "title": "non-self-referential softschema build metadata",
   "type": "object",
   "required": ["schema_version", "release_metadata_sha256", "source_commit", "build_id"],
   "properties": {

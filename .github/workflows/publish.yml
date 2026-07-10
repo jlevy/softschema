@@ -20,6 +20,7 @@ jobs:
     outputs:
       logical-version: ${{ steps.coordinates.outputs.logical-version }}
       npm-tag: ${{ steps.coordinates.outputs.npm-tag }}
+      prerelease: ${{ steps.coordinates.outputs.prerelease }}
     steps:
       - name: Checkout exact source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -35,6 +36,7 @@ jobs:
         env:
           SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
         run: |
+          test "$GITHUB_REPOSITORY" = "jlevy/softschema"
           test '${{ github.ref_protected }}' = 'true'
           git fetch --no-tags origin main:refs/remotes/origin/main
           git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main
@@ -79,9 +81,9 @@ jobs:
       - name: Validate release metadata and tag
         run: |
           if test "$GITHUB_EVENT_NAME" = "push"; then
-            uv run --no-sync python devtools/release.py check --tag "$GITHUB_REF_NAME"
+            uv run --no-sync python -m devtools.release check --tag "$GITHUB_REF_NAME"
           else
-            uv run --no-sync python devtools/release.py check
+            uv run --no-sync python -m devtools.release check
           fi
 
       - name: Export ecosystem release coordinates
@@ -92,9 +94,10 @@ jobs:
           else
             TAG="v$(jq -r .logical_version release-metadata.json)"
           fi
-          uv run --no-sync python devtools/release.py coordinates "$TAG" > coordinates.json
+          uv run --no-sync python -m devtools.release coordinates "$TAG" > coordinates.json
           echo "logical-version=$(jq -r .logical_version coordinates.json)" >> "$GITHUB_OUTPUT"
           echo "npm-tag=$(jq -r .npm_tag coordinates.json)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$(jq -r .prerelease coordinates.json)" >> "$GITHUB_OUTPUT"
 
       - name: Run Python lint and tests
         run: |
@@ -113,14 +116,14 @@ jobs:
       - name: Build deterministic conformance kit
         run: |
           mkdir -p release-out
-          uv run --no-sync python devtools/release.py archive-conformance \
+          uv run --no-sync python -m devtools.release archive-conformance \
             release-out/conformance-kit.tar.gz
 
       - name: Derive build metadata before either package build
         env:
           SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
         run: |
-          uv run --no-sync python devtools/release.py build-metadata build-metadata.json \
+          uv run --no-sync python -m devtools.release build-metadata build-metadata.json \
             --source-commit "$SOURCE_COMMIT" \
             --conformance-archive release-out/conformance-kit.tar.gz
 
@@ -198,7 +201,7 @@ jobs:
           SDIST: ${{ steps.artifacts.outputs.sdist }}
           NPM: ${{ steps.artifacts.outputs.npm }}
         run: |
-          uv run --no-sync python devtools/release.py manifest \
+          uv run --no-sync python -m devtools.release manifest \
             release-out/release-manifest.json \
             --logical-version "$LOGICAL_VERSION" --source-commit "$SOURCE_COMMIT" \
             --subject "wheel=$WHEEL" --subject "sdist=$SDIST" --subject "npm=$NPM" \
@@ -208,8 +211,13 @@ jobs:
             --subject "sbom=release-out/softschema-python-wheel.spdx.json" \
             --subject "sbom=release-out/softschema-python-sdist.spdx.json" \
             --subject "sbom=release-out/softschema-npm.spdx.json"
-          uv run --no-sync python devtools/release.py verify \
+          uv run --no-sync python -m devtools.release verify \
             release-out/release-manifest.json release-out
+
+      - name: Generate non-cyclic release controls and freeze the state driver
+        run: |
+          cp devtools/release_state.py release-out/devtools/release_state.py
+          python3 release-out/devtools/release_state.py controls release-out
 
       - name: Generate transfer checksums last
         working-directory: release-out
@@ -225,7 +233,7 @@ jobs:
           compression-level: 0
           include-hidden-files: false
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
 
   smoke:
     name: Install and execute exact candidate bytes
@@ -265,71 +273,733 @@ jobs:
           uv run --no-project --python 3.12.13 python \
             release-out/devtools/frozen_artifact_smoke.py smoke release-out
 
-  publish-pypi:
-    name: Publish tested bytes to PyPI
+  draft-release:
+    name: Freeze draft assets and attest primary subjects
     needs: [preflight, smoke]
     if: github.event_name == 'push' && needs.smoke.result == 'success'
     runs-on: ubuntu-latest
-    environment: pypi
+    environment: github-release
+    outputs:
+      prerelease: ${{ steps.initial.outputs.prerelease }}
     permissions:
+      attestations: write
+      contents: write
       id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
+      - name: Require immutable GitHub releases before any release mutation
+        run: |
+          test "$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = "true"
+
       - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-candidate
           path: release-out
 
-      - name: Isolate only the two PyPI subjects
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
         run: |
-          (cd release-out && sha256sum --check SHA256SUMS)
-          jq -r '.subjects | to_entries[] | "\(.value.sha256)  \(.key)"' \
-            release-out/release-manifest.json | (cd release-out && sha256sum --check -)
-          WHEEL="$(jq -er '.subjects | to_entries[] | select(.value.kind == "wheel") | .key' \
-            release-out/release-manifest.json)"
-          SDIST="$(jq -er '.subjects | to_entries[] | select(.value.kind == "sdist") | .key' \
-            release-out/release-manifest.json)"
-          test "$(basename "$WHEEL")" = "$WHEEL"
-          test "$(basename "$SDIST")" = "$SDIST"
-          mkdir pypi
-          mv "release-out/$WHEEL" "release-out/$SDIST" pypi/
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
 
-      - name: Publish exact wheel and sdist with trusted publishing
+      - name: Verify the complete transfer before release access
+        run: |
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+
+      - name: Recreate deterministic durable recovery assets
+        run: |
+          rm -rf recovery
+          mkdir recovery
+          python3 release-out/devtools/release_state.py recovery-bundle \
+            release-out recovery/release-recovery.tar
+          cp release-out/devtools/release_state.py recovery/release-recovery.py
+          (cd recovery && sha256sum release-recovery.tar release-recovery.py \
+            > release-recovery.sha256)
+
+      - name: Attest the exact recovery bundle and frozen bootstrap
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-checksums: recovery/release-recovery.sha256
+          show-summary: true
+
+      - name: Attest the recovery checksum inventory
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: recovery/release-recovery.sha256
+          show-summary: true
+
+      - name: Classify the existing release and asset inventory
+        id: initial
+        run: |
+          python3 release-out/devtools/release_state.py github-plan release-out \
+            --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" \
+            --recovery-directory recovery \
+            > github-initial.json
+          echo "release=$(jq -er .release github-initial.json)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${{ needs.preflight.outputs.prerelease }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create the missing draft without creating or moving a tag
+        if: steps.initial.outputs.release == 'absent'
+        env:
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+        run: |
+          if test "$PRERELEASE" = "true"; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --target "$(jq -er .source_commit release-out/release-manifest.json)" \
+              --title "$GITHUB_REF_NAME" --notes-from-tag --draft --prerelease --latest=false
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --target "$(jq -er .source_commit release-out/release-manifest.json)" \
+              --title "$GITHUB_REF_NAME" --notes-from-tag --draft --latest=false
+          fi
+
+      - name: Reclassify and upload only missing exact assets
+        run: |
+          python3 release-out/devtools/release_state.py github-plan release-out \
+            --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" \
+            --recovery-directory recovery \
+            > github-upload.json
+          jq -r '.missing[]' github-upload.json | while IFS= read -r name; do
+            if test -f "recovery/$name"; then
+              source="recovery/$name"
+            else
+              source="release-out/$name"
+            fi
+            gh release upload "$GITHUB_REF_NAME" "$source" \
+              --repo "$GITHUB_REPOSITORY"
+          done
+
+      - name: Require the exact draft asset inventory
+        run: |
+          python3 release-out/devtools/release_state.py github-plan release-out \
+            --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" \
+            --recovery-directory recovery \
+            --require-state exact > github-exact.json
+
+      - name: Attest exact primary manifest subjects
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-checksums: release-out/PRIMARY-SHA256SUMS
+          show-summary: true
+
+  classify-registries:
+    name: Classify public registry state
+    needs: [preflight, draft-release]
+    if: github.event_name == 'push' && needs.draft-release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: read
+      contents: read
+    outputs:
+      pypi_state: ${{ steps.classify.outputs.pypi_state }}
+      npm_state: ${{ steps.classify.outputs.npm_state }}
+    steps:
+      - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate
+          path: release-out
+
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Verify transfer and classify exact public bytes
+        id: classify
+        run: |
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+          python3 release-out/devtools/release_state.py pypi-plan release-out \
+            > pypi-plan.json
+          python3 release-out/devtools/release_state.py npm-plan release-out \
+            > npm-plan.json
+          echo "pypi_state=$(jq -er .state pypi-plan.json)" >> "$GITHUB_OUTPUT"
+          echo "npm_state=$(jq -er .state npm-plan.json)" >> "$GITHUB_OUTPUT"
+
+  publish-pypi:
+    name: Publish only missing PyPI subjects
+    needs: [preflight, draft-release, classify-registries]
+    if: >-
+      github.event_name == 'push' &&
+      needs.classify-registries.result == 'success' &&
+      needs.classify-registries.outputs.pypi_state != 'complete'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      attestations: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate
+          path: release-out
+
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Reclassify and stage only still-missing files
+        id: state
+        run: |
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+          python3 release-out/devtools/release_state.py pypi-plan release-out \
+            > pypi-plan.json
+          STATE="$(jq -er .state pypi-plan.json)"
+          if test "$STATE" = "complete"; then
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          else
+            test "$STATE" = "absent" -o "$STATE" = "partial"
+            python3 release-out/devtools/release_state.py stage-pypi \
+              release-out pypi-plan.json pypi
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish the manifest-selected wheel or sdist bytes
+        if: steps.state.outputs.upload == 'true'
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           packages-dir: pypi
 
   publish-npm:
-    name: Publish tested bytes to npm
-    needs: [preflight, smoke]
-    if: github.event_name == 'push' && needs.smoke.result == 'success'
+    name: Publish the missing exact npm version
+    needs: [preflight, draft-release, classify-registries]
+    if: >-
+      github.event_name == 'push' &&
+      needs.classify-registries.result == 'success' &&
+      needs.classify-registries.outputs.npm_state != 'complete'
     runs-on: ubuntu-latest
     environment: npm
     permissions:
+      attestations: read
+      contents: read
       id-token: write
     steps:
       - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-candidate
           path: release-out
 
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+
       - name: Set up pinned Node and bundled npm
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24.18.0"
+          package-manager-cache: false
           registry-url: "https://registry.npmjs.org"
 
-      - name: Publish exact npm tarball with trusted publishing
+      - name: Reclassify the exact npm version
+        id: state
+        run: |
+          test "$(npm --version)" = "11.16.0"
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+          python3 release-out/devtools/release_state.py npm-plan release-out \
+            > npm-plan.json
+          STATE="$(jq -er .state npm-plan.json)"
+          test "$STATE" = "absent" -o "$STATE" = "complete"
+          if test "$STATE" = "absent"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish exact npm bytes with trusted publishing and provenance
+        if: steps.state.outputs.publish == 'true'
         env:
           NPM_TAG: ${{ needs.preflight.outputs.npm-tag }}
         run: |
-          test "$(npm --version)" = "11.16.0"
-          (cd release-out && sha256sum --check SHA256SUMS)
-          jq -r '.subjects | to_entries[] | "\(.value.sha256)  \(.key)"' \
-            release-out/release-manifest.json | (cd release-out && sha256sum --check -)
           NPM="$(jq -er '.subjects | to_entries[] | select(.value.kind == "npm") | .key' \
             release-out/release-manifest.json)"
           test "$(basename "$NPM")" = "$NPM"
           npm publish "release-out/$NPM" --ignore-scripts --access public \
             --provenance --tag "$NPM_TAG"
+
+  verify-pypi:
+    name: Verify PyPI digests and check trusted-publisher metadata
+    needs: [preflight, classify-registries, publish-pypi]
+    if: >-
+      always() && github.event_name == 'push' &&
+      needs.classify-registries.result == 'success' &&
+      (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate
+          path: release-out
+
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Poll bounded propagation and check Integrity API publisher metadata
+        run: |
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+          python3 release-out/devtools/release_state.py pypi-plan release-out \
+            --require-state complete --require-publisher-metadata --attempts 8 --delay 5 \
+            > pypi-verified.json
+
+  verify-npm:
+    name: Verify npm digest, channel, signatures, and source identity
+    needs: [preflight, classify-registries, publish-npm]
+    if: >-
+      always() && github.event_name == 'push' &&
+      needs.classify-registries.result == 'success' &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate
+          path: release-out
+
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Set up pinned Node and bundled npm
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          package-manager-cache: false
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Poll exact npm bytes and the stable or prerelease channel
+        run: |
+          test "$(npm --version)" = "11.16.0"
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+          python3 release-out/devtools/release_state.py npm-plan release-out \
+            --require-state complete --require-channel --attempts 8 --delay 5 \
+            > npm-verified.json
+
+      - name: Run npm's verifier and enforce the exact attestation identity
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: "true"
+        run: |
+          python3 release-out/devtools/release_state.py stage-npm-signature-consumer \
+            release-out npm-signature-consumer
+          cd npm-signature-consumer
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit signatures --json --include-attestations \
+            > npm-audit-signatures.json
+          python3 ../release-out/devtools/release_state.py check-npm-audit \
+            ../release-out npm-audit-signatures.json
+
+  finalize-release:
+    name: Publish the exact existing GitHub draft
+    needs: [draft-release, verify-pypi, verify-npm]
+    if: >-
+      github.event_name == 'push' &&
+      needs.draft-release.result == 'success' &&
+      needs.verify-pypi.result == 'success' &&
+      needs.verify-npm.result == 'success'
+    runs-on: ubuntu-latest
+    environment: github-release
+    permissions:
+      attestations: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download immutable candidate transfer
+        id: candidate
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate
+          path: release-out
+
+      - name: Recover the exact transfer from durable draft assets
+        if: steps.candidate.outcome == 'failure'
+        run: |
+          rm -rf release-out recovery
+          mkdir recovery
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'release-recovery.*' --dir recovery
+          gh attestation verify "recovery/release-recovery.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+            --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+            --deny-self-hosted-runners
+          test "$(wc -c < recovery/release-recovery.sha256)" -le 256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256)" -eq 2
+          ! LC_ALL=C grep -Ev \
+            '^[0-9a-f]{64}  release-recovery\.(tar|py)$' \
+            recovery/release-recovery.sha256
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.tar$' \
+            recovery/release-recovery.sha256)" -eq 1
+          test "$(LC_ALL=C grep -Ec \
+            '^[0-9a-f]{64}  release-recovery\.py$' \
+            recovery/release-recovery.sha256)" -eq 1
+          (cd recovery && sha256sum --check --strict release-recovery.sha256)
+          for name in release-recovery.tar release-recovery.py; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          python3 recovery/release-recovery.py extract-recovery \
+            recovery/release-recovery.tar release-out
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Recreate deterministic durable recovery assets
+        run: |
+          rm -rf recovery
+          mkdir recovery
+          python3 release-out/devtools/release_state.py recovery-bundle \
+            release-out recovery/release-recovery.tar
+          cp release-out/devtools/release_state.py recovery/release-recovery.py
+          (cd recovery && sha256sum release-recovery.tar release-recovery.py \
+            > release-recovery.sha256)
+
+      - name: Reverify exact assets and every GitHub provenance attestation
+        id: state
+        run: |
+          python3 release-out/devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+          python3 release-out/devtools/release_state.py github-plan release-out \
+            --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" \
+            --recovery-directory recovery \
+            --require-state exact > github-final.json
+          SOURCE_COMMIT="$(jq -er .source_commit release-out/release-manifest.json)"
+          jq -r '.subjects | keys[]' release-out/release-manifest.json \
+            | while IFS= read -r name; do
+                gh attestation verify "release-out/$name" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+                  --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+                  --deny-self-hosted-runners
+              done
+          for name in release-recovery.tar release-recovery.py release-recovery.sha256; do
+            gh attestation verify "recovery/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+              --source-digest "$SOURCE_COMMIT" --source-ref "$GITHUB_REF" \
+              --deny-self-hosted-runners
+          done
+          if test "$(jq -er .release github-final.json)" = "draft"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish only after both registries verify
+        if: steps.state.outputs.publish == 'true'
+        env:
+          PRERELEASE: ${{ needs.draft-release.outputs.prerelease }}
+        run: |
+          test "$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = "true"
+          if test "$PRERELEASE" = "true"; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --draft=false --prerelease --latest=false
+          else
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --draft=false --prerelease=false --latest
+          fi
+
+      - name: Require the published release to retain exact bytes and channel flags
+        run: |
+          python3 release-out/devtools/release_state.py github-plan release-out \
+            --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" \
+            --recovery-directory recovery --require-state exact \
+            --require-published --require-latest --attempts 8 --delay 5 \
+            > github-published.json

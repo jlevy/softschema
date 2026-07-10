@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:conformance-evolution:v0",
+  "title": "softschema conformance-kit evolution policy",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "current",
+    "target_release",
+    "identifier_status",
+    "versioning",
+    "immutability",
+    "history"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "current": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-draft\\.[0-9]+)?$"
+    },
+    "target_release": { "const": "1.0.0" },
+    "identifier_status": {
+      "enum": ["draft-until-live-verification", "published"]
+    },
+    "versioning": {
+      "type": "object",
+      "required": ["patch", "minor", "major"],
+      "properties": {
+        "patch": { "const": "adds cases without changing existing outcomes" },
+        "minor": { "const": "adds backward-compatible capabilities or schemas" },
+        "major": { "const": "changes an existing result, schema, or wire shape" }
+      },
+      "additionalProperties": false
+    },
+    "immutability": {
+      "type": "object",
+      "required": ["versioned_paths", "published_bytes", "replacement"],
+      "properties": {
+        "versioned_paths": { "const": true },
+        "published_bytes": { "const": "never mutate" },
+        "replacement": { "const": "publish a new version" }
+      },
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["version", "status", "compatibility"],
+        "properties": {
+          "version": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["draft", "candidate", "released", "withdrawn"] },
+          "compatibility": { "enum": ["initial", "patch", "minor", "major"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "current": { "pattern": "-draft\\.[0-9]+$" } },
+        "required": ["current"]
+      },
+      "then": {
+        "properties": {
+          "identifier_status": { "const": "draft-until-live-verification" }
+        }
+      },
+      "else": {
+        "properties": { "identifier_status": { "const": "published" } }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

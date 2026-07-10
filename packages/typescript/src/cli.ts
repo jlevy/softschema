@@ -5,10 +5,35 @@
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
+import {
+  type DiscoveryEntry,
+  type DiscoveryInputError,
+  discoverArtifacts,
+} from "./artifact-discovery.js";
 import { compileSchema } from "./compile.js";
+import {
+  type ArtifactInputResult,
+  DEFAULT_VALIDATION_LIMITS,
+  type DiagnosticResultV1,
+  type DiagnosticV1,
+  type DiagnosticValidationWire,
+  diagnosticRuleId,
+  type JsonObject,
+  jsonPointer,
+  PortableValueError,
+  PortableYamlError,
+  projectDiagnosticAggregate,
+  projectDiagnosticResult,
+  projectDiagnosticSarif,
+  projectValidationWire,
+  type SourceAnchor,
+  SourceMap,
+  serializeDiagnosticJsonl,
+} from "./core/index.js";
+import { structuralErrorOffendingProperty } from "./errors.js";
 import { regenerate } from "./generate.js";
 import { loadZodModel } from "./model-loader.js";
 import {
@@ -17,9 +42,11 @@ import {
   isSchemaStatus,
   metadataToOutput,
   parseSchemaMetadata,
+  SchemaMetadataError,
   validateContractId,
   validateSchemaId,
 } from "./models.js";
+import { isFileSystemError } from "./node-errors.js";
 import { bindContract } from "./runtime-contract.js";
 import { stableStringify } from "./settings.js";
 import {
@@ -33,11 +60,15 @@ import {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type RawFrontmatter,
+  readBoundedBytes,
   readFrontmatter,
+  readFrontmatterWithLocations,
   readPureYamlArtifact,
+  readPureYamlArtifactWithLocations,
   validateArtifact,
   YamlParseError,
 } from "./validate.js";
+import { parsePortableYamlWithLocations } from "./yaml-value-domain.js";
 
 // The package root holds the bundled `resources/` dir (copied at build, shipped via the
 // package `files`). Resolve symlinks so npm/pnpm bins retain the installed package identity.
@@ -56,7 +87,7 @@ const DOCTOR_OPERATIONS = [
   "skill",
   "validate",
 ] as const;
-const DOCTOR_OUTPUT_FORMATS = ["json", "text"] as const;
+const DOCTOR_OUTPUT_FORMATS = ["json", "jsonl", "sarif", "text"] as const;
 
 const SOURCE_MODULE_PATHS = [
   "packages/typescript/src/cli.ts",
@@ -113,6 +144,24 @@ export interface DocTopic {
 // topics: both are repo/maintainer-internal and have no use inside an installed package.
 export const DOC_TOPICS: DocTopic[] = [
   {
+    name: "agent-compatibility",
+    title: "Coding Agent Compatibility",
+    path: "docs/agent-compatibility.md",
+    summary: "Discovery and instruction paths for major coding agents.",
+  },
+  {
+    name: "api",
+    title: "API Reference",
+    path: "docs/api.md",
+    summary: "Stable library and command-line surfaces.",
+  },
+  {
+    name: "changelog",
+    title: "Changelog",
+    path: "CHANGELOG.md",
+    summary: "Release history and user-visible changes.",
+  },
+  {
     name: "development",
     title: "Development",
     path: "docs/development.md",
@@ -137,10 +186,22 @@ export const DOC_TOPICS: DocTopic[] = [
     summary: "Host registry and validation helper.",
   },
   {
+    name: "example-host-ts",
+    title: "Movie Page TypeScript Host Integration",
+    path: "examples/movie_page/host_integration.ts",
+    summary: "TypeScript host registry and validation helper.",
+  },
+  {
     name: "example-model",
     title: "Movie Page Model",
     path: "examples/movie_page/model.py",
     summary: "Pydantic model used by the example.",
+  },
+  {
+    name: "example-model-ts",
+    title: "Movie Page TypeScript Model",
+    path: "examples/movie_page/model.ts",
+    summary: "Zod model used by the paired example.",
   },
   {
     name: "example-pure-yaml",
@@ -167,12 +228,24 @@ export const DOC_TOPICS: DocTopic[] = [
     summary: "Installing softschema for Node or Python.",
   },
   {
+    name: "migration-0.3",
+    title: "Migration to 0.3",
+    path: "docs/migration-0.3.md",
+    summary: "Compatibility and migration guidance for 0.3.",
+  },
+  {
     name: "python-design",
     title: "Python Package Design",
     path: "docs/softschema-python-design.md",
     summary: "Python package design decisions.",
   },
   { name: "readme", title: "README", path: "README.md", summary: "Short first-visitor overview." },
+  {
+    name: "security",
+    title: "Security Policy",
+    path: "SECURITY.md",
+    summary: "Supported versions, trust boundaries, and vulnerability reporting.",
+  },
   {
     name: "skill",
     title: "softschema Skill",
@@ -198,7 +271,9 @@ const COPYABLE_EXAMPLES = [
   "example-artifact",
   "example-pure-yaml",
   "example-model",
+  "example-model-ts",
   "example-host",
+  "example-host-ts",
   "example-schema",
 ];
 
@@ -291,6 +366,10 @@ interface SkillOptions {
 }
 
 function collectAgent(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function collectPattern(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
@@ -447,6 +526,17 @@ function envelopeKeys(frontmatter: Record<string, unknown>): string[] {
 
 class UsageError extends Error {}
 
+class BindingUsageError extends UsageError {
+  constructor(
+    message: string,
+    readonly diagnosticCode: string,
+    readonly diagnosticMessage: string,
+    readonly diagnosticPath: string,
+  ) {
+    super(message);
+  }
+}
+
 function inferEnvelope(
   frontmatter: Record<string, unknown>,
   override: string | undefined,
@@ -459,8 +549,11 @@ function inferEnvelope(
     return inferEnvelopeKey(frontmatter);
   } catch (err) {
     if (err instanceof EnvelopeAmbiguityError) {
-      throw new UsageError(
+      throw new BindingUsageError(
         `multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: ${err.candidates.join(", ")})`,
+        "envelope_ambiguous",
+        "artifact payload envelope is ambiguous",
+        "",
       );
     }
     throw err;
@@ -469,9 +562,13 @@ function inferEnvelope(
 
 interface ValidateOptions {
   contract?: string;
+  exclude?: string[];
   envelope?: string;
+  format?: string;
+  include?: string[];
   model?: string;
   profile?: string;
+  recursive?: boolean;
   schema?: string;
   status?: string;
 }
@@ -481,72 +578,104 @@ function parseSchemaProfile(value: string): Contract["profile"] {
   throw new UsageError(`invalid profile: ${value}`);
 }
 
-async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
+type ValidateOutputFormat = "json" | "jsonl" | "sarif";
+
+function parseValidateOutputFormat(value: string | undefined): ValidateOutputFormat {
+  if (value === undefined || value === "json") return "json";
+  if (value === "jsonl" || value === "sarif") return value;
+  throw new UsageError(`invalid format: ${value}`);
+}
+
+interface ValidationBinding {
+  contractId: string;
+  status: Contract["status"];
+  envelopeKey: string | null;
+}
+
+function inferValidationBinding(
+  frontmatter: Record<string, unknown> | null,
+  opts: ValidateOptions,
+  profile: Contract["profile"],
+): ValidationBinding {
+  if (profile === "frontmatter-md" && frontmatter === null && opts.contract === undefined) {
+    throw new BindingUsageError(
+      "missing --contract because the document has no YAML frontmatter",
+      "contract_unknown",
+      "artifact contract is not registered",
+      "/softschema/contract",
+    );
+  }
+  const fm = frontmatter ?? {};
+  const metadata = parseSchemaMetadata(fm.softschema ?? null);
+  const contractId = opts.contract ?? metadata?.contractId;
+  if (contractId === undefined) {
+    throw new BindingUsageError(
+      "missing --contract because the document has no softschema.contract",
+      "contract_unknown",
+      "artifact contract is not registered",
+      "/softschema/contract",
+    );
+  }
+  validateContractId(contractId);
+  let status: Contract["status"] = "soft";
+  if (opts.status !== undefined) {
+    if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
+    status = opts.status;
+  } else if (metadata?.status) {
+    status = metadata.status;
+  }
+  const envelopeKey =
+    profile === "pure-yaml"
+      ? (opts.envelope ?? metadata?.envelope ?? null)
+      : inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null);
+  return { contractId, status, envelopeKey };
+}
+
+interface PreparedBatchArtifact {
+  readonly kind: "prepared";
+  readonly path: string;
+  readonly source: string;
+  readonly root: Record<string, unknown> | null;
+  readonly sourceMap: SourceMap;
+  readonly binding: ValidationBinding;
+}
+
+interface SchemaDiagnosticSource {
+  readonly source: string;
+  readonly sourceMap: SourceMap;
+}
+
+function isPreparedBatchArtifact(
+  item: PreparedBatchArtifact | DiagnosticResultV1,
+): item is PreparedBatchArtifact {
+  return "kind" in item && item.kind === "prepared";
+}
+
+async function runValidate(paths: string[], opts: ValidateOptions): Promise<number> {
   try {
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const profile = parseSchemaProfile(opts.profile ?? "frontmatter-md");
+    const outputFormat = parseValidateOutputFormat(opts.format);
     if (opts.contract !== undefined) validateContractId(opts.contract);
-    // Read the document once here; both binding inference and validateArtifact reuse
-    // this normalized root. Readable parse failures are validation results (exit 1),
-    // while access failures remain exit 2.
-    let parsed: RawFrontmatter | undefined;
-    let pureYaml: Record<string, unknown> | undefined;
-    try {
-      if (profile === "pure-yaml") pureYaml = readPureYamlArtifact(path);
-      else parsed = readFrontmatter(path);
-    } catch (err) {
-      const record = artifactErrorRecord(path, err);
-      if (record !== null) {
-        writeText(stableStringify(record));
-        return record.kind === "input_error" ? 2 : 1;
-      }
-      throw err;
+    if (opts.status !== undefined && !isSchemaStatus(opts.status)) {
+      throw new UsageError(`invalid status: ${opts.status}`);
     }
-    const frontmatter =
-      profile === "pure-yaml"
-        ? (pureYaml as Record<string, unknown>)
-        : (parsed as RawFrontmatter).hasFence
-          ? ((parsed as RawFrontmatter).value as Record<string, unknown>)
-          : null;
-    if (profile === "frontmatter-md" && frontmatter === null && opts.contract === undefined) {
-      throw new UsageError("missing --contract because the document has no YAML frontmatter");
-    }
-    const fm = frontmatter ?? {};
-    const metadata = parseSchemaMetadata(fm.softschema ?? null);
-    const contractId = opts.contract ?? metadata?.contractId;
-    if (contractId === undefined) {
-      throw new UsageError("missing --contract because the document has no softschema.contract");
-    }
-    validateContractId(contractId);
-    let status: Contract["status"] = "soft";
-    if (opts.status !== undefined) {
-      if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
-      status = opts.status;
-    } else if (metadata?.status) {
-      status = metadata.status;
-    }
-    const envelopeKey =
-      profile === "pure-yaml"
-        ? (opts.envelope ?? metadata?.envelope ?? null)
-        : inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null);
-    const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
-    const descriptor: ContractDescriptor = {
-      id: contractId,
-      model: opts.model ?? null,
-      envelopeKey,
-      status,
+    const discovery = discoverArtifacts({
+      operands: paths,
+      recursive: opts.recursive === true,
       profile,
-      schemaPath: opts.schema ?? null,
-    };
-    const contract = bindContract(descriptor, semanticModel ?? null);
-    const result = validateArtifact(path, contract, {
-      preParsed: parsed,
-      preParsedYaml: pureYaml,
+      includes: opts.include ?? [],
+      excludes: opts.exclude ?? [],
+      invocationDirectory: process.cwd(),
+      pathFlavor: process.platform === "win32" ? "windows" : "posix",
     });
-    writeText(stableStringify(result.output));
-    return result.ok ? 0 : 1;
+    const explicitDirectory = paths.length === 1 && isDirectoryOperand(paths[0] as string);
+    if (isLegacyValidateRequest(paths, discovery.entries, outputFormat, explicitDirectory)) {
+      return await runValidateLegacy(paths[0] as string, opts, profile);
+    }
+    return await runValidateDiagnostic(discovery.entries, opts, profile, outputFormat);
   } catch (err) {
     // Exit 1 is reserved for a readable artifact that fails validation (the result path
     // above). A bug-indicator exception crashes; every other (user) error — missing or
@@ -554,6 +683,508 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // message + exit 2 (see reportUserError). Never an uncaught stack trace for a user
     // mistake, never a masked exit 2 for a programmer bug.
     return reportUserError("validate", err);
+  }
+}
+
+function isLegacyValidateRequest(
+  paths: readonly string[],
+  entries: readonly DiscoveryEntry[],
+  outputFormat: ValidateOutputFormat,
+  explicitDirectory: boolean,
+): boolean {
+  if (paths.length !== 1 || explicitDirectory || outputFormat !== "json" || entries.length !== 1) {
+    return false;
+  }
+  const entry = entries[0] as DiscoveryEntry;
+  return entry.kind === "artifact" || entry.reason === "not_found";
+}
+
+function isDirectoryOperand(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function runValidateLegacy(
+  path: string,
+  opts: ValidateOptions,
+  profile: Contract["profile"],
+): Promise<number> {
+  // Read the document once here; both binding inference and validateArtifact reuse
+  // this normalized root. Readable parse failures are validation results (exit 1),
+  // while access failures remain exit 2.
+  let parsed: RawFrontmatter | undefined;
+  let pureYaml: Record<string, unknown> | undefined;
+  try {
+    if (profile === "pure-yaml") pureYaml = readPureYamlArtifact(path);
+    else parsed = readFrontmatter(path);
+  } catch (err) {
+    const record = artifactErrorRecord(path, err);
+    if (record !== null) {
+      writeText(stableStringify(record));
+      return record.kind === "input_error" ? 2 : 1;
+    }
+    throw err;
+  }
+  const frontmatter =
+    profile === "pure-yaml"
+      ? (pureYaml as Record<string, unknown>)
+      : (parsed as RawFrontmatter).hasFence
+        ? ((parsed as RawFrontmatter).value as Record<string, unknown>)
+        : null;
+  const binding = inferValidationBinding(frontmatter, opts, profile);
+  const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
+  const descriptor: ContractDescriptor = {
+    id: binding.contractId,
+    model: opts.model ?? null,
+    envelopeKey: binding.envelopeKey,
+    status: binding.status,
+    profile,
+    schemaPath: opts.schema ?? null,
+  };
+  const contract = bindContract(descriptor, semanticModel ?? null);
+  const result = validateArtifact(path, contract, {
+    preParsed: parsed,
+    preParsedYaml: pureYaml,
+  });
+  writeText(stableStringify(result.output));
+  return result.ok ? 0 : 1;
+}
+
+async function runValidateDiagnostic(
+  entries: readonly DiscoveryEntry[],
+  opts: ValidateOptions,
+  profile: Contract["profile"],
+  outputFormat: ValidateOutputFormat,
+): Promise<number> {
+  const prepared: (PreparedBatchArtifact | DiagnosticResultV1)[] = [];
+  for (const entry of entries) {
+    if (entry.kind === "input_error") {
+      prepared.push(inputDiagnosticResult(entry));
+      continue;
+    }
+    let root: Record<string, unknown> | null;
+    let sourceMap: SourceMap;
+    try {
+      if (profile === "pure-yaml") {
+        const located = readPureYamlArtifactWithLocations(entry.path);
+        root = located.value;
+        sourceMap = located.sourceMap;
+      } else {
+        const located = readFrontmatterWithLocations(entry.path);
+        root = located.hasFence ? (located.value as Record<string, unknown>) : null;
+        sourceMap = located.sourceMap;
+      }
+    } catch (error) {
+      const record = artifactErrorRecord(entry.displayPath, error, { includeLocation: true });
+      if (record === null) throw error;
+      prepared.push(artifactErrorDiagnosticResult(record));
+      continue;
+    }
+    let binding: ValidationBinding;
+    try {
+      binding = inferValidationBinding(root, opts, profile);
+    } catch (error) {
+      if (
+        !(error instanceof UsageError) &&
+        !(error instanceof SchemaMetadataError) &&
+        !(error instanceof EnvelopeAmbiguityError)
+      ) {
+        throw error;
+      }
+      prepared.push(bindingDiagnosticResult(entry.displayPath, profile, root, sourceMap, error));
+      continue;
+    }
+    prepared.push({
+      kind: "prepared",
+      path: entry.path,
+      source: entry.displayPath,
+      root,
+      sourceMap,
+      binding,
+    });
+  }
+
+  const hasPrepared = prepared.some(isPreparedBatchArtifact);
+  const semanticModel =
+    opts.model !== undefined && hasPrepared ? await loadZodModel(opts.model) : null;
+  const results: DiagnosticResultV1[] = [];
+  const schemaMaps = new Map<string, SourceMap>();
+  for (const item of prepared) {
+    if (!isPreparedBatchArtifact(item)) {
+      results.push(item);
+      continue;
+    }
+    const descriptor: ContractDescriptor = {
+      id: item.binding.contractId,
+      model: opts.model ?? null,
+      envelopeKey: item.binding.envelopeKey,
+      status: item.binding.status,
+      profile,
+      schemaPath: opts.schema ?? null,
+    };
+    const contract = bindContract(descriptor, semanticModel);
+    const validationResult = validateArtifact(item.path, contract, {
+      ...(profile === "pure-yaml"
+        ? { preParsedYaml: item.root }
+        : { preParsed: { hasFence: item.root !== null, value: item.root } }),
+      validationLimits: DEFAULT_VALIDATION_LIMITS,
+    });
+    const input = artifactInputSuccess(item.source, profile, item.root);
+    const structuralOffendingProperties = validationResult.output.structural.errors.map((error) =>
+      structuralErrorOffendingProperty(error),
+    );
+    const validation = projectValidationWire(validationResult.output);
+    const schemaSource = validation.structural.errors.some(
+      (error) => error.kind === "schema_invalid",
+    )
+      ? schemaDiagnosticSource(item.path, opts.schema, validation, schemaMaps)
+      : null;
+    const diagnostics = validationDiagnostics(
+      validation,
+      item.source,
+      item.sourceMap,
+      item.binding.envelopeKey,
+      schemaSource,
+      structuralOffendingProperties,
+    );
+    results.push(projectDiagnosticResult(input, validation, diagnostics));
+  }
+
+  const aggregate = projectDiagnosticAggregate(profile, DEFAULT_VALIDATION_LIMITS, results);
+  if (outputFormat === "jsonl") writeText(serializeDiagnosticJsonl(aggregate));
+  else if (outputFormat === "sarif") writeText(stableStringify(projectDiagnosticSarif(aggregate)));
+  else writeText(stableStringify(aggregate));
+  return aggregate.summary.exit_code;
+}
+
+function artifactInputSuccess(
+  source: string,
+  profile: Contract["profile"],
+  root: Record<string, unknown> | null,
+): ArtifactInputResult {
+  const values = Object.fromEntries(
+    Object.entries(root ?? {}).filter(([key]) => key !== "softschema"),
+  ) as JsonObject;
+  return { kind: "artifact_input", ok: true, source, profile, values };
+}
+
+function inputDiagnosticResult(entry: DiscoveryInputError): DiagnosticResultV1 {
+  const input: ArtifactInputResult = {
+    kind: "input_error",
+    reason: entry.reason,
+    message: entry.message,
+    source: entry.source,
+  };
+  return projectDiagnosticResult(input, null, [
+    {
+      category: "input",
+      rule_id: diagnosticRuleId("input_error", entry.reason),
+      severity: "error",
+      message: entry.message,
+      source: entry.source,
+    },
+  ]);
+}
+
+function artifactErrorDiagnosticResult(input: ArtifactInputResult): DiagnosticResultV1 {
+  if (input.kind === "artifact_input") throw new Error("expected a failed artifact input");
+  const category = input.kind === "input_error" ? "input" : "parse";
+  const family = input.kind === "input_error" ? "input_error" : "parse_error";
+  const diagnostic: DiagnosticV1 = {
+    category,
+    rule_id: diagnosticRuleId(family, input.reason),
+    severity: "error",
+    message: input.message,
+    source: input.source,
+  };
+  if (input.kind === "parse_error") {
+    if (input.path !== undefined) diagnostic.path = input.path;
+    if (input.line !== undefined) diagnostic.line = input.line;
+    if (input.column !== undefined) diagnostic.column = input.column;
+  }
+  return projectDiagnosticResult(input, null, [diagnostic]);
+}
+
+function bindingDiagnosticResult(
+  source: string,
+  profile: Contract["profile"],
+  root: Record<string, unknown> | null,
+  sourceMap: SourceMap,
+  error: Error,
+): DiagnosticResultV1 {
+  let code: string;
+  let message: string;
+  let path: string;
+  if (error instanceof BindingUsageError) {
+    code = error.diagnosticCode;
+    message = error.diagnosticMessage;
+    path = error.diagnosticPath;
+  } else {
+    code = "metadata_invalid";
+    message = "artifact softschema metadata is invalid";
+    path = "/softschema";
+  }
+  const diagnostic: DiagnosticV1 = {
+    category: "binding",
+    rule_id: diagnosticRuleId("artifact", code),
+    severity: "error",
+    message,
+    source,
+    path,
+  };
+  addSourceLocation(diagnostic, sourceMap, path);
+  return projectDiagnosticResult(artifactInputSuccess(source, profile, root), null, [diagnostic]);
+}
+
+const ARTIFACT_DIAGNOSTIC_MESSAGES: Readonly<Record<string, string>> = {
+  contract_unknown: "artifact contract is not registered",
+  no_frontmatter: "artifact has no frontmatter",
+  frontmatter_not_mapping: "artifact frontmatter must be a mapping",
+  metadata_invalid: "artifact softschema metadata is invalid",
+  document_softschema_invalid: "artifact softschema metadata is invalid",
+  document_contract_mismatch: "artifact contract does not match the selected contract",
+  envelope_mismatch: "artifact payload envelope does not match the selected contract",
+  envelope_ambiguous: "artifact payload envelope is ambiguous",
+  envelope_missing: "artifact payload envelope is missing",
+  envelope_not_mapping: "artifact payload envelope must be a mapping",
+  values_not_mapping: "artifact payload must be a mapping",
+  schema_missing: "compiled schema is unavailable",
+};
+
+function validationDiagnostics(
+  validation: DiagnosticValidationWire,
+  source: string,
+  sourceMap: SourceMap,
+  envelopeKey: string | null,
+  schemaSource: SchemaDiagnosticSource | null,
+  structuralOffendingProperties: readonly (string | undefined)[],
+): DiagnosticV1[] {
+  const diagnostics: DiagnosticV1[] = [];
+  for (const [errorIndex, rawError] of validation.structural.errors.entries()) {
+    const error = rawError as unknown as Record<string, unknown>;
+    const kind = typeof error.kind === "string" ? error.kind : "artifact";
+    if (kind === "schema_invalid") {
+      const reason = typeof error.reason === "string" ? error.reason : "compile";
+      const diagnostic: DiagnosticV1 = {
+        category: "schema",
+        rule_id: diagnosticRuleId("schema_invalid", reason),
+        severity: "error",
+        message: String(error.message),
+        source,
+      };
+      const schemaDisplay = schemaSource?.source ?? validationSchemaSource(validation);
+      if (schemaDisplay !== null) diagnostic.schema_source = schemaDisplay;
+      if (typeof error.schema_path === "string") {
+        diagnostic.schema_path = error.schema_path;
+        if (schemaSource !== null) {
+          addSourceLocation(diagnostic, schemaSource.sourceMap, error.schema_path);
+        }
+      }
+      diagnostics.push(diagnostic);
+      continue;
+    }
+    if (kind === "schema_violation") {
+      const validator = typeof error.validator === "string" ? error.validator : "validation";
+      const objectPath = payloadPointer(error.path, envelopeKey);
+      const isExtraProperty =
+        validator === "additionalProperties" || validator === "unevaluatedProperties";
+      const offendingProperty = isExtraProperty
+        ? structuralOffendingProperties[errorIndex]
+        : undefined;
+      const errorPath = Array.isArray(error.path) ? error.path : [];
+      const path =
+        offendingProperty === undefined
+          ? objectPath
+          : payloadPointer([...errorPath, offendingProperty], envelopeKey);
+      const diagnostic: DiagnosticV1 = {
+        category: "structural",
+        rule_id: diagnosticRuleId("schema_violation", validator),
+        severity: "error",
+        message: String(error.message),
+        source,
+        path,
+      };
+      addSourceLocation(
+        diagnostic,
+        sourceMap,
+        path,
+        offendingProperty === undefined ? "value" : "key",
+      );
+      diagnostics.push(diagnostic);
+      continue;
+    }
+    const path = artifactDiagnosticPointer(kind, error, envelopeKey, validation);
+    const diagnostic: DiagnosticV1 = {
+      category: "structural",
+      rule_id: diagnosticRuleId("artifact", kind),
+      severity: "error",
+      message: ARTIFACT_DIAGNOSTIC_MESSAGES[kind] ?? String(error.message),
+      source,
+      path,
+    };
+    addSourceLocation(diagnostic, sourceMap, path);
+    diagnostics.push(diagnostic);
+  }
+
+  for (const error of validation.semantic.errors) {
+    const path = payloadPointer(error.path, envelopeKey);
+    const diagnostic: DiagnosticV1 = {
+      category: "semantic",
+      rule_id: diagnosticRuleId("semantic", error.code),
+      severity: "error",
+      message: error.message,
+      source,
+      path,
+    };
+    addSourceLocation(diagnostic, sourceMap, path);
+    diagnostics.push(diagnostic);
+  }
+
+  for (const warning of validation.warnings) {
+    const path =
+      warning.code === "document-contract-mismatch"
+        ? "/softschema/contract"
+        : warning.code === "document-status-mismatch"
+          ? "/softschema/status"
+          : "/softschema";
+    const diagnostic: DiagnosticV1 = {
+      category: "warning",
+      rule_id: diagnosticRuleId("warning", warning.code),
+      severity: warning.severity,
+      message: warning.message,
+      source,
+      path,
+    };
+    addSourceLocation(diagnostic, sourceMap, path);
+    diagnostics.push(diagnostic);
+  }
+  return diagnostics;
+}
+
+function schemaDiagnosticSource(
+  artifactPath: string,
+  explicitSchema: string | undefined,
+  validation: DiagnosticValidationWire,
+  cache: Map<string, SourceMap>,
+): SchemaDiagnosticSource | null {
+  const selected = explicitSchema ?? validation.document_metadata?.schema ?? undefined;
+  if (selected === undefined) return null;
+  const candidates =
+    explicitSchema !== undefined
+      ? [resolve(selected), resolve(dirname(artifactPath), selected)]
+      : [resolve(dirname(artifactPath), selected)];
+  let schemaPath: string | undefined;
+  for (const candidate of candidates) {
+    try {
+      if (statSync(candidate).isFile()) {
+        schemaPath = realpathSync(candidate);
+        break;
+      }
+    } catch (error) {
+      if (!isFileSystemError(error)) throw error;
+    }
+  }
+  if (schemaPath === undefined) return null;
+
+  let sourceMap = cache.get(schemaPath);
+  if (sourceMap === undefined) {
+    let encoded: Uint8Array;
+    try {
+      encoded = readBoundedBytes(schemaPath, DEFAULT_VALIDATION_LIMITS.maxResourceBytes);
+    } catch (error) {
+      if (error instanceof PortableValueError) {
+        sourceMap = SourceMap.empty();
+        cache.set(schemaPath, sourceMap);
+        return { source: displayPath(schemaPath), sourceMap };
+      }
+      if (!isFileSystemError(error)) throw error;
+      sourceMap = SourceMap.empty();
+      cache.set(schemaPath, sourceMap);
+      return { source: displayPath(schemaPath), sourceMap };
+    }
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(encoded);
+    } catch {
+      sourceMap = SourceMap.empty();
+      cache.set(schemaPath, sourceMap);
+      return { source: displayPath(schemaPath), sourceMap };
+    }
+    try {
+      sourceMap = parsePortableYamlWithLocations(
+        text,
+        {},
+        { encodedSize: encoded.byteLength },
+      ).sourceMap;
+    } catch (error) {
+      if (!(error instanceof PortableValueError) && !(error instanceof PortableYamlError)) {
+        throw error;
+      }
+      sourceMap = SourceMap.empty();
+    }
+    cache.set(schemaPath, sourceMap);
+  }
+  return { source: displayPath(schemaPath), sourceMap };
+}
+
+function displayPath(path: string): string {
+  const fromCwd = relative(process.cwd(), path);
+  const contained =
+    fromCwd !== ".." && !fromCwd.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`);
+  return (contained ? fromCwd : path).replaceAll("\\", "/");
+}
+
+function validationSchemaSource(validation: DiagnosticValidationWire): string | null {
+  const selected = validation.contract?.schema_path ?? validation.document_metadata?.schema;
+  return selected?.replaceAll("\\", "/") ?? null;
+}
+
+function payloadPointer(path: unknown, envelopeKey: string | null): string {
+  const parts: (string | number)[] = envelopeKey === null ? [] : [envelopeKey];
+  if (Array.isArray(path)) {
+    for (const part of path) {
+      if (typeof part === "string" || typeof part === "number") parts.push(part);
+    }
+  }
+  return jsonPointer(parts);
+}
+
+function artifactDiagnosticPointer(
+  kind: string,
+  error: Readonly<Record<string, unknown>>,
+  envelopeKey: string | null,
+  validation: DiagnosticValidationWire,
+): string {
+  if (kind === "metadata_invalid" || kind === "document_softschema_invalid") {
+    return "/softschema";
+  }
+  if (kind === "document_contract_mismatch") return "/softschema/contract";
+  if (kind === "schema_missing") {
+    return validation.document_metadata?.schema !== null &&
+      validation.document_metadata?.schema !== undefined
+      ? "/softschema/schema"
+      : "";
+  }
+  if (kind === "envelope_not_mapping" || kind === "values_not_mapping") {
+    return envelopeKey === null ? "" : jsonPointer([envelopeKey]);
+  }
+  if (kind === "envelope_mismatch" && typeof error.expected_key === "string") return "";
+  return "";
+}
+
+function addSourceLocation(
+  diagnostic: DiagnosticV1,
+  sourceMap: SourceMap,
+  path: string,
+  anchor: SourceAnchor = "value",
+): void {
+  const span = sourceMap.span(path, { anchor });
+  if (span !== undefined) {
+    diagnostic.line = span.start.line;
+    diagnostic.column = span.start.column;
   }
 }
 
@@ -744,7 +1375,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       "Validate an artifact. A self-describing artifact (softschema.contract, " +
         "schema, envelope) needs no flags; flags override the document",
     )
-    .argument("<path>")
+    .argument("<paths...>")
     .option(
       "--profile <PROFILE>",
       "Artifact storage profile: frontmatter-md or pure-yaml (default: frontmatter-md).",
@@ -765,8 +1396,22 @@ export async function main(argv: string[] = process.argv): Promise<number> {
         "document's softschema.schema binding is used when present",
     )
     .option("--status <status>", "override the document status")
-    .action(async (path: string, opts: ValidateOptions) => {
-      exitCode = await runValidate(path, opts);
+    .option("--recursive", "discover profile-matching artifacts below directory operands")
+    .option(
+      "--include <glob>",
+      "include a recursive operand-relative glob; repeat for multiple patterns",
+      collectPattern,
+      [],
+    )
+    .option(
+      "--exclude <glob>",
+      "exclude a recursive operand-relative glob; repeat for multiple patterns",
+      collectPattern,
+      [],
+    )
+    .option("--format <format>", "output format: json, jsonl, or sarif (default: json)")
+    .action(async (paths: string[], opts: ValidateOptions) => {
+      exitCode = await runValidate(paths, opts);
     });
 
   program

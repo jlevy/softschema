@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:validation-result-legacy:v0",
-  "title": "Draft legacy single-artifact validation result",
+  "title": "legacy single-artifact validation result",
   "type": "object",
   "required": [
     "contract",

@@ -34,20 +34,27 @@ $ softschema inspect examples/movie_page/spirited-away.md
 $ softschema docs --list
 Available softschema docs:
 
-  development        Local development workflow.
-  example            Copyable example overview.
-  example-artifact   Copyable Markdown/YAML artifact.
-  example-host       Host registry and validation helper.
-  example-model      Pydantic model used by the example.
-  example-pure-yaml  Copyable pure YAML artifact.
-  example-schema     Compiled JSON Schema for the example.
-  guide              Concepts, mental model, and adoption path.
-  installation       Installing softschema for Node or Python.
-  python-design      Python package design decisions.
-  readme             Short first-visitor overview.
-  skill              Portable agent skill instructions.
-  spec               Language-neutral artifact format.
-  typescript-design  TypeScript package design decisions.
+  agent-compatibility  Discovery and instruction paths for major coding agents.
+  api                  Stable library and command-line surfaces.
+  changelog            Release history and user-visible changes.
+  development          Local development workflow.
+  example              Copyable example overview.
+  example-artifact     Copyable Markdown/YAML artifact.
+  example-host         Host registry and validation helper.
+  example-host-ts      TypeScript host registry and validation helper.
+  example-model        Pydantic model used by the example.
+  example-model-ts     Zod model used by the paired example.
+  example-pure-yaml    Copyable pure YAML artifact.
+  example-schema       Compiled JSON Schema for the example.
+  guide                Concepts, mental model, and adoption path.
+  installation         Installing softschema for Node or Python.
+  migration-0.3        Compatibility and migration guidance for 0.3.
+  python-design        Python package design decisions.
+  readme               Short first-visitor overview.
+  security             Supported versions, trust boundaries, and vulnerability reporting.
+  skill                Portable agent skill instructions.
+  spec                 Language-neutral artifact format.
+  typescript-design    TypeScript package design decisions.
 
 Run `softschema docs <topic>` to print a document.
 Copy examples from the printed docs or from the repository files; the CLI does not scaffold or mutate projects.
@@ -60,18 +67,11 @@ Copy examples from the printed docs or from the repository files; the CLI does n
 $ softschema skill --brief
 # softschema Skill Brief
 
-## Select a Capable Command
+## Qualify a Runner
 
-Derive the required capabilities before running an operation:
-
-- Schema-only validation needs the operation, `json-schema`, and the artifact format.
-- Pure YAML validation also needs the `pure-yaml` storage profile.
-- A `.py` model needs the `python` runtime and `pydantic` model loader.
-- A built `.js` or `.mjs` model needs `node` or `bun` and the `zod` model loader.
-- A direct `.ts` model needs `bun` and the `zod` model loader.
-
-Try these discovery commands in order, skipping a fallback whose ecosystem cannot load
-the requested model:
+Derive required capabilities first: schema-only, pure YAML, Python/Pydantic, built
+JavaScript/Zod, or Bun source TypeScript/Zod.
+Try candidates in this order:
 
 ```bash
 softschema doctor --json
@@ -80,20 +80,30 @@ npx --yes softschema@0.2.2 doctor --json
 bunx --bun softschema@0.2.2 doctor --json
 ```
 
-An executable name or version string is not enough.
-Accept a candidate only when its JSON reports protocol `1`, the required operation, a
-supported artifact format, and the required runtime and model loader.
-Protocol `1` does not report storage profiles yet.
-For a pure YAML task, also run that candidate prefix with `validate --help` and accept
-it only when the help advertises both `--profile` and `pure-yaml`; otherwise continue to
-the next fallback. If none qualifies, stop and report that the `pure-yaml` profile is
-unavailable and that softschema must be installed or upgraded to a release whose
-`validate --help` lists it.
-Reuse that candidate’s entire command prefix by replacing the trailing `doctor --json`
-arguments. If none qualifies, stop and report the missing capability plus the exact
-runtime (uv/Python, Node, or Bun) the user can install.
+Accept a candidate only when protocol `1` reports the needed operation, artifact format,
+runtime, and model loader.
+For `pure-yaml`, also require `validate --help` to list the profile.
+Reuse the complete qualifying command prefix.
+If none qualifies, report the missing capability and runtime and say that softschema
+must be installed or upgraded to a release that advertises it.
+Do not improvise another runner.
 
-After qualification, validate a self-describing file with:
+## Route the Task
+
+- **Author a contract or artifact:** read `softschema docs guide`, then
+  `softschema docs spec` for exact rules and `softschema docs example` for copyable
+  paired sources.
+- **Validate one or many files:** run `softschema validate --help`; select the profile
+  explicitly, then use legacy JSON for one explicit file or diagnostic JSON/JSONL/SARIF
+  for batch work.
+- **Consume values in application code:** read `softschema docs api` when available;
+  otherwise use `softschema docs guide` and the runtime design topic.
+  Validate at the boundary and inspect structured result fields, not message prose.
+- **Change softschema itself:** read the repository `AGENTS.md` and
+  `softschema docs development`; update shared vectors first and keep Python, Node, and
+  Bun green.
+
+Validate a self-describing Markdown artifact with:
 
 ```bash
 softschema validate doc.md
@@ -101,32 +111,27 @@ softschema validate doc.md
 
 ## Operating Rules
 
-- Treat YAML/frontmatter as authoritative for every consumed value.
+- Treat YAML/frontmatter as authoritative.
   Never parse Markdown body prose or tables for structured fields.
-- Select the storage profile explicitly.
-  `frontmatter-md` is the default; pass `--profile pure-yaml` for a YAML artifact with
-  no Markdown body. Never infer a profile from `.yaml` or `.yml`.
-- In `pure-yaml`, treat the root `softschema` block as metadata.
-  Without a declared or overridden envelope, the remaining root mapping is the payload.
-- Use `softschema.contract` for the payload contract ID. When authoring a new artifact,
-  use a mapping and include the exact quoted `softschema.format: "1"` discriminator.
-  An absent format is the legacy grammar, not the package or contract version.
-  The block can also declare `schema`, `envelope`, and `status`.
-- Put extension metadata only in the format-1 `softschema.extensions` mapping.
-  Use a canonical lowercase reverse-DNS or HTTPS namespace for each key.
-  Preserve unknown portable values without interpreting them; extensions never authorize
-  loading code or changing core validation.
+- Use a mapping with exact quoted `softschema.format: "1"` for new artifacts.
+  Use `softschema.contract` for the logical payload contract; it is not a schema path,
+  model import, or JSON Schema `$id`.
+- Select `frontmatter-md` or `pure-yaml` explicitly.
+  A filename suffix never selects a profile.
 - Promote a value into YAML only when a downstream consumer needs it.
-  Keep exploratory or judgment-heavy content as prose.
-- Validate self-describing artifacts without override flags.
-  Use `--schema` only for an explicit compiled-schema override.
-  Use `--model` only with trusted local Pydantic or Zod code because model loading
-  executes code.
-- Read the bundled `guide` for the mental model, `spec` for exact format rules, and
-  `example-artifact`, `example-pure-yaml`, and `example-schema` for copyable inputs.
-  Run the qualifying prefix with `docs --list` to discover every topic.
-- Keep examples copyable; do not scaffold, install, or mutate a project unless the user
-  explicitly requests that workflow.
+  Keep analysis, uncertainty, and judgment-heavy context as prose.
+- Preserve unknown format-1 extension values as portable data.
+  Extensions never authorize imports, retrieval, plugins, or validation behavior.
+- Prefer a reviewed compiled schema for untrusted artifacts.
+  Model loading imports and executes trusted local Pydantic or Zod code.
+- Expect validation to remain offline.
+  Only fragments and already-loaded explicit resources are available; never fetch a
+  schema because a reference names a URI.
+- Keep examples copyable.
+  Do not scaffold, install, or mutate a project unless the user requested that action.
+
+Use `softschema docs --list --json` to discover the installed topic set rather than
+guessing a resource name.
 ? 0
 ````
 
@@ -140,11 +145,31 @@ $ softschema docs --list --json
     "example-artifact",
     "example-pure-yaml",
     "example-model",
+    "example-model-ts",
     "example-host",
+    "example-host-ts",
     "example-schema"
   ],
   "scaffolding": false,
   "topics": [
+    {
+      "name": "agent-compatibility",
+      "path": "docs/agent-compatibility.md",
+      "summary": "Discovery and instruction paths for major coding agents.",
+      "title": "Coding Agent Compatibility"
+    },
+    {
+      "name": "api",
+      "path": "docs/api.md",
+      "summary": "Stable library and command-line surfaces.",
+      "title": "API Reference"
+    },
+    {
+      "name": "changelog",
+      "path": "CHANGELOG.md",
+      "summary": "Release history and user-visible changes.",
+      "title": "Changelog"
+    },
     {
       "name": "development",
       "path": "docs/development.md",
@@ -170,10 +195,22 @@ $ softschema docs --list --json
       "title": "Movie Page Host Integration"
     },
     {
+      "name": "example-host-ts",
+      "path": "examples/movie_page/host_integration.ts",
+      "summary": "TypeScript host registry and validation helper.",
+      "title": "Movie Page TypeScript Host Integration"
+    },
+    {
       "name": "example-model",
       "path": "examples/movie_page/model.py",
       "summary": "Pydantic model used by the example.",
       "title": "Movie Page Model"
+    },
+    {
+      "name": "example-model-ts",
+      "path": "examples/movie_page/model.ts",
+      "summary": "Zod model used by the paired example.",
+      "title": "Movie Page TypeScript Model"
     },
     {
       "name": "example-pure-yaml",
@@ -200,6 +237,12 @@ $ softschema docs --list --json
       "title": "Installation"
     },
     {
+      "name": "migration-0.3",
+      "path": "docs/migration-0.3.md",
+      "summary": "Compatibility and migration guidance for 0.3.",
+      "title": "Migration to 0.3"
+    },
+    {
       "name": "python-design",
       "path": "docs/softschema-python-design.md",
       "summary": "Python package design decisions.",
@@ -210,6 +253,12 @@ $ softschema docs --list --json
       "path": "README.md",
       "summary": "Short first-visitor overview.",
       "title": "README"
+    },
+    {
+      "name": "security",
+      "path": "SECURITY.md",
+      "summary": "Supported versions, trust boundaries, and vulnerability reporting.",
+      "title": "Security Policy"
     },
     {
       "name": "skill",

@@ -18,6 +18,7 @@ import {
   parseSchemaMetadata,
   SchemaMetadataError,
 } from "./models.js";
+import { type SoftFieldOptions, softField, softFieldMeta } from "./softField.js";
 import { validateArtifact } from "./validate.js";
 
 function tmp(name: string, content: string): string {
@@ -121,6 +122,83 @@ describe("models", () => {
       schema_path: "s.yaml",
       status: "soft",
     });
+  });
+});
+
+describe("softField authoring annotations", () => {
+  const validOptions: SoftFieldOptions = {
+    description: "One-sentence summary.",
+    group: "narrative",
+    owner: "postprocess",
+    tier: "narrative",
+    order: 2,
+    instruction: "Keep under 200 chars.",
+    examples: ["A concise summary."],
+    aliases: { tone: ["concise"] },
+    repair: "safe_coerce",
+  };
+
+  test("preserves every valid annotation through compiler output", () => {
+    const expected = {
+      aliases: { tone: ["concise"] },
+      examples: ["A concise summary."],
+      group: "narrative",
+      instruction: "Keep under 200 chars.",
+      order: 2,
+      owner: "postprocess",
+      repair: "safe_coerce",
+      tier: "narrative",
+    };
+    expect(softFieldMeta(validOptions)).toEqual(expected);
+
+    const Annotated = z.strictObject({ summary: softField(z.string(), validOptions) });
+    const { schema } = buildCanonicalSchema(Annotated, "example:Annotated/v1");
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+    expect(properties.summary?.["x-softschema"]).toEqual(expected);
+  });
+
+  test("rejects values outside the public annotation schema with stable errors", () => {
+    const invalid: [Record<string, unknown>, string][] = [
+      [{ group: "" }, "soft field annotation group must be a non-empty string"],
+      [{ instruction: "" }, "soft field annotation instruction must be a non-empty string"],
+      [{ order: 1.5 }, "soft field annotation order must be an integer"],
+      [{ order: true }, "soft field annotation order must be an integer"],
+      [
+        { owner: "runtime" },
+        "soft field annotation owner must be one of: agent, postprocess, system, human",
+      ],
+      [
+        { tier: "approximate" },
+        "soft field annotation tier must be one of: hard_fact, constrained, narrative",
+      ],
+      [
+        { repair: "execute" },
+        "soft field annotation repair must be one of: none, safe_coerce, suggest_alias",
+      ],
+      [{ examples: "not-an-array" }, "soft field annotation examples must be an array"],
+      [
+        { aliases: { tone: [1] } },
+        "soft field annotation aliases must be an object of string arrays",
+      ],
+    ];
+
+    for (const [overrides, message] of invalid) {
+      const options = { ...validOptions, ...overrides } as unknown as SoftFieldOptions;
+      let caught: unknown;
+      try {
+        softFieldMeta(options);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(TypeError);
+      if (!(caught instanceof TypeError)) throw new Error("softFieldMeta did not throw TypeError");
+      expect(caught.message).toBe(message);
+    }
+
+    const invalidGroup = { ...validOptions, group: "" };
+    expect(() => softField(z.string(), invalidGroup)).toThrow(
+      "soft field annotation group must be a non-empty string",
+    );
   });
 });
 
@@ -302,16 +380,22 @@ describe("compile: write mode + build", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
-  test("augmentSchema merges into existing x-softschema (setdefault+update semantics)", () => {
-    // Simulate a raw schema that already carries x-softschema with a custom field.
-    // buildCanonicalSchema processes through augmentSchema; verify the custom field survives.
-    const CustomSchema = z.strictObject({ name: z.string() });
-    const { schema } = buildCanonicalSchema(CustomSchema, "x:S/v1");
-    const xss = schema["x-softschema"] as Record<string, unknown>;
-    // The standard fields must be present:
-    expect(xss.contract).toBe("x:S/v1");
-    expect(xss.softschema_format_version).toBe("0.1.0");
-    expect(xss.schema_sha256).toMatch(/^[0-9a-f]{64}$/);
+  test("compile rejects numbers without an exact portable representation", () => {
+    const Unsafe = z.object({ score: z.number().max(1e20) });
+
+    expect(() => buildCanonicalSchema(Unsafe, "x:Unsafe/v1")).toThrow(
+      "integer is outside the safe range",
+    );
+  });
+  test("compile rejects model-supplied root compiler metadata", () => {
+    for (const metadata of [{ custom: true }, "invalid"]) {
+      const CustomSchema = z.strictObject({ name: z.string() }).meta({
+        "x-softschema": metadata,
+      });
+      expect(() => buildCanonicalSchema(CustomSchema, "x:S/v1")).toThrow(
+        "reserved x-softschema metadata",
+      );
+    }
   });
 });
 

@@ -291,3 +291,19 @@ $ softschema validate tests/golden/fixtures/pure-yaml-value-domain.yaml --profil
 }
 ? 1
 ```
+
+# Test: a coded YAML parser exception is a parse failure
+
+Some YAML parsers attach a string `code` to syntax exceptions. That metadata must not
+make a readable document look like a filesystem input failure.
+
+```console
+$ softschema validate tests/golden/fixtures/pure-yaml-coded-parser-error.yaml --profile pure-yaml --contract test.pure:Root/v1
+{
+  "kind": "parse_error",
+  "message": "artifact is not valid YAML",
+  "reason": "syntax",
+  "source": "tests/golden/fixtures/pure-yaml-coded-parser-error.yaml"
+}
+? 1
+```

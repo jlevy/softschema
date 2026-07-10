@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:public-claims:v0",
-  "title": "Draft machine-checked public claims matrix",
+  "title": "machine-checked public claims matrix",
   "type": "object",
   "required": ["schema_version", "claims"],
   "properties": {

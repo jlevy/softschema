@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from ruamel.yaml import YAML
 
+from devtools import release as release_module
 from devtools.release import (
     ReleaseError,
     ReleaseSubject,
@@ -69,11 +70,61 @@ def test_release_tag_mapping_rejects_every_other_shape(tag: str) -> None:
         release_coordinates(tag)
 
 
+def test_candidate_versions_are_separate_from_verified_bootstrap_pins() -> None:
+    metadata: dict[str, Any] = {
+        "logical_version": "0.3.0",
+        "release_state": "candidate",
+        "packages": {
+            "python": {"version": "0.3.0", "pin": "0.2.2"},
+            "npm": {"version": "0.3.0", "pin": "0.2.2"},
+        },
+    }
+    release_module._validate_package_coordinates(metadata)
+
+    metadata["packages"]["python"]["pin"] = "0.3.0"
+    metadata["packages"]["npm"]["pin"] = "0.3.0"
+    with pytest.raises(ReleaseError, match="prior verified release"):
+        release_module._validate_package_coordinates(metadata)
+
+
+def test_released_metadata_requires_one_stable_cross_ecosystem_verified_pin() -> None:
+    metadata: dict[str, Any] = {
+        "logical_version": "0.3.0",
+        "release_state": "released",
+        "packages": {
+            "python": {"version": "0.3.0", "pin": "0.2.2"},
+            "npm": {"version": "0.3.0", "pin": "0.2.2"},
+        },
+    }
+    with pytest.raises(ReleaseError, match="verified release"):
+        release_module._validate_package_coordinates(metadata)
+
+    metadata["packages"]["python"]["pin"] = "0.3.0"
+    metadata["packages"]["npm"]["pin"] = "0.3.0"
+    release_module._validate_package_coordinates(metadata)
+
+    metadata["packages"]["python"]["pin"] = "0.3.0rc1"
+    with pytest.raises(ReleaseError, match="same release"):
+        release_module._validate_package_coordinates(metadata)
+
+    metadata = {
+        "logical_version": "0.4.0-rc.1",
+        "release_state": "released",
+        "packages": {
+            "python": {"version": "0.4.0rc1", "pin": "0.3.0"},
+            "npm": {"version": "0.4.0-rc.1", "pin": "0.3.0"},
+        },
+    }
+    release_module._validate_package_coordinates(metadata)
+
+
 def test_root_release_and_development_build_metadata_validate() -> None:
     metadata = load_and_validate_metadata(ROOT)
     assert metadata["release_state"] == "development"
     assert metadata["packages"]["python"]["pin"] == "0.2.2"
     assert metadata["packages"]["npm"]["pin"] == "0.2.2"
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["project"]["readme"] == "packages/python/README.md"
 
     build = json.loads((ROOT / "build-metadata.json").read_text(encoding="utf-8"))
     assert build["release_metadata_sha256"] == _sha256(ROOT / "release-metadata.json")
@@ -217,11 +268,15 @@ def test_every_github_action_is_pinned_and_publishers_do_not_checkout_source() -
     assert publish["permissions"] == {}
     for job_name in ["publish-pypi", "publish-npm"]:
         job = publish["jobs"][job_name]
-        assert job["permissions"] == {"id-token": "write"}
+        assert job["permissions"] == {
+            "attestations": "read",
+            "contents": "read",
+            "id-token": "write",
+        }
         assert job["environment"] in {"pypi", "npm"}
         actions = [step.get("uses", "") for step in job["steps"]]
         assert not any(action.startswith("actions/checkout@") for action in actions)
-        assert job["needs"] == ["preflight", "smoke"]
+        assert job["needs"] == ["preflight", "draft-release", "classify-registries"]
         scripts = "\n".join(step.get("run", "") for step in job["steps"])
         assert not any(
             forbidden in scripts
@@ -246,17 +301,24 @@ def test_publish_workflow_is_tag_protected_and_manual_runs_are_dry_only() -> Non
     preflight_script = "\n".join(
         step.get("run", "") for step in publish["jobs"]["preflight"]["steps"]
     )
+    assert 'test "$GITHUB_REPOSITORY" = "jlevy/softschema"' in preflight_script
     assert "github.ref_protected" in preflight_script
     assert "git rev-parse 'HEAD^{commit}'" in preflight_script
     assert "--clear --out-dir release-out" not in preflight_script
     assert "--no-create-gitignore --out-dir python-dist" in preflight_script
-    assert "sha256sum --check SHA256SUMS" in "\n".join(
+    assert "frozen_artifact_smoke.py verify-checksums release-out" in "\n".join(
         step.get("run", "")
         for name in ["smoke", "publish-pypi", "publish-npm"]
         for step in publish["jobs"][name]["steps"]
     )
     for job_name in ["publish-pypi", "publish-npm"]:
         assert "github.event_name == 'push'" in publish["jobs"][job_name]["if"]
+
+    draft_script = "\n".join(
+        step.get("run", "") for step in publish["jobs"]["draft-release"]["steps"]
+    )
+    assert "repos/$GITHUB_REPOSITORY/immutable-releases" in draft_script
+    assert "--jq .enabled" in draft_script
 
 
 def test_ci_installs_and_verifies_local_wheels_while_forbidding_dependency_builds() -> None:

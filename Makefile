@@ -37,26 +37,30 @@ hooks-install: install
 #
 # After flowmark touches the prose, regenerate the derived artifacts so they stay
 # byte-identical to their canonical source: (1) softschema:generated sections (flowmark
-# adds blank lines around block elements the generator does not emit), and (2) the skill
+# adds blank lines around block elements the generator does not emit), (2) the skill
 # mirrors under .agents/ and .claude/, which are flowmark-ignored and so must be
-# re-installed from the just-reflowed skills/softschema/SKILL.md. Without these steps the
-# generate / skill-mirror drift tests fail after a format-only pass.
+# re-installed from the just-reflowed skills/softschema/SKILL.md, and (3) native agent
+# instruction adapters derived from AGENTS.md. Without these steps the generated-file
+# drift tests fail after a format-only pass.
 format:
 	$(FLOWMARK) --auto .
 	uv run softschema generate examples/movie_page/README.md
 	uv run softschema skill --install
+	uv run python devtools/sync_agent_instructions.py
 
 # CI-mode Markdown check: run the FULL format pipeline, then fail if it would
 # change anything. flowmark-rs has no native --check, so we approximate via git
 # diff. This must run the same steps as `format` (flowmark + regenerate the
-# derived sections + reinstall the skill mirrors), not flowmark alone: flowmark
-# adds blank lines around the block elements inside softschema:generated markers
-# that the generator does not emit, so a flowmark-only check reports false drift
-# on an otherwise-canonical tree. Requires a clean working tree before running.
+# derived sections + reinstall the skill mirrors + regenerate agent adapters), not
+# flowmark alone: flowmark adds blank lines around the block elements inside
+# softschema:generated markers that the generator does not emit, so a flowmark-only
+# check reports false drift on an otherwise-canonical tree. Requires a clean working
+# tree before running.
 format-check:
 	$(FLOWMARK) --auto .
 	uv run softschema generate examples/movie_page/README.md
 	uv run softschema skill --install
+	uv run python devtools/sync_agent_instructions.py
 	@git diff --exit-code -- '*.md' || \
 	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 

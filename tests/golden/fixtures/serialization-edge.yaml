@@ -1,0 +1,12 @@
+softschema:
+  contract: test.serialization:Record/v1
+"2": two
+"10": ten
+"": bmp
+"𐀀": astral
+nested:
+  "2": two
+  "10": ten
+  "é": accent
+  "😀": face
+small: 1e-7

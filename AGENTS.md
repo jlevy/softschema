@@ -7,13 +7,14 @@ Start here:
 - [softschema Guide](docs/softschema-guide.md): standalone concept and adoption guide
   for humans and agents.
 - [softschema Spec](docs/softschema-spec.md): exact language-neutral artifact format.
-- [Movie Page Example](examples/movie_page/README.md): complete Python-backed example.
+- [Library API](docs/api.md): paired Python and TypeScript integration.
+- [Movie Page Example](examples/movie_page/README.md): complete paired Pydantic/Zod
+  example.
 
-softschema ships two interchangeable implementations with the same CLI and library
-surface: Python/Pydantic (`softschema`, `softschema-py`) and TypeScript/Zod
-(`softschema`, `softschema-ts`). They are held to exact behavioral parity: same flags,
-same canonical compiled JSON Schema, same validation results, so authoring an artifact
-is identical regardless of which you run.
+softschema ships interchangeable Python/Pydantic (`softschema`, `softschema-py`) and
+TypeScript/Zod (`softschema`, `softschema-ts`) implementations.
+They share CLI behavior, canonical compiled JSON Schema, normalized results, and
+conformance vectors; their library APIs remain idiomatic to each language.
 
 For implementer reference (only when changing a package itself):
 
@@ -29,7 +30,8 @@ Key rules:
 
 - Treat YAML/frontmatter as the authoritative structured data.
 - Do not parse Markdown body prose or tables for consumed values.
-- Use `softschema.contract`, not `schema`, in authored artifact metadata.
+- Use `softschema.contract` for logical contract identity.
+  Use `softschema.schema` only for the compiled-schema binding.
 - Contract IDs name artifact payload contracts, not a specific Python class.
 - Keep examples public and practical; do not introduce private business context,
   internal project names, or proprietary domains.
@@ -59,8 +61,11 @@ Documentation rules:
   reader.
 - Keep the README as a short subset of `docs/softschema-guide.md`.
 - Put exact artifact-format rules in `docs/softschema-spec.md`.
+- Put public host integration in `docs/api.md` and runtime internals in the two design
+  references.
+- Put compatibility history in `docs/migration-0.3.md` and `CHANGELOG.md`.
 - Keep examples as copyable source files under `examples/`; the CLI may print them, but
-  should not scaffold or mutate projects in the first release.
+  does not scaffold or mutate projects.
 - Include the standard documentation footer in repo docs.
   Do not add it to authored softschema example artifacts.
 

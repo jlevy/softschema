@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:compiler-input-profile:v0",
+  "title": "language-neutral compiler input profile",
+  "description": "Raw canonicalization inputs are data-only Draft 2020-12 schemas, not runtime model source.",
+  "type": "object",
+  "required": ["$schema"],
+  "properties": {
+    "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+    "$id": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": true
+}

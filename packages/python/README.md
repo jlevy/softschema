@@ -1,60 +1,84 @@
-# softschema (Python)
+# softschema (Python/Pydantic)
 
-Soft schemas: gradual, practical validation for Markdown/YAML artifacts that mix prose
-and structured data—built for humans and coding agents.
+The Python implementation of [softschema](https://github.com/jlevy/softschema) validates
+Markdown/frontmatter and pure YAML artifacts against portable JSON Schema and optional
+trusted Pydantic models.
+The npm TypeScript/Zod package implements the same artifact, CLI, compiled-schema, and
+result contracts with idiomatic TypeScript APIs.
 
-This is the Python implementation of [softschema](https://github.com/jlevy/softschema),
-published on [PyPI](https://pypi.org/project/softschema/). A fully synchronized
-TypeScript implementation is also available on npm.
+This package README follows the artifact version built for PyPI. Repository-wide
+quickstarts and agent bootstrap stay on the last dual-registry-verified release instead.
 
 ## Install
 
+<!-- BEGIN SOFTSCHEMA CLAIM python-version -->
 ```bash
-pip install softschema
-# or:
-uv add softschema
+uv add softschema==0.2.2
+# or: python -m pip install 'softschema==0.2.2'
 ```
+<!-- END SOFTSCHEMA CLAIM python-version -->
 
-## Quick Start
+Read [Security](https://github.com/jlevy/softschema/blob/main/SECURITY.md) before
+validating hostile input with this version.
+
+## Validate an Artifact
+
+Library callers supply a host-owned contract; CLI binding inference is a separate
+adapter:
 
 ```python
 from pathlib import Path
 
-from softschema import validate_artifact
-
-# A self-describing artifact validates with no extra arguments; pass contract=,
-# contract_id=, or registry= to bind a schema explicitly.
-result = validate_artifact(Path("doc.md"))
-```
-
-Integrations that already own parsing and model execution can use the runtime-neutral
-contract core. Python-specific adapters are also available from an explicit namespace:
-
-```python
-from softschema.core import normalize_portable_value, validate_contract_id
+from softschema import Contract, Contracts, SchemaStatus
 from softschema.runtime import validate_artifact
+
+contract_id = "example.movies:MoviePage/v1"
+registry = Contracts()
+registry.register(
+    Contract(
+        id=contract_id,
+        model=MoviePage,
+        envelope_key="movie",
+        status=SchemaStatus.enforced,
+        schema_path=Path("movie-page.schema.yaml"),
+    )
+)
+result = validate_artifact(Path("doc.md"), contract_id=contract_id, registry=registry)
 ```
 
-The package root remains compatible with existing imports.
+The package root keeps existing imports available.
+New code may use `softschema.core` for runtime-neutral JSON-compatible behavior and
+`softschema.runtime` for YAML, filesystem, Pydantic, and compiled-schema adapters.
 
-Or from the command line:
+## CLI
 
 ```bash
 softschema validate doc.md
 softschema validate doc.yaml --profile pure-yaml
+softschema validate docs --recursive --format jsonl
+softschema doctor --json
+softschema docs --list --json
 ```
 
-The default is `frontmatter-md`; `.yaml` and `.yml` never select `pure-yaml` implicitly.
+`frontmatter-md` is the default; a filename suffix never selects `pure-yaml`. `--model`
+imports and executes trusted local Python code.
+Compiled-schema validation is offline and performs no implicit HTTP, file, or
+relative-resource retrieval.
 
 ## Documentation
 
-- [softschema Guide](https://github.com/jlevy/softschema/blob/main/docs/softschema-guide.md):
-  the full mental model and adoption playbooks
-- [softschema Spec](https://github.com/jlevy/softschema/blob/main/docs/softschema-spec.md):
-  the exact artifact format and validation rules
-- [Installation](https://github.com/jlevy/softschema/blob/main/docs/installation.md):
-  pinned vs zero-install, uv and Node setup
-- [Repository](https://github.com/jlevy/softschema)
+- [Guide](https://github.com/jlevy/softschema/blob/main/docs/softschema-guide.md):
+  adoption and workflows
+- [Spec](https://github.com/jlevy/softschema/blob/main/docs/softschema-spec.md): exact
+  language-neutral behavior
+- [Library API](https://github.com/jlevy/softschema/blob/main/docs/api.md): paired
+  Python and TypeScript entrypoints
+- [Python Design](https://github.com/jlevy/softschema/blob/main/docs/softschema-python-design.md):
+  implementation decisions
+- [0.3 Migration](https://github.com/jlevy/softschema/blob/main/docs/migration-0.3.md):
+  compatibility changes
+
+The installed CLI exposes bundled public topics through `softschema docs --list`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

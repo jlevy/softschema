@@ -1,7 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:x-softschema:v0",
-  "title": "Draft x-softschema annotation vocabulary",
+  "$dynamicAnchor": "meta",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2020-12/vocab/core": true,
+    "https://json-schema.org/draft/2020-12/vocab/applicator": true,
+    "https://json-schema.org/draft/2020-12/vocab/unevaluated": true,
+    "https://json-schema.org/draft/2020-12/vocab/validation": true,
+    "https://json-schema.org/draft/2020-12/vocab/meta-data": true,
+    "https://json-schema.org/draft/2020-12/vocab/format-annotation": true,
+    "https://json-schema.org/draft/2020-12/vocab/content": true,
+    "urn:softschema:draft:vocabulary:x-softschema:v0": false
+  },
+  "title": "optional x-softschema annotation vocabulary metaschema",
+  "allOf": [
+    { "$ref": "https://json-schema.org/draft/2020-12/schema" }
+  ],
   "$defs": {
     "contractId": {
       "type": "string",
@@ -25,7 +39,7 @@
     },
     "fieldAnnotation": {
       "type": "object",
-      "minProperties": 1,
+      "required": ["group"],
       "properties": {
         "aliases": {
           "type": "object",
@@ -38,15 +52,25 @@
         "group": { "type": "string", "minLength": 1 },
         "instruction": { "type": "string", "minLength": 1 },
         "order": { "type": "integer" },
-        "owner": { "type": "string", "minLength": 1 },
-        "repair": { "type": "string", "minLength": 1 },
-        "tier": { "type": "string", "minLength": 1 }
+        "owner": {
+          "enum": ["agent", "postprocess", "system", "human"]
+        },
+        "repair": {
+          "enum": ["none", "safe_coerce", "suggest_alias"]
+        },
+        "tier": {
+          "enum": ["hard_fact", "constrained", "narrative"]
+        }
       },
       "additionalProperties": false
     }
   },
-  "oneOf": [
-    { "$ref": "#/$defs/compilerMetadata" },
-    { "$ref": "#/$defs/fieldAnnotation" }
-  ]
+  "properties": {
+    "x-softschema": {
+      "oneOf": [
+        { "$ref": "#/$defs/compilerMetadata" },
+        { "$ref": "#/$defs/fieldAnnotation" }
+      ]
+    }
+  }
 }

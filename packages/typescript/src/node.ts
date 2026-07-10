@@ -7,6 +7,13 @@ export {
   SOFTSCHEMA_FORMAT_VERSION,
 } from "./compile.js";
 export {
+  type NodeSource,
+  type SourceAnchor,
+  SourceMap,
+  type SourcePoint,
+  type SourceSpan,
+} from "./core/source-map.js";
+export {
   type EnforcementUnsupportedErrorRecord,
   normalizeAjvError,
   renderStructuralMessage,
@@ -94,6 +101,13 @@ export {
 export {
   DEFAULT_VALIDATION_LIMITS,
   type JsonObject,
+  type JsonValue,
+  type ParsedPortableYaml,
+  PortableValueError,
+  PortableYamlError,
+  PortableYamlSyntaxError,
+  parsePortableYaml,
+  parsePortableYamlWithLocations,
   type ValidationLimitOverrides,
   type ValidationLimits,
 } from "./yaml-value-domain.js";

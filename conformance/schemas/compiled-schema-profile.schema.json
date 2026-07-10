@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:compiled-schema-profile:v0",
-  "title": "Draft softschema compiler-output profile",
-  "description": "A transitional profile. Identity and compiler bytes are finalized by later behavior beads.",
+  "title": "softschema compiler-output profile",
+  "description": "The settled language-neutral profile for schemas emitted by a softschema compiler.",
   "type": "object",
   "required": ["$schema", "x-softschema"],
   "properties": {

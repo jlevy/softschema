@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:publication-candidate:v0",
+  "title": "immutable HTTPS publication candidate policy",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "target_namespace",
+    "version",
+    "source_identifier_status",
+    "promotion_gate"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "target_namespace": {
+      "const": "https://jlevy.github.io/softschema/schema/v1/"
+    },
+    "version": { "const": "v1" },
+    "source_identifier_status": { "const": "draft-until-live-verification" },
+    "promotion_gate": {
+      "type": "object",
+      "required": ["status", "http_status", "redirects", "content_types", "digest"],
+      "properties": {
+        "status": { "const": "external-verification-required" },
+        "http_status": { "const": 200 },
+        "redirects": { "const": 0 },
+        "content_types": {
+          "type": "array",
+          "const": ["application/json", "application/schema+json"]
+        },
+        "digest": { "const": "sha256-byte-equality" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

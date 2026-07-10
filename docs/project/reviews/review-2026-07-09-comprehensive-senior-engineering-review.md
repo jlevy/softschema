@@ -9,7 +9,7 @@ author: Joshua Levy with Codex
 
 **Review target:** `main` at `3f31aa8`
 
-**Status:** Findings complete; remediation is tracked in `ss-22fi`
+**Status:** Code remediation complete; live publication gates remain in `ss-22fi`
 
 ## Executive Assessment
 
@@ -83,6 +83,16 @@ cases. Parsing directly into ordinary objects can erase evidence needed to rejec
 forms. The portable boundary must inspect representation structure first, enforce
 resource budgets, normalize safe values, and attach stable paths and source positions.
 
+### P1: Deterministic JSON serialization was not actually portable
+
+The TypeScript serializer sorted keys and then delegated to `JSON.stringify`, but
+JavaScript reorders integer-like object keys and compares other keys as UTF-16 code
+units. Python sorts by Unicode code point and preserves the requested insertion order in
+its encoder. Astral keys, integer-like payload keys, small exponent numbers, hashes, and
+JSONL could therefore diverge despite the deterministic-output claim.
+Use one explicit serializer over the portable value domain and shared byte/digest
+vectors.
+
 ### P1: Canonicalization and enforced overlays could change meaning
 
 Blanket recursive rewrites can alter annotations, nullable unions, composed schemas,
@@ -114,6 +124,91 @@ or partial-release recovery.
 A release candidate should be a manifest-closed set of artifacts built once,
 smoke-tested after installation, and published by OIDC-only jobs that neither check out
 source nor rebuild.
+
+## Adversarial Closure Findings
+
+The first remediation pass exposed additional P1 edge cases that ordinary valid-input
+tests did not reveal:
+
+- artifact and schema readers checked byte limits only after allocating the complete
+  file;
+- TypeScript source-position lookup rescanned prefixes and line starts for each YAML
+  node, creating quadratic work within the supported node budget;
+- coded YAML composer exceptions could enter a broad `error.code` filesystem branch;
+- ruamel.yaml and `yaml` disagree on compact flow spellings such as `{a:}` and `[a:]`,
+  and their empty-null source anchors differed at CRLF, flow delimiters, comments, and
+  EOF;
+- recursive discovery used call-stack recursion, had no directory-identity visit set,
+  and materialized an entire directory before enforcing any entry budget;
+- escaped lone surrogates could survive standalone `json.loads`/`JSON.parse` boundaries
+  and fail later during UTF-8 serialization;
+- publication could retain undeclared output nodes or verify live schemas without
+  byte-checking the live index; and
+- a complete registry classification could survive failed provenance postconditions in
+  the bounded retry loop.
+
+These are tracked as `ss-zknx`, `ss-3o3w`, `ss-qu2u`, `ss-dz2o`, `ss-23yg`, `ss-yn4e`,
+`ss-o04h`, `ss-tge8`, and `ss-prjf`. Each now has a hostile or complexity-oriented
+regression in the candidate; the active plan records their dependency order and closure
+evidence.
+
+### Independent Red-Team Pass
+
+A separate adversarial pass over the complete candidate found additional release
+blockers before handoff:
+
+- TypeScript undercounted compact-flow mapping nodes, normalized two plain scalar
+  spellings that Python preserved, classified one malformed flow input differently, and
+  sorted canonical `required` arrays by UTF-16 rather than Unicode scalar value.
+- Document-controlled TypeScript schema bindings checked lexical containment but could
+  follow an in-tree symlink outside both allowed roots.
+- npm provenance accepted an expected workflow identity as a raw certificate-byte
+  substring rather than an exact X.509 URI SAN.
+- The extracted conformance consumer ignored root-level nodes and empty directories and
+  had no per-file or aggregate declared-byte budget.
+- Pages could treat all-404 as a fresh namespace after prior publication and a deploy
+  artifact could omit future version/root files.
+- Release recovery depended on a seven-day Actions artifact; subject sizes and retry
+  delays were insufficiently bounded; the stable GitHub latest pointer was not a
+  postcondition; and candidate metadata forced public bootstrap pins to an unpublished
+  version.
+- Generated Copilot links, trusted-publisher state claims, the TypeScript result
+  wrapper, golden coverage descriptions, and registry-versus-source install instructions
+  had concrete documentation drift.
+
+The candidate now covers these with shared YAML/canonicalization vectors, realpath
+confinement, a strict DER SAN parser validated against a live npm Fulcio certificate, an
+exact bounded archive inventory, an append-only Pages root index plus reviewed promotion
+marker, attested draft-asset recovery, release-size/latest/retry policies, and separate
+candidate versions versus last-verified bootstrap pins.
+The corresponding beads are recorded in the active plan; live Pages, the protected
+GitHub release environment, publisher authorization, and actual registry publication
+remain deliberately open.
+
+### Final Boundary Audit
+
+The final independent pass found one more trust-boundary layer:
+
+- standalone adapters accepted generic case objects without enforcing each operation’s
+  required input fields and primitive types, allowing raw `KeyError`/`TypeError`
+  tracebacks instead of the documented malformed-request exit;
+- recovery assets were attested only to a tag ref before executing the frozen driver,
+  while the exact workflow commit was checked afterward;
+- a mutable checksum asset reached `sha256sum` before authentication, so attacker-chosen
+  filenames could trigger arbitrary reads before the exact inventory check;
+- recovery extraction created unbounded implicit parent directories before applying
+  depth and node budgets;
+- immutable-release policy was not rechecked immediately before the final GitHub release
+  mutation;
+- Bun’s coverage gate counted runtime-created integration copies as separate source
+  files and could exit nonzero after every TypeScript test passed; and
+- the documented `github-release` reviewer gate was absent from the live environment
+  inventory and would therefore not provide the claimed protection on a first run.
+
+The code-side findings are closed as `ss-j81s`, `ss-3x0g`, `ss-pykr`, `ss-qezc`,
+`ss-1mf4`, and `ss-bhz6`, with focused cross-runtime, release-security, or coverage-gate
+regressions. Live-state bead `ss-8dt9` remains open until an authorized maintainer
+provisions and re-reads the protected environment.
 
 ## Design and Product Findings
 
@@ -217,6 +312,25 @@ both registry trusted-publisher claims are verified.
 
 The release-specific threat model and residual controls are recorded in the
 [release boundary review](review-2026-07-09-release-boundary.md).
+
+## Remediation Status on 2026-07-10
+
+The code candidate passes 656 Python tests, 534 TypeScript tests, Python/Node/Bun golden
+corpora, direct Python-to-Node byte comparison, and 25 artifact cases plus 77 portable
+vectors under all three runtimes.
+These are dated review observations, not stable product claims.
+Python and Bun dependency audits report no known vulnerabilities.
+The deterministic wheel, sdist, npm tarball, and extracted conformance consumer smoke
+tests pass.
+
+The repository API shows active `main` and `v*` rulesets, SHA-pinned Actions policy, and
+`pypi`/`npm` protected environments restricted to `v*` tags.
+It also shows immutable GitHub releases disabled and no configured Pages site.
+No `github-release` environment exists in the same inventory, so its required reviewer
+gate remains an explicit live prerequisite.
+Registry trusted-publisher claims and a real publication have not been exercised.
+The candidate therefore remains unreleased, the conformance identifiers remain draft
+URNs, and the live-state beads stay open.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:case:v0",
-  "title": "Draft softschema conformance case",
+  "title": "softschema conformance case",
   "type": "object",
   "required": ["id", "operation", "execution", "profiles", "inputs", "options", "expected"],
   "properties": {
@@ -58,7 +58,9 @@
       "properties": {
         "contract": { "$ref": "#/$defs/contractId" },
         "envelope": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["soft", "permissive", "enforced"] }
+        "status": { "enum": ["soft", "permissive", "enforced"] },
+        "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+        "output_format": { "enum": ["json", "jsonl", "sarif"] }
       },
       "additionalProperties": false
     },
@@ -69,7 +71,7 @@
         "exit_code": { "type": "integer", "minimum": 0, "maximum": 2 },
         "schema": {
           "type": "string",
-          "pattern": "^[a-z0-9-]+\\.schema\\.json$"
+          "pattern": "^[a-z0-9-]+\\.schema\\.json(?:#/(?:[^~/]|~[01]|/)*)?$"
         },
         "result": { "$ref": "#/$defs/fileRef" }
       },

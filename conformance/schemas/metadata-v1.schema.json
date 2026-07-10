@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:metadata-v1:v0",
-  "title": "Draft softschema artifact metadata format 1",
+  "title": "softschema artifact metadata format 1",
   "$defs": {
     "contractId": {
       "type": "string",

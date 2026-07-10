@@ -1,200 +1,240 @@
 ---
 name: e2e-testing
 description: >-
-  The codified end-to-end validation path for softschema: the full automated
-  sweep run locally (mirroring CI), plus the manual-only checks CI cannot run —
-  the docs-as-written quickstart from an empty directory, the agent skill
-  bootstrap, and post-publish registry smoke tests. Use before tagging a release,
-  after toolchain or packaging changes, or whenever the published artifacts must
-  be proven rather than just the repo.
+  The end-to-end release validation path for softschema: repository gates,
+  conformance and parity, installed-package smoke tests, the README quickstart,
+  safe agent-skill installation, and bounded post-publish verification.
 ---
 # End-to-End Testing Runbook
 
-CI proves the repository and clean installs of its packaged artifacts.
-This runbook adds the remaining product checks: the docs users actually follow and the
-registries they actually fetch from.
-It also gives the order for rerunning the automated sweep and artifact smoke locally so
-the whole system is validated in one pass.
-Every command below has been run end to end and works as written.
+This runbook connects repository tests to the boundaries users actually cross: an
+installed wheel or npm tarball, copied documentation, agent configuration, and public
+registry bytes.
+Record which phases ran; do not turn an unexecuted command into a release
+claim.
 
-Run the full runbook before tagging a release.
-Run Phases 1–4 after any change to packaging (`pyproject.toml`, `package.json`, bundled
-resources), the CLI surface, or the docs quickstarts.
+Run Phases 1–4 after changes to the CLI, public API, packaging, bundled resources,
+examples, or agent instructions.
+Run all phases for a release candidate.
 
-## What CI Already Covers
+## What CI Covers
 
-The automated half of the story runs on every push and PR
-([`ci.yml`](../.github/workflows/ci.yml)), so the manual effort goes to the gaps:
+[`ci.yml`](../.github/workflows/ci.yml) currently enforces:
 
-| Check | Where automated |
-| --- | --- |
-| codespell, ruff, basedpyright, doc footers | `build` job (`devtools/lint.py --check`) |
-| Python unit tests from a verified wheel (pytest, 3.11–3.14) | `build` job |
-| Cold-cache, no-sdist dependency install | `build`, `golden`, `cross-impl`, and `artifact-smoke` jobs |
-| Hash-locked Python build and installed `RECORD` verification | `build` job |
-| TS typecheck, biome, unit tests + coverage gate | `typescript` job |
-| TS build + publint (publishable layout) | `typescript` job |
-| Golden corpus on py, ts (Node), ts-bun | `golden` + `typescript` jobs |
-| Python-vs-TypeScript byte parity | `cross-impl` job |
-| Clean wheel/npm installs, entry points, and bundled resources on Linux/macOS/Windows | `artifact-smoke` job |
-| Tag ↔ `package.json` version match | `publish.yml` guard |
+- Python lint, type checks, unit tests across the supported Python range, and a
+  hash-constrained wheel build.
+- TypeScript formatting, type checks, tests with coverage, build, and `publint`.
+- Python, Node, and Bun golden runs plus a direct Python↔TypeScript byte diff.
+- The draft conformance corpus under Python, Node, and Bun.
+- Frozen dependency audits.
+- One immutable wheel, sdist, npm tarball, and consumer lock smoked across Linux, macOS,
+  and Windows at runtime bounds.
 
-**Not** covered by CI—the reason this runbook exists:
+Manual checks still matter for commands copied literally from the README, skill
+installation into a disposable repository, live release controls, and public registry
+propagation.
 
-- The README quickstart exactly as written, from an empty directory.
-- The agent skill bootstrap (`skill --install`) into a scratch repo.
-- The published registries after a release (PyPI and npm smoke tests).
-- Markdown formatting drift (`make format-check` runs in the pre-commit hook, not in
-  CI).
+## Phase 1: Repository Gates
 
-## Phase 1: Full Automated Sweep, Locally
-
-Mirror CI from the repo root, in this order (later phases depend on the builds):
+Start from the repository root with the locked dependencies installed.
+The release workflow uses its own pinned tool versions; use those pins when reproducing
+a release failure.
 
 ```bash
-make install        # uv sync + npm install (lefthook) + bun install
-make lint-check     # codespell, ruff, basedpyright, doc footers
-uv run pytest       # Python unit tests (142 as of 0.2.0)
+uv run python devtools/lint.py --check
+uv run pytest
 uv build --build-constraint build-constraints.txt --require-hashes
 
 cd packages/typescript
-bun run check       # biome + tsc + bun test with coverage gate (160 tests as of 0.2.0)
-bun run build       # copy-resources + bunup → dist/ (required by the ts golden runs)
+bun run typecheck
+bun run lint:ci
+bun test --coverage
+bun run build
 bun run publint
 cd ../..
-
-SOFTSCHEMA_IMPL=py     bash tests/golden/run.sh   # 46 scenarios as of 0.2.0
-SOFTSCHEMA_IMPL=ts     bash tests/golden/run.sh   # 44
-SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh   # 46
-bash tests/golden/cross-impl-diff.sh              # "cross-impl parity OK"
-
-make format-check   # flowmark drift; requires a Markdown-clean working tree
 ```
 
-Success is every command exiting 0. The test and scenario counts are reference floors
-that grow over time; a *drop* is the signal to investigate (a per-impl scenario
-directory silently vanishing, a skipped suite).
-The corpus layout and update procedure are in
-[tests/golden/README.md](../tests/golden/README.md); the parity invariants are in
-[development.md](development.md).
-
-## Phase 2: Clean-Environment Install Smoke Tests
-
-The wheel-first Python jobs and the cross-platform artifact job automate this boundary.
-Rerun it locally after packaging or resource changes to prove the **packaged artifacts**
-from a real install with no repo on disk: console entry points resolve, the bin shebang
-runs under plain Node, and bundled docs/skill resources load from inside the installed
-package.
-
-### Python Wheel in a Fresh Venv
+Validate the machine-readable public claims, generated agent shims, conformance closure,
+every implementation adapter, goldens, and the direct parity invariant:
 
 ```bash
-uv build --build-constraint build-constraints.txt --require-hashes
-tmp=$(mktemp -d)
-uv venv "$tmp/venv"
-uv pip install --python "$tmp/venv/bin/python" --no-build --no-cache \
-  --exclude-newer 2026-06-20T00:00:00Z \
-  --exclude-newer-package strif=2026-06-03T00:00:00Z \
-  dist/softschema-*.whl
-"$tmp/venv/bin/python" devtools/verify_installed_wheel.py dist/softschema-*.whl
-"$tmp/venv/bin/softschema" --help
-"$tmp/venv/bin/softschema" docs --list
-"$tmp/venv/bin/softschema" skill --brief
-cd "$tmp"
-venv/bin/softschema docs example-artifact > spirited-away.md
-venv/bin/softschema docs example-schema   > movie-page.schema.yaml
-venv/bin/softschema validate spirited-away.md   # exit 0, structural ok, zero flags
-cd - && rm -rf "$tmp"
+uv run python devtools/public_claims.py --check --json
+uv run python devtools/sync_agent_instructions.py --check
+uv run python conformance/run.py --check-only --json
+uv run python conformance/run.py --implementation all --json
+
+SOFTSCHEMA_IMPL=py bash tests/golden/run.sh
+SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
+SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
+bash tests/golden/cross-impl-diff.sh
 ```
 
-### npm Tarball under Plain Node
+Success means every command exits zero.
+Treat current counts as recorded observations, not hard-coded release facts: investigate
+any unexpected drop in tests, declared schemas, ready cases, suites, or vectors.
 
-Use the artifact driver instead of an ambient `npm install` recipe:
+Markdown formatting is a separate clean-tree gate.
+Run `make format-check` only from a clean working tree because it executes the formatter
+and then regenerates embedded sections, skill mirrors, and native agent adapters before
+checking for a diff.
+The corpus layout and parity rules are in [Golden Tests](../tests/golden/README.md) and
+[Development](development.md).
+
+## Phase 2: Installed Artifacts and Bundled Resources
+
+Source-checkout imports do not prove package correctness.
+Build once, then use the artifact driver to inspect and execute the wheel, sdist, npm
+tarball, and locked npm consumer from unrelated directories:
 
 ```bash
 uv run python devtools/installed_artifact_smoke.py
 ```
 
-The local command builds and inspects both ecosystems, derives an exact 14-day npm
-cutoff, records the npm version and sanitized configuration, audits the resolved lock at
-moderate severity, and installs with `npm ci --ignore-scripts` under plain Node.
-For a release-equivalent run, ensure `npm --version` is the release pin from
-`publish.yml` before invoking it.
+The driver rejects missing or internal files, mismatched release/build metadata, mutable
+install resolution, lifecycle-script execution, broken entry points, and resource reads
+that accidentally fall back to the checkout.
 
-CI builds this candidate once under that pin, recursively checksums and uploads it, then
-downloads the same wheel, sdist, npm tarball, and consumer lock across the platform
-matrix. The smoke compares release/build metadata bytes across source, archives, and
-installed packages, and rejects internal files in publishable inventories.
-
-## Phase 3: The Quickstart, As Written
-
-The README Quick Start is the contract with a first-time user; run it verbatim from an
-**empty directory**, on both implementations, and byte-compare.
-Before a release, substitute the local builds for the exact-pinned
-`uvx --from 'softschema==X.Y.Z' softschema` / `npx --yes softschema@X.Y.Z` commands (the
-published forms are verified in Phase 5):
+Also inspect the installed docs inventory.
+Both CLIs must report the same topic list, and every public topic below must resolve
+from package data rather than the current directory:
 
 ```bash
-repo=$(pwd)   # the softschema checkout
-cd "$(mktemp -d)"
-
-# Python implementation
-"$repo/.venv/bin/softschema-py" docs example-artifact > spirited-away.md
-"$repo/.venv/bin/softschema-py" docs example-schema   > movie-page.schema.yaml
-"$repo/.venv/bin/softschema-py" validate spirited-away.md   # exit 0, zero flags
-
-# TypeScript implementation, same commands
-node "$repo/packages/typescript/dist/cli.js" docs example-artifact > ts-artifact.md
-node "$repo/packages/typescript/dist/cli.js" docs example-schema   > ts-schema.yaml
-node "$repo/packages/typescript/dist/cli.js" validate ts-artifact.md   # exit 0
-
-diff spirited-away.md ts-artifact.md          # byte-identical
-diff movie-page.schema.yaml ts-schema.yaml    # byte-identical
+softschema docs --list --json
+for topic in guide spec api agent-compatibility migration-0.3 security changelog \
+  example-model example-model-ts example-host example-host-ts; do
+  softschema docs "$topic" >/dev/null
+done
+softschema skill --brief >/dev/null
 ```
 
-One trap to know about: the artifact names its own schema
-(`schema: movie-page.schema.yaml`), so the schema **must** be saved under that exact
-filename next to the artifact.
-Redirecting it anywhere else makes `validate` fail with `schema_missing`—correct
-resolution behavior, broken quickstart.
-If the README quickstart ever changes, re-verify the new text the same way before
-merging it.
+Run the same commands through the installed npm entry point.
+In the repository, `packages/python/tests/test_public_documentation.py` and
+`packages/typescript/test/doc-topics-resolve.test.ts` keep topic names, links, package
+manifests, and bundled resources aligned.
 
-## Phase 4: Agent Skill Bootstrap
+## Phase 3: README Quickstart as Written
 
-The installation docs tell agents to run `--help` and follow the instructions to
-`skill --install`. Prove that path in a scratch repo, using any of the installed CLIs
-from Phase 2 or 3:
+The README uses exact published pins.
+Run both blocks verbatim from an empty directory, then compare their output bytes:
 
 ```bash
-cd "$(mktemp -d)" && git init -q .
-softschema skill --install
-ls .agents/skills/softschema/SKILL.md .claude/skills/softschema/SKILL.md
+tmp="$(mktemp -d)"
+mkdir "$tmp/python" "$tmp/typescript"
+
+cd "$tmp/python"
+uvx --from 'softschema==0.2.2' softschema docs example-artifact > spirited-away.md
+uvx --from 'softschema==0.2.2' softschema docs example-schema > movie-page.schema.yaml
+uvx --from 'softschema==0.2.2' softschema validate spirited-away.md
+
+cd "$tmp/typescript"
+npx --yes softschema@0.2.2 docs example-artifact > spirited-away.md
+npx --yes softschema@0.2.2 docs example-schema > movie-page.schema.yaml
+npx --yes softschema@0.2.2 validate spirited-away.md
+
+cmp "$tmp/python/spirited-away.md" "$tmp/typescript/spirited-away.md"
+cmp "$tmp/python/movie-page.schema.yaml" "$tmp/typescript/movie-page.schema.yaml"
 ```
 
-Expect a JSON report listing both `SKILL.md` mirrors as `created`, and both files
-present on disk.
+Before a new version is public, repeat the same flow against the locally built wheel and
+npm tarball from Phase 2. Do not replace README pins with a candidate that cannot be
+resolved from its advertised registry.
 
-## Phase 5: Post-Publish Registry Verification (Per Release)
+The artifact names `movie-page.schema.yaml`; changing that filename correctly produces
+`schema_missing`. Keep the artifact and schema together when reproducing the
+zero-configuration validation path.
 
-The tagging and release mechanics live in [publishing.md](publishing.md); this phase is
-what to run **after** `publish.yml` reports success for both registries.
+## Phase 4: Safe Agent-Skill Bootstrap
 
-A just-published version sits inside the 14-day supply-chain cool-off, so the Python
-smoke test must override the cutoff.
-Three details make the difference between a real check and a false “no version” failure:
+Exercise capability discovery, a no-write plan, installation, and an idempotent second
+run in a disposable Git repository:
 
-- **Override the cutoff to *now*, not midnight.** `--exclude-newer-package` excludes
-  releases newer than the given instant.
-  A date-only value (`$(date +%F)`) is midnight UTC, which is *before* a version
-  published later the same day—so it excludes the very release you are verifying.
-  Use a full timestamp at the current moment (`$(date -u +%Y-%m-%dT%H:%M:%SZ)`); “now”
-  is always after the publish.
-- **Run from outside the repo.** From the project tree, uv reads its `[tool.uv]`
-  settings and applies the project’s own cool-off; a neutral directory (`cd /tmp`)
-  avoids that.
-- **`--refresh`** bypasses uv’s cached package index, which may not yet list a release
-  published seconds ago.
+```bash
+tmp="$(mktemp -d)"
+git -C "$tmp" init -q
+cd "$tmp"
+
+softschema doctor --json
+softschema skill --install --project --all-agents --dry-run --text
+softschema skill --install --project --all-agents --text
+softschema skill --install --project --all-agents --text
+```
+
+The dry run must describe the same nine native destinations as the write.
+The first write reports `created`; the second reports `unchanged`. Inspect at least the
+portable and Claude copies and confirm their managed payloads match the bundled skill.
+
+Prove that unmanaged content is never clobbered in a second scratch repository:
+
+```bash
+conflict="$(mktemp -d)"
+git -C "$conflict" init -q
+mkdir -p "$conflict/.agents/skills/softschema"
+printf 'user-owned\n' > "$conflict/.agents/skills/softschema/SKILL.md"
+
+if softschema skill --install --project --dir "$conflict" --dry-run --text; then
+  echo "expected an ownership conflict" >&2
+  exit 1
+fi
+test "$(cat "$conflict/.agents/skills/softschema/SKILL.md")" = user-owned
+```
+
+Live discovery and activation are product-specific checks.
+Record the product and version actually exercised and preserve `Not observed` where no
+representative product run occurred; installing a file is not proof that a host
+activated it.
+
+## Phase 5: Protected Release and Registry Verification
+
+[`publish.yml`](../.github/workflows/publish.yml) is a resumable state machine driven by
+the external release manifest and `devtools/release_state.py`:
+
+Before pushing a release tag, verify that repository-level immutable releases are
+enabled:
+
+```bash
+gh api -H 'X-GitHub-Api-Version: 2026-03-10' \
+  repos/jlevy/softschema/immutable-releases --jq .enabled
+```
+
+The result must be `true`. This is an administrator-owned repository prerequisite, not
+something the release workflow enables.
+The workflow checks it before its first GitHub release mutation and again immediately
+before publishing the final draft.
+
+Also re-read the `github-release` environment and its deployment policies:
+
+```bash
+gh api -H 'X-GitHub-Api-Version: 2026-03-10' \
+  repos/jlevy/softschema/environments/github-release
+gh api -H 'X-GitHub-Api-Version: 2026-03-10' \
+  repos/jlevy/softschema/environments/github-release/deployment-branch-policies
+```
+
+It must exist before the tag run, require a reviewer, disallow administrator bypass, and
+restrict deployments to `v*` tags.
+A workflow reference alone is not evidence that those protections exist.
+
+1. Preflight builds and freezes one candidate; smoke installs those exact bytes.
+2. A protected tag may create or reuse a GitHub draft, require its exact asset
+   inventory, and attest the primary manifest subjects.
+3. Registry classifiers label the manifest-selected PyPI and npm subjects as absent,
+   complete, partial where supported, or conflicting.
+   Conflicting bytes fail closed; only missing exact subjects are eligible for
+   publication.
+4. Bounded verification requires registry digests, channels, and provenance for the
+   frozen subjects.
+5. Only after both registries verify does the workflow publish the existing GitHub draft
+   and require the published release to be immutable.
+   It never rebuilds or silently replaces an asset.
+
+A manual `workflow_dispatch` runs build and smoke only.
+It never creates a release or publishes to either registry.
+Therefore it is an infrastructure check, not a protected tag rehearsal.
+
+After the protected-tag workflow succeeds, independently resolve the public packages
+from outside the checkout.
+A new PyPI version is inside the repository’s 14-day cool-off, so use a full current
+timestamp and refresh the index:
 
 ```bash
 cd /tmp
@@ -204,26 +244,17 @@ uvx --refresh --exclude-newer-package "softschema=$ts" \
 npx --yes softschema@X.Y.Z --version
 ```
 
-Then run the quickstart literally against the published artifacts:
+Then rerun the Phase 3 quickstart with `X.Y.Z`. Registry propagation is bounded in the
+workflow but can still lag at a client CDN edge; retry only after confirming the
+workflow’s digest and provenance gates passed.
+Never accept a same-version byte mismatch as propagation.
 
-```bash
-cd "$(mktemp -d)"
-ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-uvx() { command uvx --refresh --exclude-newer-package "softschema=$ts" "$@"; }
-uvx --from 'softschema==X.Y.Z' softschema docs example-artifact > spirited-away.md
-uvx --from 'softschema==X.Y.Z' softschema docs example-schema   > movie-page.schema.yaml
-uvx --from 'softschema==X.Y.Z' softschema validate spirited-away.md
-```
+## Record the Result
 
-After the release smoke passes, update advertised pins through `release-metadata.json`;
-do not replace them with an unpinned selector.
-
-## Recording Results
-
-For a release-sized change, record the sweep outcome (test and golden counts, parity
-status, and which manual phases were run) in the release’s review doc under
-`docs/project/reviews/`, so the next release has a known-good baseline to compare
-against.
+For a release-sized change, record the commit, toolchain versions, phase coverage,
+test/conformance summaries, parity result, installed-artifact result, agent products
+actually observed, and public version checks in the dated review or release record.
+Separate automated evidence, manual evidence, and unavailable external state.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -169,9 +169,21 @@ function normalizeMaterialized(
   active.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.map((item, index) =>
-        normalizeMaterialized(item, [...path, index], depth + 1, budget, active),
-      );
+      const keys = Object.keys(value);
+      if (keys.length !== value.length || keys.some((key, index) => key !== String(index))) {
+        throw new PortableValueError("value is not JSON-compatible", {
+          path: jsonPointer(path),
+        });
+      }
+      return keys.map((key, index) => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor === undefined || !("value" in descriptor)) {
+          throw new PortableValueError("value is not JSON-compatible", {
+            path: jsonPointer([...path, index]),
+          });
+        }
+        return normalizeMaterialized(descriptor.value, [...path, index], depth + 1, budget, active);
+      });
     }
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
@@ -225,7 +237,7 @@ function hasUnpairedSurrogate(value: string): boolean {
     const code = value.charCodeAt(index);
     if (code >= 0xd800 && code <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) return true;
+      if (index + 1 >= value.length || next < 0xdc00 || next > 0xdfff) return true;
       index += 1;
     } else if (code >= 0xdc00 && code <= 0xdfff) {
       return true;

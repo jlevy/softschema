@@ -1,5 +1,7 @@
 kit_version: 0.0.0-draft.1
 status: draft
+identifier_status: draft-until-live-verification
+target_namespace: https://jlevy.github.io/softschema/schema/v1/
 schema_dialect: https://json-schema.org/draft/2020-12/schema
 artifact_formats:
 - legacy-0.2
@@ -7,62 +9,202 @@ artifact_formats:
 profiles:
 - frontmatter-md
 - pure-yaml
+defaults:
+  artifact_profile: frontmatter-md
+  validation_status: soft
+  authored_artifact_format: "1"
+exit_codes:
+  all_passed: 0
+  validation_failed: 1
+  input_failed: 2
+  precedence: [2, 1, 0]
+result_formats:
+  legacy_single_file: validation-result-legacy
+  diagnostic: diagnostic-v1
+  jsonl: diagnostic-v1-record
+  sarif: sarif-2.1.0
+agent_install_destinations:
+  implicit_project_agents: [codex, claude]
+  agents:
+    codex:
+      project: .agents/skills
+      personal: .agents/skills
+    claude:
+      project: .claude/skills
+      personal: .claude/skills
+    gemini:
+      project: .gemini/skills
+      personal: .gemini/skills
+    copilot:
+      project: .github/skills
+      personal: .copilot/skills
+    cursor:
+      project: .cursor/skills
+      personal: .cursor/skills
+    windsurf:
+      project: .windsurf/skills
+      personal: .codeium/windsurf/skills
+    opencode:
+      project: .opencode/skills
+      personal: .config/opencode/skills
+    cline:
+      project: .cline/skills
+      personal: .cline/skills
+    roo:
+      project: .roo/skills
+      personal: .roo/skills
+  unsupported_agents:
+    aider: no documented native Agent Skills target
 policies:
   yaml_value_domain: portable JSON-compatible YAML with bounded resources
   format: annotation-only-v1
   regex: portable-regex-v1
-  references: offline only; trusted already-loaded resource maps are library-only
-  serialization: legacy single-file JSON is byte-compatible; diagnostic-v1 is draft
+  references: offline-only-v1
+  resource_bundles: explicit-closed-bundle-v1
+  canonicalization: semantics-preserving-v1
+  serialization: portable-json-v1
   hash: sha256
+vocabulary:
+  uri: urn:softschema:draft:vocabulary:x-softschema:v0
+  metaschema: x-softschema.schema.json
+  required: false
 schemas:
 - id: urn:softschema:draft:conformance:artifact-input-result-v1:v0
   path: schemas/artifact-input-result-v1.schema.json
-  sha256: 4a6f2ec8394ccd64644f5e5337f85730ed804f0cb35736e9b768cffb9ac66237
+  sha256: 4f504bc490848e8b3347846776c28481749825f0273f4f129f5ae1a573067cac
 - id: urn:softschema:draft:conformance:build-metadata:v0
   path: schemas/build-metadata.schema.json
-  sha256: 8cbd27ff4ef5dce83d78546d52bc24b84dd5e7758b46d632a38182492bf36568
+  sha256: 9289ee95cc1f49bc5d76c390caa969c75898613954f50879fafc8e31a580389e
 - id: urn:softschema:draft:conformance:case:v0
   path: schemas/case.schema.json
-  sha256: aeb20e5dff4fd7b003f3390411771f95a01d89619aba2ee68b73e3bef0a90e87
+  sha256: 9aad5133e4a5d28dbd6d28224ac5dcee53680394a87c333a197f37ee7b1d6f30
+- id: urn:softschema:draft:conformance:compiler-input-profile:v0
+  path: schemas/compiler-input-profile.schema.json
+  sha256: aebee4db0885e9e99270d63284173e3d9adf353c7082435fcbdced8da44b1c63
 - id: urn:softschema:draft:conformance:compiled-schema-profile:v0
   path: schemas/compiled-schema-profile.schema.json
-  sha256: 1ef17de516ad569d14794565d9261e0b1ec82a9a8296a58b7175beab6ed79f3e
+  sha256: fb5f7dd24239019712b580604593c7748eb5e9882dbbc381cf875d115b35d392
+- id: urn:softschema:draft:conformance:conformance-evolution:v0
+  path: schemas/conformance-evolution.schema.json
+  sha256: 5c89861a833a7b5a0922dec36b9f007aa4a453f9c2900e36f88fd91333a789d1
 - id: urn:softschema:draft:conformance:doctor-result:v0
   path: schemas/doctor-result.schema.json
-  sha256: 0a4361fa73fd049fef48b3fb7890cc0906c89f57d3b43f78b8130212b62cd132
+  sha256: abc3237d87ad75ec3f80ffb51af508ebbe3c435cd4f8f5488784fff6283f7b7b
+- id: urn:softschema:draft:conformance:implementation-matrix:v0
+  path: schemas/implementation-matrix.schema.json
+  sha256: 3b04e792d971cbc897e42390cdce096e7462eae1a7c8482f07ac4cc726e4d606
 - id: urn:softschema:draft:conformance:manifest:v0
   path: schemas/manifest.schema.json
-  sha256: 0ff4890635420606f7640e895b8778ae4f6a1f991b963c9c5ea936863dfa4297
+  sha256: bc4386281d00dc5bc04319464fd1b06151a46bd769c0e290413f91c252145b66
 - id: urn:softschema:draft:conformance:metadata-legacy:v0
   path: schemas/metadata-legacy.schema.json
-  sha256: ae3dc429a8c681fa1fcdea26a7b1d8d4433b4ceeab5730e762aef4261450b0dc
+  sha256: c0eb4f8e88a955496dbe3df1e9abadcc57d030fc8f02dbf5d77f3927684a981a
 - id: urn:softschema:draft:conformance:metadata-v1:v0
   path: schemas/metadata-v1.schema.json
-  sha256: cdb6a684c2d0a51a5fd80b46f03073ed8ec63dca74e2930399338d7dcdbc95bc
+  sha256: 8dd3c5a0cfea0140d457cb0ad2602bbf8ccb45a9f6b628825773bd80c5c8c772
 - id: urn:softschema:draft:conformance:metadata:v0
   path: schemas/metadata.schema.json
-  sha256: c89d035fa6e059eafe191d47f277535c4c9741f4fb726d7c0d6e55708482bfe6
+  sha256: 3343d3ceb4d900fec81fc0c3b6ae30aeb9cbc6977edb8bd181843b485a60a41f
 - id: urn:softschema:draft:conformance:public-claims:v0
   path: schemas/public-claims.schema.json
-  sha256: 376ad8b6df04abb2189222d049577cfcd8a2d0bacab0140419971d25372a748a
+  sha256: a368cfdccfecc5e9db1ed95ffd3d026316138d5d4576e1f01570bdba5cb5c938
+- id: urn:softschema:draft:conformance:publication-candidate:v0
+  path: schemas/publication-candidate.schema.json
+  sha256: eb44473aa297ce7cd1ab7d1a046a9d1d629c6864bec17c767119c255311b1e17
 - id: urn:softschema:draft:conformance:release-manifest:v0
   path: schemas/release-manifest.schema.json
-  sha256: 942c630ba3327a51f5c1eceac3741ebcde64abebadf95373feff4a1489dad06d
+  sha256: ab300d5cb42e20c4da466dd1b74a5a10bf1ea5758ebd515b150882a1f9388634
 - id: urn:softschema:draft:conformance:release-metadata:v0
   path: schemas/release-metadata.schema.json
-  sha256: 37ce7fcbba2d32a9fe4b14b673434d81c3f5b8515fe8f37554a75b82fcb9bc3d
+  sha256: c29b9fec7eb46b45c30012e2137df03ddf34153f2891c4970232d8cf61feef1f
+- id: urn:softschema:draft:conformance:resource-bundle:v0
+  path: schemas/resource-bundle.schema.json
+  sha256: 8570c7f1b04d1f1c1c8fd803578c10ce4246e0fab2d5ce4d6b601455c44ee82f
 - id: urn:softschema:draft:conformance:structural-error:v0
   path: schemas/structural-error.schema.json
-  sha256: fbad4d233248502132f8e3813e0d0bb61eca187a01bd71f057f952d07fadf62c
+  sha256: 5de67bede7b211fd60fca5b45b377ae2e9a920819c0057c09ccdfcdc4ee4a549
 - id: urn:softschema:draft:conformance:validation-result-diagnostic-v1:v0
   path: schemas/validation-result-diagnostic-v1.schema.json
-  sha256: 12afbce83de8f46514b57fa50b389495d0e0a6ca97dae001332470ae7d4c87bc
+  sha256: b3fcc96c1c8ac89fad39e4f4c13837ab1a6f84406cf8d9317e2ab1515e01cac8
 - id: urn:softschema:draft:conformance:validation-result-legacy:v0
   path: schemas/validation-result-legacy.schema.json
-  sha256: f3bf72bd413d9b1f1b4c63aa174505c4548b619c4662a624f47d286c61745d05
+  sha256: a88e90fa3aa2bca7bf45f1d2daedd4758f4b38102db396e4a4662997676f13e0
+- id: urn:softschema:draft:conformance:vector-suite:v0
+  path: schemas/vector-suite.schema.json
+  sha256: 6cedc2ae8ff9fe46338081330808940f3ac92d5c9b7bad5a2637d5c3a3e73d96
 - id: urn:softschema:draft:conformance:x-softschema:v0
   path: schemas/x-softschema.schema.json
-  sha256: 4156fdc7f88fc88adb7243c8344b358169b2dab967a7f6e1485514000d4e1604
+  sha256: a6162a977dc77506860fa3f56176307849bc7cdddc53ad2a412b45c428e0c5a7
+vector_suites:
+- id: canonicalization-v1
+  path: vectors/canonicalization-v1.json
+  sha256: 1ae5e1cf7457b30e50d9ff5c1605118e04193aae943bf4f1332eda72258e4c52
+- id: diagnostic-projection-v1
+  path: vectors/diagnostic-projection-v1.json
+  sha256: c52a045caeed99553e36ab3aed1d2491e587dffb247276ce2aa16ad7336de37a
+- id: identity-v1
+  path: vectors/identity-v1.json
+  sha256: 7f0d291f5e02e65ad495ace47ffcc0592fe779332f0431273712ae0fa78269cb
+- id: metadata-v1
+  path: vectors/metadata-v1.json
+  sha256: 86601556da4cb6b52bd8e9eda4087fd130912bb7ce698f81029b539d3a0490b8
+- id: portable-pattern-v1
+  path: vectors/portable-pattern-v1.json
+  sha256: 3bb6fbb910f77b7877c74dfd2e805b5bdfb034760219a3b5b152858a2bd8cb64
+- id: portable-yaml-v1
+  path: vectors/portable-yaml-v1.json
+  sha256: de31875fd7e046db4c25cc0cb3e40f529af8bce41a196963b4384c4ba792812f
+- id: structural-resources-v1
+  path: vectors/structural-resources-v1.json
+  sha256: 3e5e20a886ea3653fd52063447512140500938d396e531acc0e0d5c678c257f7
+artifacts:
+- id: evolution
+  role: evolution
+  path: evolution.json
+  sha256: 0817f09d59e71734776d396841fac47effc6a717a93a532b55304a00b4e2ba92
+  schema: conformance-evolution.schema.json
+- id: implementation-matrix
+  role: implementation-matrix
+  path: implementations.json
+  sha256: 9305b55971d7a31ed12dec39cf6e0aced12317cffcec65648762564a95f06412
+  schema: implementation-matrix.schema.json
+- id: publication-candidate
+  role: publication-candidate
+  path: publication.json
+  sha256: 3f1b6cc220c17177fd4c76c43e7b47b4a6bdae1f1bf48c94a7205709bdf46d12
+  schema: publication-candidate.schema.json
+- id: doctor-claims
+  role: doctor-claims
+  path: doctor/doctor-v1-common.golden.json
+  sha256: ec671e9f954845f607faf9827516739869f7101221e863b278e651c6106f851f
+- id: python-adapter
+  role: adapter
+  path: adapters/python_adapter.py
+  sha256: 37a7e5653ca5533feec1a4e194cf31782ad8c0872379dd559bef3722869e357e
+- id: javascript-adapter
+  role: adapter
+  path: adapters/javascript-adapter.mjs
+  sha256: 79ce24c735db7d11a8d82bac4e064a125161abf01d23bc6bf67c523d36d23702
+- id: consumer
+  role: consumer
+  path: consumer.py
+  sha256: 013b0323ad53acc38b9adf5ad9741746f5ab0b8abc2521e9d2c864adf43240be
+- id: publication-builder
+  role: publication-candidate
+  path: publication.py
+  sha256: 7e31aaaddb75c6fd426d26bf77e900c48c3fc1ffa387452d9dd51663916f2dab
+- id: walkthrough
+  role: walkthrough
+  path: WALKTHROUGH.md
+  sha256: 21ec2ef55c390ce42483edbb8c878d90947ca44c47c9495394ed4c12c70cdae6
+- id: sarif-schema
+  role: vendor-schema
+  path: vendor/sarif-schema-2.1.0-errata01.json
+  sha256: c3b4bb2d6093897483348925aaa73af03b3e3f4bd4ca38cef26dcb4212a2682e
+- id: sarif-schema-notice
+  role: notice
+  path: vendor/SARIF-SCHEMA-NOTICE.md
+  sha256: 0f5c70e35f0f53c621ec3b1a3fa4f62fbe793597a7657b8ed559864b15205783
 cases:
 - id: artifact-format-1
   path: cases/artifact-format-1/case.yaml
@@ -70,6 +212,9 @@ cases:
 - id: artifact-parse-frontmatter
   path: cases/artifact-parse-frontmatter/case.yaml
   sha256: 86dfa97c07ef2a3ae135e1aa6d261e732621c37d53ff42a7bbc1af1ffb47d2c6
+- id: diagnostic-jsonl
+  path: cases/diagnostic-jsonl/case.yaml
+  sha256: bdcec71cdc3d41b87b71ad3ca30e5035f207d4f0511b55289d7fa59e640bbbb3
 - id: enforced-composition-extra
   path: cases/enforced-composition-extra/case.yaml
   sha256: df6bacb0432e5d1d53e307eec8a0f8ca19123040f393f5b5893c6df1157ed18b
@@ -100,6 +245,9 @@ cases:
 - id: portable-pattern-newline
   path: cases/portable-pattern-newline/case.yaml
   sha256: 12098b04adbe58f2ff45e04ca63f2cd2e0723dd6d101ec459472a68df0a7fbb7
+- id: pure-yaml-format-1
+  path: cases/pure-yaml-format-1/case.yaml
+  sha256: 3ecf27b4ef68eddc42a9c576ad5dab259d1c1a5ad9bf99d3200ef27adba024f8
 - id: schema-invalid-pattern-syntax
   path: cases/schema-invalid/case-compile.yaml
   sha256: c2b4302872a5ee6a4a8b2b478da8951e9004a633955c4a3c2ba62a57cc48cb6e
@@ -133,3 +281,55 @@ cases:
 - id: schema-invalid-value-domain
   path: cases/schema-invalid/case-value-domain.yaml
   sha256: f043a7ccb0f7a2713fa86272be6bd2c2b4759aecb0cadfd873345a3367cdc3a7
+coverage:
+  artifact_format:
+  - case:artifact-format-1
+  - suite:metadata-v1
+  artifact_profiles:
+  - case:legacy-validate-ok
+  - case:pure-yaml-format-1
+  core_api:
+  - suite:canonicalization-v1
+  - suite:identity-v1
+  - suite:structural-resources-v1
+  diagnostic_v1:
+  - case:diagnostic-jsonl
+  - schema:validation-result-diagnostic-v1.schema.json
+  - suite:diagnostic-projection-v1
+  format_annotations:
+  - case:format-annotations
+  legacy_result:
+  - case:legacy-validate-ok
+  - schema:validation-result-legacy.schema.json
+  metadata:
+  - case:artifact-format-1
+  - suite:metadata-v1
+  nested_identities:
+  - case:nested-resource-collision
+  - case:nested-resource-reference
+  - suite:structural-resources-v1
+  offline_resources:
+  - case:legacy-external-reference
+  - suite:structural-resources-v1
+  portable_regex:
+  - case:portable-pattern-match
+  - case:portable-pattern-newline
+  - suite:portable-pattern-v1
+  portable_values:
+  - case:artifact-parse-frontmatter
+  - suite:portable-yaml-v1
+  raw_canonicalization:
+  - suite:canonicalization-v1
+  resource_bundles:
+  - schema:resource-bundle.schema.json
+  - suite:structural-resources-v1
+  schema_errors:
+  - case:schema-invalid-dialect
+  - case:schema-invalid-metaschema
+  - case:schema-invalid-reference
+  - case:schema-invalid-root
+  - case:schema-invalid-syntax
+  - case:schema-invalid-value-domain
+  version_negotiation:
+  - case:artifact-format-1
+  - suite:metadata-v1

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from strif import atomic_write_text
 
 from softschema.canonicalize import canonicalize_json_schema
+from softschema.core.value_domain import normalize_portable_value
 from softschema.models import validate_contract_id, validate_schema_id
 
 # Version of the `x-softschema` block format emitted into compiled schemas,
@@ -21,6 +22,9 @@ from softschema.models import validate_contract_id, validate_schema_id
 # for that). Bump this only when the shape of `x-softschema` itself changes.
 SOFTSCHEMA_FORMAT_VERSION = "0.1.0"
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
+ROOT_COMPILER_METADATA_RESERVED_MESSAGE = (
+    "model schema root must not define reserved x-softschema metadata"
+)
 
 
 @dataclass(frozen=True)
@@ -45,15 +49,28 @@ def compile_model(
     """Compile ``model_cls`` to a compiled JSON Schema YAML file at ``out_path``."""
     checked_contract_id = validate_contract_id(contract_id)
     checked_schema_id = validate_schema_id(schema_id) if schema_id is not None else None
-    schema = canonicalize_json_schema(
+    canonical_schema = canonicalize_json_schema(
         _augment_schema(
             model_cls.model_json_schema(),
             checked_contract_id,
             checked_schema_id,
         )
     )
+    # JSON has one number type, while Python distinguishes integral floats from
+    # integers and JavaScript does not. Normalize the complete compiled value before
+    # hashing and rendering so semantically equal bounds such as ``10.0`` and ``10``
+    # have one portable representation in every implementation. This boundary also
+    # rejects values (for example non-finite or unsafe integers) that cannot retain an
+    # exact language-neutral JSON meaning.
+    normalized_schema, _size = normalize_portable_value(canonical_schema)
+    if not isinstance(normalized_schema, dict):  # defensive: the compiler always builds a map
+        raise TypeError("compiled schema root must be a mapping")
+    schema = normalized_schema
     schema_sha256 = _schema_sha256(schema)
-    schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
+    compiler_metadata = schema.get("x-softschema")
+    if not isinstance(compiler_metadata, dict):  # defensive: ``_augment_schema`` owns this block
+        raise TypeError("compiled schema metadata must be a mapping")
+    compiler_metadata["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
 
     if check_only:
@@ -109,22 +126,22 @@ def _augment_schema(
     # The root x-softschema block is language-neutral on purpose: no `generated_from`
     # provenance (a Pydantic/Zod-specific import path would leak the implementation and
     # break the cross-language content identity and equal schema_sha256).
-    out.setdefault("x-softschema", {})
-    out["x-softschema"].update(
-        {
-            "contract": contract_id,
-            "softschema_format_version": SOFTSCHEMA_FORMAT_VERSION,
-        }
-    )
+    # It is also a reserved compiler boundary. Reject rather than silently merge or
+    # discard model-supplied content, which could otherwise make official output fail
+    # its own compiled-schema profile or diverge by runtime/type.
+    if "x-softschema" in out:
+        raise ValueError(ROOT_COMPILER_METADATA_RESERVED_MESSAGE)
+    out["x-softschema"] = {
+        "contract": contract_id,
+        "softschema_format_version": SOFTSCHEMA_FORMAT_VERSION,
+    }
     return out
 
 
 def _schema_sha256(schema: dict[str, Any]) -> str:
     # ensure_ascii=False so the hash is over literal UTF-8 (matching the TypeScript
     # JSON.stringify); otherwise non-ASCII in descriptions would hash differently.
-    canonical = json.dumps(
-        schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
-    )
+    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

@@ -1,10 +1,10 @@
 # Feature: softschema Hardening, Conformance, and Agent Portability
 
-**Date:** 2026-07-09 (last updated 2026-07-09)
+**Date:** 2026-07-09 (last updated 2026-07-10)
 
 **Author:** Codex, from the July 2026 senior engineering review
 
-**Status:** Draft
+**Status:** In Progress
 
 **Tracking:** `ss-22fi` (July 2026 review remediation epic)
 
@@ -499,26 +499,41 @@ Batch validation extends `validate` without breaking a single-path invocation:
   discovers `.md`/`.markdown`, while `pure-yaml` discovers `.yaml`/`.yml`; optional
   repeatable `--include`/`--exclude` globs refine, but never infer, that profile.
   Globs match the normalized `/`-separated path relative to each directory operand,
-  case-sensitively, with POSIX `*`, `?`, `[]`, and `**` semantics; excludes win;
+  case-sensitively, with shared `*`, `?`, `[]`, and complete-segment `**` semantics;
+  excludes win and hidden entries are ordinary candidates.
+  Reject empty, absolute, drive-qualified, backslash-containing, dot-segment,
+  unterminated-class, and partial globstar patterns as invocation errors.
+  Include/exclude flags require `--recursive`;
 - treat a directory without `--recursive` as
   `input_error: directory_requires_recursive`. Do not follow discovered symlinks; allow
   an explicit symlink to a file only after canonical target and access checks.
   Enumerate command-line operands in given order and each directory in its normalized
-  sorted order; the first occurrence of a canonical file identity wins deduplication and
-  supplies its display spelling;
+  sorted order; the first occurrence of a canonical file identity wins global
+  deduplication and supplies its display spelling.
+  Prefer device/inode identity so hard links deduplicate, with canonical realpath
+  fallback when a stable file ID is unavailable.
+  Broken explicit symlinks are `not_found`; loops, directories, and other non-files are
+  `unreadable`. The adapter does not claim race-free no-follow semantics if a file is
+  replaced between inspection and read;
 - display paths relative to the invocation directory when contained there and absolute
   otherwise, with `/` separators.
   Sort by case-sensitive Unicode code-point order over the unnormalized filesystem
   spelling of that display path on every OS; never case-fold, locale-sort, or silently
   NFC/NFD-normalize;
-- preserve the current single-result JSON for one explicit readable file with default
-  format or `--format json`;
+- preserve the current single-result JSON for a request containing one explicit file
+  operand with default format or `--format json`, even if harmless `--recursive` is
+  present. Choose compatibility mode from the request shape, not from the result count:
+  directory expansion, multiple operands, JSONL, or SARIF always selects diagnostic-v1,
+  even when discovery or deduplication leaves one artifact;
 - use aggregate diagnostic-v1 JSON by default for multiple/discovered paths,
   one-result-per-line diagnostic-v1 for `--format jsonl`, and SARIF 2.1.0 for
   `--format sarif`. A one-path request for JSONL/SARIF opts into diagnostic-v1;
-- exit 0 when every artifact passes and 1 when any readable artifact fails validation;
-  missing or unreadable paths produce per-path input-error records, processing
-  continues, and the aggregate exits 2 if any such access failure occurred; and
+- exit 0 when every discovered artifact passes and 1 when any readable artifact fails
+  validation. A recursive directory with no matches emits `input_error/no_matches` so a
+  wrong profile or filter cannot produce a false green run.
+  Missing, unreadable, and no-match paths produce per-path input-error records,
+  processing continues, and the aggregate exits 2 if any such input failure occurred;
+  and
 - report partial success honestly.
 
 Parse and access records are discriminated results, not partially populated validation
@@ -533,6 +548,7 @@ results; they omit unavailable `contract_id`, status, and document metadata:
 | `input_error/not_found` | `artifact path does not exist` | `kind`, `reason`, `message`, `source` | none |
 | `input_error/unreadable` | `artifact path cannot be read` | `kind`, `reason`, `message`, `source` | none |
 | `input_error/directory_requires_recursive` | `artifact directory requires --recursive` | `kind`, `reason`, `message`, `source` | none |
+| `input_error/no_matches` | `artifact directory contains no matching files` | `kind`, `reason`, `message`, `source` | none |
 
 `ss-pvu9` implements frontmatter, syntax, root, and access records in Phase 1; `ss-l41u`
 adds `value_domain` after defining the portable value semantics.
@@ -542,12 +558,27 @@ precedence `2 (any input_error) > 1 (any readable failure) > 0`; JSONL record or
 the same as aggregate JSON. `path` uses the same RFC 6901/root/escaping rules as
 `schema_path`; messages never interpolate source or parser prose.
 YAML node spans are retained long enough to map JSON paths to file, line, and column.
+Lines and columns are one-based, columns count Unicode code points, a BOM has no width,
+and CRLF is one line break.
+Existing-key errors anchor to the key, exact instance-path errors to the value,
+missing-property errors to the containing object, and unavailable paths fall back to the
+nearest mapped ancestor.
+Frontmatter parsing passes the exact raw substring, including its final newline, rather
+than split/rejoining text.
 
 The current one-file JSON serializer remains byte-compatible and omits new location
 fields. Positioned errors use a separately versioned `diagnostic-v1` schema in new
 multi-path JSON/JSONL and SARIF outputs.
 The typed core may retain location data internally, but the legacy serializer must omit
-it. Add `--format sarif` only after the diagnostic-v1 wire contract is stable.
+it.
+In diagnostic mode, an artifact with invalid metadata or no resolvable contract emits
+a binding diagnostic, counts as a validation failure, and does not abort remaining
+inputs; legacy one-file behavior remains exact.
+JSONL emits one independently self-describing record per result and no summary record.
+SARIF 2.1.0 uses stable sorted rules, percent-encoded artifact URIs,
+`columnKind: unicodeCodePoints`, and the official OASIS schema; validation findings at
+exit 1 are a successful invocation while any input failure at exit 2 is not.
+Add `--format sarif` only after the diagnostic-v1 wire contract is stable.
 
 ### Skill Bootstrap and Installation
 
@@ -576,12 +607,16 @@ runtime bounds, and expected artifact names.
 Conformance availability is `unavailable`, `candidate`, or `release_asset`; a digest is
 absent for unavailable/source candidates and supplied only by built metadata for an
 immutable release-asset set.
-This describes the bytes, not live registry state, so immutable packages never need a
-post-publish metadata rewrite.
+This describes source and artifact bytes, not live registry state.
+Immutable package bytes never change after publication; a separate verified follow-up
+commit advances source bootstrap pins and `release_state` only after both registries
+pass.
 
 Stable tag `vX.Y.Z` maps to Python and npm `X.Y.Z`. Prerelease tag `vX.Y.Z-rc.N` maps to
 Python `X.Y.ZrcN` and npm `X.Y.Z-rc.N`; every other publish tag fails preflight.
-Generated bootstrap text uses the ecosystem-specific mapped pins; Bun uses the npm pin.
+Generated bootstrap text uses the last dual-registry-verified stable pins; Bun uses the
+npm pin. Registry package READMEs use the candidate artifact versions so PyPI/npm pages
+describe the bytes they contain without making source discovery unresolvable.
 Development checkouts advertise the last published stable pin pair and
 `release_state: development`, never an unresolvable VCS version.
 Preflight derives non-self-referential `build-metadata.json` after building the kit but
@@ -961,50 +996,50 @@ text or metadata may imply that 0.2.3 shipped.
 Draft conformance files remain unreleased test infrastructure until Phase 3. Independent
 slices may run in parallel, but each includes regression tests and affected safety docs.
 
-- [ ] **Bootstrap conformance contracts (`ss-pvxi`).** Create draft manifest, case,
+- [x] **Bootstrap conformance contracts (`ss-pvxi`).** Create draft manifest, case,
   compiled-profile, legacy-result, diagnostic-v1, discriminated parse/access,
   release/build/doctor, and public-claims schemas; a small language-neutral case set;
   and one shared runner that Python, Node, and Bun invoke.
   Freeze the Phase-1 error envelopes/reasons, but keep compiler/profile schemas on draft
   URNs until their Phase-2 owners finalize them.
-- [ ] **Normalize malformed schemas (`ss-dbkh`).** Add the shared schema-loading
+- [x] **Normalize malformed schemas (`ss-dbkh`).** Add the shared schema-loading
   boundary and golden cases for malformed YAML, null/list/scalar roots, bad keyword
   values, unsupported dialects, unresolved references, and engine compilation
   exceptions. Reserve the `pattern` reason but make no portable-pattern acceptance claim
   before `ss-vn04`. Use `legacy-0.2` identity compatibility until `ss-yxfm` migrates
   compiler output. All failures return `schema_invalid`, exit 1, and never expose engine
   prose or tracebacks.
-- [ ] **Normalize artifact parsing and access (`ss-pvu9`).** Make readable malformed
+- [x] **Normalize artifact parsing and access (`ss-pvu9`).** Make readable malformed
   frontmatter syntax/root failures return discriminated `parse_error` results and exit
   1. Preserve exit 2 for missing/unreadable/directory inputs; define batch per-path
      access records and aggregate precedence.
      `value_domain` remains reserved until `ss-l41u` defines it.
-- [ ] **Bound and normalize YAML (`ss-l41u`).** Enforce byte/resource/node/depth/scalar
+- [x] **Bound and normalize YAML (`ss-l41u`).** Enforce byte/resource/node/depth/scalar
   budgets before and during composition, reject unsafe representation-graph features,
   implement the exact JSON-compatible numeric/value domain and `value_domain` result,
   and add shared edge vectors.
   These safety limits are required in the consolidated release; JSON Schema `format`
   behavior changes only in Phase 2.
-- [ ] **Disable implicit retrieval (`ss-0sgk`).** Install a no-retrieval Python
+- [x] **Disable implicit retrieval (`ss-0sgk`).** Install a no-retrieval Python
   registry; keep TypeScript offline; allow internal fragments and explicitly supplied
   in-memory resources only.
   Tests intercept URL/file access and prove zero calls.
-- [ ] **Fix packaged resource trust (`ss-7eoa`).** Make installed wheel/tarball commands
+- [x] **Fix packaged resource trust (`ss-7eoa`).** Make installed wheel/tarball commands
   use bundled docs/skills even from an adversarial consumer directory with colliding
   paths. Preserve a separate exact-checkout source drift path.
-- [ ] **Verify coding-agent discovery (`ss-slas`).** Build the dated, primary-source and
+- [x] **Verify coding-agent discovery (`ss-slas`).** Build the dated, primary-source and
   smoke-tested compatibility/target matrix for Codex, Claude, Gemini, Copilot, Cursor,
   Windsurf, OpenCode, Aider, and Cline/Roo Code before bootstrap or installer paths are
   finalized.
-- [ ] **Harden bootstrap (`ss-1aa6`).** Replace `@latest`, interactive `npx`, undefined
+- [x] **Harden bootstrap (`ss-1aa6`).** Replace `@latest`, interactive `npx`, undefined
   `$SS`, and non-standard frontmatter with the capability-aware local-first/pinned
   design. Implement the versioned, byte-compatible Python/TypeScript `doctor --json`
   contract, then add official skill validation, mirror, execution, line-budget, and
   activation-matrix checks.
-- [ ] **Make install safe (`ss-bj47`).** Add explicit scope, ambiguous-location refusal,
+- [x] **Make install safe (`ss-bj47`).** Add explicit scope, ambiguous-location refusal,
   ownership/version preflight, dry-run, staged per-file replacement, rollback and repair
   behavior, and symmetric Python/TypeScript golden coverage.
-- [ ] **Harden CI and the pre-publish artifact boundary (`ss-o21w`).** SHA-pin actions,
+- [x] **Harden CI and the pre-publish artifact boundary (`ss-o21w`).** SHA-pin actions,
   build and verify immutable candidate artifacts before any privileged job, build before
   `npm pack`, add clean installed-artifact/resource-shadow tests, define dependency
   policy, introduce and validate root `release-metadata.json`, and add the
@@ -1019,7 +1054,7 @@ slices may run in parallel, but each includes regression tests and affected safe
   risk-review it, and add a complete disclosure of every 0.2.2 safety boundary and 0.3
   migration before release; `ss-trn7` owns the full 0.3 GitHub assets, provenance,
   registry state machines, and post-publish recovery.
-- [ ] **Reconcile stale tracking (`ss-qq77`).** Verify old specs and beads against main,
+- [x] **Reconcile stale tracking (`ss-qq77`).** Verify old specs and beads against main,
   explicitly disposition `ss-rm2v`, `ss-l592`, `ss-08np`, and `ss-h8u4`, mark/move
   implemented plans, update historical spec links, validate/regenerate the managed tbd
   `AGENTS.md` block with supported marker syntax, and leave this document as the sole
@@ -1042,30 +1077,30 @@ later reorganizes the complete documentation set.
 Rebaseline compiled schemas and hashes only once, after all semantic decisions land.
 Do not publish 0.3.0 until Phase 3 is complete.
 
-- [ ] **Portable regular expressions (`ss-vn04`).** Choose and specify a
+- [x] **Portable regular expressions (`ss-vn04`).** Choose and specify a
   machine-readable Python/ECMA-262-compatible pattern grammar or one shared engine,
   eagerly validate `pattern`/`patternProperties`, return the stable `pattern` reason,
   and add matching as well as syntax differential vectors.
-- [ ] **Portable format annotations (`ss-k381`).** Configure Ajv with
+- [x] **Portable format annotations (`ss-k381`).** Configure Ajv with
   `validateFormats: false`, prove known/unknown formats are warning-free annotations in
   both runtimes, preserve independent semantic-model validation, document the 0.3
   compatibility change, and reserve a versioned future assertion vocabulary.
-- [ ] **Semantics-preserving canonicalization and enforcement (`ss-sbvh`).** Tighten the
+- [x] **Semantics-preserving canonicalization and enforcement (`ss-sbvh`).** Tighten the
   nullable rewrite, complete the supported subschema traversal, preserve boolean
   subschemas, and make composition-aware closure pass `allOf`, conditional,
   `dependentSchemas`, `$defs`, pattern, tuple, explicit-opt-out, and stable
   `enforcement_unsupported` cases.
-- [ ] **Contract and schema identity (`ss-yxfm`).** Apply the shared contract-ID
+- [x] **Contract and schema identity (`ss-yxfm`).** Apply the shared contract-ID
   validator at every boundary, add independent schema IDs, and regenerate both compiler
   outputs to one equal schema/hash.
-- [ ] **Version artifact metadata (`ss-wuva`).** Support the absent legacy grammar and
+- [x] **Version artifact metadata (`ss-wuva`).** Support the absent legacy grammar and
   explicit artifact format 1, add the namespaced extension mapping, reject unsupported
   versions and unknown top-level keys, and publish machine-readable schemas plus
   compatibility vectors for both versions.
-- [ ] **Artifact and schema-view boundaries (`ss-3n2k`).** Preserve ref siblings,
+- [x] **Artifact and schema-view boundaries (`ss-3n2k`).** Preserve ref siblings,
   represent genuine unions, consume only values normalized by `ss-l41u`, and align
   mutability and exception documentation.
-- [ ] **Core/adapters separation (`ss-0uj9`).** Extract portable value, identity,
+- [x] **Core/adapters separation (`ss-0uj9`).** Extract portable value, identity,
   schema, and result logic behind compatible APIs; isolate filesystem/YAML/model and CLI
   adapters; add a Node-import guard for `softschema/core` and an exact compatibility
   allowlist for the TypeScript package root.
@@ -1083,34 +1118,135 @@ exact compatibility allowlist; full goldens and direct parity remain green.
 This phase exposes the settled contract, freezes the full 0.3.0 release candidate only
 after public APIs/CLI/docs are complete, and then publishes it.
 
-- [ ] **Expose pure YAML (`ss-6jp1`).** Add the explicit profile flag to both CLIs, a
+- [x] **Expose pure YAML (`ss-6jp1`).** Add the explicit profile flag to both CLIs, a
   language-neutral example, help/docs, and shared cases for metadata-only, schema,
   semantic, envelope, precedence, malformed-root, and value-domain behavior.
-- [ ] **Align TypeScript API and CLI (`ss-b5l4`).** Add runtime contract bindings,
+- [x] **Align TypeScript API and CLI (`ss-b5l4`).** Add runtime contract bindings,
   descriptor/wire types, Node-versus-Bun model policy, Commander exit parity, Windows
   URL-safe imports, and deprecation guidance.
-- [ ] **Batch and positioned diagnostics (`ss-xnr6`).** Add deterministic multi-path and
+- [x] **Make JSON serialization portable (`ss-u30p`).** Replace JavaScript’s implicit
+  UTF-16 and integer-index property ordering with a runtime-neutral serializer that
+  matches Python for Unicode keys, portable finite numbers, compact hashes, pretty CLI
+  JSON, and JSONL without changing ordinary existing bytes.
+- [x] **Normalize compiler numbers before hashing (`ss-hwws`).** Pass the complete
+  canonical compiler output through the portable JSON value boundary so equivalent
+  Python and TypeScript bounds such as `10.0` and `10` produce the same schema bytes and
+  hash; reject non-finite and unsafe integer-valued schema numbers before any write.
+- [x] **Reserve root compiler metadata (`ss-2d33`).** Reject model-supplied root
+  `x-softschema` values identically in both runtimes so the compiler alone owns the
+  exact contract/version/hash block; preserve supported per-field annotations and prove
+  every official compiler output validates its public conformance profile.
+- [x] **Validate field annotations (`ss-fbtq`).** Reject empty groups/instructions,
+  fractional order values, and invalid enum spellings at both authoring boundaries so
+  Python and TypeScript can emit only annotations accepted by the public vocabulary.
+- [x] **Reject non-portable literal YAML separators (`ss-0tb1`).** Reject literal
+  U+0085, U+2028, and U+2029 in YAML source while permitting their escaped scalar
+  values, and count only CR, LF, and CRLF as source line breaks.
+- [x] **Anchor extra-property diagnostics to the key (`ss-y82x`).** Preserve structured
+  validator metadata for each offending property so `additionalProperties` and
+  `unevaluatedProperties` locations select the actual escaped key without parsing engine
+  prose.
+- [x] **Normalize coded YAML parser failures (`ss-qu2u`).** Translate parser and
+  composer exceptions to positioned syntax errors before any generic error-code branch,
+  and recognize filesystem errors only from the complete Node error shape.
+- [x] **Settle compact-flow YAML (`ss-dz2o`).** Reject the parser-divergent plain forms
+  `{a:}` and `[a:]` while preserving separated, quoted, URL, and colon-content forms;
+  publish the restriction as a portable-YAML conformance vector.
+- [x] **Align implicit-null anchors (`ss-23yg`).** Use the same zero-width boundary for
+  empty mapping values, sequence items, flow entries, comments, CRLF, and EOF in both
+  runtimes and diagnostic outputs.
+- [x] **Bound file reads before allocation (`ss-zknx`).** Read artifacts and schema
+  resources through `limit + 1` boundaries in both runtimes, including diagnostic
+  source-map reloads, and reject oversize before decoding or parsing.
+- [x] **Scale TypeScript source mapping (`ss-3o3w`).** Pre-index line starts and
+  surrogate-pair boundaries so source-point lookups are logarithmic rather than
+  rescanning prefixes for every YAML node, with exact legacy-coordinate equivalence
+  tests.
+- [x] **Bound recursive discovery (`ss-yn4e`).** Traverse iteratively, detect directory
+  revisits, stop native enumeration at the shared 64-depth/100,000-entry per-operand
+  limits, discard partial operand matches, and continue later operands.
+- [x] **Batch and positioned diagnostics (`ss-xnr6`).** Add deterministic multi-path and
   recursive validation, JSON/JSONL aggregation, source spans, SARIF, partial-success
   reporting, and single-file compatibility tests.
+- [x] **Harden conformance boundaries (`ss-tge8`).** Bound and strictly validate every
+  standalone JSON/config/index/lock/adapter input; reject invalid Unicode scalars,
+  duplicate keys, non-finite values, unsafe paths, symlink escapes, undeclared nodes,
+  and output inventory drift before a write or deploy.
 - [ ] **Complete the conformance kit (`ss-6i6d`).** Fill the foundation with every
   settled behavior, the optional `x-softschema` vocabulary, offline-resource and
   compound-bundle rules, evolution metadata, standalone cases, third-implementation
   walkthrough, deterministic archive, and Python/Node/Bun execution.
   Verify the stable namespace before publishing it.
-- [ ] **Research adjacent systems (`ss-srtz`).** Produce the dated primary-source brief
+- [x] **Make the namespace immutable and release-capable (`ss-oyr4`).** Classify live
+  Pages state as absent, exact, or conflicting before deployment; bind publication to
+  protected upstream `main`; validate released/final-ID metadata; and byte-check the
+  live index plus every schema after deployment.
+- [x] **Reject hostile standalone JSON (`ss-o04h`).** Apply bounded iterative depth,
+  node, finite-number, duplicate-key, and Unicode-scalar validation to publication,
+  archive-consumer, adapter, runner, and frozen release-state inputs before canonical
+  output can fail with a raw runtime exception.
+- [x] **Validate operation-specific adapter requests (`ss-j81s`).** Enforce the exact
+  required fields, optional fields, primitive types, validation limits, and source
+  pointers for every portable-core operation before dispatch; malformed requests must
+  exit 2 with one stable error line in both standalone adapters.
+- [x] **Close final runtime parity (`ss-jfat`, `ss-ycm4`, `ss-ihzl`).** Count compact
+  flow mapping pairs identically, preserve portable plain-scalar spellings, normalize
+  the remaining flow error class, sort schema set arrays by Unicode scalar value, and
+  reject metadata-schema symlink escapes in both runtimes.
+- [x] **Close extracted-kit boundaries (`ss-stbo`, `ss-6okz`).** Require the exact root,
+  directory, and file inventory with bounded traversal plus per-file and aggregate byte
+  budgets before hashing.
+- [x] **Make Pages promotion monotonic (`ss-4uki`, `ss-ej3x`).** Bind prior publication
+  to an independently reviewed root-index digest, fail on later absence, and hydrate the
+  complete append-only namespace so a deployment cannot delete future versions or root
+  files.
+- [x] **Close release recovery and identity (`ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`,
+  `ss-2t5m`, `ss-1157`).** Parse the exact npm X.509 URI SAN; separate candidate
+  versions from verified bootstrap pins; persist an attested bounded recovery closure;
+  bound release subjects and retry delays; and verify stable/latest channel
+  postconditions.
+- [x] **Close final release trust boundaries (`ss-3x0g`, `ss-pykr`, `ss-qezc`,
+  `ss-1mf4`).** Authenticate the complete recovery closure against the exact workflow
+  commit before parsing or execution, bound implied extraction directories before any
+  write, and recheck immutable-release policy immediately before publication.
+- [x] **Close final docs and agent drift (`ss-c305`, `ss-nsto`, `ss-9tx6`, `ss-uywa`,
+  `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`,
+  `ss-fj2k`).** Make generated adapters durable and link-correct, distinguish required
+  versus verified live state, align executable docs/goldens/API wrappers, reconcile the
+  tracker, and separate registry artifact instructions from source bootstrap.
+- [x] **Research adjacent systems (`ss-srtz`).** Produce the dated primary-source brief
   and strategic comparison across content collections, executable/AST documents, and
   full configuration/model languages; turn evidence into concise product decisions.
-- [ ] **Repair docs and agent surfaces (`ss-v6bv`).** Perform the
+- [x] **Repair docs and agent surfaces (`ss-v6bv`).** Perform the
   README/guide/spec/design split, paired Python/TypeScript examples, corrected commands
   and claims, agent compatibility matrix/instruction adapters, research-derived
   alternatives section, changelog/migration note, public-claims drift matrix, and
   docs-as-written package tests.
+- [x] **Reconcile research follow-ups (`ss-azpv`).** Mark the product decisions and
+  network-free trust-boundary requirements complete while retaining future adapter
+  recipe and pre-publication source-review work.
+- [x] **Stabilize the TypeScript coverage gate (`ss-bhz6`).** Keep package source under
+  the configured thresholds while excluding generated bundles and runtime-created
+  integration copies that Bun otherwise treats as separate per-file coverage subjects.
+- [ ] **Provision the GitHub release approval gate (`ss-8dt9`).** Create or re-read the
+  `github-release` environment with a `v*` deployment restriction, required reviewer,
+  and no administrator bypass before any protected-tag execution; preserve the
+  authenticated configuration evidence.
 - [ ] **Verify live release authorization (`ss-0rqn`).** Merge the final candidate
   through a protected PR with every required context, run the manual preflight, verify
   the exact PyPI/npm trusted-publisher and protected-environment configuration while
   authenticated, and record durable repository, environment, ruleset, and workflow
   evidence. This external-state gate is separate from `ss-o21w` so credentials do not
   block the code-side conformance dependency graph.
+- [x] **Implement idempotent release orchestration (`ss-g8m8`).** Add standalone
+  manifest-driven GitHub/PyPI/npm state classifiers, a draft-assets and attestation
+  stage, conditional exact-byte uploads, final-release gating, and post-publish
+  verification hooks. Privileged jobs consume the frozen transfer without checkout,
+  dependency resolution, or rebuilding; live authorization and publication remain
+  separate gates.
+- [x] **Require retry postconditions (`ss-prjf`).** Retain a complete registry decision
+  only after its required publisher/provenance postcondition succeeds; exhaust the
+  bounded retry window and fail closed when metadata never qualifies.
 - [ ] **Publish and recover idempotently (`ss-trn7`).** Publish the immutable preflight
   artifacts through separate protected PyPI, npm, and GitHub-assets jobs; classify
   absent/complete/partial/conflicting artifact sets by filename and digest; guard
@@ -1146,17 +1282,56 @@ independent security work.
 | `ss-k381` | `ss-pvxi`, `ss-dbkh` | The result foundation and loader precede the 0.3 format-policy convergence. |
 | `ss-sbvh` | `ss-dbkh`, `ss-l41u` | Canonicalization/enforcement relies on valid schema objects and portable values. |
 | `ss-yxfm` | `ss-pvxi` | Identity decisions finalize the draft compiler-profile schema. |
+| `ss-1yt7` | `ss-yxfm` | Nested resource identity follows the settled separation between contract IDs and schema resource IDs. |
 | `ss-3n2k` | `ss-l41u`, `ss-sbvh` | Schema views and envelope inference consume settled values and schema traversal. |
 | `ss-wuva` | `ss-pvxi`, `ss-l41u`, `ss-yxfm` | Version negotiation extends the conformance foundation after value and identity rules settle. |
-| `ss-0uj9` | `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva` | Extract the core after its boundaries, identities, semantics, and formats are defined. |
+| `ss-0uj9` | `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva`, `ss-1yt7` | Extract the core after its boundaries, identities, semantics, formats, and nested-resource ownership are defined. |
 | `ss-6jp1` | `ss-l41u`, `ss-yxfm`, `ss-wuva` | Do not expose more YAML until values, binding IDs, and metadata versions are portable. |
 | `ss-b5l4` | `ss-pvxi`, `ss-0uj9`, `ss-yxfm` | Runtime contracts and wire types implement the frozen public result schemas on the portable core. |
-| `ss-xnr6` | `ss-pvu9`, `ss-0uj9`, `ss-6jp1`, `ss-b5l4` | Batch and locations need settled access precedence, core results, profiles, and wire types. |
-| `ss-6i6d` | `ss-pvxi`, `ss-pvu9`, `ss-0sgk`, `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva`, `ss-0uj9`, `ss-6jp1`, `ss-b5l4`, `ss-xnr6`, `ss-o21w` | Fill and package the public foundation only after every represented behavior and artifact boundary settles. |
-| `ss-v6bv` | all user-visible behavior, `ss-slas`, `ss-srtz`, `ss-1aa6`, `ss-bj47`, `ss-6i6d`, `ss-o21w` | Final information architecture describes the settled product and evidence. |
-| `ss-0rqn` | `ss-o21w`, `ss-v6bv`, `ss-6i6d` | Live authorization and a real preflight require the complete candidate but are external to the code-side artifact boundary. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn` | Publish only after artifacts, public docs, conformance metadata, and live authorization are final. |
-| `ss-1mdr` | `ss-trn7`, `ss-qq77` | Close tracking only after release verification and historical cleanup. |
+| `ss-u30p` | `ss-l41u`, `ss-0uj9` | Serialization consumes the settled portable value domain and extracted core before batch wire formats depend on it. |
+| `ss-hwws` | `ss-sbvh`, `ss-u30p` | Cross-runtime compiler hashes consume both settled schema transforms and the portable serializer/value representation. |
+| `ss-2d33` | `ss-sbvh`, `ss-hwws` | The reserved root metadata block is enforced after compiler transforms and portable hashing settle. |
+| `ss-fbtq` | `ss-pvxi`, `ss-2d33` | Authoring helpers must emit only annotations accepted by the finalized compiler-owned profile. |
+| `ss-0tb1` | `ss-l41u` | Source separator policy extends the settled portable YAML boundary. |
+| `ss-y82x` | `ss-l41u` | Key-level source anchors require the settled YAML source map. |
+| `ss-qu2u` | `ss-l41u` | Composer exceptions must terminate at the shared portable parser boundary. |
+| `ss-dz2o` | `ss-l41u` | Compact-flow policy narrows the settled portable YAML grammar. |
+| `ss-23yg` | `ss-l41u`, `ss-xnr6` | Empty-node anchors build on the parser source map and positioned diagnostic contract. |
+| `ss-zknx` | `ss-l41u` | Bounded file allocation enforces the existing portable resource-byte policy at the adapter boundary. |
+| `ss-xnr6` | `ss-pvu9`, `ss-0uj9`, `ss-6jp1`, `ss-b5l4`, `ss-u30p`, `ss-0tb1`, `ss-y82x` | Batch and locations need settled access precedence, core results, profiles, wire types, byte-identical serialization, and portable source anchors. |
+| `ss-3o3w` | `ss-xnr6` | The positioned diagnostic implementation must exist before its source-index complexity can be hardened. |
+| `ss-yn4e` | `ss-xnr6` | The batch discovery surface must exist before traversal can gain shared identity and resource budgets. |
+| `ss-tge8` | `ss-pvxi`, `ss-o21w` | Standalone publication and consumer boundaries build on the conformance and frozen-artifact foundations. |
+| `ss-o04h` | `ss-tge8`, `ss-g8m8` | Every standalone JSON boundary must exist before its Unicode/depth/node failures can be closed consistently. |
+| `ss-j81s` | `ss-tge8`, `ss-o04h` | Operation-specific adapter validation closes the strict standalone boundary after its generic JSON defenses exist. |
+| `ss-oyr4` | `ss-tge8` | Immutable Pages publication consumes the hostile-input-tested publication boundary. |
+| `ss-6i6d` | `ss-0sgk`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-o21w`, `ss-b5l4`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-k381`, `ss-1yt7`, `ss-u30p`, `ss-hwws`, `ss-2d33`, `ss-fbtq`, `ss-tge8`, `ss-oyr4`, `ss-o04h`, `ss-zknx`, `ss-3o3w`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg`, `ss-stbo`, `ss-4uki`, `ss-ej3x`, `ss-jfat`, `ss-ycm4`, `ss-6okz`, `ss-j81s` | Fill and package the public foundation only after every represented behavior and artifact boundary settles. |
+| `ss-v6bv` | `ss-0sgk`, `ss-7eoa`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-1aa6`, `ss-bj47`, `ss-o21w`, `ss-b5l4`, `ss-3n2k`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-slas`, `ss-srtz`, `ss-k381`, `ss-1yt7`, `ss-hwws`, `ss-2d33`, `ss-zknx`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg` | Final information architecture describes the exact settled candidate and labels unavailable live state explicitly. |
+| `ss-azpv` | `ss-v6bv` | Research completion markers follow the implemented public documentation decisions. |
+| `ss-bhz6` | `ss-b5l4`, `ss-v6bv` | The final TypeScript gate measures settled package source without counting transient integration copies as duplicate source files. |
+| `ss-8dt9` | — | The protected GitHub release environment is an external live-state prerequisite rather than a code dependency. |
+| `ss-0rqn` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-8dt9` | Live authorization and a real preflight require the complete candidate and protected GitHub release environment but are external to the code-side artifact boundary. |
+| `ss-g8m8` | `ss-o21w` | The code-side release state machines extend the already hardened frozen-artifact boundary without requiring live credentials. |
+| `ss-prjf` | `ss-g8m8` | Retry success must require the provenance postcondition owned by the release state machine. |
+| `ss-jfat` | `ss-l41u` | Final YAML differential cases extend the settled portable value boundary. |
+| `ss-ycm4` | `ss-u30p`, `ss-hwws` | Canonical schema set ordering uses the same Unicode scalar order as serialization and hashing. |
+| `ss-ihzl` | `ss-zknx` | Metadata schema confinement must precede the bounded file read. |
+| `ss-stbo` | `ss-tge8` | Exact archive tree ownership tightens the standalone consumer boundary. |
+| `ss-6okz` | `ss-stbo` | Declared byte budgets apply after the exact inventory contract exists. |
+| `ss-4uki` | `ss-oyr4` | Monotonic promotion extends the immutable Pages gate. |
+| `ss-ej3x` | `ss-4uki` | Complete namespace hydration preserves every previously promoted path. |
+| `ss-a43v` | `ss-g8m8` | Exact certificate identity is a release provenance postcondition. |
+| `ss-x6iq` | `ss-g8m8`, `ss-1aa6` | Candidate coordinates and published bootstrap discovery have different state owners. |
+| `ss-ap6l` | `ss-g8m8` | Durable recovery extends the frozen draft-asset state machine. |
+| `ss-3x0g` | `ss-ap6l` | The durable recovery bootstrap must bind to the exact workflow commit before execution. |
+| `ss-qezc` | `ss-ap6l` | Recovery extraction budgets extend the durable archive boundary before filesystem writes. |
+| `ss-1mf4` | `ss-ap6l` | Recovery checksum contents must be authenticated before a parser consumes them. |
+| `ss-pykr` | `ss-g8m8` | Final publication must re-evaluate immutable-release policy immediately before mutation. |
+| `ss-23vm` | `ss-g8m8` | Latest-channel verification is a final GitHub state-machine postcondition. |
+| `ss-2t5m` | `ss-g8m8` | Manifest byte budgets bound every release-state read and download. |
+| `ss-1157` | `ss-prjf` | Retry postconditions also require a finite bounded delay. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
+| `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
 `ss-pvxi`, `ss-7eoa`, `ss-slas`, `ss-srtz`, and `ss-qq77` may begin in parallel.
@@ -1293,21 +1468,95 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-0uj9` | P2 | Portable core/runtime/CLI separation |
 | `ss-6jp1` | P2 | Pure-YAML CLI profile |
 | `ss-b5l4` | P2 | TypeScript runtime contracts, model policy, exits, wire types |
+| `ss-1yt7` | P1 | Nested JSON Schema resource identity and collision handling |
+| `ss-u30p` | P1 | Byte-identical deterministic JSON serialization |
+| `ss-hwws` | P1 | Portable numeric normalization for compiler hashes |
+| `ss-2d33` | P1 | Reserved root compiler metadata and profile validity |
+| `ss-fbtq` | P1 | Cross-runtime field-annotation authoring validation |
+| `ss-0tb1` | P1 | Portable literal YAML separator and source-position policy |
+| `ss-y82x` | P2 | Offending-key source anchors for extra-property diagnostics |
+| `ss-qu2u` | P1 | Coded YAML exception and Node filesystem-error classification |
+| `ss-dz2o` | P1 | Portable compact-flow YAML policy |
+| `ss-23yg` | P1 | Empty-null source anchors |
+| `ss-zknx` | P1 | Bounded artifact and schema file reads |
+| `ss-3o3w` | P1 | Scalable TypeScript source indexing |
+| `ss-yn4e` | P1 | Iterative, identity-aware, bounded recursive discovery |
 | `ss-xnr6` | P2 | Batch validation, locations, and SARIF |
+| `ss-tge8` | P2 | Hostile conformance publication and consumer boundaries |
+| `ss-o04h` | P1 | Strict Unicode-safe standalone JSON boundaries |
+| `ss-j81s` | P1 | Operation-specific standalone adapter request validation |
+| `ss-oyr4` | P1 | Immutable, release-capable Pages namespace |
 | `ss-6i6d` | P2 | Versioned conformance kit, vocabulary, bundles, evolution |
 | `ss-srtz` | P2 | Related-effort research and strategic positioning |
 | `ss-v6bv` | P2 | Documentation and agent surfaces |
+| `ss-azpv` | P3 | Completed research follow-up markers |
+| `ss-bhz6` | P1 | Stable package-source TypeScript coverage gate |
 | `ss-qq77` | P2 | Tracker and completed-spec reconciliation |
+| `ss-8dt9` | P1 | Protected live `github-release` environment |
 | `ss-0rqn` | P1 | Live publisher authorization, protected PR, and preflight evidence |
+| `ss-g8m8` | P1 | Idempotent release state machines and draft-asset DAG |
+| `ss-prjf` | P1 | Release retry provenance postconditions |
 | `ss-trn7` | P1 | Idempotent dual-registry publication and verification |
 | `ss-1mdr` | P2 | Post-release plan and epic closeout |
+| `ss-c305` | P1 | Regenerate native agent instruction adapters |
+| `ss-nsto` | P1 | Location-correct generated Copilot links |
+| `ss-9tx6` | P1 | Evidence-calibrated trusted-publisher documentation |
+| `ss-a43v` | P1 | Exact npm X.509 source identity |
+| `ss-stbo` | P2 | Exact bounded extracted-kit tree inventory |
+| `ss-uywa` | P2 | Intentional skill-brief golden rebaseline |
+| `ss-22gw` | P2 | Accurate golden coverage and exit-code docs |
+| `ss-2n7g` | P1 | Extracted-archive consumer instructions |
+| `ss-ode8` | P2 | Complete plan/bead reconciliation |
+| `ss-ihzl` | P1 | Metadata-schema symlink confinement |
+| `ss-4uki` | P1 | Monotonic Pages promotion marker |
+| `ss-ej3x` | P2 | Complete append-only Pages namespace |
+| `ss-6a90` | P2 | Idiomatic host-library parity explanations |
+| `ss-vnul` | P2 | Shell-safe publishing commands |
+| `ss-ap6l` | P1 | Durable attested release recovery |
+| `ss-3x0g` | P1 | Exact-commit recovery bootstrap verification |
+| `ss-pykr` | P1 | Immediate pre-publication immutable-release recheck |
+| `ss-qezc` | P1 | Pre-write recovery depth and implied-directory budgets |
+| `ss-1mf4` | P1 | Pre-parse recovery checksum authentication |
+| `ss-yaii` | P2 | Registry README versions versus source pins |
+| `ss-x6iq` | P1 | Candidate versions versus verified bootstrap pins |
+| `ss-23vm` | P2 | GitHub latest-release postconditions |
+| `ss-75lu` | P1 | Correct TypeScript result-wrapper documentation |
+| `ss-jfat` | P1 | Final portable YAML differential parity |
+| `ss-ycm4` | P1 | Unicode-scalar canonical set ordering |
+| `ss-6okz` | P1 | Extracted-kit declared-byte budgets |
+| `ss-2t5m` | P1 | Release subject and aggregate byte budgets |
+| `ss-1157` | P2 | Finite bounded release retry delays |
+| `ss-fj2k` | P1 | Final red-team review reconciliation |
 
-## Open Questions
+## Remaining Live Gates and Settled Decisions
 
-There are no questions blocking Phase 1. One Phase-2 decision gate remains: `ss-vn04`
-must select a machine-readable portable regular-expression grammar or a practical shared
-engine and record the choice in the normative spec before the compiler profile freezes.
-It may not preserve divergent native-engine behavior.
+No product-design question blocks the code candidate.
+The portable regular-expression, format, identity, YAML, serialization, diagnostics, and
+release-state decisions are settled in the normative spec and executable vectors.
+
+Four external-state gates keep this plan In Progress as of 2026-07-10:
+
+- the repository immutable-release setting is disabled, so `publish.yml` will fail
+  before its first GitHub release mutation;
+- the GitHub Pages API returns 404 for this repository, so no controlled live schema
+  namespace has been observed;
+- the workflow names a `github-release` environment that is absent from the live
+  repository inventory, so its documented reviewer approval is not yet a verified
+  protection gate; and
+- protected-environment/trusted-publisher authorization plus a real dual-registry
+  release have not been executed.
+
+The same read-only audit confirmed active `main` and `v*` rulesets with no `main`
+bypass, required CI contexts, required full-SHA Actions pinning, and `pypi`/`npm`
+environments restricted to `v*` tags with reviewer gates; it found no corresponding
+`github-release` environment.
+These controls are necessary but do not substitute for registry-side trusted-publisher
+verification or a protected-tag run.
+
+Enabling repository settings, merging, publishing Pages, creating a release tag, and
+uploading registry artifacts are administrator or release-authority actions.
+They remain in `ss-6i6d`, `ss-8dt9`, `ss-0rqn`, `ss-trn7`, and `ss-1mdr`; no code-side
+success is recorded as evidence for those live gates.
 
 The following choices are settled by this draft but should be called out explicitly in
 review because they affect v0.3 behavior:

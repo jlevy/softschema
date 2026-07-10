@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:softschema:draft:conformance:metadata-legacy:v0",
-  "title": "Draft softschema legacy artifact metadata",
+  "title": "softschema legacy artifact metadata",
   "$defs": {
     "contractId": {
       "type": "string",
