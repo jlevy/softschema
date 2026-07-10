@@ -3,15 +3,17 @@ type: is
 id: is-01ksrxy9by354mapnjhdgm7zpv
 title: "[deferred] Tighten __all__ surface in softschema/__init__.py"
 kind: task
-status: open
+status: closed
 priority: 3
-version: 5
+version: 7
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels: []
 dependencies: []
 parent_id: is-01kx4vfdwqtmk0tt9q9kznyhwq
 created_at: 2026-05-29T03:55:10.077Z
-updated_at: 2026-07-10T03:49:42.481Z
+updated_at: 2026-07-10T07:18:26.556Z
+closed_at: 2026-07-10T07:18:26.555Z
+close_reason: Implemented and verified in 99d5250
 ---
 Audit P2.20. __all__ lists 32 symbols. CONTRIBUTING.md asks new additions to justify themselves. Re-audit before v0.2: are FieldInfo, SFieldMeta, SoftOwner, SoftTier, RepairKind, GeneratedSection all required at top level, or could they live under softschema.schema_view / softschema.sfield / softschema.generate sub-namespaces? Public-surface change so cannot be reverted casually; defer to v0.2.
 
