@@ -100,13 +100,13 @@ The review found that the strongest failures sit outside that corpus:
 
 Earlier plans remain design history and are not reimplemented here:
 
-- [Public readiness](plan-2026-05-24-softschema-public-readiness.md) records the
+- [Public readiness](../done/plan-2026-05-24-softschema-public-readiness.md) records the
   original concept and Python surface.
-- [TypeScript/Zod parity](plan-2026-06-01-softschema-typescript-zod-parity.md) records
-  the canonicalization and golden-first parity process.
-- [June review remediation](plan-2026-06-10-softschema-review-remediation.md) records
-  the current validation, metadata, and `enforced` architecture.
-- [Terminology and linkage](plan-2026-06-11-softschema-terminology-and-linkage.md)
+- [TypeScript/Zod parity](../done/plan-2026-06-01-softschema-typescript-zod-parity.md)
+  records the canonicalization and golden-first parity process.
+- [June review remediation](../done/plan-2026-06-10-softschema-review-remediation.md)
+  records the current validation, metadata, and `enforced` architecture.
+- [Terminology and linkage](../done/plan-2026-06-11-softschema-terminology-and-linkage.md)
   records the contract-versus-schema distinction and the v0.2 compatibility policy.
 
 This plan supersedes their stale checklists, unsafe trust claims, and forward-looking
@@ -258,17 +258,31 @@ available; it never echoes an unserializable runtime value.
   Canonicalization is a model-compiler output profile, not a generic transform for
   arbitrary authored JSON Schema.
 - Draft 2020-12 `format` is annotation-only in the default portable profile.
-  Configure Ajv with `validateFormats: false` rather than merely removing `ajv-formats`,
-  and prove that unknown formats produce neither violations nor logger/stderr output.
+  This is the `annotation-only-v1` policy specified in
+  [softschema Spec](../../../softschema-spec.md#format-annotations) and encoded in
+  `tests/parity/format-annotations.json`. Python supplies no format checker for instance
+  validation; Ajv sets `validateFormats: false` and does not install `ajv-formats`.
+  Known and unknown names produce neither violations nor logger/stderr output, while
+  other structural assertions and the trusted semantic model continue independently.
   A future opt-in assertion vocabulary may be added only with cross-runtime conformance
   vectors. This 0.3 compatibility change is owned by `ss-k381`, not the 0.2.x
   parser-safety patch.
-- JSON Schema regexes use one documented portable profile.
-  Eagerly validate `pattern` and `patternProperties`; reject syntax or semantics that
-  Python and ECMA-262 cannot execute identically, and cover Unicode, anchors, escapes,
-  classes, lookarounds, backreferences, flags, and invalid constructs with differential
-  vectors. `ss-vn04` owns the exact grammar or a shared-engine decision before this
-  profile freezes.
+- JSON Schema regexes use `portable-regex-v1`, the grammar specified in
+  [softschema Spec](../../../softschema-spec.md#portable-regular-expressions) and
+  encoded with its differential vectors in `tests/parity/portable-patterns.json`. Its
+  contract is ECMA-262 Unicode, no-flag, unanchored-search semantics; bounds are at most
+  1000\. It supports literals, dot, both anchors, capturing/noncapturing groups,
+  alternation, classes/ranges, simple/lazy/bounded quantifiers, ASCII digit/word
+  shorthands, ECMA whitespace shorthands, controls, hex/Unicode escapes, and escaped
+  syntax. It rejects lookaround, backreferences, word boundaries, named/atomic groups,
+  inline flags, property escapes, possessive quantifiers, surrogate escapes, and
+  ambiguous future class operators.
+  Python lowers only the divergent dot/end-anchor/shorthand semantics in a private
+  engine copy; TypeScript executes the authored ECMA pattern.
+  Compiled bytes and hashes stay unchanged, and error records restore the authored
+  pattern. Eager traversal covers actual Draft 2020-12 schema positions, not annotation
+  payloads; unsupported syntax returns the stable `pattern` record before engine
+  compilation.
 
 URI comparison is lexical and offline.
 Apply RFC 3986 normalization to HTTPS IDs: lowercase scheme and DNS host, remove port
@@ -377,6 +391,16 @@ A logical contract ID is not a JSON Schema URI. In the corrected compiler contra
 - an optional `schema_id` / `schemaId` and `compile --schema-id <absolute-uri>` control
   `$id`; and
 - schema IDs receive the canonical absolute-URI validation described above.
+
+The shared schema-ID profile has one byte spelling for each accepted identity.
+HTTPS IDs use lowercase scheme and authority, canonical dotted-decimal IPv4 or
+compressed lowercase IPv6, no credentials or default/zero-padded port, an explicit
+slash-prefixed path, no dot segments, and RFC 3986 path/query characters.
+URNs use a lowercase RFC 8141 namespace identifier and the ASCII NSS core; this version
+excludes r-, q-, and fragment components.
+In both forms, percent escapes are uppercase and never encode an unreserved byte.
+The input must already equal this canonical spelling; validators do not silently
+normalize aliases.
 
 This intentionally changes compiled schema bytes and `schema_sha256` once.
 Both model compilers and every committed example are regenerated in one reviewed
@@ -671,7 +695,8 @@ Recovery and post-publish checks verify those channel flags plus the Python/npm 
 mapped from the same logical release coordinate.
 
 The release manifest hashes only primary subjects: wheel, sdist, npm tarball,
-conformance archive, build metadata, and SBOMs.
+conformance archive, the exact logical and build metadata bytes embedded by the
+packages, and artifact-specific SBOMs.
 It never hashes itself.
 Detached checksums, attestation service records, and `release-index.json` are derived
 control records excluded from their own digest set; the index records the
@@ -1290,6 +1315,7 @@ review because they affect v0.3 behavior:
 - [Parity development process](../../../development.md#keeping-python-and-typescript-in-parity)
 - [July remediation epic](../../../../.tbd/)
 - [June engineering review](../../reviews/review-2026-06-10-softschema-full-eng-review.md)
+- [Adjacent schema and document systems research](../../research/research-2026-07-09-adjacent-schema-document-systems.md)
 - [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12)
 - [JSON Schema Core and vocabularies](https://json-schema.org/draft/2020-12/json-schema-core)
 - [Agent Skills specification](https://agentskills.io/specification)

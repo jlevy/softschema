@@ -4,7 +4,10 @@
 
 **Author:** Joshua Levy (with agent assistance)
 
-**Status:** Draft
+**Status:** Complete (2026-06-10). The Python cleanup, TypeScript/Zod implementation,
+canonical schema parity, shared golden corpus, Node and Bun coverage, package resources,
+and public documentation all landed.
+The unchecked boxes below preserve the original proposal; they are not active work.
 
 ## Overview
 

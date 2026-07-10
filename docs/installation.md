@@ -9,7 +9,7 @@ Pick the runtime you already have; both validate against the same canonical sche
 |  | Pin as a dependency | Zero-install (`uvx` / `npx`) |
 | --- | --- | --- |
 | **For** | Projects, CI gates, library use | One-off checks, agent bootstrap |
-| **Reproducible** | Yes—the version is locked in `uv.lock` / `package-lock.json` | Only if you pin the runner (`uvx softschema@0.2.2`) |
+| **Reproducible** | Yes—the version is locked in `uv.lock` / `package-lock.json` | Only if you pin the runner (`uvx --from 'softschema==0.2.2' softschema`) |
 | **Fast / offline** | Yes—the binary is already on disk | Cold-start fetch; needs the network |
 | **Library import** | Yes—the only way | No |
 
@@ -37,20 +37,20 @@ npx softschema --help               # resolves the local pinned copy
 ## Zero-Install
 
 ```bash
-uvx softschema@latest --help        # Python implementation, ephemeral
-npx softschema@latest --help        # Node implementation, ephemeral
+uvx --from 'softschema==0.2.2' softschema --help  # Python, ephemeral
+npx --yes softschema@0.2.2 --help                 # Node, ephemeral
 ```
 
-Use `uvx softschema@0.2.2` / `npx -y softschema@0.2.2` when a repeated ad-hoc run must
-resolve the same version every time.
+The exact pins come from the repository’s `release-metadata.json`. Update them
+deliberately when adopting a newer release.
 
 ## Quick Start for Agents
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@latest --help` (for the Python implementation) or
-> `npx softschema@latest --help` (for the Node implementation) and follow the
-> instructions to set up softschema for this repo as a skill.
+> Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or
+> `npx --yes softschema@0.2.2 --help` (Node), then follow the instructions to set up
+> softschema for this repo as a skill.
 
 The help output points the agent to `skill --install`, which writes
 `.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md` from the
@@ -71,16 +71,14 @@ Or with Homebrew:
 brew install uv
 ```
 
-## Supply-chain Cool-off
+## Pins and Release-age Policies
 
-`@latest` is the recommended form for the agent-bootstrap path, including under a
-release-age cool-off.
-A gate such as npm’s `--before` / `NPM_CONFIG_BEFORE`, pnpm’s `minimumReleaseAge`, or
-uv’s `--exclude-newer` resolves `@latest` to the newest release old enough to pass, so
-you get the freshest vetted version without pinning.
-A just-published version installs only once it ages past the cutoff.
-Consumer projects should still pin their own dependency—a project’s reproducibility is
-the project’s responsibility, not the publisher’s cool-off.
+The bootstrap commands use immutable ecosystem-specific pins.
+A consumer may also use npm’s `--before` / `NPM_CONFIG_BEFORE`, pnpm’s
+`minimumReleaseAge`, or uv’s `--exclude-newer` as a separate defense-in-depth policy.
+Such a policy is controlled by the consumer and cannot make an unpinned command
+reproducible or safe on their behalf.
+Review and update the pin explicitly when adopting a newer version.
 See [supply-chain-hardening](https://github.com/jlevy/supply-chain-hardening) for the
 rationale.
 

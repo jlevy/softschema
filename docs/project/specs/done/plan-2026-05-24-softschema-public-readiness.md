@@ -4,15 +4,15 @@
 
 **Author:** Codex
 
-**Status:** Superseded (historical).
-This plan describes the pre-TypeScript v0.1 readiness work and is kept for history; its
-forward-looking sections (the TypeScript/Zod package as a “future” placeholder) no
-longer reflect the shipped state.
+**Status:** Complete and superseded (2026-06-11). This plan describes the pre-TypeScript
+v0.1 readiness work and is kept for history; its forward-looking sections (the
+TypeScript/Zod package as a “future” placeholder) no longer reflect the shipped state.
 Both packages now ship at parity.
-Current remediation and design work is tracked in
-[plan-2026-06-10-softschema-review-remediation.md](plan-2026-06-10-softschema-review-remediation.md);
-the TypeScript parity work is in
-[plan-2026-06-01-softschema-typescript-zod-parity.md](plan-2026-06-01-softschema-typescript-zod-parity.md).
+Subsequent work is recorded in the
+[TypeScript parity](plan-2026-06-01-softschema-typescript-zod-parity.md) and
+[June remediation](plan-2026-06-10-softschema-review-remediation.md) plans.
+Current work is tracked in the
+[July hardening plan](../active/plan-2026-07-09-softschema-hardening-and-conformance.md).
 
 ## Overview
 

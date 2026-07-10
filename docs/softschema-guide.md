@@ -15,9 +15,9 @@ Two interchangeable implementations ship here, at exact behavioral parity: see
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@latest --help` (for the Python implementation) or
-> `npx softschema@latest --help` (for the Node implementation) and follow the
-> instructions to set up softschema for this repo as a skill.
+> Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or
+> `npx --yes softschema@0.2.2 --help` (Node), then follow the instructions to set up
+> softschema for this repo as a skill.
 
 The help output points the agent to the repo-local skill install command and the bundled
 docs it should read next.

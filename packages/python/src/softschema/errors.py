@@ -167,7 +167,7 @@ def render_structural_message(
         return f"string is longer than the maximum length of {_fmt(validator_value)}"
     if validator == "pattern":
         return f"value {_fmt(value)} does not match pattern {_fmt(validator_value)}"
-    if validator == "additionalProperties":
+    if validator in {"additionalProperties", "unevaluatedProperties"}:
         return "object has properties that are not allowed"
     if validator == "multipleOf":
         return f"value {_fmt(value)} is not a multiple of {_fmt(validator_value)}"

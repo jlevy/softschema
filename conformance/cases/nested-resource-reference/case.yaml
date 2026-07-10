@@ -1,0 +1,25 @@
+id: nested-resource-reference
+description: Relative embedded resource IDs and fragments resolve from their resource root.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 809a5174379a8c790a33e578cf4d2b03ad410a52eeb75cc3f1d2ac256ba2a60e
+  schema:
+    path: schema.yaml
+    sha256: 2def398a3e33a5162c1da375a1cebe974fe3aacd6992a40262c6f64f95111ef7
+  resources: []
+options:
+  contract: example.conformance:Nested/v1
+  envelope: record
+  status: permissive
+expected:
+  exit_code: 0
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: ae3d05f512c4fee604012ab266fd4e01ba44e049d705f07bc1b0aeb0ca5adb18

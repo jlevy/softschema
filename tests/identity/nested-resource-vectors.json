@@ -1,0 +1,463 @@
+{
+  "schema_locations": [
+    "/$defs/child",
+    "/additionalProperties",
+    "/allOf/0",
+    "/anyOf/0",
+    "/contains",
+    "/contentSchema",
+    "/dependentSchemas/child",
+    "/else",
+    "/if",
+    "/items",
+    "/not",
+    "/oneOf/0",
+    "/patternProperties/x",
+    "/prefixItems/0",
+    "/properties/child",
+    "/propertyNames",
+    "/then",
+    "/unevaluatedItems",
+    "/unevaluatedProperties"
+  ],
+  "cases": [
+    {
+      "id": "nested-relative-fragment-ok",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$ref": "child/#/$defs/payload",
+        "$defs": {
+          "child": {
+            "$id": "child/",
+            "$defs": {
+              "payload": {
+                "type": "object",
+                "required": ["name"],
+                "properties": { "name": { "const": "Ada" } }
+              }
+            }
+          }
+        }
+      },
+      "values": { "name": "Ada" },
+      "resources": {},
+      "expected": {
+        "ok": true,
+        "errors": [],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "absolute-nested-resource-under-idless-root-ok",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$ref": "https://schemas.example/child",
+        "$defs": {
+          "child": {
+            "$id": "https://schemas.example/child",
+            "type": "object"
+          }
+        }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": true,
+        "errors": [],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "supplied-resource-nested-relative-ok",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$ref": "https://schemas.example/supplied/child/"
+      },
+      "values": {},
+      "resources": {
+        "https://schemas.example/supplied/": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "$defs": {
+            "child": {
+              "$id": "child/",
+              "type": "object"
+            }
+          }
+        }
+      },
+      "expected": {
+        "ok": true,
+        "errors": [],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "unbased-relative-nested-id",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": { "child": { "$id": "child/", "type": "object" } },
+        "type": "object"
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "invalid_nested_id"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "relative-space-is-not-silently-encoded",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": { "child": { "$id": "child name", "type": "object" } }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "invalid_nested_id"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "relative-unicode-is-not-silently-encoded",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": { "child": { "$id": "café", "type": "object" } }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "invalid_nested_id"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "relative-percent-alias-is-not-silently-normalized",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": { "child": { "$id": "%2E%2E/child", "type": "object" } }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "invalid_nested_id"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "relative-network-authority-alias-is-not-silently-normalized",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": {
+          "child": { "$id": "//SCHEMAS.example/child", "type": "object" }
+        }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "invalid_nested_id"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "literal-relative-dot-segments-resolve",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/dir/",
+        "$ref": "../child",
+        "$defs": { "child": { "$id": "../child", "type": "object" } }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": true,
+        "errors": [],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "duplicate-resolved-nested-id",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": {
+          "a": { "$id": "child", "type": "string" },
+          "b": { "$id": "./child", "type": "number" }
+        }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/b/$id",
+            "detail": "nested_resource_collision"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "unicode-key-collision-order",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": {
+          "": { "$id": "child", "type": "string" },
+          "𐀀": { "$id": "./child", "type": "number" }
+        }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/𐀀/$id",
+            "detail": "nested_resource_collision"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "nested-root-id-collision",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": { "child": { "$id": "", "type": "object" } }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "nested_resource_collision"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "nested-supplied-id-collision",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$defs": {
+          "child": {
+            "$id": "https://schemas.example/external",
+            "type": "object"
+          }
+        }
+      },
+      "values": {},
+      "resources": { "https://schemas.example/external": true },
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "identity",
+            "message": "compiled schema resource identity is invalid",
+            "schema_path": "/$defs/child/$id",
+            "detail": "nested_resource_collision"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "nested-anchor-does-not-leak-to-parent",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://schemas.example/root/",
+        "$ref": "#inside",
+        "$defs": {
+          "child": {
+            "$id": "child/",
+            "$anchor": "inside",
+            "type": "object"
+          }
+        }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "reference",
+            "message": "compiled schema reference is unavailable offline",
+            "schema_path": "/$ref",
+            "reference": "#inside"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "annotation-id-is-not-a-schema-resource",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "examples": [{ "$id": "relative-but-annotation-only" }]
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": true,
+        "errors": [],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "legacy-fragment-reference-ok",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "example:Legacy/v1",
+        "$ref": "#/$defs/payload",
+        "$defs": { "payload": { "type": "object" } },
+        "x-softschema": { "contract": "example:Legacy/v1" }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": true,
+        "errors": [],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "legacy-external-reference-rejected",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "example:Legacy/v1",
+        "$ref": "https://schemas.example/external",
+        "x-softschema": { "contract": "example:Legacy/v1" }
+      },
+      "values": {},
+      "resources": { "https://schemas.example/external": true },
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "profile",
+            "message": "compiled schema is outside the softschema profile",
+            "schema_path": "/$ref",
+            "detail": "legacy_external_reference"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "legacy-dynamic-reference-order",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "example:Legacy/v1",
+        "$ref": "#/$defs/a",
+        "$defs": {
+          "a": { "$dynamicRef": "https://schemas.example/dynamic" }
+        },
+        "x-softschema": { "contract": "example:Legacy/v1" }
+      },
+      "values": {},
+      "resources": {},
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "profile",
+            "message": "compiled schema is outside the softschema profile",
+            "schema_path": "/$defs/a/$dynamicRef",
+            "detail": "legacy_external_reference"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    }
+  ]
+}

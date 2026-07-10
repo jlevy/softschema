@@ -8,7 +8,7 @@ and the same canonical compiled JSON Schema (content-identical, equal `schema_sh
 over its canonical JSON; YAML serialization bytes may differ).
 
 ```bash
-npx softschema@latest --help            # zero-install
+npx --yes softschema@0.2.2 --help       # zero-install, exact pin
 # or
 bun add softschema
 ```

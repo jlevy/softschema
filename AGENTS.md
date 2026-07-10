@@ -38,10 +38,11 @@ Key rules:
 Common commands:
 
 ```bash
-uv sync --all-extras
+uv sync --all-extras --no-install-project
+uv pip install --no-build-isolation --no-deps --editable .
 uv run python devtools/lint.py --check
 uv run pytest
-uv build
+uv build --build-constraint build-constraints.txt --require-hashes
 uv run softschema docs --list
 uv run softschema docs --list --json
 uv run softschema skill --brief

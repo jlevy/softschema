@@ -15,6 +15,8 @@ from typing import Any
 
 from frontmatter_format import read_yaml_file
 
+from softschema.models import validate_contract_id, validate_schema_id
+
 JsonPointer = str
 
 _X_SOFTSCHEMA = "x-softschema"
@@ -66,12 +68,31 @@ class SchemaView:
 
     @property
     def contract_id(self) -> str | None:
-        """Contract ID from `x-softschema.contract` or, falling back, `$id`."""
+        """Validated contract ID, including the legacy-0.2 ``$id`` fallback."""
         meta_contract = self.root_softmeta.get("contract")
         if isinstance(meta_contract, str):
-            return meta_contract
+            try:
+                return validate_contract_id(meta_contract)
+            except ValueError:
+                return None
         schema_id = self._schema.get("$id")
-        return schema_id if isinstance(schema_id, str) else None
+        if isinstance(schema_id, str):
+            try:
+                return validate_contract_id(schema_id)
+            except ValueError:
+                pass
+        return None
+
+    @property
+    def schema_id(self) -> str | None:
+        """Validated JSON Schema resource ID, separate from the logical contract ID."""
+        schema_id = self._schema.get("$id")
+        if isinstance(schema_id, str):
+            try:
+                return validate_schema_id(schema_id)
+            except ValueError:
+                pass
+        return None
 
     @property
     def schema_sha256(self) -> str | None:

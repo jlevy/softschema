@@ -6,14 +6,12 @@ path:
   - $SOFTSCHEMA_BIN_DIR
 ---
 
-# Test: large whole-number float renders canonically and identically (ss-wbnm)
+# Test: unsafe whole-number schema bounds are rejected identically (ss-wbnm)
 
-A whole-valued float above 2^53 but below 1e21 renders as a plain integer on both
-engines: the value `9.0e15` and the bound `1.0e16` appear as `9000000000000000` and
-`10000000000000000` in the `value`, `validator_value`, and synthesized message, with no
-trailing fraction and no exponent. This is the reviewer's regression case for the
-canonical-number contract; before the 1e16→1e21 threshold fix Python emitted `1e+16` in
-`validator_value` while TypeScript emitted the full integer.
+The artifact value `9.0e15` is within the portable safe-integer interval, but the
+schema bound `1.0e16` is not. Both implementations inspect the mathematical value
+before binary64 conversion and reject the compiled schema with the stable
+`schema_invalid/value_domain` result.
 
 ```console
 $ softschema validate tests/golden/fixtures/big-number.md --schema tests/golden/fixtures/big-number.schema.yaml --contract test.numbers:Big/v1 --envelope data
@@ -45,14 +43,10 @@ $ softschema validate tests/golden/fixtures/big-number.md --schema tests/golden/
     "engine": "json_schema",
     "errors": [
       {
-        "kind": "schema_violation",
-        "message": "value 9000000000000000 is less than the minimum of 10000000000000000",
-        "path": [
-          "big"
-        ],
-        "validator": "minimum",
-        "validator_value": 10000000000000000,
-        "value": 9000000000000000
+        "kind": "schema_invalid",
+        "message": "compiled schema contains a non-portable YAML value",
+        "reason": "value_domain",
+        "schema_path": "/properties/big/minimum"
       }
     ],
     "ok": false,

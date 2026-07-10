@@ -13,7 +13,9 @@ make install        # uv sync --all-extras + npm install (lefthook)
 make hooks-install  # install the lefthook pre-commit hooks
 ```
 
-`make install` alone (or `uv sync --all-extras`) is enough to run tests and builds;
+`make install` performs the reviewed two-step Python install: it syncs locked
+dependencies without building the project, then installs the editable package with the
+already installed, pinned build backend.
 `make hooks-install` additionally wires up the pre-commit hooks described below.
 
 Common workflows:
@@ -33,7 +35,7 @@ uv run pytest
 uv run softschema docs --list
 uv run softschema docs --list --json
 uv run softschema skill --brief
-uv build
+uv build --build-constraint build-constraints.txt --require-hashes
 ```
 
 The Python package is built from `packages/python/src/softschema`.

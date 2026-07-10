@@ -1,0 +1,25 @@
+id: enforcement-unsupported
+description: Enforced validation refuses a dynamic-reference overlay it cannot prove safe.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 5b7013ee2002b423de44a24a1132b7e94f55e596b985f56c4616648caaf1bf61
+  schema:
+    path: schema.yaml
+    sha256: 36afbc4c3d7cce5b6643ccda04f0dab89286cbd3ca6c74f0b3d6867c2587b2ef
+  resources: []
+options:
+  contract: example.conformance:Recursive/v1
+  envelope: record
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 10097a5640e4f8b822f40eefc819c4fdbc6cfaaee186712b023e84ea373b1517

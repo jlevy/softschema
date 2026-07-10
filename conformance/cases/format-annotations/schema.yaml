@@ -1,0 +1,20 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+properties:
+  date:
+    type: string
+    format: date
+  email:
+    type: string
+    format: email
+  regex:
+    type: string
+    format: regex
+  unknown:
+    type: string
+    format: example-unknown-format
+required:
+- date
+- email
+- regex
+- unknown

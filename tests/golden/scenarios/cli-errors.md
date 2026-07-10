@@ -46,30 +46,36 @@ softschema validate: [..]
 ? 2
 ```
 
-# Test: a missing artifact file is a clean usage error (exit 2)
+# Test: a missing artifact file is a stable input error (exit 2)
 
-A nonexistent file exits 2 with a one-line message and no stdout, never a traceback. The
-exact OS/engine wording after the `softschema validate:` prefix is intentionally
-implementation-specific (Python `[Errno 2] No such file or directory` vs Node `ENOENT`),
-so only the stable prefix is asserted; the divergent tail is elided with `[..]`. Streams
-are merged with `2>&1` so the single error line is matched as output.
+A nonexistent file emits the portable `input_error/not_found` record and exits 2. The
+record never exposes operating-system error prose.
 
 ```console
 $ softschema validate tests/golden/fixtures/does-not-exist.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie 2>&1
-softschema validate: [..]
+{
+  "kind": "input_error",
+  "message": "artifact path does not exist",
+  "reason": "not_found",
+  "source": "tests/golden/fixtures/does-not-exist.md"
+}
 ? 2
 ```
 
-# Test: malformed frontmatter is a clean parse error (exit 2)
+# Test: malformed frontmatter is a stable parse error (exit 1)
 
-The error text is multi-line and engine-specific, so the stable prefix is asserted and
-the remaining lines are elided with `...`.
+A readable malformed document emits the portable `parse_error/syntax` record and exits
+1. Parser prose and source locations are reserved for the diagnostic-v1 serializer.
 
 ```console
 $ softschema validate tests/golden/fixtures/malformed-frontmatter.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie 2>&1
-softschema validate: [..]
-...
-? 2
+{
+  "kind": "parse_error",
+  "message": "artifact is not valid YAML",
+  "reason": "syntax",
+  "source": "tests/golden/fixtures/malformed-frontmatter.md"
+}
+? 1
 ```
 
 # Test: inspect on a missing file is a clean usage error (exit 2)

@@ -1,0 +1,41 @@
+{
+  "valid": [
+    "https://schemas.example/softschema/record/v1",
+    "https://schemas.example/softschema/record/v1?profile=full",
+    "https://schemas.example/",
+    "https://127.0.0.1/record",
+    "https://[2001:db8::1]/record",
+    "urn:example:softschema:record:v1",
+    "urn:softschema:draft:conformance:case:v0"
+  ],
+  "invalid": [
+    "",
+    "example.docs:Record/v1",
+    "/schemas/record",
+    "#/$defs/Record",
+    "http://schemas.example/record",
+    "HTTPS://schemas.example/record",
+    "https://SCHEMAS.example/record",
+    "https://schemas.example:443/record",
+    "https://schemas.example:080/record",
+    "https://schemas.example",
+    "https://127.1/record",
+    "https://127.000.000.001/record",
+    "https://0x7f.1/record",
+    "https://0x7f000001/record",
+    "https://127.0x0.0.1/record",
+    "https://0177.0.0.1/record",
+    "https://[2001:0db8:0:0:0:0:0:1]/record",
+    "https://schemas.example/a/../record",
+    "https://schemas.example/a\"b",
+    "https://schemas.example/a<b",
+    "https://schemas.example/[record]",
+    "https://schemas.example/record?filter=[x]",
+    "https://schemas.example/a\u007fb",
+    "https://schemas.example/record#section",
+    "urn:Example:record",
+    "urn:example:[record]",
+    "urn:example:record?query",
+    "urn:example:record#section"
+  ]
+}

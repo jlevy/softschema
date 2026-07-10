@@ -14,6 +14,7 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
 import { isMapping } from "./guards.js";
+import { validateContractId, validateSchemaId } from "./models.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
 
 export const SOFTSCHEMA_FORMAT_VERSION = "0.1.0";
@@ -28,19 +29,21 @@ export interface CompileResult {
 }
 
 export interface CompileOptions {
-  contractId?: string | null;
+  contractId: string;
+  schemaId?: string | null;
   checkOnly?: boolean;
 }
 
 function augmentSchema(
   schema: Record<string, unknown>,
-  contractId: string | null,
+  contractId: string,
+  schemaId: string | null,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...schema };
   out.$schema ??= JSON_SCHEMA_DRAFT;
-  if (contractId !== null) {
-    out.$id ??= contractId;
-  }
+  // Only the explicit schemaId option controls JSON Schema resource identity.
+  delete out.$id;
+  if (schemaId !== null) out.$id = schemaId;
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
   // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
   // so custom fields from the raw schema are preserved.
@@ -66,8 +69,14 @@ function renderYaml(schema: Record<string, unknown>): string {
  */
 export function buildCanonicalSchema(
   zodSchema: z.ZodType,
-  contractId: string | null = null,
+  contractId: string,
+  schemaId: string | null = null,
 ): { schema: Record<string, unknown>; sha: string } {
+  if (contractId === null || contractId === undefined) {
+    throw new Error("softschema compilation requires a contract ID");
+  }
+  const checkedContractId = validateContractId(contractId);
+  const checkedSchemaId = schemaId === null ? null : validateSchemaId(schemaId);
   const raw = z.toJSONSchema(zodSchema, {
     target: "draft-2020-12",
     io: "input",
@@ -76,7 +85,7 @@ export function buildCanonicalSchema(
     reused: "inline",
     unrepresentable: "throw",
   }) as Record<string, unknown>;
-  const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId));
+  const schema = canonicalizeJsonSchema(augmentSchema(raw, checkedContractId, checkedSchemaId));
   const sha = schemaSha256(schema);
   (schema["x-softschema"] as Record<string, unknown>).schema_sha256 = sha;
   return { schema, sha };
@@ -85,9 +94,16 @@ export function buildCanonicalSchema(
 export function compileSchema(
   zodSchema: z.ZodType,
   outPath: string,
-  options: CompileOptions = {},
+  options: CompileOptions,
 ): CompileResult {
-  const { schema, sha } = buildCanonicalSchema(zodSchema, options.contractId ?? null);
+  if (options?.contractId === null || options?.contractId === undefined) {
+    throw new Error("softschema compilation requires a contract ID");
+  }
+  const { schema, sha } = buildCanonicalSchema(
+    zodSchema,
+    options.contractId,
+    options.schemaId ?? null,
+  );
   const rendered = renderYaml(schema);
 
   if (options.checkOnly) {

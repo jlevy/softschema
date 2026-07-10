@@ -14,23 +14,24 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
-import re
-import warnings as python_warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Never
 from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
-from frontmatter_format import FmFormatError, fmf_read, read_yaml_file
+from frontmatter_format import FmFormatError
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 from referencing import Registry, Resource
 from referencing.exceptions import NoSuchResource
 from referencing.jsonschema import DRAFT202012
-from ruamel.yaml import YAMLError
 
-from softschema.canonicalize import apply_enforced_extras
+from softschema.canonicalize import (
+    ENFORCEMENT_UNSUPPORTED_MESSAGE,
+    EnforcementUnsupportedError,
+    apply_enforced_extras,
+)
 from softschema.errors import (
     SchemaInvalidReason,
     schema_invalid_error,
@@ -44,12 +45,45 @@ from softschema.models import (
     SchemaWarning,
     WarningCode,
     parse_schema_metadata,
+    validate_contract_id,
+    validate_schema_id,
 )
+from softschema.patterns import first_unsupported_pattern, lower_schema_patterns_for_python
 from softschema.registry import Contracts
+from softschema.value_domain import (
+    DEFAULT_VALIDATION_LIMITS,
+    PortableValueError,
+    PortableYamlSyntaxError,
+    ValidationLimits,
+    normalize_portable_value,
+    parse_portable_yaml,
+)
 
 JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
 SchemaResource = bool | dict[str, Any]
 SchemaResources = Mapping[str, SchemaResource]
+ArtifactParseReason = Literal["frontmatter", "syntax", "root", "value_domain"]
+ArtifactInputReason = Literal["not_found", "unreadable", "directory_requires_recursive"]
+
+ARTIFACT_PARSE_MESSAGES: dict[ArtifactParseReason, str] = {
+    "frontmatter": "artifact frontmatter delimiters are malformed",
+    "syntax": "artifact is not valid YAML",
+    "root": "artifact YAML root must be a mapping",
+    "value_domain": "artifact contains a non-portable YAML value",
+}
+ARTIFACT_INPUT_MESSAGES: dict[ArtifactInputReason, str] = {
+    "not_found": "artifact path does not exist",
+    "unreadable": "artifact path cannot be read",
+    "directory_requires_recursive": "artifact directory requires --recursive",
+}
+
+
+class ArtifactFrontmatterError(FmFormatError):
+    """A leading frontmatter fence has no closing delimiter."""
+
+
+class ArtifactRootError(FmFormatError):
+    """A readable artifact parsed successfully but its YAML root is not a mapping."""
 
 
 @dataclass(frozen=True)
@@ -107,6 +141,7 @@ def validate_structural(
     *,
     strict_extras: bool = False,
     resources: SchemaResources | None = None,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> StructuralResult:
     """Validate values against a compiled JSON Schema (YAML or JSON).
 
@@ -119,8 +154,10 @@ def validate_structural(
     schemas. Validation never retrieves a resource from the network or filesystem.
     """
     try:
-        schema = _read_yaml(schema_yaml_path)
-    except (OSError, YAMLError):
+        schema, root_size_bytes = _read_yaml_resource(schema_yaml_path, limits)
+    except PortableValueError as exc:
+        return _schema_failure("value_domain", exc.path)
+    except (OSError, PortableYamlSyntaxError, UnicodeDecodeError):
         return _schema_failure("syntax", "")
     if not isinstance(schema, dict):
         return _schema_failure("root", "")
@@ -129,6 +166,8 @@ def validate_structural(
         schema,
         strict_extras=strict_extras,
         resources=resources,
+        limits=limits,
+        root_size_bytes=root_size_bytes,
     )
 
 
@@ -138,8 +177,30 @@ def _validate_structural_schema(
     *,
     strict_extras: bool,
     resources: SchemaResources | None,
+    limits: ValidationLimits,
+    root_size_bytes: int,
 ) -> StructuralResult:
-    prepared_resources = dict(resources or {})
+    supplied_resources = dict(resources or {})
+    if 1 + len(supplied_resources) > limits.max_resources:
+        return _schema_failure("value_domain", "")
+    prepared_resources: dict[str, SchemaResource] = {}
+    bundle_size = root_size_bytes
+    if bundle_size > limits.max_bundle_bytes:
+        return _schema_failure("value_domain", "")
+    for uri in sorted(supplied_resources, key=str):
+        try:
+            normalized, resource_size = normalize_portable_value(
+                supplied_resources[uri],
+                limits=limits,
+            )
+        except PortableValueError as exc:
+            return _schema_failure("value_domain", exc.path)
+        if not isinstance(normalized, bool | dict):
+            return _schema_failure("root", "")
+        prepared_resources[uri] = normalized
+        bundle_size += resource_size
+        if bundle_size > limits.max_bundle_bytes:
+            return _schema_failure("value_domain", "")
     root_error, legacy_identity = _schema_preflight(
         schema,
         allow_boolean=False,
@@ -148,7 +209,15 @@ def _validate_structural_schema(
     if root_error is not None:
         return StructuralResult(ok=False, errors=[root_error])
 
-    for uri in sorted(prepared_resources):
+    for uri in sorted(prepared_resources, key=str):
+        try:
+            validate_schema_id(uri)
+        except ValueError:
+            return _schema_failure(
+                "identity",
+                "",
+                detail="invalid_registry_key",
+            )
         resource = prepared_resources[uri]
         resource_error, _legacy = _schema_preflight(
             resource,
@@ -164,27 +233,18 @@ def _validate_structural_schema(
                 detail="resource_id_mismatch",
             )
 
-    root_id = schema.get("$id")
-    if not legacy_identity and isinstance(root_id, str) and root_id in prepared_resources:
-        return _schema_failure(
-            "identity",
-            "/$id",
-            detail="root_resource_collision",
-        )
+    bundle, bundle_error = _build_schema_bundle_index(
+        schema,
+        prepared_resources,
+        legacy_identity=legacy_identity,
+    )
+    if bundle_error is not None:
+        return StructuralResult(ok=False, errors=[bundle_error])
+    assert bundle is not None
+    if bundle.resource_count > limits.max_resources:
+        return _schema_failure("value_domain", "")
 
-    schema_for_engine = apply_enforced_extras(schema) if strict_extras else dict(schema)
-    if legacy_identity:
-        schema_for_engine.pop("$id", None)
-    resources_for_engine: dict[str, SchemaResource] = {
-        uri: (
-            apply_enforced_extras(resource)
-            if strict_extras and isinstance(resource, dict)
-            else resource
-        )
-        for uri, resource in prepared_resources.items()
-    }
-
-    unavailable = _first_unavailable_reference(schema_for_engine, resources_for_engine)
+    unavailable = _first_unavailable_reference(bundle)
     if unavailable is not None:
         schema_path, reference = unavailable
         return _schema_failure(
@@ -192,6 +252,32 @@ def _validate_structural_schema(
             schema_path,
             reference=reference,
         )
+
+    try:
+        schema_for_engine = apply_enforced_extras(schema) if strict_extras else dict(schema)
+    except EnforcementUnsupportedError as exc:
+        return StructuralResult(
+            ok=False,
+            errors=[
+                {
+                    "kind": "enforcement_unsupported",
+                    "message": ENFORCEMENT_UNSUPPORTED_MESSAGE,
+                    "schema_path": exc.schema_path,
+                }
+            ],
+        )
+    if legacy_identity:
+        schema_for_engine.pop("$id", None)
+    lowered_schema, pattern_reversals = lower_schema_patterns_for_python(schema_for_engine)
+    assert isinstance(lowered_schema, dict)
+    schema_for_engine = lowered_schema
+    resources_for_engine: dict[str, SchemaResource] = {}
+    for uri in sorted(prepared_resources):
+        lowered_resource, resource_reversals = lower_schema_patterns_for_python(
+            prepared_resources[uri]
+        )
+        resources_for_engine[uri] = lowered_resource
+        pattern_reversals.update(resource_reversals)
 
     # Keep the engine boundary offline even if preflight misses an unusual
     # reference shape. Only resources already present in this registry exist.
@@ -210,7 +296,7 @@ def _validate_structural_schema(
     except Exception as exc:
         reference = _reference_from_exception(exc)
         if reference is not None:
-            located = _find_reference(schema_for_engine, resources_for_engine, reference)
+            located = _find_reference(bundle.references, reference)
             schema_path, original_reference = located or ("", reference)
             return _schema_failure(
                 "reference",
@@ -219,15 +305,20 @@ def _validate_structural_schema(
             )
         return _schema_failure("compile", "")
 
-    errors = [
-        structural_error_record(
-            path=list(error.absolute_path),
-            validator=str(error.validator),
-            validator_value=error.validator_value,
-            value=error.instance,
+    errors = []
+    for error in engine_errors:
+        validator = str(error.validator)
+        validator_value = error.validator_value
+        if validator == "pattern" and isinstance(validator_value, str):
+            validator_value = pattern_reversals.get(validator_value, validator_value)
+        errors.append(
+            structural_error_record(
+                path=list(error.absolute_path),
+                validator=validator,
+                validator_value=validator_value,
+                value=error.instance,
+            )
         )
-        for error in engine_errors
-    ]
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
@@ -262,10 +353,17 @@ def _schema_preflight(
     if cycle_path is not None:
         return schema_invalid_error("compile", schema_path=cycle_path), False
 
-    invalid_pattern = _first_invalid_pattern(schema)
+    invalid_pattern = first_unsupported_pattern(schema)
     if invalid_pattern is not None:
-        schema_path, _pattern = invalid_pattern
-        return schema_invalid_error("compile", schema_path=schema_path), False
+        schema_path, pattern = invalid_pattern
+        return (
+            schema_invalid_error(
+                "pattern",
+                schema_path=_json_pointer(list(schema_path)),
+                pattern=pattern,
+            ),
+            False,
+        )
 
     metaschema_path = _metaschema_error_path(schema)
     if metaschema_path is not None:
@@ -281,7 +379,21 @@ def _schema_preflight(
         legacy_identity, identity_error = _legacy_identity(schema)
         if identity_error is not None:
             return identity_error, False
-        return None, legacy_identity
+        if legacy_identity:
+            return None, True
+    root_id = schema.get("$id")
+    if isinstance(root_id, str):
+        try:
+            validate_schema_id(root_id)
+        except ValueError:
+            return (
+                schema_invalid_error(
+                    "identity",
+                    schema_path="/$id",
+                    detail="invalid_root_id",
+                ),
+                False,
+            )
     return None, False
 
 
@@ -317,10 +429,7 @@ def _first_cycle_path(
 
 
 def _metaschema_error_path(schema: dict[str, Any]) -> str | None:
-    validator = Draft202012Validator(
-        Draft202012Validator.META_SCHEMA,
-        format_checker=Draft202012Validator.FORMAT_CHECKER,
-    )
+    validator = Draft202012Validator(Draft202012Validator.META_SCHEMA)
     errors = sorted(
         validator.iter_errors(schema),
         key=lambda error: (
@@ -358,91 +467,276 @@ def _legacy_identity(
     return True, None
 
 
-def _first_invalid_pattern(
-    value: Any,
-    path: tuple[str | int, ...] = (),
-) -> tuple[str, str] | None:
-    if isinstance(value, dict):
-        pattern = value.get("pattern")
-        if isinstance(pattern, str) and not _pattern_compiles(pattern):
-            return _json_pointer([*path, "pattern"]), pattern
-        pattern_properties = value.get("patternProperties")
-        if isinstance(pattern_properties, dict):
-            for candidate in sorted(str(key) for key in pattern_properties):
-                if not _pattern_compiles(candidate):
-                    return _json_pointer([*path, "patternProperties", candidate]), candidate
-        for key in sorted(value, key=str):
-            nested = _first_invalid_pattern(value[key], (*path, str(key)))
-            if nested is not None:
-                return nested
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            nested = _first_invalid_pattern(item, (*path, index))
-            if nested is not None:
-                return nested
-    return None
-
-
-def _pattern_compiles(pattern: str) -> bool:
-    try:
-        with python_warnings.catch_warnings():
-            python_warnings.simplefilter("ignore", FutureWarning)
-            re.compile(pattern)
-    except re.error:
-        return False
-    return True
-
-
 @dataclass(frozen=True)
 class _SchemaReference:
     reference: str
     schema_path: str
     source: SchemaResource
     base_uri: str | None
+    origin: str
+    legacy_root: bool = False
 
 
-def _schema_references(
-    value: Any,
-    source: SchemaResource,
-    base_uri: str | None,
-    path: tuple[str | int, ...] = (),
-) -> list[_SchemaReference]:
-    references: list[_SchemaReference] = []
-    if isinstance(value, dict):
-        for key in ("$ref", "$dynamicRef"):
-            reference = value.get(key)
-            if isinstance(reference, str):
-                references.append(
-                    _SchemaReference(
-                        reference=reference,
-                        schema_path=_json_pointer([*path, key]),
-                        source=source,
-                        base_uri=base_uri,
-                    )
+@dataclass(frozen=True)
+class _SchemaBundleIndex:
+    resources: dict[str, SchemaResource]
+    references: list[_SchemaReference]
+    resource_count: int
+
+
+# Draft 2020-12 keywords whose values contain schemas. Traversal is intentionally
+# vocabulary-aware: annotation payloads such as `examples` must never mint resources.
+_SINGLE_SCHEMA_KEYWORDS = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "contentSchema",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
+_ARRAY_SCHEMA_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+_MAPPING_SCHEMA_KEYWORDS = frozenset(
+    {"$defs", "dependentSchemas", "patternProperties", "properties"}
+)
+_ALL_SCHEMA_KEYWORDS = sorted(
+    _SINGLE_SCHEMA_KEYWORDS | _ARRAY_SCHEMA_KEYWORDS | _MAPPING_SCHEMA_KEYWORDS
+)
+
+
+def _schema_children(
+    schema: dict[str, Any],
+    path: tuple[str | int, ...],
+) -> list[tuple[tuple[str | int, ...], SchemaResource]]:
+    """Return recognized child schemas in one deterministic document order."""
+    children: list[tuple[tuple[str | int, ...], SchemaResource]] = []
+    for keyword in _ALL_SCHEMA_KEYWORDS:
+        value = schema.get(keyword)
+        if keyword in _SINGLE_SCHEMA_KEYWORDS:
+            if isinstance(value, bool | dict):
+                children.append(((*path, keyword), value))
+        elif keyword in _ARRAY_SCHEMA_KEYWORDS:
+            if isinstance(value, list):
+                children.extend(
+                    ((*path, keyword, index), item)
+                    for index, item in enumerate(value)
+                    if isinstance(item, bool | dict)
                 )
-        for key in sorted(value, key=str):
-            references.extend(_schema_references(value[key], source, base_uri, (*path, str(key))))
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            references.extend(_schema_references(item, source, base_uri, (*path, index)))
-    return references
+        elif isinstance(value, dict):
+            children.extend(
+                ((*path, keyword, str(name)), value[name])
+                for name in sorted(value, key=str)
+                if isinstance(value[name], bool | dict)
+            )
+    return children
+
+
+_RELATIVE_SCHEMA_PATH_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~!$&'()*+,;=:@/%-"
+)
+_RELATIVE_SCHEMA_QUERY_CHARS = _RELATIVE_SCHEMA_PATH_CHARS | frozenset("?")
+_URI_UNRESERVED_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-"
+)
+
+
+def _has_canonical_relative_schema_id_spelling(schema_id: str) -> bool:
+    """Reject aliases a platform URL parser could silently canonicalize."""
+    resource_reference, separator, fragment = schema_id.partition("#")
+    if separator and fragment:
+        return False
+    path, _query_separator, query = resource_reference.partition("?")
+    if path.startswith("//"):
+        authority_end = path.find("/", 2)
+        if authority_end < 0:
+            return False
+        authority = path[2:authority_end]
+        try:
+            validate_schema_id(f"https://{authority}/")
+        except ValueError:
+            return False
+        path = path[authority_end:]
+    if any(char not in _RELATIVE_SCHEMA_PATH_CHARS for char in path):
+        return False
+    if any(char not in _RELATIVE_SCHEMA_QUERY_CHARS for char in query):
+        return False
+    index = 0
+    while index < len(resource_reference):
+        if resource_reference[index] != "%":
+            index += 1
+            continue
+        digits = resource_reference[index + 1 : index + 3]
+        if len(digits) != 2 or any(char not in "0123456789ABCDEF" for char in digits):
+            return False
+        if chr(int(digits, 16)) in _URI_UNRESERVED_CHARS:
+            return False
+        index += 3
+    return True
+
+
+def _resolve_nested_schema_id(schema_id: str, base_uri: str | None) -> str | None:
+    """Resolve a nested `$id` to the canonical resource identity it establishes."""
+    if urlsplit(schema_id).scheme:
+        resolved = schema_id
+    elif base_uri is not None and _has_canonical_relative_schema_id_spelling(schema_id):
+        resolved = urljoin(base_uri, schema_id)
+    else:
+        return None
+    resource_uri, fragment = urldefrag(resolved)
+    if fragment:
+        return None
+    try:
+        return validate_schema_id(resource_uri)
+    except ValueError:
+        return None
+
+
+def _walk_schema_resources(
+    schema: SchemaResource,
+    *,
+    path: tuple[str | int, ...],
+    base_uri: str | None,
+    source: SchemaResource,
+    origin: str,
+    resource_index: dict[str, SchemaResource],
+    references: list[_SchemaReference],
+    resource_root: bool,
+    legacy_root: bool,
+) -> dict[str, Any] | None:
+    if not isinstance(schema, dict):
+        return None
+
+    current_base = base_uri
+    current_source = source
+    if not resource_root and not legacy_root and "$id" in schema:
+        raw_id = schema.get("$id")
+        resolved_id = (
+            _resolve_nested_schema_id(raw_id, current_base) if isinstance(raw_id, str) else None
+        )
+        if resolved_id is None:
+            return schema_invalid_error(
+                "identity",
+                schema_path=_json_pointer([*path, "$id"]),
+                detail="invalid_nested_id",
+            )
+        if resolved_id in resource_index:
+            return schema_invalid_error(
+                "identity",
+                schema_path=_json_pointer([*path, "$id"]),
+                detail="nested_resource_collision",
+            )
+        resource_index[resolved_id] = schema
+        current_base = resolved_id
+        current_source = schema
+
+    for key in ("$dynamicRef", "$ref"):
+        reference = schema.get(key)
+        if isinstance(reference, str):
+            references.append(
+                _SchemaReference(
+                    reference=reference,
+                    schema_path=_json_pointer([*path, key]),
+                    source=current_source,
+                    base_uri=current_base,
+                    origin=origin,
+                    legacy_root=legacy_root,
+                )
+            )
+
+    for child_path, child in _schema_children(schema, path):
+        error = _walk_schema_resources(
+            child,
+            path=child_path,
+            base_uri=current_base,
+            source=current_source,
+            origin=origin,
+            resource_index=resource_index,
+            references=references,
+            resource_root=False,
+            legacy_root=legacy_root,
+        )
+        if error is not None:
+            return error
+    return None
+
+
+def _build_schema_bundle_index(
+    schema: dict[str, Any],
+    resources: dict[str, SchemaResource],
+    *,
+    legacy_identity: bool,
+) -> tuple[_SchemaBundleIndex | None, dict[str, Any] | None]:
+    """Index top-level and embedded resources before an engine sees the bundle."""
+    resource_index = dict(resources)
+    root_id = schema.get("$id")
+    root_base = None
+    if not legacy_identity and isinstance(root_id, str):
+        if root_id in resource_index:
+            return None, schema_invalid_error(
+                "identity",
+                schema_path="/$id",
+                detail="root_resource_collision",
+            )
+        resource_index[root_id] = schema
+        root_base = root_id
+
+    references: list[_SchemaReference] = []
+    error = _walk_schema_resources(
+        schema,
+        path=(),
+        base_uri=root_base,
+        source=schema,
+        origin="",
+        resource_index=resource_index,
+        references=references,
+        resource_root=True,
+        legacy_root=legacy_identity,
+    )
+    if error is not None:
+        return None, error
+
+    for uri in sorted(resources):
+        resource = resources[uri]
+        error = _walk_schema_resources(
+            resource,
+            path=(),
+            base_uri=uri,
+            source=resource,
+            origin=uri,
+            resource_index=resource_index,
+            references=references,
+            resource_root=True,
+            legacy_root=False,
+        )
+        if error is not None:
+            return None, error
+
+    references.sort(key=lambda item: (item.origin, item.schema_path, item.reference))
+    legacy_external = next(
+        (item for item in references if item.legacy_root and not item.reference.startswith("#")),
+        None,
+    )
+    if legacy_external is not None:
+        return None, schema_invalid_error(
+            "profile",
+            schema_path=legacy_external.schema_path,
+            detail="legacy_external_reference",
+        )
+    resource_count = len(resource_index) + (root_base is None)
+    return _SchemaBundleIndex(resource_index, references, resource_count), None
 
 
 def _first_unavailable_reference(
-    schema: dict[str, Any],
-    resources: SchemaResources,
+    bundle: _SchemaBundleIndex,
 ) -> tuple[str, str] | None:
-    resource_index = dict(resources)
-    root_id = schema.get("$id")
-    if isinstance(root_id, str) and _is_absolute_schema_uri(root_id):
-        resource_index[root_id] = schema
-
-    root_base = root_id if isinstance(root_id, str) and _is_absolute_schema_uri(root_id) else None
-    references = _schema_references(schema, schema, root_base)
-    for uri in sorted(resources):
-        references.extend(_schema_references(resources[uri], resources[uri], uri))
-    for reference in references:
-        if not _reference_is_available(reference, resource_index):
+    for reference in bundle.references:
+        if not _reference_is_available(reference, bundle.resources):
             return reference.schema_path, reference.reference
     return None
 
@@ -493,18 +787,17 @@ def _fragment_exists(resource: SchemaResource, fragment: str) -> bool:
     return _has_anchor(resource, fragment)
 
 
-def _has_anchor(value: Any, anchor: str) -> bool:
-    if isinstance(value, dict):
-        if value.get("$anchor") == anchor or value.get("$dynamicAnchor") == anchor:
-            return True
-        return any(_has_anchor(item, anchor) for item in value.values())
-    if isinstance(value, list):
-        return any(_has_anchor(item, anchor) for item in value)
-    return False
-
-
-def _is_absolute_schema_uri(value: str) -> bool:
-    return value.startswith(("https://", "urn:"))
+def _has_anchor(value: Any, anchor: str, *, resource_root: bool = True) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if not resource_root and "$id" in value:
+        return False
+    if value.get("$anchor") == anchor or value.get("$dynamicAnchor") == anchor:
+        return True
+    return any(
+        _has_anchor(child, anchor, resource_root=False)
+        for _path, child in _schema_children(value, ())
+    )
 
 
 def _reference_from_exception(exc: Exception) -> str | None:
@@ -525,15 +818,9 @@ def _deny_schema_retrieval(uri: str) -> Never:
 
 
 def _find_reference(
-    schema: dict[str, Any],
-    resources: SchemaResources,
+    candidates: list[_SchemaReference],
     reference: str,
 ) -> tuple[str, str] | None:
-    root_id = schema.get("$id")
-    root_base = root_id if isinstance(root_id, str) and _is_absolute_schema_uri(root_id) else None
-    candidates = _schema_references(schema, schema, root_base)
-    for uri in sorted(resources):
-        candidates.extend(_schema_references(resources[uri], resources[uri], uri))
     for candidate in candidates:
         resource_uri, _fragment = urldefrag(candidate.reference)
         resolved = _resolve_reference_uri(resource_uri, candidate.base_uri)
@@ -572,6 +859,7 @@ def validate_values(
     model: type[BaseModel] | None = None,
     schema: Path | None = None,
     resources: SchemaResources | None = None,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> ValidationResult:
     """Validate a pre-extracted values mapping against a model, a schema, or both.
 
@@ -589,7 +877,7 @@ def validate_values(
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")
     structural = (
-        validate_structural(values, schema, resources=resources)
+        validate_structural(values, schema, resources=resources, limits=limits)
         if schema
         else StructuralResult(ok=True)
     )
@@ -608,6 +896,7 @@ def validate_artifact(
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
     frontmatter: Any = _UNREAD,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
 
@@ -618,6 +907,10 @@ def validate_artifact(
     to avoid a second read. ``None`` is a valid value (no frontmatter); the
     sentinel ``_UNREAD`` means "read the file".
     """
+    if contract_id is not None:
+        validate_contract_id(contract_id)
+    if contract is not None:
+        validate_contract_id(contract.id)
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
     if contract is None:
@@ -643,8 +936,22 @@ def validate_artifact(
 
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode)
-    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, frontmatter)
+        return _validate_pure_yaml_artifact(
+            doc_path,
+            contract,
+            warnings,
+            metadata_mode,
+            limits,
+            raw=frontmatter,
+        )
+    return _validate_frontmatter_artifact(
+        doc_path,
+        contract,
+        warnings,
+        metadata_mode,
+        frontmatter,
+        limits,
+    )
 
 
 def _validate_frontmatter_artifact(
@@ -653,22 +960,34 @@ def _validate_frontmatter_artifact(
     warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
     frontmatter: Any = _UNREAD,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> ArtifactValidationResult:
     if frontmatter is _UNREAD:
         try:
-            _content, frontmatter = _read_frontmatter_doc(doc_path)
-        except (FmFormatError, YAMLError, OSError) as exc:
-            return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+            _content, frontmatter = _read_frontmatter_doc(doc_path, limits)
+        except (
+            ArtifactFrontmatterError,
+            ArtifactRootError,
+            PortableValueError,
+            PortableYamlSyntaxError,
+            UnicodeDecodeError,
+            OSError,
+        ) as exc:
+            return _artifact_read_failure(doc_path, contract, exc)
+    elif frontmatter is not None:
+        try:
+            frontmatter, _size = normalize_portable_value(frontmatter, limits=limits)
+        except PortableValueError as exc:
+            return _artifact_value_domain_failure(doc_path, contract, exc)
     if frontmatter is None:
         return _artifact_failure(
             doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"
         )
     if not isinstance(frontmatter, dict):
-        return _artifact_failure(
+        return _artifact_failure_from_record(
             doc_path,
             contract,
-            "frontmatter_not_mapping",
-            "frontmatter is not a mapping",
+            artifact_parse_error_record(doc_path, "root"),
         )
 
     metadata_result = _metadata_from_frontmatter(
@@ -727,6 +1046,7 @@ def _validate_frontmatter_artifact(
         values,
         metadata=metadata,
         warnings=warnings,
+        limits=limits,
     )
 
 
@@ -767,6 +1087,9 @@ def _validate_pure_yaml_artifact(
     contract: Contract,
     warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
+    limits: ValidationLimits,
+    *,
+    raw: Any = _UNREAD,
 ) -> ArtifactValidationResult:
     """Validate a pure-yaml artifact.
 
@@ -779,16 +1102,27 @@ def _validate_pure_yaml_artifact(
     the structured payload" (e.g. a companion data file), so single-key inference and
     ambiguity rejection do not apply.
     """
-    try:
-        raw = _read_yaml(doc_path)
-    except (YAMLError, OSError) as exc:
-        return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+    if raw is _UNREAD:
+        try:
+            raw = read_yaml_artifact(doc_path, limits)
+        except (
+            ArtifactRootError,
+            PortableValueError,
+            PortableYamlSyntaxError,
+            UnicodeDecodeError,
+            OSError,
+        ) as exc:
+            return _artifact_read_failure(doc_path, contract, exc)
+    else:
+        try:
+            raw, _size = normalize_portable_value(raw, limits=limits)
+        except PortableValueError as exc:
+            return _artifact_read_failure(doc_path, contract, exc)
     if not isinstance(raw, dict):
-        return _artifact_failure(
+        return _artifact_failure_from_record(
             doc_path,
             contract,
-            "yaml_not_mapping",
-            f"YAML root is {type(raw).__name__}, expected mapping",
+            artifact_parse_error_record(doc_path, "root"),
         )
 
     metadata_result = _metadata_from_frontmatter(doc_path, raw, contract, warnings, metadata_mode)
@@ -815,7 +1149,12 @@ def _validate_pure_yaml_artifact(
             warnings=warnings,
         )
     return _validate_extracted_values(
-        doc_path, contract, values, metadata=metadata, warnings=warnings
+        doc_path,
+        contract,
+        values,
+        metadata=metadata,
+        warnings=warnings,
+        limits=limits,
     )
 
 
@@ -899,6 +1238,7 @@ def _validate_extracted_values(
     *,
     metadata: SchemaMetadata | None,
     warnings: list[SchemaWarning],
+    limits: ValidationLimits,
 ) -> ArtifactValidationResult:
     # Schema precedence (host over document): a caller/registry schema_path,
     # then the document's own softschema.schema binding, then none.
@@ -921,6 +1261,7 @@ def _validate_extracted_values(
                 values,
                 schema_path,
                 strict_extras=contract.status == SchemaStatus.enforced,
+                limits=limits,
             )
     elif metadata_schema is not None:
         bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
@@ -934,6 +1275,7 @@ def _validate_extracted_values(
                 values,
                 bound_path,
                 strict_extras=contract.status == SchemaStatus.enforced,
+                limits=limits,
             )
     elif contract.model is not None:
         structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
@@ -1013,6 +1355,7 @@ def _artifact_failure(
     *,
     metadata: SchemaMetadata | None = None,
     warnings: list[SchemaWarning] | None = None,
+    details: Mapping[str, Any] | None = None,
 ) -> ArtifactValidationResult:
     return ArtifactValidationResult(
         path=doc_path,
@@ -1022,17 +1365,200 @@ def _artifact_failure(
         contract=contract,
         document_metadata=metadata,
         warnings=warnings or [],
-        structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
+        structural=StructuralResult(ok=False, errors=[_error(kind, message, **(details or {}))]),
         semantic=SemanticResult(ok=False, skipped_reason=kind),
     )
 
 
-def _read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
-    return fmf_read(path)
+def _artifact_value_domain_failure(
+    doc_path: Path,
+    contract: Contract,
+    error: PortableValueError,
+) -> ArtifactValidationResult:
+    return _artifact_failure_from_record(
+        doc_path,
+        contract,
+        artifact_parse_error_record(doc_path, "value_domain", path=error.path),
+    )
 
 
-def _read_yaml(path: Path) -> Any:
-    return read_yaml_file(path)
+def artifact_parse_error_record(
+    source: Path | str,
+    reason: ArtifactParseReason,
+    *,
+    path: str | None = None,
+    line: int | None = None,
+    column: int | None = None,
+    include_location: bool = False,
+) -> dict[str, Any]:
+    """Build a stable discriminated record for a readable artifact parse failure."""
+    record: dict[str, Any] = {
+        "kind": "parse_error",
+        "reason": reason,
+        "message": ARTIFACT_PARSE_MESSAGES[reason],
+        "source": str(source),
+    }
+    if reason == "value_domain":
+        record["path"] = path or ""
+    elif path is not None:
+        record["path"] = path
+    if include_location:
+        if line is not None:
+            record["line"] = line
+        if column is not None:
+            record["column"] = column
+    return record
+
+
+def artifact_input_error_record(
+    source: Path | str,
+    reason: ArtifactInputReason,
+) -> dict[str, Any]:
+    """Build a stable discriminated record for an artifact access failure."""
+    return {
+        "kind": "input_error",
+        "reason": reason,
+        "message": ARTIFACT_INPUT_MESSAGES[reason],
+        "source": str(source),
+    }
+
+
+def artifact_error_record(
+    source: Path | str,
+    error: BaseException,
+    *,
+    include_location: bool = False,
+) -> dict[str, Any] | None:
+    """Normalize a parser/filesystem exception without exposing platform prose."""
+    if isinstance(error, PortableValueError):
+        return artifact_parse_error_record(
+            source,
+            "value_domain",
+            path=error.path,
+            line=error.line,
+            column=error.column,
+            include_location=include_location,
+        )
+    if isinstance(error, ArtifactFrontmatterError):
+        return artifact_parse_error_record(source, "frontmatter")
+    if isinstance(error, ArtifactRootError):
+        return artifact_parse_error_record(source, "root")
+    if isinstance(error, PortableYamlSyntaxError):
+        return artifact_parse_error_record(
+            source,
+            "syntax",
+            line=error.line,
+            column=error.column,
+            include_location=include_location,
+        )
+    if isinstance(error, UnicodeDecodeError):
+        return artifact_parse_error_record(source, "syntax")
+    if isinstance(error, IsADirectoryError):
+        return artifact_input_error_record(source, "directory_requires_recursive")
+    if isinstance(error, (FileNotFoundError, NotADirectoryError)):
+        return artifact_input_error_record(source, "not_found")
+    if isinstance(error, OSError):
+        return artifact_input_error_record(source, "unreadable")
+    return None
+
+
+def _artifact_read_failure(
+    doc_path: Path,
+    contract: Contract,
+    error: BaseException,
+) -> ArtifactValidationResult:
+    record = artifact_error_record(doc_path, error)
+    if record is None:
+        raise error
+    return _artifact_failure_from_record(doc_path, contract, record)
+
+
+def _artifact_failure_from_record(
+    doc_path: Path,
+    contract: Contract,
+    record: Mapping[str, Any],
+) -> ArtifactValidationResult:
+    return _artifact_failure(
+        doc_path,
+        contract,
+        str(record["kind"]),
+        str(record["message"]),
+        details={key: value for key, value in record.items() if key not in {"kind", "message"}},
+    )
+
+
+def _read_frontmatter_doc(
+    path: Path,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+) -> tuple[str, Any | None]:
+    if path.is_dir():
+        raise IsADirectoryError(path)
+    encoded = path.read_bytes()
+    if len(encoded) > limits.max_resource_bytes:
+        raise PortableValueError("maximum resource size exceeded")
+    text = encoded.decode("utf-8-sig")
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text, None
+    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"), -1)
+    if end < 0:
+        raise ArtifactFrontmatterError(
+            f"Delimiter `---` for end of frontmatter not found: `{path}`"
+        )
+    body = "".join(lines[end + 1 :])
+    if end == 1:
+        return body, None
+    frontmatter = parse_portable_yaml(
+        "".join(lines[1:end]),
+        limits=limits,
+        encoded_size=len(encoded),
+        line_offset=1,
+    )
+    if not isinstance(frontmatter, dict):
+        raise ArtifactRootError(
+            "Expected YAML metadata to be a dict, got "
+            f"<class '{type(frontmatter).__name__}'>: `{path}`"
+        )
+    return body, frontmatter
+
+
+def read_frontmatter(
+    path: Path,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+) -> tuple[str, Any | None]:
+    """Read bounded portable frontmatter with the legacy ``fmf_read`` return shape."""
+    return _read_frontmatter_doc(path, limits)
+
+
+def _read_yaml(
+    path: Path,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+) -> Any:
+    value, _size = _read_yaml_resource(path, limits)
+    return value
+
+
+def read_yaml_artifact(
+    path: Path,
+    limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+) -> dict[str, Any]:
+    """Read one bounded pure-YAML artifact and require a mapping root."""
+    value = _read_yaml(path, limits)
+    if not isinstance(value, dict):
+        raise ArtifactRootError(f"YAML root is {type(value).__name__}, expected mapping")
+    return value
+
+
+def _read_yaml_resource(path: Path, limits: ValidationLimits) -> tuple[Any, int]:
+    if path.is_dir():
+        raise IsADirectoryError(path)
+    encoded = path.read_bytes()
+    value = parse_portable_yaml(
+        encoded.decode("utf-8-sig"),
+        limits=limits,
+        encoded_size=len(encoded),
+    )
+    return value, len(encoded)
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

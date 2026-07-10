@@ -1,0 +1,25 @@
+id: enforced-composition-extra
+description: Enforced validation rejects properties unevaluated by composed branches.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 55d09ec817ad01dfc64549c7b12b642a6605c705c510cf70d146fac275ff71c7
+  schema:
+    path: schema.yaml
+    sha256: 074a22e471344ccc318ee86009be7a030c97254daa02485ce4c653e7b90b62e1
+  resources: []
+options:
+  contract: example.conformance:Composed/v1
+  envelope: record
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: f6f9250c2cbb228dd889f22385f940a79e4386d8a546270932795ead3eba5abe

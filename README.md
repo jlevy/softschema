@@ -10,19 +10,19 @@ Print the bundled example artifact and its compiled schema, then validate—the 
 is fully self-describing, so no flags are needed:
 
 ```bash
-uvx softschema@latest docs example-artifact > spirited-away.md
-uvx softschema@latest docs example-schema > movie-page.schema.yaml
-uvx softschema@latest validate spirited-away.md
+uvx --from 'softschema==0.2.2' softschema docs example-artifact > spirited-away.md
+uvx --from 'softschema==0.2.2' softschema docs example-schema > movie-page.schema.yaml
+uvx --from 'softschema==0.2.2' softschema validate spirited-away.md
 ```
 
-(Or `npx softschema@latest ...` for the Node implementation; the two are
+(Or `npx --yes softschema@0.2.2 ...` for the Node implementation; the two are
 interchangeable.)
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@latest --help` (for the Python implementation) or
-> `npx softschema@latest --help` (for the Node implementation) and follow the
-> instructions to set up softschema for this repo as a skill.
+> Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or
+> `npx --yes softschema@0.2.2 --help` (Node), then follow the instructions to set up
+> softschema for this repo as a skill.
 
 The help output points the agent to `skill --install`, which writes discoverable
 `SKILL.md` mirrors for Codex, Claude Code, Gemini CLI, and other coding agents.
@@ -211,14 +211,15 @@ Two supported ways to consume softschema; pick by use:
 - **Zero-install** for one-off checks and agent bootstrap:
 
   ```bash
-  uvx softschema@latest --help
-  npx softschema@latest --help
+  uvx --from 'softschema==0.2.2' softschema --help
+  npx --yes softschema@0.2.2 --help
   ```
 
 The rule of thumb: if softschema runs more than once, or in CI, or you import it—pin it.
 For a quick check or an agent bootstrapping with nothing installed, use a zero-install
-runner. See [Installation](docs/installation.md) for details, including the supply-chain
-cool-off that makes `@latest` safe to recommend.
+runner with the exact pins above.
+See [Installation](docs/installation.md) for details about pins and optional
+consumer-side release-age policies.
 
 ## Use as a Library
 
@@ -259,24 +260,24 @@ docs.
 
 ```bash
 # Python:
-uvx softschema@latest --help            # entry point with skill setup pointers
-uvx softschema@latest skill --install   # install repo-local skill mirrors
-uvx softschema@latest skill --brief     # compact operating brief
-uvx softschema@latest docs guide        # full mental model and adoption path
+uvx --from 'softschema==0.2.2' softschema --help
+uvx --from 'softschema==0.2.2' softschema skill --install --project --dry-run
+uvx --from 'softschema==0.2.2' softschema skill --brief
+uvx --from 'softschema==0.2.2' softschema docs guide
 
 # TypeScript (same commands, same bundled docs/skill):
-npx softschema@latest --help
-npx softschema@latest skill --install
-npx softschema@latest skill --brief
-npx softschema@latest docs guide
+npx --yes softschema@0.2.2 --help
+npx --yes softschema@0.2.2 skill --install --project --dry-run
+npx --yes softschema@0.2.2 skill --brief
+npx --yes softschema@0.2.2 docs guide
 ```
 
 Self-install the skill into a project so any agent working in the repo finds it natively
 (either package writes the identical mirrors):
 
 ```bash
-uvx softschema@latest skill --install
-# or: npx softschema@latest skill --install
+uvx --from 'softschema==0.2.2' softschema skill --install --project
+# or: npx --yes softschema@0.2.2 skill --install --project
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)

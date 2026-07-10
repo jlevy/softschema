@@ -25,6 +25,8 @@ test; see the parity development process in [development.md](development.md).
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
 | `errors` | Engine-neutral structural error records and ajv normalization |
 | `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic` |
+| `yaml-value-domain` | Bounded portable-YAML parsing, materialized-value normalization, and `ValidationLimits` |
+| `portable-pattern` | `portable-regex-v1` parsing, matching, and schema-position traversal |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a compiled schema |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
@@ -66,6 +68,7 @@ are identical.
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `SOFTSCHEMA_FORMAT_VERSION` | `SOFTSCHEMA_FORMAT_VERSION` | exported from `index.ts` / `__init__.py` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
+| `ValidationLimits` | `ValidationLimits` | same default budgets; Python uses snake case and TypeScript uses camel case |
 
 ## Result Shape and CLI Output
 
@@ -99,9 +102,18 @@ parity plan (epic `ss-jgkf`).
 
 bun (runtime and package manager), `bunup` (build), `bun test` (unit), `biome` (lint and
 format), `tsc --noEmit` (types).
-Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`) and `ajv-formats`,
-`atomically` (the CLI emits only JSON, so no color dependency).
+Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`), and `atomically` (the
+CLI emits only JSON, so no color dependency).
+Ajv runs with `validateFormats: false`; Draft 2020-12 formats are annotations, and the
+package deliberately has no `ajv-formats` dependency that could turn them into
+runtime-specific assertions.
 The shared `tests/golden/` corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
+
+Artifact parsing uses the same discriminated records as Python.
+Readable frontmatter, syntax, root, and value-domain failures are `parse_error` records
+and exit 1; missing, unreadable, and unexpanded-directory paths are `input_error`
+records and exit 2. The CLI accepts an explicit `--profile frontmatter-md|pure-yaml`,
+defaults to `frontmatter-md`, and never infers the profile from an extension.
 
 ## Packaging
 

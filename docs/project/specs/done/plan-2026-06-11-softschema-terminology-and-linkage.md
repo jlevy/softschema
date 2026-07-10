@@ -4,7 +4,10 @@
 
 **Author:** Claude Code, from maintainer feedback by Joshua Levy
 
-**Status:** Draft
+**Status:** Complete (2026-06-11). The terminology sweep, document restructure,
+contract-ID grammar, schema binding, generated-marker rename, cross-runtime behavior,
+and v0.2.0 release all landed.
+The unchecked boxes below preserve the original proposal; they are not active work.
 
 ## Overview
 

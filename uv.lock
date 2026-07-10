@@ -6,10 +6,6 @@ requires-python = ">=3.11, <4.0"
 exclude-newer = "2026-06-02T00:00:00Z"
 
 [options.exclude-newer-package]
-flowmark-rs = "2100-01-01T08:00:00Z"
-pprose = "2100-01-01T08:00:00Z"
-flexdoc = "2100-01-01T08:00:00Z"
-flowmark = "2100-01-01T08:00:00Z"
 strif = "2026-06-03T00:00:00Z"
 
 [[package]]

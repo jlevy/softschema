@@ -1,0 +1,129 @@
+[
+  {
+    "id": "core-scalars-and-timestamps",
+    "yaml": "date: 2026-07-09\ntimestamp: 2026-07-09T12:34:56Z\ntruth: true\nnothing: null\n",
+    "value": {
+      "date": "2026-07-09",
+      "timestamp": "2026-07-09T12:34:56Z",
+      "truth": true,
+      "nothing": null
+    }
+  },
+  {
+    "id": "safe-number-boundaries",
+    "yaml": "low: -9007199254740991\nhigh: 9007199254740991\nhex: 0x1f\noctal: 0o17\nfraction: 1.5\nsubnormal: 5e-324\nunderflow: 1e-4000\n",
+    "value": {
+      "low": -9007199254740991,
+      "high": 9007199254740991,
+      "hex": 31,
+      "octal": 15,
+      "fraction": 1.5,
+      "subnormal": 5e-324,
+      "underflow": 0
+    }
+  },
+  {
+    "id": "negative-zero-spellings",
+    "yaml": "integer: -0\ndecimal: -0.0\nexponent: -0e10\npositive: +0.000e-4\n",
+    "value": {
+      "integer": 0,
+      "decimal": 0,
+      "exponent": 0,
+      "positive": 0
+    }
+  },
+  {
+    "id": "quoted-yaml-looking-values",
+    "yaml": "binary: '!!binary SGk='\nset: '!!set {a}'\nnumber: '1e20'\n",
+    "value": {
+      "binary": "!!binary SGk=",
+      "set": "!!set {a}",
+      "number": "1e20"
+    }
+  },
+  {
+    "id": "unicode-bom-and-crlf",
+    "yaml": "﻿name: Lévy 😀\r\nline: second\r\n",
+    "value": {
+      "name": "Lévy 😀",
+      "line": "second"
+    }
+  },
+  {
+    "id": "duplicate-key",
+    "yaml": "value: 1\nvalue: 2\n",
+    "error_path": "/value",
+    "line": 2,
+    "column": 1
+  },
+  {
+    "id": "non-string-key",
+    "yaml": "1: value\n",
+    "error_path": ""
+  },
+  {
+    "id": "custom-tag",
+    "yaml": "value: !example tagged\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "alias",
+    "yaml": "value: &shared one\ncopy: *shared\n",
+    "error_path": "/copy"
+  },
+  {
+    "id": "merge-key",
+    "yaml": "value:\n  <<: {name: Ada}\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "nan",
+    "yaml": "value: .nan\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "infinity",
+    "yaml": "value: -.Inf\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "unsafe-integer",
+    "yaml": "value: 9007199254740992\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "integral-decimal-outside-safe-range",
+    "yaml": "value: 100000000000000000000.0\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "integral-exponent-outside-safe-range",
+    "yaml": "value: 1e20\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "rounded-integral-outside-safe-range",
+    "yaml": "value: 9007199254740991.5\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "binary64-overflow",
+    "yaml": "value: 1e400\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "binary-tag",
+    "yaml": "value: !!binary SGk=\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "timestamp-tag",
+    "yaml": "value: !!timestamp 2026-07-09\n",
+    "error_path": "/value"
+  },
+  {
+    "id": "set-tag",
+    "yaml": "value: !!set {Ada, Grace}\n",
+    "error_path": "/value"
+  }
+]

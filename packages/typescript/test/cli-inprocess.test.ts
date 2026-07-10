@@ -8,10 +8,9 @@
  * The original write function is restored in afterEach.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { main } from "../src/cli.js";
 
 const REPO = resolve(import.meta.dir, "../../..");
@@ -27,7 +26,6 @@ const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
 /* ---- stdout capture helper ---- */
 let originalWrite: typeof process.stdout.write;
-let originalPath: string | undefined;
 let chunks: string[] = [];
 
 /** Return everything written to stdout since the last beforeEach reset. */
@@ -37,7 +35,6 @@ function captured(): string {
 
 beforeEach(() => {
   originalWrite = process.stdout.write.bind(process.stdout);
-  originalPath = process.env.PATH;
   chunks = [];
   process.stdout.write = ((chunk: string | Uint8Array) => {
     chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
@@ -46,38 +43,25 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.stdout.write = originalWrite;
-  process.env.PATH = originalPath;
 });
 
 describe("cli main() in-process", () => {
-  test("doctor --json reports available runners", async () => {
-    const bin = mkdtempSync(join(tmpdir(), "softschema-doctor-"));
-    for (const name of ["softschema", "uvx"]) {
-      const path = join(bin, name);
-      writeFileSync(path, "#!/bin/sh\nexit 0\n");
-      chmodSync(path, 0o755);
-    }
-    process.env.PATH = bin;
-
+  test("doctor --json reports versioned capabilities", async () => {
     expect(await main(argv("doctor", "--json"))).toBe(0);
     const report = JSON.parse(captured());
-    expect(report.recommended_invocation).toBe("softschema");
-    expect(report.runners).toEqual([
-      { name: "softschema", available: true, path: join(bin, "softschema") },
-      { name: "uvx", available: true, path: join(bin, "uvx") },
-      { name: "npx", available: false, path: null },
-    ]);
-    // Version is read from package.json; assert shape, not a pinned literal.
-    expect(report.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(report.protocol_version).toBe("1");
+    expect(report.package.name).toBe("softschema");
+    expect(report.runtime.name).toBe("bun");
+    expect(report.capabilities.model_loaders).toEqual(["json-schema", "zod"]);
+    expect(report.capabilities.operations).toContain("validate");
   });
 
-  test("doctor text tells users how to recover when no runner exists", async () => {
-    process.env.PATH = mkdtempSync(join(tmpdir(), "softschema-doctor-empty-"));
-
+  test("doctor text summarizes versioned capabilities", async () => {
     expect(await main(argv("doctor"))).toBe(0);
-    expect(captured()).toContain("softschema version:");
-    expect(captured()).toContain("recommended invocation: unavailable");
-    expect(captured()).toContain("Install uv or Node");
+    expect(captured()).toContain("softschema discovery protocol: 1");
+    expect(captured()).toContain("runtime: bun");
+    expect(captured()).toContain("model loaders: json-schema, zod");
+    expect(captured()).toContain("build: sha256:");
   });
 
   test("docs --list exits 0 and lists topics", async () => {
@@ -173,6 +157,83 @@ describe("cli main() in-process", () => {
     expect(captured()).toContain("drift");
   });
 
+  test.each([
+    ["--contract", "bad id"],
+    ["--schema-id", "relative/schema"],
+  ])("compile validates %s before importing a model", async (flag, value) => {
+    const directory = mkdtempSync(join(tmpdir(), "softschema-cli-identity-"));
+    const marker = join(directory, "model-loaded");
+    const model = join(directory, "model.mjs");
+    const out = join(directory, "must-not-exist.yaml");
+    writeFileSync(
+      model,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "loaded");\nexport const Sample = {};\n`,
+    );
+
+    const args = ["compile", `${model}:Sample`, "--out", out, flag, value];
+    if (flag === "--schema-id") args.push("--contract", "test:Sample/v1");
+    expect(await main(argv(...args))).toBe(2);
+    expect(existsSync(marker)).toBe(false);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  test("compile requires a contract before importing a model", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "softschema-cli-identity-"));
+    const marker = join(directory, "model-loaded");
+    const model = join(directory, "model.mjs");
+    const out = join(directory, "must-not-exist.yaml");
+    writeFileSync(
+      model,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "loaded");\nexport const Sample = {};\n`,
+    );
+
+    expect(await main(argv("compile", `${model}:Sample`, "--out", out))).toBe(2);
+    expect(existsSync(marker)).toBe(false);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  test("validate checks an explicit contract before reading or importing", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "softschema-cli-identity-"));
+    const marker = join(directory, "model-loaded");
+    const model = join(directory, "model.mjs");
+    writeFileSync(
+      model,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "loaded");\nexport const Sample = {};\n`,
+    );
+
+    expect(
+      await main(
+        argv(
+          "validate",
+          join(directory, "must-not-be-read.md"),
+          "--contract",
+          "bad id",
+          "--model",
+          `${model}:Sample`,
+        ),
+      ),
+    ).toBe(2);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("validate checks self-described metadata before importing a model", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "softschema-cli-identity-"));
+    const marker = join(directory, "model-loaded");
+    const model = join(directory, "model.mjs");
+    const document = join(directory, "invalid.md");
+    writeFileSync(
+      model,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "loaded");\nexport const Sample = {};\n`,
+    );
+    writeFileSync(
+      document,
+      "---\nsoftschema:\n  contract: bad id\ndata: {}\n---\nbody\n",
+    );
+
+    expect(await main(argv("validate", document, "--model", `${model}:Sample`))).toBe(2);
+    expect(existsSync(marker)).toBe(false);
+  });
+
   test("--version prints 'softschema <version>' and exits 0", async () => {
     const code = await main(argv("--version"));
     expect(code).toBe(0);
@@ -184,5 +245,7 @@ describe("cli main() in-process", () => {
     expect(code).toBe(0);
     expect(captured()).toContain("IMPORTANT for agents:");
     expect(captured()).toContain("softschema skill --brief");
+    expect(captured()).toContain("uvx --from 'softschema==0.2.2' softschema");
+    expect(captured()).toContain("npx --yes softschema@0.2.2");
   });
 });

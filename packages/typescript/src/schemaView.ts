@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { parse as yamlParse } from "yaml";
 import { isMapping } from "./guards.js";
+import { validateContractId, validateSchemaId } from "./models.js";
 
 const X_SOFTSCHEMA = "x-softschema";
 
@@ -125,8 +126,32 @@ export class SchemaView {
 
   get contractId(): string | null {
     const metaContract = this.rootSoftmeta.contract;
-    if (typeof metaContract === "string") return metaContract;
-    return typeof this.schema.$id === "string" ? this.schema.$id : null;
+    if (typeof metaContract === "string") {
+      try {
+        return validateContractId(metaContract);
+      } catch {
+        return null;
+      }
+    }
+    if (typeof this.schema.$id === "string") {
+      try {
+        return validateContractId(this.schema.$id);
+      } catch {
+        // Only a logical legacy-0.2 `$id` is a contract fallback.
+      }
+    }
+    return null;
+  }
+
+  get schemaId(): string | null {
+    if (typeof this.schema.$id === "string") {
+      try {
+        return validateSchemaId(this.schema.$id);
+      } catch {
+        // Invalid or legacy logical IDs are not JSON Schema resource identities.
+      }
+    }
+    return null;
   }
 
   get schemaSha256(): string | null {

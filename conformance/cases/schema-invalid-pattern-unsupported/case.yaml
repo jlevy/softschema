@@ -1,0 +1,25 @@
+id: schema-invalid-pattern-unsupported
+description: A valid engine-specific construct outside portable-regex-v1 fails before compilation.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 00dd78e724cee10acbd58db562a81a33f76d0a9edd37fe3e932c596dac72597e
+  schema:
+    path: schema.yaml
+    sha256: 9517c374cb22949a10bfca5cc74d11f413bd398eeafd19801bfb59e3e8fd21d5
+  resources: []
+options:
+  contract: example.conformance:PortablePattern/v1
+  envelope: record
+  status: permissive
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 6c7ac31e1425e60fed04a4625f5ce4cac350153880a9e2abc7eee639df887b08

@@ -4,14 +4,51 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync as wf } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync as wf } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { applyEnforcedExtras } from "./canonicalize.js";
+import { join, resolve } from "node:path";
+import Ajv2020 from "ajv/dist/2020.js";
+import {
+  applyEnforcedExtras,
+  ENFORCEMENT_UNSUPPORTED_MESSAGE,
+  EnforcementUnsupportedError,
+} from "./canonicalize.js";
 import type { Contract } from "./models.js";
-import { validateArtifact } from "./validate.js";
+import { validateArtifact, validateStructural } from "./validate.js";
 
 type Schema = Record<string, unknown>;
+
+interface EnforcementVector {
+  id: string;
+  input: Schema;
+  expected: Schema;
+}
+
+interface UnsupportedEnforcementVector {
+  id: string;
+  input: Schema;
+  schema_path: string;
+}
+
+interface EnforcementValidationVector {
+  enforcement_id: string;
+  valid: unknown[];
+  invalid: unknown[];
+}
+
+const sharedEnforcementVectors = JSON.parse(
+  readFileSync(
+    resolve(import.meta.dir, "../../../tests/parity/canonicalization-enforcement.json"),
+    "utf8",
+  ),
+) as {
+  enforcement: EnforcementVector[];
+  enforcement_unsupported: UnsupportedEnforcementVector[];
+  enforcement_validation: EnforcementValidationVector[];
+};
+
+const enforcementVectors = (sharedEnforcementVectors as { enforcement: EnforcementVector[] })
+  .enforcement;
 
 function baseSchema(): Schema {
   return {
@@ -41,12 +78,14 @@ describe("applyEnforcedExtras", () => {
   test("injects closed objects where properties are present", () => {
     const out = applyEnforcedExtras(baseSchema()) as {
       additionalProperties: unknown;
-      properties: { meta: Schema };
+      properties: { meta: Schema; primary: Schema; secondary: Schema };
       $defs: { Address: Schema };
     };
     expect(out.additionalProperties).toBe(false);
     expect(out.properties.meta.additionalProperties).toBe(false);
-    expect(out.$defs.Address.additionalProperties).toBe(false);
+    expect(out.properties.primary.unevaluatedProperties).toBe(false);
+    expect(out.properties.secondary.unevaluatedProperties).toBe(false);
+    expect("additionalProperties" in out.$defs.Address).toBe(false);
   });
 
   test("free-form objects without properties are untouched", () => {
@@ -67,12 +106,12 @@ describe("applyEnforcedExtras", () => {
     expect(out.properties.meta.additionalProperties).toEqual({ type: "string" });
   });
 
-  test("recurses into anyOf branches", () => {
+  test("closes anyOf at the shared evaluation boundary", () => {
     const out = applyEnforcedExtras({
       anyOf: [{ type: "object", properties: { a: { type: "string" } } }, { type: "null" }],
-    }) as { anyOf: Schema[] };
-    expect(out.anyOf[0]?.additionalProperties).toBe(false);
-    expect("additionalProperties" in out).toBe(false);
+    }) as { anyOf: Schema[]; unevaluatedProperties: unknown };
+    expect("additionalProperties" in (out.anyOf[0] as Schema)).toBe(false);
+    expect(out.unevaluatedProperties).toBe(false);
   });
 
   test("a field named 'properties' is a name, not the keyword", () => {
@@ -91,6 +130,90 @@ describe("applyEnforcedExtras", () => {
     const snapshot = JSON.parse(JSON.stringify(schema));
     applyEnforcedExtras(schema);
     expect(schema).toEqual(snapshot);
+  });
+
+  test("matches the shared language-neutral vectors", () => {
+    for (const vector of enforcementVectors) {
+      expect({ id: vector.id, output: applyEnforcedExtras(vector.input) }).toEqual({
+        id: vector.id,
+        output: vector.expected,
+      });
+    }
+  });
+
+  test("returns stable unsupported failures for unsafe overlays", () => {
+    for (const vector of sharedEnforcementVectors.enforcement_unsupported) {
+      try {
+        applyEnforcedExtras(vector.input);
+        throw new Error(`expected ${vector.id} to be unsupported`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(EnforcementUnsupportedError);
+        const unsupported = error as EnforcementUnsupportedError;
+        expect({
+          id: vector.id,
+          message: unsupported.message,
+          schema_path: unsupported.schemaPath,
+        }).toEqual({
+          id: vector.id,
+          message: ENFORCEMENT_UNSUPPORTED_MESSAGE,
+          schema_path: vector.schema_path,
+        });
+      }
+    }
+  });
+
+  test("enforces the shared instance vectors", () => {
+    const schemas = new Map(enforcementVectors.map((vector) => [vector.id, vector.input]));
+    for (const vector of sharedEnforcementVectors.enforcement_validation) {
+      const schema = schemas.get(vector.enforcement_id);
+      if (schema === undefined) throw new Error(`missing schema vector ${vector.enforcement_id}`);
+      const validate = new Ajv2020({ strict: false }).compile(applyEnforcedExtras(schema));
+      expect({
+        id: vector.enforcement_id,
+        invalid: vector.invalid.map((value) => validate(value)),
+        valid: vector.valid.map((value) => validate(value)),
+      }).toEqual({
+        id: vector.enforcement_id,
+        invalid: vector.invalid.map(() => false),
+        valid: vector.valid.map(() => true),
+      });
+    }
+  });
+
+  test("reports a missing reference before checking enforcement support", () => {
+    const result = validateStructural(
+      {},
+      { $ref: "https://example.com/missing.schema.json" },
+      { strictExtras: true },
+    );
+    expect(result.errors[0]).toEqual({
+      kind: "schema_invalid",
+      message: "compiled schema reference is unavailable offline",
+      reason: "reference",
+      reference: "https://example.com/missing.schema.json",
+      schema_path: "/$ref",
+    });
+  });
+
+  test("returns enforcement_unsupported for an available external reference", () => {
+    const uri = "https://example.com/external.schema.json";
+    const result = validateStructural(
+      {},
+      { $ref: uri },
+      {
+        resources: {
+          [uri]: { $id: uri, type: "object", properties: { name: { type: "string" } } },
+        },
+        strictExtras: true,
+      },
+    );
+    expect(result.errors).toEqual([
+      {
+        kind: "enforcement_unsupported",
+        message: ENFORCEMENT_UNSUPPORTED_MESSAGE,
+        schema_path: "/$ref",
+      },
+    ]);
   });
 });
 

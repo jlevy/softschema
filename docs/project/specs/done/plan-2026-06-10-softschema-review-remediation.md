@@ -4,11 +4,8 @@
 
 **Author:** Claude Code, with maintainer decisions by Joshua Levy
 
-**Status:** Complete (2026-06-11). All four phases landed (PR #9 merged; PR #10 carries
-the Phase 2 remainder, Phase 3, and Phase 4). Deliberately deferred follow-ups are
-tracked as beads ss-8131 (bundled-topic trim + single resource manifest), ss-lflv
-(README artifact shortening), and ss-hvqw (single-read CLI plumbing); everything else
-below is done.
+**Status:** Complete (2026-06-11). All four phases and the three original follow-up
+beads landed or were explicitly closed.
 
 ## Overview
 

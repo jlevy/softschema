@@ -23,6 +23,8 @@ core package.
 | `softschema.models` | Contract, metadata, status, profile, and warning models |
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
+| `softschema.value_domain` | Bounded portable-YAML parsing, materialized-value normalization, and `ValidationLimits` |
+| `softschema.patterns` | `portable-regex-v1` parsing, matching, schema traversal, and private Python-engine lowering |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema compilation |
@@ -126,6 +128,8 @@ schema, `validate` performs a metadata-only check: the frontmatter parses, the
 and the envelope resolves; the structural and semantic layers are reported as skipped.
 This makes the CLI useful from the `soft` stage, before any schema or model exists.
 Passing `--model` or `--schema` adds the corresponding validation layers.
+`validate --profile frontmatter-md|pure-yaml` selects the artifact shape explicitly; the
+default is `frontmatter-md`, and extensions do not select a profile.
 
 `softschema docs` and `softschema skill` are informational commands.
 They print bundled Markdown resources to stdout so agents in installed environments can
@@ -160,6 +164,10 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
+Artifacts and schema resources pass through the bounded portable value domain defined in
+the [softschema Spec](softschema-spec.md).
+Library callers may pass a `ValidationLimits` override; CLI validation always uses
+`DEFAULT_VALIDATION_LIMITS`.
 
 When the contract’s status is `enforced`, structural validation applies the
 strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
@@ -249,10 +257,9 @@ The current first-release kinds:
 
 | Kind | Meaning |
 | --- | --- |
-| `parse_error` | YAML or frontmatter could not be parsed. |
+| `parse_error` | A readable artifact has malformed frontmatter, invalid YAML, a non-mapping root, or a portable-value-domain failure. The `reason` is `frontmatter`, `syntax`, `root`, or `value_domain`. |
+| `input_error` | The artifact is missing, unreadable, or a directory without recursive validation. The `reason` is `not_found`, `unreadable`, or `directory_requires_recursive`. |
 | `no_frontmatter` | Frontmatter block is missing in a Markdown artifact. |
-| `frontmatter_not_mapping` | Frontmatter parsed but is not a mapping at the top level. |
-| `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
 | `contract_unknown` | No contract registered for the requested contract ID. |
 | `envelope_mismatch` | The contract’s `envelope_key` is not present in the frontmatter. |
 | `envelope_ambiguous` | No `envelope_key` and multiple top-level non-`softschema` keys; the envelope must be designated explicitly. |

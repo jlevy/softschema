@@ -1,0 +1,9 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://schemas.example/conformance/root/
+$defs:
+  a:
+    $id: child
+    type: string
+  b:
+    $id: ./child
+    type: number

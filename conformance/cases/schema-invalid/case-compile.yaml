@@ -1,5 +1,5 @@
-id: schema-invalid-compile
-description: A validator compilation exception returns a stable compile failure.
+id: schema-invalid-pattern-syntax
+description: Invalid regular-expression syntax returns the stable portable-pattern failure.
 operation: validate
 execution:
   status: ready
@@ -23,4 +23,4 @@ expected:
   schema: validation-result-legacy.schema.json
   result:
     path: compile.expected.json
-    sha256: c34807e5d5a54ee2e73ef635d97668266997ce1cf8ffe1eb5a3be47d6fa69331
+    sha256: df1623cffb332a74bbff2631cb697f50dd0501108a853e7816e8c8e495b13b5d

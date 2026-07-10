@@ -27,8 +27,9 @@
     "errors": [
       {
         "kind": "schema_invalid",
-        "message": "compiled schema could not be compiled",
-        "reason": "compile",
+        "message": "compiled schema contains an unsupported or invalid pattern",
+        "pattern": "[",
+        "reason": "pattern",
         "schema_path": "/pattern"
       }
     ],

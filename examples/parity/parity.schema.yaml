@@ -25,7 +25,6 @@ $defs:
     - name
     - timestamp
     type: object
-$id: example.parity:KitchenSink/v1
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 description: Every portable field shape softschema supports across Pydantic and Zod.
@@ -143,5 +142,5 @@ required:
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 04b43f93b81acbc068fa91f9c6b6c11c1c73a70bffdcd3efe7065b7a26e7cfad
+  schema_sha256: 58f2650badf4da879a3fdeaf1af04e2de8f474d57d8e1567724e405234429b14
   softschema_format_version: 0.1.0

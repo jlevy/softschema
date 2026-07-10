@@ -2,7 +2,7 @@
  * In-memory collection that resolves contracts by id: the idiomatic mirror of the
  * Python `Contracts`. Registering a different contract under an existing id is an error.
  */
-import type { Contract } from "./models.js";
+import { type Contract, defineContract, validateContractId } from "./models.js";
 
 function contractsEqual(a: Contract, b: Contract): boolean {
   return (
@@ -19,15 +19,17 @@ export class Contracts {
   private readonly contracts = new Map<string, Contract>();
 
   register(contract: Contract): void {
-    const existing = this.contracts.get(contract.id);
-    if (existing !== undefined && !contractsEqual(existing, contract)) {
+    const stored = defineContract(contract);
+    const contractId = stored.id;
+    const existing = this.contracts.get(contractId);
+    if (existing !== undefined && !contractsEqual(existing, stored)) {
       throw new Error(`contract ${JSON.stringify(contract.id)} is already registered`);
     }
-    this.contracts.set(contract.id, contract);
+    this.contracts.set(contractId, stored);
   }
 
   resolve(contractId: string): Contract | null {
-    return this.contracts.get(contractId) ?? null;
+    return this.contracts.get(validateContractId(contractId)) ?? null;
   }
 
   get all(): Record<string, Contract> {

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from softschema.models import Contract
+from softschema.models import Contract, validate_contract_id
 
 
 class Contracts:
@@ -12,14 +12,15 @@ class Contracts:
         self._contracts: dict[str, Contract] = {}
 
     def register(self, contract: Contract) -> None:
-        existing = self._contracts.get(contract.id)
+        contract_id = validate_contract_id(contract.id)
+        existing = self._contracts.get(contract_id)
         if existing is not None and existing != contract:
-            msg = f"contract {contract.id!r} is already registered"
+            msg = f"contract {contract_id!r} is already registered"
             raise ValueError(msg)
-        self._contracts[contract.id] = contract
+        self._contracts[contract_id] = contract
 
     def resolve(self, contract_id: str) -> Contract | None:
-        return self._contracts.get(contract_id)
+        return self._contracts.get(validate_contract_id(contract_id))
 
     @property
     def all(self) -> dict[str, Contract]:

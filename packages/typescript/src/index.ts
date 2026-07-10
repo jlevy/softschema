@@ -23,11 +23,14 @@ export {
 } from "./generate.js";
 export {
   type Contract,
+  defineContract,
   parseSchemaMetadata,
   type SchemaMetadata,
   type SchemaProfile,
   type SchemaStatus,
   type SchemaWarning,
+  validateContractId,
+  validateSchemaId,
   type WarningCode,
 } from "./models.js";
 export { Contracts } from "./registry.js";
@@ -42,12 +45,21 @@ export {
   softFieldMeta,
 } from "./softField.js";
 export {
+  ArtifactDirectoryError,
+  ArtifactFrontmatterError,
+  type ArtifactInputReason,
+  type ArtifactParseReason,
+  ArtifactRootError,
   type ArtifactValidationResult,
+  artifactErrorRecord,
+  artifactInputErrorRecord,
+  artifactParseErrorRecord,
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type MetadataMode,
   type RawFrontmatter,
   readFrontmatter,
+  readPureYamlArtifact,
   type SchemaResource,
   type SchemaResources,
   type SemanticResult,
@@ -58,3 +70,8 @@ export {
   validateStructural,
   validateValues,
 } from "./validate.js";
+export {
+  DEFAULT_VALIDATION_LIMITS,
+  type ValidationLimitOverrides,
+  type ValidationLimits,
+} from "./yaml-value-domain.js";

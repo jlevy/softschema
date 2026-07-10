@@ -1,0 +1,24 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+properties:
+  dot:
+    type: string
+    pattern: ^.$
+  digits:
+    type: string
+    pattern: '^\d+$'
+  word:
+    type: string
+    pattern: '^\w+$'
+  space:
+    type: string
+    pattern: '^\s+$'
+  unicode:
+    type: string
+    pattern: ^[😀-🙏]$
+required:
+- dot
+- digits
+- word
+- space
+- unicode

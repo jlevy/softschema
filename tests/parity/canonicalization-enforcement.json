@@ -1,0 +1,568 @@
+{
+  "canonicalization": [
+    {
+      "id": "nullable-explicit-type",
+      "input": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "null" }
+        ]
+      },
+      "expected": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "null" }
+        ]
+      }
+    },
+    {
+      "id": "nullable-overlapping-type",
+      "input": {
+        "oneOf": [
+          { "type": ["string", "null"] },
+          { "type": "null" }
+        ]
+      },
+      "expected": {
+        "oneOf": [
+          { "type": ["string", "null"] },
+          { "type": "null" }
+        ]
+      }
+    },
+    {
+      "id": "nullable-unconstrained-branch",
+      "input": {
+        "oneOf": [
+          {},
+          { "type": "null" }
+        ]
+      },
+      "expected": {
+        "oneOf": [
+          {},
+          { "type": "null" }
+        ]
+      }
+    },
+    {
+      "id": "nullable-internal-ref",
+      "input": {
+        "$defs": {
+          "Item": {
+            "title": "Item",
+            "type": "object",
+            "properties": {
+              "name": { "title": "Name", "type": "string" }
+            }
+          }
+        },
+        "properties": {
+          "item": {
+            "oneOf": [
+              { "$ref": "#/$defs/Item" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "$defs": {
+          "Item": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" }
+            }
+          }
+        },
+        "properties": {
+          "item": {
+            "anyOf": [
+              { "$ref": "#/$defs/Item" },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "nullable-ref-that-allows-null",
+      "input": {
+        "$defs": {
+          "MaybeText": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "properties": {
+          "value": {
+            "oneOf": [
+              { "$ref": "#/$defs/MaybeText" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "$defs": {
+          "MaybeText": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "properties": {
+          "value": {
+            "oneOf": [
+              { "$ref": "#/$defs/MaybeText" },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "nullable-absolute-self-ref",
+      "input": {
+        "$id": "https://example.com/compiler.schema.json",
+        "$defs": {
+          "Item": { "type": "object" }
+        },
+        "oneOf": [
+          { "$ref": "https://example.com/compiler.schema.json#/$defs/Item" },
+          { "type": "null" }
+        ]
+      },
+      "expected": {
+        "$id": "https://example.com/compiler.schema.json",
+        "$defs": {
+          "Item": { "type": "object" }
+        },
+        "anyOf": [
+          { "$ref": "https://example.com/compiler.schema.json#/$defs/Item" },
+          { "type": "null" }
+        ]
+      }
+    },
+    {
+      "id": "draft-2020-12-applicator-traversal",
+      "input": {
+        "dependentSchemas": {
+          "kind": {
+            "title": "Dependent",
+            "properties": {
+              "value": { "title": "Value", "type": "string" }
+            }
+          }
+        },
+        "unevaluatedProperties": { "title": "Extra", "type": "string" },
+        "unevaluatedItems": { "title": "Tail", "type": "integer" },
+        "contentSchema": {
+          "title": "Content",
+          "properties": {
+            "name": { "title": "Name", "type": "string" }
+          }
+        },
+        "prefixItems": [
+          true,
+          { "title": "Tuple", "type": "string" }
+        ]
+      },
+      "expected": {
+        "dependentSchemas": {
+          "kind": {
+            "properties": {
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "unevaluatedProperties": { "type": "string" },
+        "unevaluatedItems": { "type": "integer" },
+        "contentSchema": {
+          "properties": {
+            "name": { "type": "string" }
+          }
+        },
+        "prefixItems": [
+          true,
+          { "type": "string" }
+        ]
+      }
+    }
+  ],
+  "enforcement": [
+    {
+      "id": "legacy-simple-object",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" }
+            }
+          }
+        }
+      },
+      "expected": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "all-of-object-boundary",
+      "input": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": { "a": { "type": "string" } }
+          },
+          {
+            "type": "object",
+            "properties": { "b": { "type": "integer" } }
+          }
+        ]
+      },
+      "expected": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": { "a": { "type": "string" } }
+          },
+          {
+            "type": "object",
+            "properties": { "b": { "type": "integer" } }
+          }
+        ],
+        "unevaluatedProperties": false
+      }
+    },
+    {
+      "id": "conditional-and-dependent-boundary",
+      "input": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" }
+        },
+        "if": {
+          "properties": { "kind": { "const": "a" } }
+        },
+        "then": {
+          "properties": { "a": { "type": "string" } }
+        },
+        "else": {
+          "properties": { "b": { "type": "integer" } }
+        },
+        "dependentSchemas": {
+          "kind": {
+            "properties": {
+              "meta": {
+                "type": "object",
+                "properties": { "source": { "type": "string" } }
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" }
+        },
+        "if": {
+          "properties": { "kind": { "const": "a" } }
+        },
+        "then": {
+          "properties": { "a": { "type": "string" } }
+        },
+        "else": {
+          "properties": { "b": { "type": "integer" } }
+        },
+        "dependentSchemas": {
+          "kind": {
+            "properties": {
+              "meta": {
+                "type": "object",
+                "properties": { "source": { "type": "string" } },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    {
+      "id": "internal-definition-reference",
+      "input": {
+        "$defs": {
+          "Item": {
+            "type": "object",
+            "properties": { "name": { "type": "string" } }
+          }
+        },
+        "type": "object",
+        "properties": {
+          "item": { "$ref": "#/$defs/Item" }
+        }
+      },
+      "expected": {
+        "$defs": {
+          "Item": {
+            "type": "object",
+            "properties": { "name": { "type": "string" } }
+          }
+        },
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/$defs/Item",
+            "unevaluatedProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "pattern-and-tuple-subschema",
+      "input": {
+        "type": "object",
+        "patternProperties": {
+          "^x-": {
+            "type": "object",
+            "properties": { "value": { "type": "string" } }
+          }
+        },
+        "properties": {
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "object",
+                "properties": { "name": { "type": "string" } }
+              },
+              false
+            ],
+            "items": false
+          }
+        }
+      },
+      "expected": {
+        "type": "object",
+        "patternProperties": {
+          "^x-": {
+            "type": "object",
+            "properties": { "value": { "type": "string" } },
+            "additionalProperties": false
+          }
+        },
+        "properties": {
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "additionalProperties": false
+              },
+              false
+            ],
+            "items": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "explicit-composition-opt-out",
+      "input": {
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "properties": {
+              "meta": {
+                "type": "object",
+                "properties": { "source": { "type": "string" } }
+              }
+            }
+          },
+          {
+            "properties": { "name": { "type": "string" } }
+          }
+        ]
+      },
+      "expected": {
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "properties": {
+              "meta": {
+                "type": "object",
+                "properties": { "source": { "type": "string" } },
+                "additionalProperties": false
+              }
+            }
+          },
+          {
+            "properties": { "name": { "type": "string" } }
+          }
+        ]
+      }
+    },
+    {
+      "id": "explicit-unevaluated-properties-schema",
+      "input": {
+        "type": "object",
+        "properties": {
+          "known": { "type": "string" }
+        },
+        "unevaluatedProperties": {
+          "type": "object",
+          "properties": {
+            "label": { "type": "string" }
+          }
+        }
+      },
+      "expected": {
+        "type": "object",
+        "properties": {
+          "known": { "type": "string" }
+        },
+        "unevaluatedProperties": {
+          "type": "object",
+          "properties": {
+            "label": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "enforcement_unsupported": [
+    {
+      "id": "dynamic-reference",
+      "input": {
+        "type": "object",
+        "properties": {
+          "child": { "$dynamicRef": "#" }
+        }
+      },
+      "schema_path": "/properties/child/$dynamicRef"
+    },
+    {
+      "id": "external-reference",
+      "input": {
+        "$ref": "https://example.com/external.schema.json"
+      },
+      "schema_path": "/$ref"
+    },
+    {
+      "id": "negated-object-closure",
+      "input": {
+        "not": {
+          "type": "object",
+          "properties": {
+            "forbidden": { "type": "string" }
+          }
+        }
+      },
+      "schema_path": "/not"
+    },
+    {
+      "id": "conditional-discriminator-is-not-evaluated",
+      "input": {
+        "if": {
+          "properties": {
+            "kind": { "const": "a" }
+          }
+        },
+        "then": {
+          "properties": {
+            "a": { "type": "string" }
+          }
+        }
+      },
+      "schema_path": "/if"
+    },
+    {
+      "id": "dependent-trigger-is-not-evaluated",
+      "input": {
+        "dependentSchemas": {
+          "kind": {
+            "properties": {
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      },
+      "schema_path": "/dependentSchemas/kind"
+    }
+  ],
+  "enforcement_validation": [
+    {
+      "enforcement_id": "conditional-and-dependent-boundary",
+      "valid": [
+        { "kind": "a", "a": "alpha", "meta": { "source": "web" } },
+        { "kind": "other", "b": 2, "meta": { "source": "web" } }
+      ],
+      "invalid": [
+        { "kind": "a", "a": "alpha", "extra": true },
+        { "kind": "a", "meta": { "source": "web", "extra": true } }
+      ]
+    },
+    {
+      "enforcement_id": "internal-definition-reference",
+      "valid": [
+        { "item": { "name": "alpha" } }
+      ],
+      "invalid": [
+        { "item": { "name": "alpha", "extra": true } },
+        { "item": { "name": "alpha" }, "extra": true }
+      ]
+    },
+    {
+      "enforcement_id": "pattern-and-tuple-subschema",
+      "valid": [
+        { "x-one": { "value": "alpha" }, "items": [{ "name": "first" }] }
+      ],
+      "invalid": [
+        { "other": true, "items": [] },
+        { "x-one": { "value": "alpha", "extra": true }, "items": [] },
+        { "items": [{ "name": "first", "extra": true }] }
+      ]
+    },
+    {
+      "enforcement_id": "explicit-composition-opt-out",
+      "valid": [
+        { "name": "alpha", "meta": { "source": "web" }, "extension": true }
+      ],
+      "invalid": [
+        { "name": "alpha", "meta": { "source": "web", "extra": true } }
+      ]
+    },
+    {
+      "enforcement_id": "explicit-unevaluated-properties-schema",
+      "valid": [
+        { "known": "alpha" },
+        { "known": "alpha", "extension": { "label": "beta" } }
+      ],
+      "invalid": [
+        { "known": "alpha", "extension": { "label": "beta", "extra": true } }
+      ]
+    }
+  ]
+}

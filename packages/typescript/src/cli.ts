@@ -4,28 +4,35 @@
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
-import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
+import {
+  type Contract,
+  isSchemaStatus,
+  metadataToOutput,
+  parseSchemaMetadata,
+  validateContractId,
+  validateSchemaId,
+} from "./models.js";
 import { stableStringify } from "./settings.js";
 import {
+  installSkillPayload as buildInstallSkillPayload,
+  executeSkillInstall,
+  formatInstallPlanText,
+  SkillInstallUsageError,
+} from "./skill-installer.js";
+import {
+  artifactErrorRecord,
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type RawFrontmatter,
   readFrontmatter,
+  readPureYamlArtifact,
   validateArtifact,
   YamlParseError,
 } from "./validate.js";
@@ -37,20 +44,17 @@ const PACKAGE_ROOT = resolve(dirname(MODULE_PATH), "..");
 
 const BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->";
 const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
-const RUNNER_COMMANDS = ["softschema", "uvx", "npx"] as const;
-const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
-  softschema: "softschema",
-  uvx: "uvx softschema@latest",
-  npx: "npx softschema@latest",
-};
-
-const AGENT_HELP_EPILOG = `IMPORTANT for agents:
-  To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@latest skill --install
-    # or
-    npx softschema@latest skill --install
-  Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
-  and bundled docs.`;
+const DOCTOR_OPERATIONS = [
+  "compile",
+  "docs",
+  "doctor",
+  "generate",
+  "inspect",
+  "prime",
+  "skill",
+  "validate",
+] as const;
+const DOCTOR_OUTPUT_FORMATS = ["json", "text"] as const;
 
 const SOURCE_MODULE_PATHS = [
   "packages/typescript/src/cli.ts",
@@ -260,54 +264,54 @@ function renderedSkillBrief(): string {
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
 export function installSkillPayload(rendered: string): string {
-  const lines = rendered.split("\n");
-  let delimiters = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      delimiters += 1;
-      if (delimiters === 2) {
-        lines.splice(i + 1, 0, SKILL_DO_NOT_EDIT_MARKER);
-        break;
-      }
-    }
-  }
-  return lines.join("\n");
+  return buildInstallSkillPayload(rendered, SKILL_DO_NOT_EDIT_MARKER);
 }
 
-/** Resolve the install base: the nearest ancestor containing `.git`, else the cwd. */
-function resolveInstallBase(start: string): string {
-  let dir = resolve(start);
-  for (;;) {
-    if (existsSync(join(dir, ".git"))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return resolve(start);
-    dir = parent;
-  }
+interface SkillOptions {
+  brief?: boolean;
+  install?: boolean;
+  project?: boolean;
+  global?: boolean;
+  dir?: string;
+  agent?: string[];
+  allAgents?: boolean;
+  noRepoCheck?: boolean;
+  dryRun?: boolean;
+  json?: boolean;
+  text?: boolean;
 }
 
-function runSkillInstall(): number {
-  const payload = installSkillPayload(renderedSkill());
-  const baseDir = resolveInstallBase(process.cwd());
-  const files = SKILL_INSTALL_TARGETS.map((relative) => {
-    const target = join(baseDir, relative);
-    const existing = existsSync(target) ? readFileSync(target, "utf8") : null;
-    let status: string;
-    if (existing === payload) {
-      status = "unchanged";
-    } else {
-      const dir = dirname(target);
-      mkdirSync(dir, { recursive: true });
-      // Atomic write: write to a temp file in the same directory, then rename.
-      // fs.renameSync is atomic on the same filesystem (POSIX guarantee).
-      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
-      writeFileSync(tmp, payload);
-      renameSync(tmp, target);
-      status = existing !== null ? "updated" : "created";
+function collectAgent(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function runSkillInstall(opts: SkillOptions): number {
+  try {
+    if (opts.json === true && opts.text === true) {
+      throw new SkillInstallUsageError("--json and --text are mutually exclusive");
     }
-    return { path: relative, status };
-  });
-  writeText(stableStringify({ version: packageVersion(), base_dir: baseDir, files }));
-  return 0;
+    const { code, report } = executeSkillInstall(
+      {
+        project: opts.project,
+        globalScope: opts.global,
+        directory: opts.dir,
+        agents: opts.agent,
+        allAgents: opts.allAgents,
+        noRepoCheck: opts.noRepoCheck,
+        dryRun: opts.dryRun,
+      },
+      {
+        renderedSkill: renderedSkill(),
+        marker: SKILL_DO_NOT_EDIT_MARKER,
+        packageVersion: packageVersion(),
+        cwd: process.cwd(),
+      },
+    );
+    writeText(opts.text === true ? formatInstallPlanText(report) : stableStringify(report));
+    return code;
+  } catch (err) {
+    return reportUserError("skill", err);
+  }
 }
 
 function writeText(text: string): void {
@@ -315,52 +319,101 @@ function writeText(text: string): void {
   if (!text.endsWith("\n")) process.stdout.write("\n");
 }
 
-interface RunnerReport {
-  name: (typeof RUNNER_COMMANDS)[number];
-  available: boolean;
-  path: string | null;
+interface ReleaseMetadata {
+  discovery_protocol: string;
+  logical_version: string;
+  release_state: "development" | "candidate" | "released";
+  packages: {
+    python: { pin: string };
+    npm: { pin: string };
+  };
+  artifact_formats: { supported: string[] };
+  conformance: {
+    version: string;
+    status: "unavailable" | "candidate" | "release_asset";
+  };
 }
 
 interface DoctorReport {
-  version: string;
-  runners: RunnerReport[];
-  recommended_invocation: string | null;
+  protocol_version: string;
+  package: {
+    name: "softschema";
+    version: string;
+    release_state: ReleaseMetadata["release_state"];
+  };
+  runtime: {
+    name: "node" | "bun";
+    version: string;
+  };
+  capabilities: {
+    operations: string[];
+    artifact_formats: string[];
+    model_loaders: string[];
+    output_formats: string[];
+    conformance: ReleaseMetadata["conformance"];
+  };
+  build: Record<string, unknown>;
 }
 
-function findExecutable(name: string): string | null {
-  const pathValue = process.env.PATH ?? "";
-  for (const dir of pathValue.split(delimiter)) {
-    if (dir === "") continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+function releaseMetadata(): ReleaseMetadata {
+  return JSON.parse(readResource("release-metadata.json")) as ReleaseMetadata;
+}
+
+function buildMetadata(): Record<string, unknown> {
+  return JSON.parse(readResource("build-metadata.json")) as Record<string, unknown>;
 }
 
 function doctorReport(): DoctorReport {
-  const runners = RUNNER_COMMANDS.map((name) => {
-    const path = findExecutable(name);
-    return { name, available: path !== null, path };
-  });
-  const recommended = runners.find((runner) => runner.available)?.name;
+  const release = releaseMetadata();
+  const bunVersion = process.versions.bun;
   return {
-    version: packageVersion(),
-    runners,
-    recommended_invocation: recommended === undefined ? null : RUNNER_INVOCATIONS[recommended],
+    protocol_version: release.discovery_protocol,
+    package: {
+      name: "softschema",
+      version: release.logical_version,
+      release_state: release.release_state,
+    },
+    runtime: {
+      name: bunVersion === undefined ? "node" : "bun",
+      version: bunVersion ?? process.versions.node,
+    },
+    capabilities: {
+      operations: [...DOCTOR_OPERATIONS],
+      artifact_formats: [...release.artifact_formats.supported].sort(),
+      model_loaders: ["json-schema", "zod"],
+      output_formats: [...DOCTOR_OUTPUT_FORMATS],
+      conformance: release.conformance,
+    },
+    build: buildMetadata(),
   };
 }
 
 function doctorText(report: DoctorReport): string {
-  const lines = [`softschema version: ${report.version}`, "available runners:"];
-  for (const runner of report.runners) {
-    const path = runner.path === null ? "" : ` (${runner.path})`;
-    lines.push(`  ${runner.name}: ${runner.available ? "yes" : "no"}${path}`);
-  }
-  lines.push(`recommended invocation: ${report.recommended_invocation ?? "unavailable"}`);
-  if (report.recommended_invocation === null) {
-    lines.push("Install uv or Node, then retry.");
-  }
-  return lines.join("\n");
+  const { capabilities, package: packageInfo, runtime } = report;
+  return [
+    `softschema discovery protocol: ${report.protocol_version}`,
+    `package: ${packageInfo.name} ${packageInfo.version} (${packageInfo.release_state})`,
+    `runtime: ${runtime.name} ${runtime.version}`,
+    `operations: ${capabilities.operations.join(", ")}`,
+    `artifact formats: ${capabilities.artifact_formats.join(", ")}`,
+    `model loaders: ${capabilities.model_loaders.join(", ")}`,
+    `output formats: ${capabilities.output_formats.join(", ")}`,
+    `conformance: ${capabilities.conformance.version} (${capabilities.conformance.status})`,
+    `build: ${String(report.build.build_id)}`,
+  ].join("\n");
+}
+
+function agentHelpEpilog(): string {
+  const release = releaseMetadata();
+  return `IMPORTANT for agents:
+  To set up softschema for this repo as a skill, run one exact-pinned command from the repo root:
+    uvx --from 'softschema==${release.packages.python.pin}' softschema skill --install
+    # or
+    npx --yes softschema@${release.packages.npm.pin} skill --install
+    # or
+    bunx --bun softschema@${release.packages.npm.pin} skill --install
+  Then run \`softschema doctor --json\`, and read \`softschema skill --brief\` and
+  \`softschema docs --list\` for capabilities, operating rules, and bundled docs.`;
 }
 
 function readFrontmatterRaw(path: string): Record<string, unknown> | null {
@@ -409,6 +462,7 @@ interface ValidateOptions {
   contract?: string;
   envelope?: string;
   model?: string;
+  profile?: string;
   schema?: string;
   status?: string;
 }
@@ -439,20 +493,34 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
-    const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
+    if (opts.contract !== undefined) validateContractId(opts.contract);
+    const profile = opts.profile ?? "frontmatter-md";
+    if (profile !== "frontmatter-md" && profile !== "pure-yaml") {
+      throw new UsageError(`invalid profile: ${profile}`);
+    }
     // Read the document once here; both binding inference and validateArtifact reuse
-    // this parse (passed as `preParsed`), so the file is parsed a single time.
-    let parsed: RawFrontmatter;
+    // this normalized root. Readable parse failures are validation results (exit 1),
+    // while access failures remain exit 2.
+    let parsed: RawFrontmatter | undefined;
+    let pureYaml: Record<string, unknown> | undefined;
     try {
-      parsed = readFrontmatter(path);
+      if (profile === "pure-yaml") pureYaml = readPureYamlArtifact(path);
+      else parsed = readFrontmatter(path);
     } catch (err) {
-      if (err instanceof YamlParseError) {
-        throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
+      const record = artifactErrorRecord(path, err);
+      if (record !== null) {
+        writeText(stableStringify(record));
+        return record.kind === "input_error" ? 2 : 1;
       }
       throw err;
     }
-    const frontmatter = parsed.hasFence ? (parsed.value as Record<string, unknown>) : null;
-    if (frontmatter === null && opts.contract === undefined) {
+    const frontmatter =
+      profile === "pure-yaml"
+        ? (pureYaml as Record<string, unknown>)
+        : (parsed as RawFrontmatter).hasFence
+          ? ((parsed as RawFrontmatter).value as Record<string, unknown>)
+          : null;
+    if (profile === "frontmatter-md" && frontmatter === null && opts.contract === undefined) {
       throw new UsageError("missing --contract because the document has no YAML frontmatter");
     }
     const fm = frontmatter ?? {};
@@ -461,6 +529,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     if (contractId === undefined) {
       throw new UsageError("missing --contract because the document has no softschema.contract");
     }
+    validateContractId(contractId);
     let status: Contract["status"] = "soft";
     if (opts.status !== undefined) {
       if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
@@ -468,15 +537,24 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     } else if (metadata?.status) {
       status = metadata.status;
     }
+    const envelopeKey =
+      profile === "pure-yaml"
+        ? (opts.envelope ?? metadata?.envelope ?? null)
+        : inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null);
+    const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     const contract: Contract = {
       id: contractId,
       model: opts.model ?? null,
-      envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null),
+      envelopeKey,
       status,
-      profile: "frontmatter-md",
+      profile,
       schemaPath: opts.schema ?? null,
     };
-    const result = validateArtifact(path, contract, { semanticModel, preParsed: parsed });
+    const result = validateArtifact(path, contract, {
+      semanticModel,
+      preParsed: parsed,
+      preParsedYaml: pureYaml,
+    });
     writeText(stableStringify(result.output));
     return result.ok ? 0 : 1;
   } catch (err) {
@@ -510,12 +588,17 @@ function runInspect(path: string): number {
 
 async function runCompile(
   spec: string,
-  opts: { contract?: string; out: string; check?: boolean },
+  opts: { contract?: string; schemaId?: string; out: string; check?: boolean },
 ): Promise<number> {
   try {
+    const contractId = opts.contract;
+    if (contractId === undefined) throw new UsageError("compilation requires --contract");
+    validateContractId(contractId);
+    if (opts.schemaId !== undefined) validateSchemaId(opts.schemaId);
     const schema = await loadZodModel(spec);
     const result = compileSchema(schema, opts.out, {
-      contractId: opts.contract ?? null,
+      contractId,
+      schemaId: opts.schemaId ?? null,
       checkOnly: opts.check,
     });
     writeText(
@@ -641,7 +724,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .name("softschema")
     .description("Validate and explain soft schema Markdown/YAML artifacts.")
     .version(`softschema ${packageVersion()}`, "--version")
-    .addHelpText("afterAll", `\n${AGENT_HELP_EPILOG}`)
+    .addHelpText("afterAll", `\n${agentHelpEpilog()}`)
     .exitOverride();
   let exitCode = 0;
 
@@ -650,11 +733,20 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .description("Compile a Zod schema")
     .argument("<model>", "Zod schema as module:export")
     .requiredOption("--out <path>", "output path for the compiled schema")
-    .option("--contract <id>", "contract ID stamped into the compiled schema")
+    .option("--contract <id>", "required logical contract ID stored in x-softschema.contract")
+    .option(
+      "--schema-id <uri>",
+      "canonical absolute HTTPS or URN identifier stored in JSON Schema $id",
+    )
     .option("--check", "do not write; exit 1 on drift")
-    .action(async (model: string, opts: { out: string; contract?: string; check?: boolean }) => {
-      exitCode = await runCompile(model, opts);
-    });
+    .action(
+      async (
+        model: string,
+        opts: { out: string; contract?: string; schemaId?: string; check?: boolean },
+      ) => {
+        exitCode = await runCompile(model, opts);
+      },
+    );
 
   program
     .command("validate")
@@ -663,6 +755,11 @@ export async function main(argv: string[] = process.argv): Promise<number> {
         "schema, envelope) needs no flags; flags override the document",
     )
     .argument("<path>")
+    .option(
+      "--profile <profile>",
+      "artifact storage profile: frontmatter-md or pure-yaml",
+      "frontmatter-md",
+    )
     .option("--contract <id>", "override the document contract ID")
     .option(
       "--envelope <key>",
@@ -723,7 +820,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   program
     .command("doctor")
-    .description("Report softschema version and runner availability")
+    .description("Report the versioned discovery protocol and runtime capabilities")
     .option("--json", "emit the environment report as JSON")
     .action((opts: { json?: boolean }) => {
       const report = doctorReport();
@@ -735,10 +832,39 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .command("skill")
     .description("Print or install the agent skill")
     .option("--brief", "print compact skill guidance")
-    .option("--install", "write discoverable skill mirrors into .agents and .claude")
-    .action((opts: { brief?: boolean; install?: boolean }) => {
+    .option("--install", "install the bundled skill after scope and ownership preflight")
+    .option("--project", "install into a project target (explicitly permits --dir)")
+    .option("--global", "install into selected agents' personal skill roots")
+    .option("--dir <path>", "project directory to resolve; requires explicit --project")
+    .option(
+      "--agent <name>",
+      "install only the named agent target; repeat for multiple agents",
+      collectAgent,
+      [],
+    )
+    .option("--all-agents", "install all nine supported agent targets")
+    .option("--no-repo-check", "permit an explicit project destination outside Git")
+    .option("--dry-run", "print the complete plan without creating a filesystem entry")
+    .option("--json", "emit the install plan as JSON (the compatibility default)")
+    .option("--text", "emit the install plan as stable human-readable text")
+    .action((opts: SkillOptions) => {
       if (opts.install) {
-        exitCode = runSkillInstall();
+        exitCode = runSkillInstall(opts);
+      } else if (
+        opts.project === true ||
+        opts.global === true ||
+        opts.dir !== undefined ||
+        (opts.agent?.length ?? 0) > 0 ||
+        opts.allAgents === true ||
+        opts.noRepoCheck === true ||
+        opts.dryRun === true ||
+        opts.json === true ||
+        opts.text === true
+      ) {
+        exitCode = reportUserError(
+          "skill",
+          new SkillInstallUsageError("installer options require --install"),
+        );
       } else if (opts.brief) {
         writeText(renderedSkillBrief());
         exitCode = 0;

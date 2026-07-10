@@ -292,7 +292,10 @@ describe("compile: write mode + build", () => {
     expect(readFileSync(out, "utf8")).toContain("x-softschema");
   });
   test("check mode reports missing committed compiled schema", () => {
-    const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), { checkOnly: true });
+    const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), {
+      contractId: "x:S/v1",
+      checkOnly: true,
+    });
     expect(r.drift).toBe(true);
   });
   test("buildCanonicalSchema sets schema_sha256 inside x-softschema", () => {
@@ -319,23 +322,21 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     expect(errors[0]?.kind).toBe("no_frontmatter");
     expect(errors[0]?.message).toContain("no frontmatter in ");
   });
-  test("whitespace-only frontmatter returns parse_error with Python-identical message", () => {
+  test("whitespace-only frontmatter returns stable root parse_error", () => {
     const path = tmp("d.md", "---\n   \n---\nbody\n");
     const r = validateArtifact(path, contract());
     const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("parse_error");
-    expect(errors[0]?.message).toBe(
-      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
-    );
+    expect(errors[0]?.message).toBe("artifact YAML root must be a mapping");
+    expect(errors[0]).toMatchObject({ reason: "root", source: path });
   });
-  test("unterminated fence returns parse_error with Python-identical message", () => {
+  test("unterminated fence returns stable frontmatter parse_error", () => {
     const path = tmp("d.md", "---\nfoo: 1\n...no closing ---\n");
     const r = validateArtifact(path, contract());
     const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("parse_error");
-    expect(errors[0]?.message).toBe(
-      `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
-    );
+    expect(errors[0]?.message).toBe("artifact frontmatter delimiters are malformed");
+    expect(errors[0]).toMatchObject({ reason: "frontmatter", source: path });
   });
 });
 

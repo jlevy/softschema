@@ -1,0 +1,41 @@
+{
+  "contract": {
+    "envelope_key": "record",
+    "id": "example.conformance:Recursive/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "example.conformance:Recursive/v1",
+  "document_metadata": {
+    "contract": "example.conformance:Recursive/v1",
+    "envelope": "record",
+    "schema": "schema.yaml",
+    "status": "enforced"
+  },
+  "path": "artifact.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "enforcement_unsupported",
+        "message": "enforced validation cannot be applied safely to this schema",
+        "schema_path": "/properties/child/$dynamicRef"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "root"
+  },
+  "warnings": []
+}

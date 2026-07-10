@@ -39,14 +39,20 @@ class EnvelopeModel(BaseModel):
     sample: SampleModel
 
 
-def test_compile_writes_json_schema_with_contract_id(tmp_path: Path) -> None:
+def test_compile_writes_json_schema_with_independent_ids(tmp_path: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    result = compile_model(SampleModel, out, contract_id="example:Sample/v1")
+    result = compile_model(
+        SampleModel,
+        out,
+        contract_id="example:Sample/v1",
+        schema_id="https://schemas.example/sample/v1",
+    )
 
     assert out.is_file()
     assert "$schema:" in result.schema_yaml
-    assert "$id: example:Sample/v1" in result.schema_yaml
+    assert "$id: https://schemas.example/sample/v1" in result.schema_yaml
+    assert "contract: example:Sample/v1" in result.schema_yaml
     assert "schema_sha256" in result.schema_yaml
     assert result.schema_sha256 is not None
 
@@ -296,19 +302,20 @@ def test_registry_registers_complete_bindings_only() -> None:
         registry.register(Contract(id="example:Sample/v1", model=EnvelopeModel))
 
 
-def test_validate_artifact_returns_parse_error_for_missing_file_frontmatter() -> None:
-    """A nonexistent .md path returns a structured parse_error, not an exception."""
+def test_validate_artifact_returns_input_error_for_missing_file_frontmatter() -> None:
+    """A nonexistent .md path returns a structured input_error, not an exception."""
     contract = Contract(id="example:Sample/v1", model=SampleModel)
     result = validate_artifact(Path("/nonexistent.md"), contract=contract)
 
     assert not result.ok
     assert result.structural.ok is False
-    assert result.structural.errors[0]["kind"] == "parse_error"
-    assert result.semantic.skipped_reason == "parse_error"
+    assert result.structural.errors[0]["kind"] == "input_error"
+    assert result.structural.errors[0]["reason"] == "not_found"
+    assert result.semantic.skipped_reason == "input_error"
 
 
-def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> None:
-    """A nonexistent .yaml path with pure_yaml profile returns a structured parse_error."""
+def test_validate_artifact_returns_input_error_for_missing_file_pure_yaml() -> None:
+    """A nonexistent pure-YAML path returns a structured input_error."""
     contract = Contract(
         id="example:Sample/v1",
         model=SampleModel,
@@ -318,8 +325,9 @@ def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> N
 
     assert not result.ok
     assert result.structural.ok is False
-    assert result.structural.errors[0]["kind"] == "parse_error"
-    assert result.semantic.skipped_reason == "parse_error"
+    assert result.structural.errors[0]["kind"] == "input_error"
+    assert result.structural.errors[0]["reason"] == "not_found"
+    assert result.semantic.skipped_reason == "input_error"
 
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:

@@ -92,6 +92,65 @@ run_id: 2026-04-12T18-03-00Z
 summary: regression vs baseline
 ```
 
+## Portable YAML Value Domain
+
+Artifacts, compiled schemas, and supplied schema resources use the same bounded,
+JSON-compatible YAML subset.
+A value may contain objects with string keys, arrays, strings, booleans, null, finite
+IEEE-754 binary64 numbers, and mathematically integral numbers from `-9007199254740991`
+through `9007199254740991`.
+
+Validation rejects duplicate or non-string keys, custom tags, aliases, merge keys,
+cycles, non-finite numbers, unsafe integers, binary and set values, explicit timestamp
+values, and other YAML-specific runtime types.
+Plain date-looking and timestamp-looking scalars remain strings.
+Numeric scalars are interpreted from their exact spelling before binary64 conversion.
+Every numeric spelling of negative zero normalizes to `0`.
+
+The default limits are:
+
+- 8 MiB of encoded input per artifact or schema resource
+- 64 MiB across a root schema and its supplied resource bundle
+- 256 total schema resources, including the root
+- 100,000 representation nodes per resource
+- a maximum representation depth of 128
+- 1 MiB of Unicode code points per scalar
+
+Byte limits apply before parsing.
+Node, depth, scalar, alias, and merge checks apply before ordinary object construction.
+Already-materialized library resources are sized as compact, key-sorted UTF-8 JSON after
+normalization. Trusted library callers may set explicit lower or higher limits through
+`ValidationLimits` in Python or `validationLimits` in TypeScript; command-line
+validation always uses the defaults.
+
+A non-portable artifact produces `parse_error` with reason `value_domain`. A
+non-portable compiled schema or supplied schema resource produces `schema_invalid` with
+reason `value_domain`. Both records carry an RFC 6901 path and omit parser-specific
+prose.
+
+## Artifact Parse and Access Failures
+
+Validation distinguishes readable artifact failures from filesystem access failures.
+It never exposes YAML-parser or operating-system prose in the result:
+
+| Kind and reason | Stable message | Exit |
+| --- | --- | --- |
+| `parse_error/frontmatter` | `artifact frontmatter delimiters are malformed` | 1 |
+| `parse_error/syntax` | `artifact is not valid YAML` | 1 |
+| `parse_error/root` | `artifact YAML root must be a mapping` | 1 |
+| `parse_error/value_domain` | `artifact contains a non-portable YAML value` | 1 |
+| `input_error/not_found` | `artifact path does not exist` | 2 |
+| `input_error/unreadable` | `artifact path cannot be read` | 2 |
+| `input_error/directory_requires_recursive` | `artifact directory requires --recursive` | 2 |
+
+Every record carries `source`. A value-domain record also carries an RFC 6901 `path`.
+The typed parsing boundary retains line and column information when the YAML parser
+provides it, but the legacy single-file JSON serializer omits locations.
+Diagnostic-v1 outputs may include them.
+
+The CLI selects storage shape explicitly with `--profile frontmatter-md|pure-yaml` and
+defaults to `frontmatter-md`. It does not infer a profile from a filename extension.
+
 ## Frontmatter Artifact Shape
 
 A genuine artifact (a trimmed `examples/movie_page/spirited-away.md`):
@@ -310,6 +369,93 @@ A compiled schema is not a per-document companion data file.
 The two are unrelated: one schema validates many artifacts, while companion data would
 pair with a single document.
 This spec does not standardize a companion-data discovery mechanism (see Compatibility).
+
+### Portable Regular Expressions
+
+The `pattern` and `patternProperties` keywords use `portable-regex-v1`. This profile has
+ECMA-262 Unicode semantics, uses unanchored search when the pattern is not anchored, and
+applies no flags. It keeps the useful common syntax below while excluding constructs
+whose meaning or availability differs across Python and JavaScript engines.
+
+```text
+pattern      = alternative *( "|" alternative )
+alternative  = *piece
+piece        = atom [ quantifier ]
+atom         = literal / "." / "^" / "$" / escape / class / group
+group        = "(" pattern ")" / "(?:" pattern ")"
+class        = "[" [ "^" ] 1*class-item "]"
+class-item   = class-atom / class-atom "-" class-atom
+quantifier   = ( "*" / "+" / "?" / bounded ) [ "?" ]
+bounded      = "{" bound "}" / "{" bound "," [ bound ] "}"
+bound        = "0" / ( %x31-39 *%x30-39 ) ; 0 through 1000
+```
+
+In that grammar:
+
+- A `literal` is one Unicode scalar other than a regular-expression syntax character.
+  Escape a syntax character to match it literally.
+- A class is non-empty.
+  An unescaped `-` is literal only in the first or last class position; escape it
+  elsewhere. Escape `^`, `[`, or `]` when it is a class literal.
+  A range must have scalar endpoints in ascending code-point order.
+- Supported escapes are escaped syntax characters; `\n`, `\r`, `\t`, `\f`, and `\v`;
+  two-digit `\xHH`; four-digit, non-surrogate `\uHHHH`; `\d`, `\D`, `\w`, `\W`, `\s`,
+  and `\S`. A class may use the digit and word shorthands, but not the whitespace
+  shorthands; write `(?:\s|\S)` when a class-independent any-character expression is
+  needed.
+- `\d` and `\w` are ASCII sets, as in ECMA-262. `\s` is the ECMA-262 whitespace and
+  line-terminator set.
+  Dot excludes LF, CR, U+2028, and U+2029. `$` means only the true end of the string; it
+  does not match before a final newline.
+- An assertion (`^` or `$`) cannot be quantified.
+  A bounded quantifier has no leading zero, its upper bound is not less than its lower
+  bound, and neither bound exceeds 1000.
+
+The profile rejects lookaround, backreferences, word-boundary assertions, named and
+atomic groups, inline flags, Unicode property escapes, possessive quantifiers, surrogate
+escapes, and ambiguous future character-class operators.
+A schema loader validates every actual `pattern` and `patternProperties` schema location
+before invoking its JSON Schema engine; pattern-shaped data under annotation keywords
+such as `examples` is not schema and is not inspected.
+An invalid or unsupported expression produces `schema_invalid` with reason `pattern`,
+the JSON Pointer in `schema_path`, and the original expression in `pattern`.
+
+Python validators lower the few divergent tokens in a private in-memory schema copy;
+TypeScript validators execute the authored ECMA-262 expression directly.
+Lowering never changes the authored file, canonical compiled schema, or `schema_sha256`,
+and structural errors report the original expression.
+The shared machine-readable syntax and matching vectors are
+`tests/parity/portable-patterns.json` in the source repository.
+
+This is an interoperability profile, not a proof that a backtracking expression is
+linear-time. Schema authors should still avoid nested ambiguous repetition, and hosts
+should apply the validation limits defined for untrusted artifacts.
+
+### Format Annotations
+
+The default Draft 2020-12 profile uses `annotation-only-v1` format semantics.
+Every string value of `format`—both a standard name such as `date` or `email` and an
+unknown extension name—is metadata for downstream consumers and never changes whether an
+instance is structurally valid.
+Known and unknown formats must produce no validator warning, logger output, or stderr.
+Other assertions beside `format` continue to apply normally.
+
+Semantic validation remains independent: a Pydantic or Zod model may enforce an email,
+URI, date, or domain-specific representation even when structural validation treats the
+JSON Schema `format` as an annotation.
+Use such a trusted semantic model, or an ordinary portable JSON Schema assertion such as
+`pattern`, when a boundary must reject malformed formatted values.
+
+The reference Python validator does not supply a format checker for instance validation.
+The TypeScript validator configures Ajv with `validateFormats: false`. Both choices are
+explicit so installing a format plug-in or upgrading an engine cannot silently turn
+annotations into assertions.
+The shared machine-readable vectors are `tests/parity/format-annotations.json` in the
+source repository.
+
+A future format-assertion mode, if added, must use a separately versioned, explicit
+opt-in vocabulary and cross-runtime conformance vectors.
+No such assertion vocabulary is part of `annotation-only-v1`.
 
 ## Validation Expectations
 

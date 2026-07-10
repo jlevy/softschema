@@ -2,8 +2,7 @@ id: artifact-parse-frontmatter
 description: A readable artifact with no closing frontmatter delimiter returns a stable parse result.
 operation: validate
 execution:
-  status: pending
-  owner: ss-pvu9
+  status: ready
 profiles:
 - frontmatter-md
 inputs:

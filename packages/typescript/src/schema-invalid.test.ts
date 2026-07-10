@@ -123,17 +123,18 @@ describe("stable schema_invalid results", () => {
         `$schema: ${JSON_SCHEMA_2020_12}\ntype: string\npattern: '['\n`,
         {
           kind: "schema_invalid",
-          reason: "compile",
-          message: "compiled schema could not be compiled",
+          reason: "pattern",
+          message: "compiled schema contains an unsupported or invalid pattern",
           schema_path: "/pattern",
+          pattern: "[",
         },
       ],
       [
         `$schema: ${JSON_SCHEMA_2020_12}\n$defs:\n  cycle: &cycle\n    type: object\n    properties:\n      child: *cycle\ntype: object\n`,
         {
           kind: "schema_invalid",
-          reason: "compile",
-          message: "compiled schema could not be compiled",
+          reason: "value_domain",
+          message: "compiled schema contains a non-portable YAML value",
           schema_path: "/$defs/cycle/properties/child",
         },
       ],

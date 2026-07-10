@@ -1,0 +1,12 @@
+---
+softschema:
+  contract: example.conformance:PortablePattern/v1
+  schema: schema.yaml
+  envelope: record
+  status: permissive
+record:
+  value: |
+    a
+---
+
+# Portable pattern newline case

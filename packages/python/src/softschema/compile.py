@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from strif import atomic_write_text
 
 from softschema.canonicalize import canonicalize_json_schema
+from softschema.models import validate_contract_id, validate_schema_id
 
 # Version of the `x-softschema` block format emitted into compiled schemas,
 # not the installed package version (use `importlib.metadata.version("softschema")`
@@ -37,11 +38,20 @@ def compile_model(
     model_cls: type[BaseModel],
     out_path: Path,
     *,
-    contract_id: str | None = None,
+    contract_id: str,
+    schema_id: str | None = None,
     check_only: bool = False,
 ) -> CompileResult:
     """Compile ``model_cls`` to a compiled JSON Schema YAML file at ``out_path``."""
-    schema = canonicalize_json_schema(_augment_schema(model_cls.model_json_schema(), contract_id))
+    checked_contract_id = validate_contract_id(contract_id)
+    checked_schema_id = validate_schema_id(schema_id) if schema_id is not None else None
+    schema = canonicalize_json_schema(
+        _augment_schema(
+            model_cls.model_json_schema(),
+            checked_contract_id,
+            checked_schema_id,
+        )
+    )
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
@@ -85,12 +95,17 @@ def compile_model(
 
 def _augment_schema(
     schema: dict[str, Any],
-    contract_id: str | None,
+    contract_id: str,
+    schema_id: str | None,
 ) -> dict[str, Any]:
     out = dict(schema)
     out.setdefault("$schema", JSON_SCHEMA_DRAFT)
-    if contract_id is not None:
-        out.setdefault("$id", contract_id)
+    # Schema identity is controlled only by the explicit compiler option. A logical
+    # contract ID is intentionally not a URI, and model configuration must not create
+    # a second implicit identity boundary.
+    out.pop("$id", None)
+    if schema_id is not None:
+        out["$id"] = schema_id
     # The root x-softschema block is language-neutral on purpose: no `generated_from`
     # provenance (a Pydantic/Zod-specific import path would leak the implementation and
     # break the cross-language content identity and equal schema_sha256).

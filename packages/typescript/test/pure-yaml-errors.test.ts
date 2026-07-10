@@ -50,7 +50,7 @@ describe("pure-yaml malformed YAML", () => {
     expect(structural.errors[0]!.kind).toBe("parse_error");
   });
 
-  test("nonexistent YAML file returns parse_error structural result", () => {
+  test("nonexistent YAML file returns input_error structural result", () => {
     const dir = makeTempDir();
     const yamlFile = join(dir, "does-not-exist.yaml");
     const contract = pureYamlContract();
@@ -61,7 +61,7 @@ describe("pure-yaml malformed YAML", () => {
       errors: { kind: string; message: string }[];
     };
     expect(structural.ok).toBe(false);
-    expect(structural.errors[0]!.kind).toBe("parse_error");
+    expect(structural.errors[0]).toMatchObject({ kind: "input_error", reason: "not_found" });
   });
 
   test("valid pure-YAML file validates without errors", () => {

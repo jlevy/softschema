@@ -82,6 +82,7 @@
               "detail": {
                 "enum": [
                   "invalid_root_id",
+                  "invalid_nested_id",
                   "resource_id_mismatch",
                   "duplicate_resource_id",
                   "root_resource_collision",
@@ -101,6 +102,7 @@
                 "enum": [
                   "x_softschema_invalid",
                   "legacy_contract_id_mismatch",
+                  "legacy_external_reference",
                   "unsupported_compiler_output",
                   "unsupported_vocabulary"
                 ]

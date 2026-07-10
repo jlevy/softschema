@@ -1,0 +1,26 @@
+id: legacy-external-reference
+description: The legacy profile permits fragment references but rejects external references.
+operation: validate
+execution:
+  status: ready
+profiles:
+- legacy-0.2
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 280745447d1d7d7952cb0e25a30439251bfbb5904b44c06e0b126dec525032ef
+  schema:
+    path: schema.yaml
+    sha256: f3de94e460537934a0ea0c73a6fac14ebd6b6f36ef9cfa74d730f706aaf82292
+  resources: []
+options:
+  contract: example.conformance:LegacyExternal/v1
+  envelope: record
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: b60daf67333ad360d784de4734ffc5f4b8bb779779e1efeb3b552e05c095f96b

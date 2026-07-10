@@ -1,0 +1,39 @@
+{
+  "build": "<build-metadata>",
+  "capabilities": {
+    "artifact_formats": [
+      "<artifact-formats>"
+    ],
+    "conformance": {
+      "status": "<conformance-status>",
+      "version": "<conformance-version>"
+    },
+    "model_loaders": [
+      "<model-loaders>"
+    ],
+    "operations": [
+      "compile",
+      "docs",
+      "doctor",
+      "generate",
+      "inspect",
+      "prime",
+      "skill",
+      "validate"
+    ],
+    "output_formats": [
+      "json",
+      "text"
+    ]
+  },
+  "package": {
+    "name": "softschema",
+    "release_state": "<release-state>",
+    "version": "<logical-version>"
+  },
+  "protocol_version": "<discovery-protocol>",
+  "runtime": {
+    "name": "<runtime-name>",
+    "version": "<runtime-version>"
+  }
+}

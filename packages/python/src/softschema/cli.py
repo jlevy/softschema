@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
-import shutil
+import platform
 import sys
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
@@ -15,33 +15,49 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
-from frontmatter_format import FmFormatError, fmf_read
+from frontmatter_format import FmFormatError
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAMLError
-from strif import atomic_write_text
 
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
-from softschema.models import Contract, SchemaStatus, parse_schema_metadata
-from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
+from softschema.models import (
+    Contract,
+    SchemaProfile,
+    SchemaStatus,
+    parse_schema_metadata,
+    validate_contract_id,
+    validate_schema_id,
+)
+from softschema.skill_installer import (
+    InstallRequest,
+    SkillInstallUsageError,
+    execute_skill_install,
+    format_install_plan_text,
+)
+from softschema.validate import (
+    EnvelopeAmbiguityError,
+    artifact_error_record,
+    infer_envelope_key,
+    read_frontmatter,
+    read_yaml_artifact,
+    validate_artifact,
+)
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
-RUNNER_COMMANDS: tuple[str, ...] = ("softschema", "uvx", "npx")
-RUNNER_INVOCATIONS: dict[str, str] = {
-    "softschema": "softschema",
-    "uvx": "uvx softschema@latest",
-    "npx": "npx softschema@latest",
-}
-
-AGENT_HELP_EPILOG = """IMPORTANT for agents:
-  To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@latest skill --install
-    # or
-    npx softschema@latest skill --install
-  Then read `softschema skill --brief` and `softschema docs --list` for operating rules
-  and bundled docs."""
+DOCTOR_OPERATIONS: tuple[str, ...] = (
+    "compile",
+    "docs",
+    "doctor",
+    "generate",
+    "inspect",
+    "prime",
+    "skill",
+    "validate",
+)
+DOCTOR_OUTPUT_FORMATS: tuple[str, ...] = ("json", "text")
 
 
 class UsageError(ValueError):
@@ -162,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="softschema",
         description="Validate and explain soft schema Markdown/YAML artifacts.",
-        epilog=AGENT_HELP_EPILOG,
+        epilog=_agent_help_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -180,6 +196,12 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     validate_parser.add_argument("path", type=Path)
+    validate_parser.add_argument(
+        "--profile",
+        choices=[profile.value for profile in SchemaProfile],
+        default=SchemaProfile.frontmatter_md.value,
+        help="Artifact storage profile (default: frontmatter-md).",
+    )
     validate_parser.add_argument("--contract", help="Override the document contract ID.")
     validate_parser.add_argument(
         "--envelope",
@@ -212,7 +234,14 @@ def main(argv: list[str] | None = None) -> int:
     compile_parser.add_argument(
         "--out", required=True, type=Path, help="Output path for the compiled schema."
     )
-    compile_parser.add_argument("--contract", help="Contract ID stamped into the compiled schema.")
+    compile_parser.add_argument(
+        "--contract",
+        help="Required logical contract ID stored in x-softschema.contract.",
+    )
+    compile_parser.add_argument(
+        "--schema-id",
+        help="Canonical absolute HTTPS or URN identifier stored in JSON Schema $id.",
+    )
     compile_parser.add_argument(
         "--check", action="store_true", help="Do not write; exit 1 on drift."
     )
@@ -262,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
 
     doctor_parser = subparsers.add_parser(
         "doctor",
-        help="Report softschema version and runner availability.",
+        help="Report the versioned discovery protocol and runtime capabilities.",
     )
     doctor_parser.add_argument(
         "--json",
@@ -280,10 +309,58 @@ def main(argv: list[str] | None = None) -> int:
     skill_parser.add_argument(
         "--install",
         action="store_true",
-        help=(
-            "Write the skill into .agents/skills/softschema/SKILL.md and "
-            ".claude/skills/softschema/SKILL.md (relative to the current directory)."
-        ),
+        help="Install the bundled skill after scope and ownership preflight.",
+    )
+    scope_group = skill_parser.add_mutually_exclusive_group()
+    scope_group.add_argument(
+        "--project",
+        action="store_true",
+        help="Install into a project target (explicitly permits --dir).",
+    )
+    scope_group.add_argument(
+        "--global",
+        dest="global_scope",
+        action="store_true",
+        help="Install into selected agents' personal skill roots.",
+    )
+    skill_parser.add_argument(
+        "--dir",
+        type=Path,
+        help="Project directory to resolve; requires explicit --project.",
+    )
+    selector_group = skill_parser.add_mutually_exclusive_group()
+    selector_group.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Install only the named agent target; repeat for multiple agents.",
+    )
+    selector_group.add_argument(
+        "--all-agents",
+        action="store_true",
+        help="Install all nine supported agent targets.",
+    )
+    skill_parser.add_argument(
+        "--no-repo-check",
+        action="store_true",
+        help="Permit an explicit project destination outside Git.",
+    )
+    skill_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the complete plan without creating any filesystem entry.",
+    )
+    output_group = skill_parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the install plan as JSON (the compatibility default).",
+    )
+    output_group.add_argument(
+        "--text",
+        action="store_true",
+        help="Emit the install plan as stable human-readable text.",
     )
     skill_parser.set_defaults(func=_skill_cmd)
 
@@ -295,10 +372,25 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # Without --model/--schema this is a metadata-only check: frontmatter parses,
     # the softschema: block is well-formed, and the envelope resolves; structural
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
-    # Read the document once here; both binding inference and validate_artifact
-    # reuse this frontmatter, so the file is parsed a single time.
-    _content, frontmatter = fmf_read(args.path)
-    contract_id, status, envelope_key = _infer_validation_binding(args, frontmatter)
+    # Validate an explicit identity before reading a document or importing local code.
+    if args.contract is not None:
+        validate_contract_id(args.contract)
+    # Read the document once here; both binding inference and validate_artifact reuse
+    # the normalized root. Readable parse failures are validation results (exit 1),
+    # while access failures remain exit 2.
+    profile = SchemaProfile(args.profile)
+    try:
+        if profile == SchemaProfile.pure_yaml:
+            parsed_root: Any = read_yaml_artifact(args.path)
+        else:
+            _content, parsed_root = read_frontmatter(args.path)
+    except Exception as exc:
+        record = artifact_error_record(args.path, exc)
+        if record is None:
+            raise
+        print(_json(record))
+        return 2 if record["kind"] == "input_error" else 1
+    contract_id, status, envelope_key = _infer_validation_binding(args, parsed_root, profile)
     model = _load_model(args.model) if args.model else None
     contract = Contract(
         id=contract_id,
@@ -306,14 +398,17 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         envelope_key=envelope_key,
         schema_path=args.schema,
         status=status,
+        profile=profile,
     )
-    result = validate_artifact(args.path, contract=contract, frontmatter=frontmatter)
+    result = validate_artifact(args.path, contract=contract, frontmatter=parsed_root)
     print(_json(result))
     return 0 if result.ok else 1
 
 
 def _infer_validation_binding(
-    args: argparse.Namespace, frontmatter: Any
+    args: argparse.Namespace,
+    frontmatter: Any,
+    profile: SchemaProfile = SchemaProfile.frontmatter_md,
 ) -> tuple[str, SchemaStatus, str | None]:
     if not isinstance(frontmatter, dict):
         if args.contract is None:
@@ -328,7 +423,7 @@ def _infer_validation_binding(
     return (
         contract_id,
         _status_from_args(args, metadata),
-        _envelope_from_args(args, frontmatter, metadata),
+        _envelope_from_args(args, frontmatter, metadata, profile),
     )
 
 
@@ -341,13 +436,18 @@ def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
 
 
 def _envelope_from_args(
-    args: argparse.Namespace, frontmatter: dict[str, Any], metadata: Any
+    args: argparse.Namespace,
+    frontmatter: dict[str, Any],
+    metadata: Any,
+    profile: SchemaProfile = SchemaProfile.frontmatter_md,
 ) -> str | None:
     # Envelope precedence: --envelope flag > document softschema.envelope > inference.
     if args.envelope is not None:
         return args.envelope
     if metadata is not None and metadata.envelope is not None:
         return metadata.envelope
+    if profile == SchemaProfile.pure_yaml:
+        return None
     try:
         return infer_envelope_key(frontmatter)
     except EnvelopeAmbiguityError as exc:
@@ -360,14 +460,25 @@ def _envelope_from_args(
 def _compile_cmd(args: argparse.Namespace) -> int:
     # Model-load and compile errors (UsageError, OSError, ...) propagate to the shared
     # `_run_cmd` boundary, which reports them as `softschema compile: ...` and exits 2.
+    if args.contract is None:
+        raise UsageError("compilation requires --contract")
+    validate_contract_id(args.contract)
+    if args.schema_id is not None:
+        validate_schema_id(args.schema_id)
     model = _load_model(args.model)
-    result = compile_model(model, args.out, contract_id=args.contract, check_only=args.check)
+    result = compile_model(
+        model,
+        args.out,
+        contract_id=args.contract,
+        schema_id=args.schema_id,
+        check_only=args.check,
+    )
     print(_json(result))
     return 1 if result.drift else 0
 
 
 def _inspect_cmd(args: argparse.Namespace) -> int:
-    _content, frontmatter = fmf_read(args.path)
+    _content, frontmatter = read_frontmatter(args.path)
     metadata = None
     envelope_keys: list[str] = []
     if isinstance(frontmatter, dict):
@@ -459,39 +570,47 @@ def _doctor_cmd(args: argparse.Namespace) -> int:
 
 
 def _doctor_report() -> dict[str, Any]:
-    runners = []
-    for name in RUNNER_COMMANDS:
-        path = _find_runner(name)
-        runners.append({"name": name, "available": path is not None, "path": path})
-    recommended = next(
-        (RUNNER_INVOCATIONS[runner["name"]] for runner in runners if runner["available"]),
-        None,
-    )
+    release = _release_metadata()
     return {
-        "version": _installed_version(),
-        "runners": runners,
-        "recommended_invocation": recommended,
+        "protocol_version": release["discovery_protocol"],
+        "package": {
+            "name": "softschema",
+            "version": release["logical_version"],
+            "release_state": release["release_state"],
+        },
+        "runtime": {
+            "name": "python",
+            "version": platform.python_version(),
+        },
+        "capabilities": {
+            "operations": list(DOCTOR_OPERATIONS),
+            "artifact_formats": sorted(release["artifact_formats"]["supported"]),
+            "model_loaders": ["json-schema", "pydantic"],
+            "output_formats": list(DOCTOR_OUTPUT_FORMATS),
+            "conformance": release["conformance"],
+        },
+        "build": _build_metadata(),
     }
 
 
 def _doctor_text(report: dict[str, Any]) -> str:
+    package = report["package"]
+    runtime = report["runtime"]
+    capabilities = report["capabilities"]
+    conformance = capabilities["conformance"]
     lines = [
-        f"softschema version: {report['version']}",
-        "available runners:",
+        f"softschema discovery protocol: {report['protocol_version']}",
+        (f"package: {package['name']} {package['version']} ({package['release_state']})"),
+        f"runtime: {runtime['name']} {runtime['version']}",
+        f"operations: {', '.join(capabilities['operations'])}",
+        f"artifact formats: {', '.join(capabilities['artifact_formats'])}",
+        f"model loaders: {', '.join(capabilities['model_loaders'])}",
+        f"output formats: {', '.join(capabilities['output_formats'])}",
+        f"conformance: {conformance['version']} ({conformance['status']})",
     ]
-    for runner in report["runners"]:
-        status = "yes" if runner["available"] else "no"
-        path = f" ({runner['path']})" if runner["path"] else ""
-        lines.append(f"  {runner['name']}: {status}{path}")
-    recommended = report["recommended_invocation"] or "unavailable"
-    lines.append(f"recommended invocation: {recommended}")
-    if report["recommended_invocation"] is None:
-        lines.append("Install uv or Node, then retry.")
+    if report["build"] is not None:
+        lines.append(f"build: {report['build']['build_id']}")
     return "\n".join(lines)
-
-
-def _find_runner(name: str) -> str | None:
-    return shutil.which(name)
 
 
 SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
@@ -517,57 +636,66 @@ def _installed_version() -> str:
         return "unknown"
 
 
+def _release_metadata() -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(_read_resource("release-metadata.json")))
+
+
+def _build_metadata() -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(_read_resource("build-metadata.json")))
+
+
+def _agent_help_epilog() -> str:
+    release = _release_metadata()
+    python_pin = release["packages"]["python"]["pin"]
+    npm_pin = release["packages"]["npm"]["pin"]
+    return f"""IMPORTANT for agents:
+  To set up softschema for this repo as a skill, run one exact-pinned command from the repo root:
+    uvx --from 'softschema=={python_pin}' softschema skill --install
+    # or
+    npx --yes softschema@{npm_pin} skill --install
+    # or
+    bunx --bun softschema@{npm_pin} skill --install
+  Then run `softschema doctor --json`, and read `softschema skill --brief` and
+  `softschema docs --list` for capabilities, operating rules, and bundled docs."""
+
+
 def _rendered_skill_text() -> str:
     return _read_resource(DOC_TOPICS["skill"].path)
 
 
-def _install_skill_payload(rendered: str) -> str:
-    """Insert the DO NOT EDIT marker after the closing frontmatter delimiter."""
-    lines = rendered.split("\n")
-    delimiter_count = 0
-    for i, line in enumerate(lines):
-        if line.strip() == "---":
-            delimiter_count += 1
-            if delimiter_count == 2:
-                lines.insert(i + 1, SKILL_DO_NOT_EDIT_MARKER)
-                break
-    return "\n".join(lines)
-
-
-def _resolve_install_base(start: Path) -> Path:
-    """The nearest ancestor containing ``.git`` (so installs land at the repo root),
-    falling back to ``start`` when none is found."""
-    start = start.resolve()
-    for candidate in (start, *start.parents):
-        if (candidate / ".git").exists():
-            return candidate
-    return start
-
-
-def _install_skill(base_dir: Path) -> dict[str, Any]:
-    base_dir = _resolve_install_base(base_dir)
-    payload = _install_skill_payload(_rendered_skill_text())
-    files: list[dict[str, str]] = []
-    for relative in SKILL_INSTALL_TARGETS:
-        target = base_dir / relative
-        existing = target.read_text(encoding="utf-8") if target.exists() else None
-        if existing == payload:
-            status = "unchanged"
-        else:
-            atomic_write_text(target, payload, make_parents=True)
-            status = "updated" if existing is not None else "created"
-        files.append({"path": str(relative), "status": status})
-    return {
-        "version": _installed_version(),
-        "base_dir": str(base_dir),
-        "files": files,
-    }
-
-
 def _skill_cmd(args: argparse.Namespace) -> int:
     if args.install:
-        _write_text(_json(_install_skill(Path.cwd())))
-        return 0
+        request = InstallRequest(
+            project=args.project,
+            global_scope=args.global_scope,
+            directory=args.dir,
+            agents=tuple(args.agent),
+            all_agents=args.all_agents,
+            no_repo_check=args.no_repo_check,
+            dry_run=args.dry_run,
+        )
+        exit_code, report = execute_skill_install(
+            request,
+            rendered_skill=_rendered_skill_text(),
+            marker=SKILL_DO_NOT_EDIT_MARKER,
+            package_version=_installed_version(),
+            cwd=Path.cwd(),
+        )
+        _write_text(format_install_plan_text(report) if args.text else _json(report))
+        return exit_code
+    installer_option = (
+        args.project
+        or args.global_scope
+        or args.dir is not None
+        or args.agent
+        or args.all_agents
+        or args.no_repo_check
+        or args.dry_run
+        or args.json
+        or args.text
+    )
+    if installer_option:
+        raise SkillInstallUsageError("installer options require --install")
     if args.brief:
         _write_text(_brief_skill_text())
         return 0

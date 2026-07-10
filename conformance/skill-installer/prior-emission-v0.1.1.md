@@ -1,0 +1,63 @@
+---
+name: softschema
+description: >-
+  Validate and structure Markdown/YAML artifacts with frontmatter contracts.
+  Mix prose context with machine-readable values without forcing the whole
+  document into a hard schema. Use when working with soft schemas, frontmatter
+  validation, mixed prose-and-data files, agent pipelines that produce or
+  consume Markdown artifacts, or running the `softschema` CLI.
+---
+<!-- DO NOT EDIT: copy of skills/softschema/SKILL.md.
+Update the source and re-copy this file from it.
+-->
+
+# Softschema Skill
+
+`softschema` adds and validates structure for Markdown/YAML artifacts that mix prose
+context with machine-readable values.
+This skill is a routing layer.
+The CLI documents itself, so load only the command output you actually need.
+
+## When to Use
+
+A file mixes prose (notes, rationale, summaries) with values that code or a later agent
+step needs to read reliably, and those values should be typed or validated without
+forcing the rest of the document into a hard schema.
+
+## Bootstrap
+
+Each command prints material the agent should read and follow:
+
+```bash
+softschema --help                  # command listing + entry-point pointers
+softschema skill --brief           # ~12-line operating brief
+softschema docs guide              # mental model and adoption path
+softschema docs spec               # exact artifact format
+softschema docs example-artifact   # a copyable example
+softschema docs --list             # full topic index
+```
+
+## Operating Rules
+
+- YAML/frontmatter is authoritative for any consumed value.
+  Do not parse Markdown body prose or tables for structured fields.
+- Use `softschema.contract` (not `schema`) to name the payload contract.
+- Promote a value into YAML only when something consumes it; leave exploratory or
+  judgment-heavy content as prose.
+- Validate at the boundary with `softschema validate <file> --model pkg.mod:Model` or
+  `--schema sidecar.yaml`.
+
+## Install
+
+Prefer a version-pinned zero-install runner:
+
+```bash
+uvx softschema@<version> --help          # ephemeral; reproducible
+uv tool install softschema==<version>    # persistent; lockfile-friendly
+```
+
+In a checkout of this repo, `uv run softschema …` works without install.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

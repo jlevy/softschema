@@ -36,13 +36,13 @@ export interface SchemaWarning {
 
 /** One artifact payload contract: how to validate a document with this id. */
 export interface Contract {
-  id: string;
+  readonly id: string;
   /** A label for the semantic model (e.g. a Zod module spec), or null when schema-only. */
-  model: string | null;
-  envelopeKey: string | null;
-  status: SchemaStatus;
-  profile: SchemaProfile;
-  schemaPath: string | null;
+  readonly model: string | null;
+  readonly envelopeKey: string | null;
+  readonly status: SchemaStatus;
+  readonly profile: SchemaProfile;
+  readonly schemaPath: string | null;
 }
 
 /** Python `type(x).__name__` for the type names used in error messages. */
@@ -66,10 +66,12 @@ export class SchemaMetadataError extends Error {}
 const CONTRACT_ID_RE =
   /^(?:[a-z0-9_]+(?:\.[a-z0-9_]+)*:)?[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z0-9_.-]+)?$/;
 
-/** Validate the contract-ID grammar; throws on a malformed value. */
-function checkContractId(contract: unknown): string {
+/** Validate the logical contract-ID grammar at every public boundary. */
+export function validateContractId(contract: unknown): string {
   if (typeof contract !== "string" || contract.length === 0) {
-    throw new SchemaMetadataError("softschema metadata requires a non-empty string 'contract'");
+    throw new SchemaMetadataError(
+      "malformed contract ID: softschema metadata requires a non-empty string 'contract'",
+    );
   }
   if (!CONTRACT_ID_RE.test(contract)) {
     throw new SchemaMetadataError(
@@ -79,6 +81,85 @@ function checkContractId(contract: unknown): string {
     );
   }
   return contract;
+}
+
+const URN_RE = /^urn:([a-z0-9]|[a-z0-9][a-z0-9-]{0,30}[a-z0-9]):([A-Za-z0-9._~!$&'()*+,;=:@/%-]+)$/;
+const HTTPS_PATH_RE = /^[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$/;
+const HTTPS_QUERY_RE = /^[A-Za-z0-9._~!$&'()*+,;=:@/?%-]*$/;
+const UNRESERVED = /^[A-Za-z0-9._~-]$/;
+
+function hasCanonicalPercentEscapes(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "%") continue;
+    const digits = value.slice(index + 1, index + 3);
+    if (!/^[0-9A-F]{2}$/.test(digits)) return false;
+    if (UNRESERVED.test(String.fromCharCode(Number.parseInt(digits, 16)))) return false;
+    index += 2;
+  }
+  return true;
+}
+
+/** Validate the canonical absolute schema-identifier profile. */
+export function validateSchemaId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error(
+      `malformed schema ID ${JSON.stringify(value)}: expected a canonical absolute HTTPS or ` +
+        "URN identifier without a fragment",
+    );
+  }
+  let valid =
+    value.length > 0 &&
+    /^[A-Za-z0-9:/?[\]@!$&'()*+,;=._~%-]+$/.test(value) &&
+    !value.includes("#") &&
+    !value.includes("\\") &&
+    hasCanonicalPercentEscapes(value);
+
+  if (valid && value.startsWith("urn:")) {
+    valid = URN_RE.test(value);
+  } else if (valid && value.startsWith("https://")) {
+    try {
+      const parsed = new URL(value);
+      const remainder = value.slice("https://".length);
+      const authorityEnd = remainder.search(/[/?#]/);
+      const authority = authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
+      const pathAndQuery = authorityEnd === -1 ? "" : remainder.slice(authorityEnd);
+      const rawPath = pathAndQuery.split("?", 1)[0] ?? "";
+      const pathSegments = rawPath.split("/");
+      const portText = authority.match(/:(\d+)$/)?.[1];
+      valid =
+        parsed.protocol === "https:" &&
+        parsed.hostname.length > 0 &&
+        !authority.includes("@") &&
+        authority === authority.toLowerCase() &&
+        !authority.endsWith(":") &&
+        !parsed.hostname.endsWith(".") &&
+        (portText === undefined ||
+          (portText === String(Number.parseInt(portText, 10)) && portText !== "443")) &&
+        !pathSegments.includes(".") &&
+        !pathSegments.includes("..") &&
+        HTTPS_PATH_RE.test(parsed.pathname) &&
+        HTTPS_QUERY_RE.test(parsed.search.slice(1)) &&
+        !value.endsWith("?") &&
+        parsed.href === value;
+    } catch {
+      valid = false;
+    }
+  } else {
+    valid = false;
+  }
+  if (!valid) {
+    throw new Error(
+      `malformed schema ID ${JSON.stringify(value)}: expected a canonical absolute HTTPS or ` +
+        "URN identifier without a fragment",
+    );
+  }
+  return value;
+}
+
+/** Construct a contract after validating its public logical identity. */
+export function defineContract(contract: Contract): Contract {
+  const id = validateContractId(contract.id);
+  return Object.freeze({ ...contract, id });
 }
 
 const KNOWN_METADATA_KEYS = new Set(["contract", "schema", "envelope", "status"]);
@@ -101,7 +182,7 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
     return null;
   }
   if (typeof raw === "string") {
-    return { contractId: checkContractId(raw), schema: null, envelope: null, status: null };
+    return { contractId: validateContractId(raw), schema: null, envelope: null, status: null };
   }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
@@ -110,7 +191,7 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
     if (unknown.length > 0) {
       throw new SchemaMetadataError(`softschema metadata has unknown keys: ${unknown.join(", ")}`);
     }
-    const contract = checkContractId(obj.contract);
+    const contract = validateContractId(obj.contract);
     const schema = checkOptionalString(obj, "schema");
     const envelope = checkOptionalString(obj, "envelope");
     let status: SchemaStatus | null = null;

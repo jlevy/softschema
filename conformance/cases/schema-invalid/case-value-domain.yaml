@@ -1,0 +1,26 @@
+id: schema-invalid-value-domain
+description: A non-portable compiled-schema number returns a stable value-domain failure.
+operation: validate
+execution:
+  status: ready
+profiles:
+- legacy-0.2
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 0cad68d4270edd0a115977a8c04c25b35900e13c4e977e41a00eca1e1e106ba8
+  schema:
+    path: value-domain.schema.yaml
+    sha256: 799cc38c61555c1fd8d24a403ee26dd761ffea3b462715884c526d6386391a56
+  resources: []
+options:
+  contract: example.conformance:Movie/v1
+  envelope: movie
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: value-domain.expected.json
+    sha256: 5af82645980bd3257e634ebebd6c3b88e166855eef6d906bf9f1fc5373d53870

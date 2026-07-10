@@ -56,7 +56,7 @@ Mirror CI from the repo root, in this order (later phases depend on the builds):
 make install        # uv sync + npm install (lefthook) + bun install
 make lint-check     # codespell, ruff, basedpyright, doc footers
 uv run pytest       # Python unit tests (142 as of 0.2.0)
-uv build            # wheel + sdist into dist/ (used by Phase 2)
+uv build --build-constraint build-constraints.txt --require-hashes
 
 cd packages/typescript
 bun run check       # biome + tsc + bun test with coverage gate (160 tests as of 0.2.0)
@@ -105,15 +105,16 @@ cd - && rm -rf "$tmp"
 
 ### npm Tarball under Plain Node
 
-`npm pack` runs `prepublishOnly` (build and publint), so the tarball is freshly rebuilt
-from source—the same artifact `npm publish` would upload.
-Run it under `node` (>= 22.12), the runtime npm users get, not under bun:
+Build and lint explicitly, then pack with lifecycle scripts disabled.
+This makes the reviewed tarball—not a later implicit rebuild—the object that the release
+publishes. Run it under Node (>= 22.12), the runtime npm users get, not under Bun:
 
 ```bash
 cd packages/typescript
-tgz=$(npm pack | tail -1); abs="$PWD/$tgz"
+bun run build && bun run publint
+tgz=$(npm pack --ignore-scripts | tail -1); abs="$PWD/$tgz"
 tmp=$(mktemp -d)
-cd "$tmp" && npm init -y && npm install "$abs"
+cd "$tmp" && npm init -y && npm install --ignore-scripts "$abs"
 node ./node_modules/softschema/dist/cli.js --help   # or: ./node_modules/.bin/softschema --help
 node ./node_modules/softschema/dist/cli.js docs example-artifact > spirited-away.md
 node ./node_modules/softschema/dist/cli.js docs example-schema   > movie-page.schema.yaml
@@ -125,12 +126,22 @@ If a local supply-chain cool-off blocks the `npm install` of dependencies, add
 `--before=2030-01-01` to that install; it affects only this smoke test, never a publish
 (see [publishing-npm.md](publishing-npm.md)).
 
+The cross-platform CI equivalent is one command from the repository root:
+
+```bash
+uv run python devtools/installed_artifact_smoke.py
+```
+
+It also compares release/build metadata bytes across source, sdist, wheel, npm tarball,
+and installed packages, and rejects internal files in publishable inventories.
+
 ## Phase 3: The Quickstart, As Written
 
 The README Quick Start is the contract with a first-time user; run it verbatim from an
 **empty directory**, on both implementations, and byte-compare.
-Before a release, substitute the local builds for `uvx softschema@latest` /
-`npx softschema@latest` (the published forms are verified in Phase 5):
+Before a release, substitute the local builds for the exact-pinned
+`uvx --from 'softschema==X.Y.Z' softschema` / `npx --yes softschema@X.Y.Z` commands (the
+published forms are verified in Phase 5):
 
 ```bash
 repo=$(pwd)   # the softschema checkout
@@ -197,8 +208,9 @@ Three details make the difference between a real check and a false “no version
 ```bash
 cd /tmp
 ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-uvx --refresh --exclude-newer-package "softschema=$ts" softschema@X.Y.Z --version
-npx -y softschema@X.Y.Z --version
+uvx --refresh --exclude-newer-package "softschema=$ts" \
+  --from 'softschema==X.Y.Z' softschema --version
+npx --yes softschema@X.Y.Z --version
 ```
 
 Then run the quickstart literally against the published artifacts:
@@ -207,13 +219,13 @@ Then run the quickstart literally against the published artifacts:
 cd "$(mktemp -d)"
 ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 uvx() { command uvx --refresh --exclude-newer-package "softschema=$ts" "$@"; }
-uvx softschema@X.Y.Z docs example-artifact > spirited-away.md
-uvx softschema@X.Y.Z docs example-schema   > movie-page.schema.yaml
-uvx softschema@X.Y.Z validate spirited-away.md
+uvx --from 'softschema==X.Y.Z' softschema docs example-artifact > spirited-away.md
+uvx --from 'softschema==X.Y.Z' softschema docs example-schema   > movie-page.schema.yaml
+uvx --from 'softschema==X.Y.Z' softschema validate spirited-away.md
 ```
 
-Once the release ages past the cool-off, the unpinned `@latest` forms in the README
-resolve to it with no override.
+After the release smoke passes, update advertised pins through `release-metadata.json`;
+do not replace them with an unpinned selector.
 
 ## Recording Results
 

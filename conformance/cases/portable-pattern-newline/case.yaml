@@ -1,0 +1,25 @@
+id: portable-pattern-newline
+description: The portable end anchor does not match before a final newline in any runtime.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: ae0f11b80f266da581a0777dea2a2a6af1c80bf3a0383708f8f0725a2a236ccc
+  schema:
+    path: schema.yaml
+    sha256: fa63d991714a7d56e47e048de613a4f6e5497834c4c628390e4013070fe29809
+  resources: []
+options:
+  contract: example.conformance:PortablePattern/v1
+  envelope: record
+  status: permissive
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 4da2f7e5df8233697b7900a9d94d7fac203362722e96d06624bae034af1ad4d8

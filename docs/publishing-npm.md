@@ -108,20 +108,20 @@ Confirm each result before moving on.
    bun install --frozen-lockfile
    bun run check          # lint, types, tests (whatever the project's check script runs)
    bun run build          # produces the published dist/
-   npm pack --dry-run     # inspect contents: built entry (with shebang #!/usr/bin/env node if it has a bin), type declarations, any bundled resources, README, LICENSE, package.json
+   npm pack --dry-run --ignore-scripts  # inspect the already-built package inventory
    ```
 
 4. **CLI or entry runs from the packed artifact** (recommended for a package with a
    `bin`). Pack, install into a throwaway directory, and run under plain node:
 
    ```bash
-   tgz=$(npm pack | tail -1); abs="$PWD/$tgz"; tmp=$(mktemp -d)
-   (cd "$tmp" && npm init -y >/dev/null && npm install "$abs" && node ./node_modules/<package-name>/<path-to-bin>.js --help); rm -rf "$tmp" "$abs"
+   tgz=$(npm pack --ignore-scripts | tail -1); abs="$PWD/$tgz"; tmp=$(mktemp -d)
+   (cd "$tmp" && npm init -y >/dev/null && npm install --ignore-scripts "$abs" && node ./node_modules/<package-name>/<path-to-bin>.js --help); rm -rf "$tmp" "$abs"
    ```
 
    If a local supply-chain cool-off blocks installing recent dependencies, add
    `--before=2030-01-01` to that `npm install`. This affects only the local smoke test;
-   `npm publish` uploads the tarball and never installs dependencies, so the cool-off
+   Publishing the already packed tarball does not install dependencies, so the cool-off
    does not affect the real publish.
 
 ## Phase 1: Authenticate (User), Then Verify (Agent)
@@ -152,7 +152,8 @@ Confirm each result before moving on.
 
    ```bash
    cd <package-dir>          # e.g. packages/<name>; NOT the repo root
-   npm publish --access public --no-provenance
+   tgz=$(npm pack --ignore-scripts | tail -1)
+   npm publish "$tgz" --ignore-scripts --access public --no-provenance
    ```
 
    - **Directory matters.** `npm publish` packs the `package.json` in the current
@@ -167,8 +168,9 @@ Confirm each result before moving on.
    - `--no-provenance` is required here: provenance needs CI’s OIDC identity, which a
      local machine does not have.
      The automated releases add provenance later.
-   - `npm publish` first runs the package’s `prepublishOnly` script (for example a
-     build), so the published artifact is freshly rebuilt from source.
+   - The explicit build and pack steps own the candidate bytes.
+     `--ignore-scripts` keeps the publish from rebuilding or executing lifecycle code
+     after review.
 
 2. **Wait for explicit user confirmation.** Per the 2FA branch above, the user runs
    this, or authorizes the agent to run that exact command when no OTP is required.
@@ -187,13 +189,14 @@ GitHub Actions publisher, and enter exactly:
 | Organization or user | `<org>` |
 | Repository | `<repo>` |
 | Workflow filename | `<workflow>.yml` |
-| Environment | leave blank unless the workflow runs in a named GitHub Environment |
+| Environment | the exact protected environment used by the publish job |
+| Allowed actions | `npm publish` only |
 
 The workflow filename is the bare name, not a path, and it must match the file on the
 default branch. The agent can confirm the repo side is correct (the publish job has
 `id-token: write`, a pinned npm `>= 11.5.1`, and
-`npm publish --access public --provenance` gated to `release` events) but cannot fill in
-the npmjs.com form.
+`npm publish <tarball> --ignore-scripts --access public --provenance` gated to protected
+tag pushes) but cannot fill in the npmjs.com form.
 
 Optionally `npm logout` afterward if this was a shared machine.
 

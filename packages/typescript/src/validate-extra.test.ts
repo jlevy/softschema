@@ -54,19 +54,19 @@ describe("validateArtifact: pure-yaml profile", () => {
     expect(result.output.profile).toBe("pure-yaml");
     expect(result.output.values).toEqual({ name: "hello", count: 3 });
   });
-  test("non-mapping YAML root is yaml_not_mapping", () => {
+  test("non-mapping YAML root is a root parse error", () => {
     const doc = tmpFile("bad.yaml", "- a\n- b\n");
     const result = validateArtifact(doc, contract({ profile: "pure-yaml" }), {
       semanticModel: Sample,
     });
     expect(result.ok).toBe(false);
     const err = result.output.structural as { errors: { kind: string }[] };
-    expect(err.errors[0]?.kind).toBe("yaml_not_mapping");
+    expect(err.errors[0]).toMatchObject({ kind: "parse_error", reason: "root" });
   });
 });
 
-describe("validateArtifact: frontmatter_not_mapping", () => {
-  test("a pre-parsed non-mapping frontmatter is rejected as frontmatter_not_mapping", () => {
+describe("validateArtifact: non-mapping frontmatter", () => {
+  test("a pre-parsed non-mapping frontmatter is rejected as a root parse error", () => {
     // Reading a non-mapping document from disk is a parse_error (see the ss-7cbb tests
     // below, matching Python's fmf_read). The frontmatter_not_mapping kind is reached
     // only when a caller supplies an already-parsed non-mapping value (Python parity:
@@ -77,27 +77,27 @@ describe("validateArtifact: frontmatter_not_mapping", () => {
     });
     expect(result.ok).toBe(false);
     const err = result.output.structural as { errors: { kind: string }[] };
-    expect(err.errors[0]?.kind).toBe("frontmatter_not_mapping");
+    expect(err.errors[0]).toMatchObject({ kind: "parse_error", reason: "root" });
   });
 });
 
 describe("validateArtifact: missing/unreadable document file", () => {
-  test("nonexistent frontmatter-md file returns parse_error, does not throw", () => {
+  test("nonexistent frontmatter-md file returns input_error, does not throw", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.md";
     const result = validateArtifact(missingPath, contract());
     expect(result.ok).toBe(false);
     const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("parse_error");
+    expect(structural.errors[0]).toMatchObject({ kind: "input_error", reason: "not_found" });
   });
 
-  test("nonexistent pure-yaml file returns parse_error, does not throw", () => {
+  test("nonexistent pure-yaml file returns input_error, does not throw", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.yaml";
     const result = validateArtifact(missingPath, contract({ profile: "pure-yaml" }));
     expect(result.ok).toBe(false);
     const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("parse_error");
+    expect(structural.errors[0]).toMatchObject({ kind: "input_error", reason: "not_found" });
   });
 });
 

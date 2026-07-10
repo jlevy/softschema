@@ -184,6 +184,7 @@ export function renderStructuralMessage(
     case "pattern":
       return `value ${pyRepr(value)} does not match pattern ${pyRepr(validatorValue)}`;
     case "additionalProperties":
+    case "unevaluatedProperties":
       return "object has properties that are not allowed";
     case "multipleOf":
       return `value ${pyRepr(value)} is not a multiple of ${pyRepr(validatorValue)}`;
@@ -234,9 +235,9 @@ export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
 }
 
 /**
- * Collapse `additionalProperties` errors to one record per object path.
+ * Collapse extra-property errors to one record per object path and keyword.
  *
- * ajv (with `allErrors`) reports one `additionalProperties` error per disallowed key,
+ * ajv (with `allErrors`) reports one extra-property error per disallowed key,
  * whereas Python jsonschema reports a single error for the whole object. After
  * normalization the ajv records for the same object are byte-identical, so keeping the
  * first per path reproduces jsonschema's one-record shape. Other keywords (e.g.
@@ -247,8 +248,13 @@ export function collapseAdditionalProperties(
 ): StructuralErrorRecord[] {
   const seen = new Set<string>();
   return records.filter((record) => {
-    if (record.validator !== "additionalProperties") return true;
-    const key = JSON.stringify(record.path);
+    if (
+      record.validator !== "additionalProperties" &&
+      record.validator !== "unevaluatedProperties"
+    ) {
+      return true;
+    }
+    const key = JSON.stringify([record.path, record.validator]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

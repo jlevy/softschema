@@ -1,0 +1,25 @@
+id: format-annotations
+description: Invalid known and unknown formats are warning-free annotations in every runtime.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: cb3dbfb2293bdb0dd6eeba8fbd91ffb0d5b1670a3a012995137835808fea417d
+  schema:
+    path: schema.yaml
+    sha256: 790ffb8dd47a32be97db2c220bf7da5f227da328f47f63deaa249eb5624ce839
+  resources: []
+options:
+  contract: example.conformance:FormatAnnotations/v1
+  envelope: record
+  status: permissive
+expected:
+  exit_code: 0
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: ceb51f8f50c4d3e4c926b667ad2f588988ae62563d4aee8161c3033892afd94f

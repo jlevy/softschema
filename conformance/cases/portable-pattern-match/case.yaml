@@ -1,0 +1,25 @@
+id: portable-pattern-match
+description: Unicode, dot, digit, word, and whitespace constructs match identically.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: b30bcdc10c19402629c4daf9ff30b63324b2844fb61d3f0787a4d52feab416e7
+  schema:
+    path: schema.yaml
+    sha256: 173d5eb2da7b2d1234616139bb450ca5eb30916fd706e18fca2fc494e2a79419
+  resources: []
+options:
+  contract: example.conformance:PortablePattern/v1
+  envelope: record
+  status: permissive
+expected:
+  exit_code: 0
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 4c84c4b4c5318259871a72a72f1fb8e45007e8bfe88487b40b5c36b32b4fde01

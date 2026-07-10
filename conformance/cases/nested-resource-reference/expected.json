@@ -1,0 +1,35 @@
+{
+  "contract": {
+    "envelope_key": "record",
+    "id": "example.conformance:Nested/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "schema.yaml",
+    "status": "permissive"
+  },
+  "contract_id": "example.conformance:Nested/v1",
+  "document_metadata": {
+    "contract": "example.conformance:Nested/v1",
+    "envelope": "record",
+    "schema": null,
+    "status": "permissive"
+  },
+  "path": "artifact.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "permissive",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "title": "Ada"
+  },
+  "warnings": []
+}

@@ -96,14 +96,29 @@ describe("bundled resources (standalone, outside the repo)", () => {
     expect(r.stdout).toContain("IMPORTANT for agents");
     expect(r.stdout).toContain("repo root");
     expect(r.stdout).toContain("skill --install");
-    expect(r.stdout).toContain("uvx softschema@latest");
-    expect(r.stdout).toContain("npx softschema@latest");
+    expect(r.stdout).toContain("uvx --from 'softschema==0.2.2' softschema");
+    expect(r.stdout).toContain("npx --yes softschema@0.2.2");
+    expect(r.stdout).toContain("bunx --bun softschema@0.2.2");
   });
 
   test("--version prints 'softschema <version>'", () => {
     const r = runFromTmp(["--version"]);
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toMatch(/^softschema \d[\w.+-]*$/);
+  });
+
+  test("doctor --json reports Node when the package runs under Node", () => {
+    const r = runFromAdversarialInstall(["doctor", "--json"], {});
+    expect(r.status).toBe(0);
+    const report = JSON.parse(r.stdout) as {
+      protocol_version: string;
+      runtime: { name: string; version: string };
+      capabilities: { model_loaders: string[] };
+    };
+    expect(report.protocol_version).toBe("1");
+    expect(report.runtime.name).toBe("node");
+    expect(report.runtime.version).toMatch(/^\d+\.\d+/);
+    expect(report.capabilities.model_loaders).toEqual(["json-schema", "zod"]);
   });
 
   test("docs guide reads the bundled resource, not a cwd-relative file", () => {
@@ -152,21 +167,25 @@ describe("bundled resources (standalone, outside the repo)", () => {
 describe("CLI error handling (stable exit codes, no stack traces)", () => {
   const BAD_FRONTMATTER = "---\nfoo: [unclosed\nbar: 1\n---\nbody\n";
 
-  test("validate on malformed frontmatter YAML exits 2 without a stack trace", () => {
+  test("validate on malformed frontmatter YAML exits 1 with a parse record", () => {
     const r = runFromTmp(
       ["validate", "doc.md", "--schema", "s.yaml", "--contract", "x:Y/v1", "--envelope", "foo"],
       { "doc.md": BAD_FRONTMATTER },
     );
-    expect(r.status).toBe(2);
-    expect(r.stderr).toContain("softschema validate:");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toBe("");
+    expect(JSON.parse(r.stdout)).toMatchObject({ kind: "parse_error", reason: "syntax" });
     expect(r.stderr).not.toMatch(/\n\s+at /);
   });
 
   test("validate with a non-Zod --model export exits 2", () => {
-    const r = runFromTmp(["validate", "doc.md", "--model", "model.js:NotASchema"], {
+    const r = runFromTmp(
+      ["validate", "doc.md", "--model", "model.js:NotASchema", "--contract", "x:Y/v1"],
+      {
       "doc.md": "---\nname: hi\n---\n",
       "model.js": "export const NotASchema = { not: 'zod' };\n",
-    });
+      },
+    );
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("is not a Zod schema");
   });

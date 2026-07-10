@@ -4,6 +4,32 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### Release Safety
+
+- Release metadata now distinguishes logical, Python, and npm coordinates and embeds the
+  same non-self-referential build identity in both packages.
+- The publish workflow builds each artifact once in an unprivileged job, creates an
+  external digest manifest and SPDX SBOM, installs the exact candidate bytes, and only
+  then passes them to environment-scoped OIDC publisher jobs.
+  Manual dispatches are dry runs and publisher jobs never check out or execute source.
+- Python build dependencies are version- and hash-locked.
+  GitHub Actions use full commit SHAs, and CI installs and runs the wheel and npm
+  tarball across Linux, macOS, and Windows.
+
+### Migration
+
+- The 0.2.x package format and CLI output remain supported.
+  Development metadata marks the draft conformance kit unavailable until its executable
+  corpus is complete; this avoids advertising an incomplete portability contract.
+  Consumers should keep using the documented `legacy-0.2` format until a later release
+  explicitly promotes the portable profile.
+- The forthcoming 0.3 portable profile treats Draft 2020-12 `format` values as
+  annotations in both runtimes.
+  TypeScript no longer rejects values through `ajv-formats`; use a portable JSON Schema
+  assertion or the trusted Pydantic/Zod model when a formatted value must be enforced.
+
 ## v0.2.2—2026-06-15
 
 ### Features

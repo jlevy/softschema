@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import pytest
 
@@ -52,7 +53,16 @@ def test_compile_writes_schema_and_exits_zero(
     out = tmp_path / "sample.schema.yaml"
 
     exit_code = softschema_main(
-        ["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--contract", "test:Sample/v1"]
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--schema-id",
+            "https://schemas.example/test/sample/v1",
+        ]
     )
 
     assert exit_code == 0
@@ -60,12 +70,83 @@ def test_compile_writes_schema_and_exits_zero(
     result = json.loads(capsys.readouterr().out)
     assert result["drift"] is False
     assert result["schema_sha256"] is not None
+    assert "$id: https://schemas.example/test/sample/v1" in result["schema_yaml"]
+
+
+@pytest.mark.parametrize(
+    ("flag", "value", "message"),
+    [
+        ("--contract", "bad id", "contract ID"),
+        ("--schema-id", "relative/schema", "schema ID"),
+    ],
+)
+def test_compile_validates_identity_before_importing_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    value: str,
+    message: str,
+) -> None:
+    def must_not_load(_spec: str) -> type[BaseException]:
+        pytest.fail("model import ran before identity validation")
+
+    monkeypatch.setattr(cli, "_load_model", must_not_load)
+    out = tmp_path / "must-not-exist.yaml"
+
+    argv = ["compile", "ignored:Model", "--out", str(out), flag, value]
+    if flag == "--schema-id":
+        argv.extend(["--contract", "test:Sample/v1"])
+    exit_code = softschema_main(argv)
+
+    assert exit_code == 2
+    assert message in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_compile_requires_contract_before_importing_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def must_not_load(_spec: str) -> Any:
+        pytest.fail("model import ran before required contract validation")
+
+    monkeypatch.setattr(cli, "_load_model", must_not_load)
+    out = tmp_path / "must-not-exist.yaml"
+
+    exit_code = softschema_main(["compile", "ignored:Model", "--out", str(out)])
+
+    assert exit_code == 2
+    assert "requires --contract" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_validate_checks_explicit_contract_before_reading_document(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = softschema_main(
+        ["validate", str(tmp_path / "must-not-be-read.md"), "--contract", "bad id"]
+    )
+
+    assert exit_code == 2
+    assert "contract ID" in capsys.readouterr().err
 
 
 def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "missing.schema.yaml"
 
-    exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
+    exit_code = softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--check",
+        ]
+    )
 
     assert exit_code == 1
     assert not out.exists()
@@ -73,9 +154,28 @@ def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_mod
 
 def test_compile_check_returns_zero_when_schema_matches(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
-    softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out)])
+    softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+        ]
+    )
 
-    exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
+    exit_code = softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--check",
+        ]
+    )
 
     assert exit_code == 0
 
@@ -85,7 +185,9 @@ def test_compile_rejects_malformed_model_spec(
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    exit_code = softschema_main(["compile", "bad-spec", "--out", str(out)])
+    exit_code = softschema_main(
+        ["compile", "bad-spec", "--out", str(out), "--contract", "test:Sample/v1"]
+    )
 
     assert exit_code == 2
     assert "module:Class" in capsys.readouterr().err
@@ -96,7 +198,16 @@ def test_compile_rejects_non_basemodel(
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    exit_code = softschema_main(["compile", "test_cli_model:NotAModel", "--out", str(out)])
+    exit_code = softschema_main(
+        [
+            "compile",
+            "test_cli_model:NotAModel",
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+        ]
+    )
 
     assert exit_code == 2
     assert "BaseModel" in capsys.readouterr().err
@@ -192,8 +303,9 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "IMPORTANT for agents" in output
     assert "repo root" in output
     assert "skill --install" in output
-    assert "uvx softschema@latest" in output
-    assert "npx softschema@latest" in output
+    assert "uvx --from 'softschema==0.2.2' softschema" in output
+    assert "npx --yes softschema@0.2.2" in output
+    assert "bunx --bun softschema@0.2.2" in output
 
 
 def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -204,41 +316,33 @@ def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) ->
     assert capsys.readouterr().out.strip() == f"softschema {cli._installed_version()}"
 
 
-def test_doctor_reports_available_runners_as_json(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_doctor_reports_discovery_capabilities_as_json(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    paths = {
-        "softschema": "/usr/local/bin/softschema",
-        "uvx": "/opt/homebrew/bin/uvx",
-        "npx": None,
-    }
-    monkeypatch.setattr(cli, "_find_runner", lambda name: paths[name])
-
     exit_code = softschema_main(["doctor", "--json"])
 
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
-    assert output["version"] == cli._installed_version()
-    assert output["recommended_invocation"] == "softschema"
-    assert output["runners"] == [
-        {"name": "softschema", "available": True, "path": "/usr/local/bin/softschema"},
-        {"name": "uvx", "available": True, "path": "/opt/homebrew/bin/uvx"},
-        {"name": "npx", "available": False, "path": None},
-    ]
+    release = cli._release_metadata()
+    assert output["protocol_version"] == release["discovery_protocol"]
+    assert output["package"]["version"] == release["logical_version"]
+    assert output["runtime"]["name"] == "python"
+    assert output["capabilities"]["model_loaders"] == ["json-schema", "pydantic"]
+    assert "validate" in output["capabilities"]["operations"]
 
 
-def test_doctor_text_tells_user_how_to_recover_when_no_runner_exists(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_doctor_text_summarizes_versioned_capabilities(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "_find_runner", lambda _name: None)
-
     exit_code = softschema_main(["doctor"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "softschema version:" in output
-    assert "recommended invocation: unavailable" in output
-    assert "Install uv or Node" in output
+    assert "softschema discovery protocol: 1" in output
+    assert "runtime: python" in output
+    assert "operations: compile, docs, doctor" in output
+    assert "model loaders: json-schema, pydantic" in output
+    assert "build: sha256:" in output
 
 
 def test_skill_brief_points_agents_to_docs_and_rules(
@@ -248,9 +352,9 @@ def test_skill_brief_points_agents_to_docs_and_rules(
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "$SS docs guide" in output
-    assert "$SS docs spec" in output
-    assert "Do not parse Markdown body prose or tables" in output
+    assert "softschema doctor --json" in output
+    assert "docs --list" in output
+    assert "Never parse Markdown" in output
 
 
 def test_skill_brief_is_derived_from_source_skill(capsys: pytest.CaptureFixture[str]) -> None:
@@ -260,25 +364,26 @@ def test_skill_brief_is_derived_from_source_skill(capsys: pytest.CaptureFixture[
     assert capsys.readouterr().out == cli._brief_skill_text()
 
 
-def test_skill_uses_latest_runner(
+def test_skill_uses_capability_checked_pinned_runners(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = softschema_main(["skill"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    # The skill references @latest (safe under the repo's supply-chain cool-off), so no
-    # version placeholder survives and no per-release pin is baked in.
-    assert "uvx softschema@latest" in output
-    assert "npx softschema@latest" in output
-    assert "Pick One Runner" in output
-    assert "$SS docs guide" in output
+    assert "uvx --from 'softschema==0.2.2' softschema doctor --json" in output
+    assert "npx --yes softschema@0.2.2 doctor --json" in output
+    assert "bunx --bun softschema@0.2.2 doctor --json" in output
+    assert "Select a Capable Command" in output
+    assert "$SS" not in output
+    assert "@latest" not in output
 
 
 def test_skill_install_creates_both_mirrors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
 
     exit_code = softschema_main(["skill", "--install"])
 
@@ -300,6 +405,7 @@ def test_skill_install_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
     softschema_main(["skill", "--install"])
     capsys.readouterr()
 
@@ -308,6 +414,50 @@ def test_skill_install_is_idempotent(
     assert exit_code == 0
     summary = json.loads(capsys.readouterr().out)
     assert all(f["status"] == "unchanged" for f in summary["files"])
+
+
+def test_skill_install_text_dry_run_uses_explicit_agent_without_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+
+    exit_code = softschema_main(
+        [
+            "skill",
+            "--install",
+            "--dry-run",
+            "--agent",
+            "cursor",
+            "--agent",
+            "roo",
+            "--text",
+        ]
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out.replace("\\", "/")
+    assert "softschema skill install (project, agent-targets-v1)" in output
+    assert ".cursor/skills/softschema/SKILL.md" in output
+    assert ".roo/skills/softschema/SKILL.md" in output
+    assert ".agents/skills" not in output
+    assert not (tmp_path / ".cursor").exists()
+    assert not (tmp_path / ".roo").exists()
+
+
+def test_skill_install_ambiguous_location_is_exit_two_without_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = softschema_main(["skill", "--install"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert "scope is ambiguous outside a Git repository" in captured.err
+    assert not (tmp_path / ".agents").exists()
+    assert not (tmp_path / ".claude").exists()
 
 
 def test_validate_overrides_apply_when_frontmatter_lacks_metadata(
@@ -456,7 +606,7 @@ def test_validate_exits_one_when_payload_fails_model(tmp_path: Path, model_modul
 def test_validate_missing_file_exits_two(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Missing artifact file must exit 2 with a clean message, no traceback."""
+    """Missing artifact file must exit 2 with a stable input-error record."""
     missing = tmp_path / "does-not-exist.md"
     schema = tmp_path / "dummy.schema.yaml"
     schema.write_text("{}")
@@ -464,9 +614,14 @@ def test_validate_missing_file_exits_two(
     exit_code = softschema_main(["validate", str(missing), "--schema", str(schema)])
 
     assert exit_code == 2
-    err = capsys.readouterr().err
-    assert "softschema validate:" in err
-    assert "Traceback" not in err
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "kind": "input_error",
+        "reason": "not_found",
+        "message": "artifact path does not exist",
+        "source": str(missing),
+    }
 
 
 def test_validate_bad_model_module_exits_two(

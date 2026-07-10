@@ -1,0 +1,25 @@
+id: enforced-composition-ok
+description: Enforced validation closes a composed object at its evaluation boundary.
+operation: validate
+execution:
+  status: ready
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: ae5fe3b405c754f16a18acaffa66a94a475848dfde561132253c8ffdf38ed603
+  schema:
+    path: schema.yaml
+    sha256: 074a22e471344ccc318ee86009be7a030c97254daa02485ce4c653e7b90b62e1
+  resources: []
+options:
+  contract: example.conformance:Composed/v1
+  envelope: record
+  status: enforced
+expected:
+  exit_code: 0
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 0c245424e2b726ac5eb01998f38b0df2023b1c1f0af8a84b62c952fcadf076f8

@@ -1,7 +1,25 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import Ajv2020 from "ajv/dist/2020.js";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
 import { renderStructuralMessage, structuralErrorRecord } from "./errors.js";
 import { canonicalJson, stableStringify } from "./settings.js";
+
+interface CanonicalizationVector {
+  id: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+}
+
+const sharedVectors = JSON.parse(
+  readFileSync(
+    resolve(import.meta.dir, "../../../tests/parity/canonicalization-enforcement.json"),
+    {
+      encoding: "utf8",
+    },
+  ),
+) as { canonicalization: CanonicalizationVector[] };
 
 describe("stableStringify", () => {
   test("sorts keys recursively with 2-space indent (matches Python json.dumps)", () => {
@@ -31,6 +49,9 @@ describe("renderStructuralMessage", () => {
       "array is shorter than the minimum of 1 items",
     );
     expect(renderStructuralMessage("exclusiveMinimum", 0, 0)).toBe("value 0 is not greater than 0");
+    expect(renderStructuralMessage("unevaluatedProperties", false, { extra: true })).toBe(
+      "object has properties that are not allowed",
+    );
     expect(renderStructuralMessage("enum", ["G", "PG"], "X")).toBe(
       "value 'X' is not one of ['G', 'PG']",
     );
@@ -76,5 +97,27 @@ describe("canonicalizeJsonSchema", () => {
     const props = out.properties as Record<string, Record<string, unknown>>;
     expect(props.a).toEqual({ anyOf: [{ type: "string" }, { type: "null" }] });
     expect((props.b as Record<string, unknown>).default).toBe(0);
+  });
+  test("matches the shared language-neutral vectors", () => {
+    for (const vector of sharedVectors.canonicalization) {
+      expect({ id: vector.id, output: canonicalizeJsonSchema(vector.input) }).toEqual({
+        id: vector.id,
+        output: vector.expected,
+      });
+    }
+  });
+  test("preserves validation results for every shared vector", () => {
+    const instances = [null, "text", 1, [], {}, { item: null }, { item: { name: "value" } }];
+    for (const vector of sharedVectors.canonicalization) {
+      const source = new Ajv2020({ strict: false }).compile(vector.input);
+      const canonical = new Ajv2020({ strict: false }).compile(vector.expected);
+      expect({
+        id: vector.id,
+        results: instances.map((value) => source(value)),
+      }).toEqual({
+        id: vector.id,
+        results: instances.map((value) => canonical(value)),
+      });
+    }
   });
 });
