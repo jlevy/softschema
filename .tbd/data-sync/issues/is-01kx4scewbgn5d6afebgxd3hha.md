@@ -3,9 +3,9 @@ type: is
 id: is-01kx4scewbgn5d6afebgxd3hha
 title: Harden CI and the pre-publish artifact boundary
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 15
+version: 17
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
@@ -24,10 +24,12 @@ parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 child_order_hints:
   - is-01ksrzx0p7vnm70hqdzm4eqg9f
 created_at: 2026-07-10T01:13:30.250Z
-updated_at: 2026-07-10T07:46:36.432Z
+updated_at: 2026-07-10T08:24:03.511Z
+closed_at: 2026-07-10T08:24:03.510Z
+close_reason: Code-side artifact boundary implemented and verified in 6046517; live PR, publisher, and manual preflight evidence moved to ss-0rqn
 ---
 After the draft release/doctor schemas exist, pin actions by SHA; introduce validated logical/build metadata; build and verify kit/wheel/sdist/npm bytes in correct non-self-referential order; test installed artifacts across the support matrix; and deliver a minimum protected tag-authorized PyPI/npm publisher plus CHANGELOG and 0.2.x safety note before the patch.
 
 ## Notes
 
-Closure gates added by the July preflight: bounded compatible Python runtime ranges; locked audits in CI; npm consumer resolution generated with pinned npm and a 14-day --before cutoff, transferred with exact package-lock/control/checksums, validated, and installed via npm ci; one build fanned out to the platform smoke matrix; complete safety/migration disclosure; successful PR contexts and manual preflight; authenticated PyPI/npm publisher/environment verification. Record the consolidated 0.3 release decision rather than implying an interim 0.2.3 shipped.
+Code-side implementation complete and locally verified: bounded compatible Python runtime ranges; dedicated locked Python and Bun vulnerability audit gates; npm consumer lock/control generated under npm 11.16.0 with a UTC cutoff 14 days old, strict registry, integrity, and checksum validation, and downstream npm ci --ignore-scripts; one checksummed wheel, sdist, and npm candidate built once and fanned out to the support matrix; full 0.2.2 safety-boundary and consolidated 0.3 migration disclosure. Evidence: 453 Python tests passed; repository lint passed including Ruff, basedpyright, codespell, formatting, and doc footers; 439 TypeScript tests passed with build, publint, and Bun audit green; pip-audit strict reported no known vulnerabilities after locking msgpack 1.2.1; real cold npm lock, audit, npm ci, and CLI smoke passed; local frozen build-once candidate wheel/sdist/npm smoke passed; uv lock check, Flowmark auto check, and git diff check passed. Keep in_progress until live-only gates pass: required PR contexts and Linux/macOS/Windows artifact matrix; manual publish workflow preflight; authenticated PyPI and npm trusted-publisher/environment verification. No registry publication, commit, push, or bead close performed.
