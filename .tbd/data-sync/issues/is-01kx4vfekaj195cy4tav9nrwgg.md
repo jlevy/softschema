@@ -5,7 +5,7 @@ title: Separate the portable contract core from runtime and CLI adapters
 kind: feature
 status: closed
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - architecture
@@ -20,9 +20,11 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
   - type: blocks
     target: is-01kx4scf42fe327rk346dhd0ym
+  - type: blocks
+    target: is-01kx5kpn97qaan54bsqh4yqtp8
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:50:05.417Z
-updated_at: 2026-07-10T07:55:24.874Z
+updated_at: 2026-07-10T08:59:35.765Z
 closed_at: 2026-07-10T07:55:24.873Z
 close_reason: Implemented and verified in 30c41b0
 ---

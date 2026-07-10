@@ -3,9 +3,9 @@ type: is
 id: is-01kx4scf42fe327rk346dhd0ym
 title: Publish a versioned language-neutral conformance kit
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - spec
@@ -20,7 +20,7 @@ dependencies:
     target: is-01kx5fvvr8jfgg5bf70vr9h5kj
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:30.497Z
-updated_at: 2026-07-10T07:46:36.604Z
+updated_at: 2026-07-10T09:45:17.837Z
 ---
 Complete the draft conformance foundation after every behavior and diagnostic bead settles; assign verified immutable HTTPS schema IDs; publish metadata/compiler-profile/legacy/diagnostic/vocabulary schemas, offline/compound bundle and evolution rules, supported-profile raw canonicalization cases, deterministic archive/manifest/digest, and standalone Python/Node/Bun execution.
 

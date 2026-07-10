@@ -5,7 +5,7 @@ title: Define and enforce the cross-runtime JSON-compatible YAML value domain
 kind: bug
 status: closed
 priority: 1
-version: 15
+version: 18
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
@@ -27,9 +27,15 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
   - type: blocks
     target: is-01kx4w3naff8dxxw9bq9bfz1c9
+  - type: blocks
+    target: is-01kx5kpn97qaan54bsqh4yqtp8
+  - type: blocks
+    target: is-01kx5nqn4tftqe6xkf0jqrtmxz
+  - type: blocks
+    target: is-01kx5p5ze8zyggxrrc4f2c8227
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:28.562Z
-updated_at: 2026-07-10T06:40:47.373Z
+updated_at: 2026-07-10T09:36:53.915Z
 closed_at: 2026-07-10T06:40:47.372Z
 close_reason: Implemented and verified in 0854bcc
 ---

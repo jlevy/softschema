@@ -5,7 +5,7 @@ title: Make canonicalization and enforced overlays semantics-preserving
 kind: bug
 status: closed
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
@@ -19,9 +19,11 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
   - type: blocks
     target: is-01kx4vfekaj195cy4tav9nrwgg
+  - type: blocks
+    target: is-01kx5pdepc8ct3g1bjgnas3wp9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:29.048Z
-updated_at: 2026-07-10T06:40:47.580Z
+updated_at: 2026-07-10T09:41:10.206Z
 closed_at: 2026-07-10T06:40:47.579Z
 close_reason: Implemented and verified in 0854bcc
 ---
