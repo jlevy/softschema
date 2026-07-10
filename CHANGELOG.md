@@ -15,20 +15,94 @@ version number.
   then passes them to environment-scoped OIDC publisher jobs.
   Manual dispatches are dry runs and publisher jobs never check out or execute source.
 - Python build dependencies are version- and hash-locked.
-  GitHub Actions use full commit SHAs, and CI installs and runs the wheel and npm
-  tarball across Linux, macOS, and Windows.
+  Runtime dependencies use bounded compatible ranges, while development resolution is
+  frozen by `uv.lock` and `bun.lock`. A dedicated, lock-backed `pip-audit` group fails
+  on every known Python advisory, and pinned Bun fails on moderate-or-higher npm
+  advisories.
+- npm artifact smoke resolves one cold consumer under npm 11.16.0 and an exact 14-day
+  `--before` cutoff. The transfer records the cutoff, resolver version, flags,
+  package-lock digests, and exact local tarball integrity; downstream jobs use
+  `npm ci --ignore-scripts` rather than resolving again.
+- GitHub Actions use full commit SHAs.
+  CI builds the wheel, sdist, and npm tarball once, recursively checksums the candidate,
+  and runs those same bytes across Linux, macOS, and Windows instead of rebuilding per
+  matrix job.
+
+### 0.2.2 Safety Boundary
+
+No 0.2.3 security patch was published.
+Phase-2 compatibility work had already landed in the development history by the time the
+broader boundary review was complete, so reconstructing a patch from mixed commits would
+have created a second, weakly tested release line.
+The fixes therefore ship together in 0.3.0, and documentation or metadata must not imply
+that an interim patch existed.
+
+Treat 0.2.2 as a trusted-input tool.
+It does not provide all of the boundaries now required for untrusted artifacts, schemas,
+repositories, or installation destinations:
+
+- Python JSON Schema validation could retrieve an unresolved remote reference instead of
+  using a deny-by-default, already-loaded resource registry.
+- YAML representations and schema bundles did not share the final cross-runtime value
+  domain or size, depth, node, and resource-count budgets.
+  Duplicate or non-string keys, aliases, merge keys, non-finite numbers, unsafe
+  integers, timestamp-looking scalars, negative zero, and related Python/JavaScript
+  differences were not one portable boundary.
+- Malformed schema syntax, dialects, keywords, references, regular expressions, and
+  engine compilation failures did not all return the same stable `schema_invalid`
+  result.
+- Canonicalization and enforced-extra overlays were not limited to recognized schema
+  positions and could change the meaning of annotations, nullable or composed schemas,
+  boolean subschemas, or `unevaluatedProperties`.
+- Installed commands could select colliding documentation or skill files from a consumer
+  checkout instead of proving that bytes came from the installed package.
+- Skill installation lacked the final scope, containment, ownership, locking,
+  non-clobbering, rollback, and crash-repair guarantees.
+- Release smoke rebuilt independently in parts of the matrix and resolved an ambient npm
+  consumer, so it did not prove one closed candidate and dependency graph across every
+  platform.
+
+If 0.2.2 cannot yet be upgraded, use only trusted, size-bounded local input and schemas;
+reject non-fragment external references before validation; do not load model code from
+an untrusted checkout; run the process without network access and with filesystem
+containment; install skills only into a reviewed empty or tool-owned destination; and
+pin the package in the consumer lockfile.
+These mitigations reduce exposure but do not backport the 0.3 guarantees.
 
 ### Migration
 
-- The 0.2.x package format and CLI output remain supported.
-  Development metadata marks the draft conformance kit unavailable until its executable
-  corpus is complete; this avoids advertising an incomplete portability contract.
-  Consumers should keep using the documented `legacy-0.2` format until a later release
-  explicitly promotes the portable profile.
-- The forthcoming 0.3 portable profile treats Draft 2020-12 `format` values as
-  annotations in both runtimes.
-  TypeScript no longer rejects values through `ajv-formats`; use a portable JSON Schema
-  assertion or the trusted Pydantic/Zod model when a formatted value must be enforced.
+- Existing command names, public entrypoints, absent legacy metadata, and representable
+  single-file JSON results remain supported through 0.3. New profiles, result formats,
+  and conformance contracts are additive.
+- Artifact metadata format and storage profile are independent.
+  Existing Markdown/frontmatter remains the default; select whole-document YAML only
+  with `--profile pure-yaml`. File extensions and metadata extensions never infer a
+  profile.
+- A logical contract ID no longer doubles as a JSON Schema `$id`. Recompile committed
+  schemas once, pass an explicit canonical HTTPS or URN schema ID when resource identity
+  is needed, and expect the compiled schema and digest to rebaseline.
+- The portable schema profile is offline and deny-by-default.
+  Fragment references continue to work; supply other trusted resources as already-loaded
+  library values rather than paths or URLs.
+  The narrow `legacy-0.2` profile exists only for compatible official legacy output.
+- Draft 2020-12 `format` is annotation-only in both runtimes, and `pattern` follows the
+  documented portable regular-expression subset.
+  Use an explicit portable schema assertion or trusted Pydantic/Zod model when a format
+  must reject a value.
+- Both artifact profiles now enforce resource budgets before ordinary object
+  materialization and reject duplicate or non-string keys, aliases, merge keys,
+  non-finite values, and unsafe integers.
+  YAML 1.2 date- and timestamp-looking scalars remain strings, and every negative-zero
+  spelling normalizes to ordinary `0`; callers must not depend on implicit date objects
+  or preservation of a negative-zero sign.
+- Skill installation is an intentional safety break.
+  Inside a non-home Git repository, omitted scope preserves the implicit project target;
+  global, custom, or ambiguous destinations require explicit selection.
+  Escaping, unmanaged, or modified targets fail instead of being overwritten.
+- Python runtime requirements now declare both minimum and compatible upper bounds.
+  npm retains semver-compatible caret ranges.
+  Applications that deliberately need a newer incompatible major must upgrade softschema
+  or override only after their own compatibility review.
 
 ## v0.2.2—2026-06-15
 

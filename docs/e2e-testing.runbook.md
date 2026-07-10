@@ -93,7 +93,7 @@ uv build --build-constraint build-constraints.txt --require-hashes
 tmp=$(mktemp -d)
 uv venv "$tmp/venv"
 uv pip install --python "$tmp/venv/bin/python" --no-build --no-cache \
-  --exclude-newer 2026-06-02T00:00:00Z \
+  --exclude-newer 2026-06-20T00:00:00Z \
   --exclude-newer-package strif=2026-06-03T00:00:00Z \
   dist/softschema-*.whl
 "$tmp/venv/bin/python" devtools/verify_installed_wheel.py dist/softschema-*.whl
@@ -109,35 +109,22 @@ cd - && rm -rf "$tmp"
 
 ### npm Tarball under Plain Node
 
-Build and lint explicitly, then pack with lifecycle scripts disabled.
-This makes the reviewed tarball—not a later implicit rebuild—the object that the release
-publishes. Run it under Node (>= 22.12), the runtime npm users get, not under Bun:
-
-```bash
-cd packages/typescript
-bun run build && bun run publint
-tgz=$(npm pack --ignore-scripts | tail -1); abs="$PWD/$tgz"
-tmp=$(mktemp -d)
-cd "$tmp" && npm init -y && npm install --ignore-scripts "$abs"
-node ./node_modules/softschema/dist/cli.js --help   # or: ./node_modules/.bin/softschema --help
-node ./node_modules/softschema/dist/cli.js docs example-artifact > spirited-away.md
-node ./node_modules/softschema/dist/cli.js docs example-schema   > movie-page.schema.yaml
-node ./node_modules/softschema/dist/cli.js validate spirited-away.md   # exit 0
-cd - && rm -rf "$tmp" "$abs"
-```
-
-If a local supply-chain cool-off blocks the `npm install` of dependencies, add
-`--before=2030-01-01` to that install; it affects only this smoke test, never a publish
-(see [publishing-npm.md](publishing-npm.md)).
-
-The cross-platform CI equivalent is one command from the repository root:
+Use the artifact driver instead of an ambient `npm install` recipe:
 
 ```bash
 uv run python devtools/installed_artifact_smoke.py
 ```
 
-It also compares release/build metadata bytes across source, sdist, wheel, npm tarball,
-and installed packages, and rejects internal files in publishable inventories.
+The local command builds and inspects both ecosystems, derives an exact 14-day npm
+cutoff, records the npm version and sanitized configuration, audits the resolved lock at
+moderate severity, and installs with `npm ci --ignore-scripts` under plain Node.
+For a release-equivalent run, ensure `npm --version` is the release pin from
+`publish.yml` before invoking it.
+
+CI builds this candidate once under that pin, recursively checksums and uploads it, then
+downloads the same wheel, sdist, npm tarball, and consumer lock across the platform
+matrix. The smoke compares release/build metadata bytes across source, archives, and
+installed packages, and rejects internal files in publishable inventories.
 
 ## Phase 3: The Quickstart, As Written
 

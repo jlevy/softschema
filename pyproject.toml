@@ -19,11 +19,11 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "frontmatter-format>=0.3.0",
-    "jsonschema>=4.20",
-    "pydantic>=2",
-    "ruamel-yaml>=0.18",
-    "strif>=3.1.0",
+    "frontmatter-format>=0.3.0,<0.4",
+    "jsonschema>=4.20,<5",
+    "pydantic>=2,<3",
+    "ruamel-yaml>=0.18,<0.20",
+    "strif>=3.1.0,<4",
 ]
 
 [project.urls]
@@ -48,16 +48,23 @@ dev = [
     "skills-ref==0.1.1",
     "uv-dynamic-versioning==0.14.0",
 ]
+audit = [
+    # Security floor for pip-audit's CacheControl dependency (GHSA-6v7p-g79w-8964).
+    "msgpack==1.2.1",
+    "pip-audit==2.10.0",
+]
 
 [tool.uv]
 # Local resolution honors the supply-chain cool-off: cap dependencies at a reviewed
 # cutoff (bump deliberately). strif is a reviewed, zero-dependency, first-party package,
 # so it gets a per-package exception to that cutoff. Both values need a full RFC3339
-# timestamp -- a date-only string fails to parse and uv silently drops the setting. CI
+# timestamp -- a date-only string fails to parse and uv silently drops the setting.
+# Advance the global cutoff only after its new dependency set has aged and passed audit.
+# Advance the strif exception only when deliberately adopting a newer strif release. CI
 # sets a global UV_EXCLUDE_NEWER (14 days ago) that overrides `exclude-newer` here, and
 # because that env override also replaces the per-package map, ci.yml re-passes
-# `--exclude-newer-package strif=...` on the CLI. Bump the dates together.
-exclude-newer = "2026-06-02T00:00:00Z"
+# `--exclude-newer-package strif=...` on the CLI.
+exclude-newer = "2026-06-20T00:00:00Z"
 exclude-newer-package = { strif = "2026-06-03T00:00:00Z" }
 
 [build-system]

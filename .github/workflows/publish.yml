@@ -60,14 +60,21 @@ jobs:
       - name: Install frozen Python dependencies without builds
         env:
           UV_NO_BUILD: "1"
-        run: uv sync --all-extras --frozen --no-cache --no-install-project
+        run: uv sync --all-extras --group audit --frozen --no-cache --no-install-project
+
+      - name: Audit the frozen Python dependency environment
+        # pip-audit is installed from uv.lock. Its advisory service has no portable
+        # severity scale, so every known finding and every incomplete collection fails.
+        # Run before the reviewed local checkout is installed because unpublished local
+        # projects have no PyPI advisory record and strict collection must remain enabled.
+        run: uv run --no-sync pip-audit --local --strict --progress-spinner=off
 
       - name: Install the trusted checkout for preflight
         run: uv pip install --no-build-isolation --no-deps --editable .
 
       - name: Install frozen TypeScript dependencies
         working-directory: packages/typescript
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Validate release metadata and tag
         run: |
@@ -97,6 +104,11 @@ jobs:
       - name: Run TypeScript checks
         working-directory: packages/typescript
         run: bun run check
+
+      - name: Audit the frozen TypeScript dependency graph
+        # Moderate, high, and critical advisories block publication without downgrade.
+        working-directory: packages/typescript
+        run: bun audit --audit-level=moderate
 
       - name: Build deterministic conformance kit
         run: |
@@ -133,17 +145,17 @@ jobs:
           echo "sdist=$(find release-out -maxdepth 1 -name 'softschema-*.tar.gz' -print -quit)" >> "$GITHUB_OUTPUT"
           echo "npm=$(find release-out -maxdepth 1 -name '*.tgz' -print -quit)" >> "$GITHUB_OUTPUT"
 
-      - name: Copy the exact metadata and unprivileged smoke driver
+      - name: Resolve and audit the locked npm artifact consumer
+        env:
+          NPM_SUBJECT: ${{ steps.artifacts.outputs.npm }}
         run: |
-          cp release-metadata.json build-metadata.json release-out/
-          mkdir -p release-out/devtools
-          cp devtools/installed_artifact_smoke.py devtools/verify_installed_wheel.py \
-            release-out/devtools/
-          mkdir -p release-out/examples/movie_page
-          cp examples/movie_page/spirited-away.md release-out/examples/movie_page/
-          mkdir -p release-out/docs release-out/skills/softschema
-          cp docs/softschema-guide.md release-out/docs/
-          cp skills/softschema/SKILL.md release-out/skills/softschema/
+          test "$(npm --version)" = "11.16.0"
+          CUTOFF="$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          uv run --no-sync python devtools/npm_consumer.py create release-out/npm-consumer \
+            --tarball "$NPM_SUBJECT" --npm-version 11.16.0 --cutoff "$CUTOFF"
+
+      - name: Copy exact metadata and unprivileged smoke support
+        run: uv run --no-sync python devtools/frozen_artifact_smoke.py stage release-out
 
       - name: Generate wheel SPDX SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
@@ -233,6 +245,11 @@ jobs:
           enable-cache: false
           python-version: "3.12.13"
 
+      - name: Verify transfer checksums before any candidate install
+        run: >-
+          uv run --no-project --python 3.12.13 python
+          release-out/devtools/frozen_artifact_smoke.py verify-checksums release-out
+
       - name: Set up pinned Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -243,14 +260,10 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Verify transfer checksums
-        working-directory: release-out
-        run: sha256sum --check SHA256SUMS
-
-      - name: Smoke exact wheel and npm tarball from an unrelated directory
+      - name: Smoke the exact wheel and locked npm consumer from an unrelated directory
         run: |
           uv run --no-project --python 3.12.13 python \
-            release-out/devtools/installed_artifact_smoke.py --artifacts release-out
+            release-out/devtools/frozen_artifact_smoke.py smoke release-out
 
   publish-pypi:
     name: Publish tested bytes to PyPI

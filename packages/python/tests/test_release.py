@@ -281,13 +281,51 @@ def test_ci_installs_and_verifies_local_wheels_while_forbidding_dependency_build
         assert "devtools/verify_installed_wheel.py" in install_script
         assert "--editable" not in "\n".join(step.get("run", "") for step in steps)
 
-    artifact_install = next(
-        step
-        for step in ci["jobs"]["artifact-smoke"]["steps"]
-        if step.get("name") == "Install frozen dependencies"
+    candidate = ci["jobs"]["artifact-candidate"]
+    candidate_scripts = "\n".join(step.get("run", "") for step in candidate["steps"])
+    assert "frozen_artifact_smoke.py build artifact-out" in candidate_scripts
+    assert 'test "$(npm --version)" = "11.16.0"' in candidate_scripts
+    assert (
+        sum(
+            step.get("uses", "").startswith("actions/upload-artifact@")
+            for step in candidate["steps"]
+        )
+        == 1
     )
-    assert artifact_install["env"] == {"UV_NO_BUILD": "1"}
-    assert "--no-cache --no-install-project" in artifact_install["run"]
+
+    artifact_smoke = ci["jobs"]["artifact-smoke"]
+    assert artifact_smoke["needs"] == "artifact-candidate"
+    actions = [step.get("uses", "") for step in artifact_smoke["steps"]]
+    assert sum(action.startswith("actions/download-artifact@") for action in actions) == 1
+    assert not any(action.startswith("actions/checkout@") for action in actions)
+    checksum_index = next(
+        index
+        for index, step in enumerate(artifact_smoke["steps"])
+        if step.get("name") == "Verify candidate checksums before any candidate install"
+    )
+    smoke_index = next(
+        index
+        for index, step in enumerate(artifact_smoke["steps"])
+        if step.get("name") == "Inspect, install, and execute the exact candidate"
+    )
+    assert checksum_index < smoke_index
+    smoke_scripts = "\n".join(step.get("run", "") for step in artifact_smoke["steps"])
+    assert "frozen_artifact_smoke.py verify-checksums artifact-out" in smoke_scripts
+    assert "frozen_artifact_smoke.py smoke artifact-out" in smoke_scripts
+    assert not any(
+        forbidden in smoke_scripts
+        for forbidden in [
+            "uv sync",
+            "uv build",
+            "uv pip install",
+            "bun install",
+            "bun run",
+            "npm install",
+            "npm pack",
+            "pytest",
+            "--editable",
+        ]
+    )
 
 
 def test_publish_forbids_dependency_builds_without_prebuilding_the_candidate() -> None:
@@ -303,6 +341,11 @@ def test_publish_forbids_dependency_builds_without_prebuilding_the_candidate() -
         for index, step in enumerate(steps)
         if step.get("name") == "Install the trusted checkout for preflight"
     )
+    audit_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Audit the frozen Python dependency environment"
+    )
     metadata_index = next(
         index
         for index, step in enumerate(steps)
@@ -313,12 +356,67 @@ def test_publish_forbids_dependency_builds_without_prebuilding_the_candidate() -
         for index, step in enumerate(steps)
         if step.get("name") == "Build Python artifacts once with hash-locked build dependencies"
     )
-    assert dependency_index < editable_index < metadata_index < candidate_index
+    assert dependency_index < audit_index < editable_index < metadata_index < candidate_index
     assert dependency_step["env"] == {"UV_NO_BUILD": "1"}
     assert dependency_step["run"].endswith("--no-cache --no-install-project")
     assert "env" not in editable_step
     assert editable_step["run"] == "uv pip install --no-build-isolation --no-deps --editable ."
-    assert "devtools/verify_installed_wheel.py" in "\n".join(step.get("run", "") for step in steps)
+    scripts = "\n".join(step.get("run", "") for step in steps)
+    assert "npm_consumer.py create release-out/npm-consumer" in scripts
+    assert "frozen_artifact_smoke.py stage release-out" in scripts
+    smoke_scripts = "\n".join(step.get("run", "") for step in publish["jobs"]["smoke"]["steps"])
+    assert "frozen_artifact_smoke.py verify-checksums release-out" in smoke_scripts
+    assert "frozen_artifact_smoke.py smoke release-out" in smoke_scripts
+
+
+def test_locked_dependency_audits_fail_without_downgrade() -> None:
+    ci = _workflow(".github/workflows/ci.yml")
+    audit = ci["jobs"]["dependency-audit"]
+    scripts = "\n".join(step.get("run", "") for step in audit["steps"])
+    assert "uv sync --all-extras --group audit --frozen --no-cache --no-install-project" in scripts
+    assert "uv run --no-sync pip-audit --local --strict --progress-spinner=off" in scripts
+    assert "bun install --frozen-lockfile --ignore-scripts" in scripts
+    assert "bun audit --audit-level=moderate" in scripts
+    assert "|| true" not in scripts
+    assert not audit.get("continue-on-error", False)
+    assert not any(step.get("continue-on-error", False) for step in audit["steps"])
+    for job_name in ["build", "golden", "cross-impl", "artifact-candidate"]:
+        ordinary_scripts = "\n".join(step.get("run", "") for step in ci["jobs"][job_name]["steps"])
+        assert "--group audit" not in ordinary_scripts
+
+    publish = _workflow(".github/workflows/publish.yml")
+    preflight = "\n".join(step.get("run", "") for step in publish["jobs"]["preflight"]["steps"])
+    assert "uv sync --all-extras --group audit --frozen" in preflight
+    assert "pip-audit --local --strict --progress-spinner=off" in preflight
+    assert "bun audit --audit-level=moderate" in preflight
+    assert "npm_consumer.py create release-out/npm-consumer" in preflight
+    assert "|| true" not in preflight
+
+
+def test_runtime_dependencies_have_compatible_bounds_and_audit_tool_is_frozen() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert set(project["project"]["dependencies"]) == {
+        "frontmatter-format>=0.3.0,<0.4",
+        "jsonschema>=4.20,<5",
+        "pydantic>=2,<3",
+        "ruamel-yaml>=0.18,<0.20",
+        "strif>=3.1.0,<4",
+    }
+    assert set(project["dependency-groups"]["audit"]) == {
+        "msgpack==1.2.1",
+        "pip-audit==2.10.0",
+    }
+
+    npm = json.loads((ROOT / "packages/typescript/package.json").read_text(encoding="utf-8"))
+    assert npm["dependencies"]
+    assert all(
+        re.fullmatch(r"\^[0-9]+\.[0-9]+\.[0-9]+", value) for value in npm["dependencies"].values()
+    )
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    audit_package = next(item for item in lock["package"] if item["name"] == "pip-audit")
+    assert audit_package["version"] == "2.10.0"
+    yaml_package = next(item for item in lock["package"] if item["name"] == "ruamel-yaml")
+    assert yaml_package["version"] == "0.19.1"
 
 
 def test_all_workflows_pin_the_audited_uv_release() -> None:
@@ -340,7 +438,7 @@ def test_skills_reference_validator_is_a_hash_locked_wheel_dependency() -> None:
 
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
     assert lock["options"] == {
-        "exclude-newer": "2026-06-02T00:00:00Z",
+        "exclude-newer": "2026-06-20T00:00:00Z",
         "exclude-newer-package": {"strif": "2026-06-03T00:00:00Z"},
     }
     package = next(item for item in lock["package"] if item["name"] == "skills-ref")

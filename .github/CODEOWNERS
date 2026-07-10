@@ -9,6 +9,8 @@
 /uv.lock @jlevy
 /devtools/release.py @jlevy
 /devtools/installed_artifact_smoke.py @jlevy
+/devtools/frozen_artifact_smoke.py @jlevy
+/devtools/npm_consumer.py @jlevy
 /conformance/manifest.yaml @jlevy
 /conformance/schemas/build-metadata.schema.json @jlevy
 /conformance/schemas/*release*.schema.json @jlevy

@@ -1009,6 +1009,12 @@ slices may run in parallel, but each includes regression tests and affected safe
   `npm pack`, add clean installed-artifact/resource-shadow tests, define dependency
   policy, introduce and validate root `release-metadata.json`, and add the
   minimum/cross-platform smoke matrix.
+  Bound Python runtime requirements to reviewed compatible lines while retaining npm
+  caret compatibility, audit the frozen Python and Bun graphs without severity
+  downgrade, and resolve the npm artifact consumer once under pinned npm and a recorded
+  14-day cutoff. Transfer its validated lock and control record with one recursively
+  checksummed candidate; every downstream matrix job uses `npm ci --ignore-scripts`
+  against those exact bytes rather than rebuilding or resolving again.
   Deliver the minimum protected, tag-authorized, manifest-verified PyPI/npm publisher,
   risk-review it, and add a complete disclosure of every 0.2.2 safety boundary and 0.3
   migration before release; `ss-trn7` owns the full 0.3 GitHub assets, provenance,

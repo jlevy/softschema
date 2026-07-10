@@ -12,11 +12,24 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TYPESCRIPT = ROOT / "packages" / "typescript"
 METADATA_NAMES = ("release-metadata.json", "build-metadata.json")
+PYTHON_RESOLUTION_CUTOFF = "2026-06-20T00:00:00Z"
+
+# The driver is copied into a release candidate and executed by path. Add exactly that
+# candidate root so its sibling release tooling resolves from the transfer, never from
+# the adversarial consumer working directory.
+sys.path.insert(0, str(ROOT))
+
+from devtools.npm_consumer import (
+    create_consumer_bundle,
+    install_consumer_bundle,
+    verify_consumer_bundle,
+)
 
 
 class SmokeError(RuntimeError):
@@ -208,7 +221,7 @@ def _smoke_python(wheel: Path, consumer: Path) -> None:
             "--no-build",
             "--no-cache",
             "--exclude-newer",
-            "2026-06-02T00:00:00Z",
+            PYTHON_RESOLUTION_CUTOFF,
             "--exclude-newer-package",
             "strif=2026-06-03T00:00:00Z",
             str(wheel),
@@ -271,20 +284,11 @@ def _smoke_python(wheel: Path, consumer: Path) -> None:
             raise SmokeError(f"installed Python package has different {name} bytes")
 
 
-def _smoke_npm(npm: Path, consumer: Path) -> None:
-    npm_consumer = consumer / "npm-consumer"
-    npm_consumer.mkdir()
-    _run(
-        [
-            "npm",
-            "install",
-            "--ignore-scripts",
-            "--no-audit",
-            "--no-fund",
-            "--before=2026-06-02T00:00:00Z",
-            str(npm),
-        ],
-        cwd=npm_consumer,
+def _smoke_npm(npm: Path, bundle: Path, consumer: Path) -> None:
+    npm_consumer = install_consumer_bundle(
+        bundle,
+        npm,
+        consumer / "npm-consumer",
     )
     cli = npm_consumer / "node_modules" / "softschema" / "dist" / "cli.js"
     bin_directory = npm_consumer / "node_modules" / ".bin"
@@ -346,6 +350,7 @@ def smoke(directory: Path) -> dict[str, str]:
     wheel = _one(directory, "*.whl")
     sdist = _one(directory, "softschema-*.tar.gz")
     npm = _one(directory, "*.tgz")
+    verify_consumer_bundle(directory / "npm-consumer", npm)
     _assert_inventory_and_metadata(wheel, sdist, npm)
     with tempfile.TemporaryDirectory(prefix="softschema-adversarial-") as temporary:
         consumer = Path(temporary) / "unrelated" / "deep" / "cwd"
@@ -356,7 +361,7 @@ def smoke(directory: Path) -> dict[str, str]:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(sentinel, encoding="utf-8")
         _smoke_python(wheel, consumer)
-        _smoke_npm(npm, consumer)
+        _smoke_npm(npm, directory / "npm-consumer", consumer)
     return {"npm": npm.name, "sdist": sdist.name, "wheel": wheel.name}
 
 
@@ -378,6 +383,15 @@ def main(argv: list[str] | None = None) -> int:
         with tempfile.TemporaryDirectory(prefix="softschema-artifacts-") as temporary:
             directory = Path(temporary)
             _build(directory)
+            npm = _one(directory, "*.tgz")
+            npm_version = _run(["npm", "--version"], cwd=TYPESCRIPT).strip()
+            cutoff = (datetime.now(UTC) - timedelta(days=14)).replace(microsecond=0)
+            create_consumer_bundle(
+                directory / "npm-consumer",
+                npm,
+                cutoff=cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                expected_npm_version=npm_version,
+            )
             result = smoke(directory)
     print(json.dumps(result, sort_keys=True))
     return 0

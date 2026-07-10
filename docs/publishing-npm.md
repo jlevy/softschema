@@ -112,17 +112,22 @@ Confirm each result before moving on.
    ```
 
 4. **CLI or entry runs from the packed artifact** (recommended for a package with a
-   `bin`). Pack, install into a throwaway directory, and run under plain node:
+   `bin`). For softschema, run the owned artifact driver from the repository root:
 
    ```bash
-   tgz=$(npm pack --ignore-scripts | tail -1); abs="$PWD/$tgz"; tmp=$(mktemp -d)
-   (cd "$tmp" && npm init -y >/dev/null && npm install --ignore-scripts "$abs" && node ./node_modules/<package-name>/<path-to-bin>.js --help); rm -rf "$tmp" "$abs"
+   uv run python devtools/installed_artifact_smoke.py
    ```
 
-   If a local supply-chain cool-off blocks installing recent dependencies, add
-   `--before=2030-01-01` to that `npm install`. This affects only the local smoke test;
-   Publishing the already packed tarball does not install dependencies, so the cool-off
-   does not affect the real publish.
+   It resolves one package-lock-only consumer under an exact 14-day `--before` cutoff,
+   audits that lock, and installs it with `npm ci --ignore-scripts` before running under
+   plain Node. The release workflow requires its pinned npm version and transfers that
+   same lock and tarball to downstream smoke jobs.
+
+   For another package, use the same pattern: make the tarball the sole local dependency
+   in a minimal private manifest, create the lock with a reviewed resolver and real age
+   cutoff, validate every `resolved` and `integrity` entry, audit the lock, then run
+   `npm ci --ignore-scripts`. Never move `--before` into the future to bypass a
+   cool-off.
 
 ## Phase 1: Authenticate (User), Then Verify (Agent)
 
