@@ -3,9 +3,9 @@ type: is
 id: is-01kx4scemwng8g758svkrcdnh9
 title: Repair and simplify user and agent documentation
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 10
+version: 12
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
@@ -17,10 +17,12 @@ dependencies:
     target: is-01kx5fvvr8jfgg5bf70vr9h5kj
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:30.011Z
-updated_at: 2026-07-10T09:25:51.335Z
+updated_at: 2026-07-10T11:51:34.732Z
+closed_at: 2026-07-10T11:51:34.731Z
+close_reason: Reorganized and verified public docs, paired examples, migration/changelog/security material, claims checks, and major coding-agent skill/instruction compatibility.
 ---
 Reorganize README/guide/spec/design docs under common prose guidance; add paired Python/TypeScript examples, CHANGELOG and migration notes, executable public-claims checks, and dated primary-source alternatives research. Publish tested Codex/Claude/Gemini/Copilot/Cursor/Windsurf/OpenCode/Aider/Cline-Roo compatibility plus verified native/generated instruction shims.
 
 ## Notes
 
-Implementing the public documentation, paired Python/TypeScript examples, release and migration guidance, public-claims drift checks, major-agent compatibility/shims, and progressive-disclosure skill after the July review. Final conformance identifiers remain blocked on ss-6i6d; no premature final-URL claim.
+Implemented the public docs and agent hardening pass: compact README; task-oriented guide/spec/API/migration/security/changelog; paired Python/Zod model and host examples; evidence-calibrated ten-agent compatibility; AGENTS-derived shims; progressive-disclosure skill and safe-install guidance; machine-checked public claims; registry-safe package README links; current release DAG runbook; compiler-owned root x-softschema and portable Unicode/frontmatter fence rules. Evidence: public docs/footer/link/claims/compiler-fence 30 passed; Python skill/mirror/resources 31 passed; TypeScript docs/bootstrap/movie/API 50 passed plus tsc; skill-creator validates source and both mirrors; nine-target dry-run/install/idempotence/non-clobber smoke passed; installed wheel-from-sdist/npm artifact smoke passed; devtools/lint.py --check passed; public claims 14 claims/18 targets. Hosted conformance IDs intentionally remain draft pending exact namespace publication verification.

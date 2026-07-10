@@ -5,7 +5,7 @@ title: July 2026 review remediation
 kind: epic
 status: open
 priority: 1
-version: 43
+version: 81
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - review
@@ -45,7 +45,45 @@ child_order_hints:
   - is-01kx5nqn4tftqe6xkf0jqrtmxz
   - is-01kx5p5ze8zyggxrrc4f2c8227
   - is-01kx5pdepc8ct3g1bjgnas3wp9
+  - is-01kx5ptpjcm7jjn4metv5k89tv
+  - is-01kx5qhbc591ekb6dgv61qdsfq
+  - is-01kx5rvw9tdgwa3cdhmgtxad6h
+  - is-01kx5rvwgnhq1db37qegdsyywp
+  - is-01kx5s2jtk3p7hpympsq3gt07s
+  - is-01kx5s2k0yz7q21ektrcfwkd75
+  - is-01kx5v1ydg4ezt3pqwzhyvb61g
+  - is-01kx5vds15d736tktrxb9janpj
+  - is-01kx5vds884jm7mdedtfeye9ny
+  - is-01kx5vdsf4dmx41c8yy4je976w
+  - is-01kx5vdsp1cyw3t8802sv1rs51
+  - is-01kx5vdsx007esg3e44cshj3t7
+  - is-01kx5vdt3ydqevd7d85ps2f2ce
+  - is-01kx5yg1z5xcgp2z8hsxgstnt6
+  - is-01kx5yksnz6vsqqs2wpd772mqj
+  - is-01kx5ykswrm0vkdgjmarwntw9k
+  - is-01kx5ykt391hx5vkz58cg62hve
+  - is-01kx5ykt9xyxf53p1g1dmfhhfz
+  - is-01kx5yktg7q1t6ajc8xjkrm5vf
+  - is-01kx5ynaendaz6ah38ep30zqfs
+  - is-01kx5ynanspg0qgccrn098p417
+  - is-01kx5ynaw7rg42p0vf5x5h3c7b
+  - is-01kx5yp94fbkctfd0hzaga4nvt
+  - is-01kx5ytgxt6cte9hx68c8y0ez7
+  - is-01kx5yth4h3th3jvhb4r7gevef
+  - is-01kx5ythb4cazvsyfz3r4mbptp
+  - is-01kx5ythj6p61tsv6qh9fwtrra
+  - is-01kx5yx7khf13yny65c58c1jj5
+  - is-01kx5yxj8s3x7g93tqxcmks7hr
+  - is-01kx5z0gv8d14ef9gd7exwpyg2
+  - is-01kx5z48hxmnpcppgsdqsw2d71
+  - is-01kx5z5ybb7bqsk1bvgbvygqf2
+  - is-01kx5zjhhw05jc2kngc335rk9w
+  - is-01kx5zjhrha1r5wkdjq66gseth
+  - is-01kx5zjhz1jv8g28b6crwfknev
+  - is-01kx5zke9t67v3f8er7xneqnd9
+  - is-01kx5zkegfyhhxb0j7s3gj1xbf
+  - is-01kx5zv84rdmp73k7tbsam92ex
 created_at: 2026-07-10T01:12:51.448Z
-updated_at: 2026-07-10T09:40:51.531Z
+updated_at: 2026-07-10T12:25:40.759Z
 ---
 Implement the July 2026 senior review remediation on main at 3f31aa8: secure and bound artifact/schema/resource trust boundaries, define portable YAML/regex/JSON Schema and independent artifact-format semantics, align Python/TypeScript APIs and diagnostics, publish a standalone conformance kit, harden skills/installers/releases, and rewrite public/agent documentation.
