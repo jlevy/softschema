@@ -435,17 +435,25 @@ def test_release_json_read_enforces_limit_after_open(
 ) -> None:
     path = tmp_path / "growing.json"
     path.write_bytes(b" " * (release_state.MAX_JSON_BYTES + 1))
-    real_stat = Path.stat
+    real_lstat = Path.lstat
+    real_fstat = os.fstat
 
-    def stale_stat(candidate: Path, *args: object, **kwargs: object) -> os.stat_result:
-        result = real_stat(candidate, *args, **kwargs)
+    def stale_lstat(candidate: Path) -> os.stat_result:
+        result = real_lstat(candidate)
         if candidate == path:
             values = list(result)
             values[6] = 1
             return os.stat_result(values)
         return result
 
-    monkeypatch.setattr(Path, "stat", stale_stat)
+    def stale_fstat(descriptor: int) -> os.stat_result:
+        result = real_fstat(descriptor)
+        values = list(result)
+        values[6] = 1
+        return os.stat_result(values)
+
+    monkeypatch.setattr(Path, "lstat", stale_lstat)
+    monkeypatch.setattr(os, "fstat", stale_fstat)
     with pytest.raises(ReleaseStateError, match=r"exceeds the \d+-byte limit"):
         release_state._read_json(path)
 

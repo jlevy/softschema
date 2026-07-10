@@ -37,9 +37,15 @@ class SmokeError(RuntimeError):
 
 
 def _run(arguments: list[str], *, cwd: Path) -> str:
+    environment = os.environ.copy()
+    # Python console streams otherwise use the active Windows code page. Force the
+    # byte contract this verifier decodes and compares on every platform.
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUTF8"] = "1"
     process = subprocess.run(
         arguments,
         cwd=cwd,
+        env=environment,
         text=True,
         encoding="utf-8",
         errors="strict",

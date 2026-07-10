@@ -14,6 +14,7 @@ from typing import cast
 import pytest
 
 import devtools.frozen_artifact_smoke as frozen_artifact_smoke
+import devtools.installed_artifact_smoke as installed_artifact_smoke
 from devtools.frozen_artifact_smoke import (
     MAX_CHECKSUM_BYTES,
     CandidateError,
@@ -22,6 +23,21 @@ from devtools.frozen_artifact_smoke import (
     verify_transfer_checksums,
     write_transfer_checksums,
 )
+
+
+def test_installed_smoke_forces_utf8_subprocess_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTHONIOENCODING", "ascii")
+    monkeypatch.setenv("PYTHONUTF8", "0")
+
+    output = installed_artifact_smoke._run(
+        [sys.executable, "-c", "print('right quotation mark: \\u2019')"],
+        cwd=tmp_path,
+    )
+
+    assert output == "right quotation mark: \u2019\n"
 
 
 def test_transfer_checksum_inventory_is_recursive_and_exact(

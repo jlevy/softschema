@@ -391,7 +391,7 @@ The release-specific threat model and residual controls are recorded in the
 
 ## Remediation Status on 2026-07-09
 
-The code candidate passes 775 Python tests with one platform skip, 591 TypeScript tests,
+The code candidate passes 776 Python tests with one platform skip, 591 TypeScript tests,
 62/60/62 Python/Node/Bun golden cases, a 26-command direct Python-to-Node byte
 comparison, and 25 ready artifact cases plus 80 portable vectors under all three
 runtimes. These are dated review observations, not stable product claims.
