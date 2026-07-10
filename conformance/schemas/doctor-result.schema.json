@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:doctor-result:v0",
+  "title": "Draft softschema discovery doctor result",
+  "type": "object",
+  "required": ["protocol_version", "package", "runtime", "capabilities"],
+  "properties": {
+    "protocol_version": { "const": "1" },
+    "package": {
+      "type": "object",
+      "required": ["name", "version", "release_state"],
+      "properties": {
+        "name": { "const": "softschema" },
+        "version": { "type": "string", "minLength": 1 },
+        "release_state": { "enum": ["development", "candidate", "released"] }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "enum": ["python", "node", "bun"] },
+        "version": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "required": [
+        "operations",
+        "artifact_formats",
+        "model_loaders",
+        "output_formats",
+        "conformance"
+      ],
+      "properties": {
+        "operations": { "$ref": "#/$defs/stringSet" },
+        "artifact_formats": { "$ref": "#/$defs/stringSet" },
+        "model_loaders": { "$ref": "#/$defs/stringSet" },
+        "output_formats": { "$ref": "#/$defs/stringSet" },
+        "conformance": {
+          "type": "object",
+          "required": ["version", "status"],
+          "properties": {
+            "version": { "type": "string", "minLength": 1 },
+            "status": { "enum": ["unavailable", "candidate", "release_asset"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "oneOf": [
+        { "$ref": "urn:softschema:draft:conformance:build-metadata:v0" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "stringSet": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "additionalProperties": false
+}

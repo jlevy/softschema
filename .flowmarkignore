@@ -22,3 +22,7 @@
 # Golden-test corpus: scenario files capture exact CLI output byte-for-byte.
 # Reflowing prose or tables here would corrupt the expected output.
 tests/golden/
+
+# Language-neutral conformance cases are digest-addressed test vectors. Format the
+# conformance README normally, but never rewrite case artifacts or expected bytes.
+conformance/cases/

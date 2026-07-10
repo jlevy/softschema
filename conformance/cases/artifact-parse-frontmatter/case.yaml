@@ -1,0 +1,26 @@
+id: artifact-parse-frontmatter
+description: A readable artifact with no closing frontmatter delimiter returns a stable parse result.
+operation: validate
+execution:
+  status: pending
+  owner: ss-pvu9
+profiles:
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 80ef88605cfe3f72bc9b19def08556e9508f9c8d2e69f37fec962a22dc2cc49f
+  schema:
+    path: schema.yaml
+    sha256: 387f78745bf4f21516fe079b9e2a7ba3e8a25450b2f612525f9fb4bf361368a5
+  resources: []
+options:
+  contract: example.conformance:Movie/v1
+  envelope: movie
+  status: enforced
+expected:
+  exit_code: 1
+  schema: artifact-input-result-v1.schema.json
+  result:
+    path: expected.json
+    sha256: c787348adcf2aebc8b6d2e4f60ef815c6900ae3aacca393a8b6fdf919b85ad67

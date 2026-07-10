@@ -1,0 +1,67 @@
+kit_version: 0.0.0-draft.1
+status: draft
+schema_dialect: https://json-schema.org/draft/2020-12/schema
+artifact_formats:
+- legacy-0.2
+profiles:
+- frontmatter-md
+- pure-yaml
+policies:
+  yaml_value_domain: legacy parser behavior; portable-v1 is reserved for ss-l41u
+  format: runtime-specific assertions; annotation-only-v1 is reserved for ss-k381
+  references: internal fragments only; explicit resources are reserved for ss-0sgk
+  serialization: legacy single-file JSON is byte-compatible; diagnostic-v1 is draft
+  hash: sha256
+schemas:
+- id: urn:softschema:draft:conformance:artifact-input-result-v1:v0
+  path: schemas/artifact-input-result-v1.schema.json
+  sha256: 4a6f2ec8394ccd64644f5e5337f85730ed804f0cb35736e9b768cffb9ac66237
+- id: urn:softschema:draft:conformance:build-metadata:v0
+  path: schemas/build-metadata.schema.json
+  sha256: 4f1206aba327871224aa4ababbdec6f8c290c895f3e272ebe003ef0608c58357
+- id: urn:softschema:draft:conformance:case:v0
+  path: schemas/case.schema.json
+  sha256: aeb20e5dff4fd7b003f3390411771f95a01d89619aba2ee68b73e3bef0a90e87
+- id: urn:softschema:draft:conformance:compiled-schema-profile:v0
+  path: schemas/compiled-schema-profile.schema.json
+  sha256: 1ef17de516ad569d14794565d9261e0b1ec82a9a8296a58b7175beab6ed79f3e
+- id: urn:softschema:draft:conformance:doctor-result:v0
+  path: schemas/doctor-result.schema.json
+  sha256: 0a4361fa73fd049fef48b3fb7890cc0906c89f57d3b43f78b8130212b62cd132
+- id: urn:softschema:draft:conformance:manifest:v0
+  path: schemas/manifest.schema.json
+  sha256: 3b70264434e09dbb697c791a8dfd407e9d7867de9321a8570f17b6b04e55c4d5
+- id: urn:softschema:draft:conformance:metadata:v0
+  path: schemas/metadata.schema.json
+  sha256: afde93e94ff76ed472bb34ad9af43039ef826a4f06331685faad27c72a85c98c
+- id: urn:softschema:draft:conformance:public-claims:v0
+  path: schemas/public-claims.schema.json
+  sha256: 8f6dfd8bd71c14dfbf0fc53b2961f9e00aa2d90fa71a9be00f2645891047fd32
+- id: urn:softschema:draft:conformance:release-manifest:v0
+  path: schemas/release-manifest.schema.json
+  sha256: f6cb76c1c71db1215ee2765b3258b10502d364aa57ff95386737ef9eaed6d7e8
+- id: urn:softschema:draft:conformance:release-metadata:v0
+  path: schemas/release-metadata.schema.json
+  sha256: c03aee20767efc7d8091864fe8a5bf8703cfe5a07b3e6aca0f4858efef7d57da
+- id: urn:softschema:draft:conformance:structural-error:v0
+  path: schemas/structural-error.schema.json
+  sha256: fb97fce4bd71c11955bc6905a97b6f67c38dabad9e682db797941be3c7b93309
+- id: urn:softschema:draft:conformance:validation-result-diagnostic-v1:v0
+  path: schemas/validation-result-diagnostic-v1.schema.json
+  sha256: 12afbce83de8f46514b57fa50b389495d0e0a6ca97dae001332470ae7d4c87bc
+- id: urn:softschema:draft:conformance:validation-result-legacy:v0
+  path: schemas/validation-result-legacy.schema.json
+  sha256: 845e5f4ce99e674c0c7b3742a1bd72d220f66418994949d2e002dc31b4f9d022
+- id: urn:softschema:draft:conformance:x-softschema:v0
+  path: schemas/x-softschema.schema.json
+  sha256: 4156fdc7f88fc88adb7243c8344b358169b2dab967a7f6e1485514000d4e1604
+cases:
+- id: artifact-parse-frontmatter
+  path: cases/artifact-parse-frontmatter/case.yaml
+  sha256: 926a311d8a84c635368834190992f8a32b579d818ec7435fedd7a365e6f40484
+- id: legacy-validate-ok
+  path: cases/legacy-validate-ok/case.yaml
+  sha256: 6475e6bd5de76e403e55473fbc11d3bf7aa4f1976f921e32ce8c6ca3f627a83f
+- id: schema-invalid-root
+  path: cases/schema-invalid-root/case.yaml
+  sha256: 0fced7c9f395220b0c73f9571094b0114058dd838e6bd171c00590d985052115

@@ -1,0 +1,27 @@
+id: schema-invalid-root
+description: A readable artifact reports a stable error when its compiled schema root is not a mapping.
+operation: validate
+execution:
+  status: pending
+  owner: ss-dbkh
+profiles:
+- legacy-0.2
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: baca744fafca29a810d9fc25af6d79709c5e37531c2dbd9004473553da69a1b8
+  schema:
+    path: schema.yaml
+    sha256: 4c85cc00a263ed5e00f9aab24eeaab1eb89ca5849cdbf65b140a6a23aac294fa
+  resources: []
+options:
+  contract: example.conformance:Movie/v1
+  envelope: movie
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 32d0a226889c899fff96d406b67daec898df5ad72dc33fd2316b68e7c8e72cf7

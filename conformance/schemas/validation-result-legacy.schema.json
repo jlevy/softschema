@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:validation-result-legacy:v0",
+  "title": "Draft legacy single-artifact validation result",
+  "type": "object",
+  "required": [
+    "contract",
+    "contract_id",
+    "document_metadata",
+    "path",
+    "profile",
+    "semantic",
+    "status",
+    "structural",
+    "values",
+    "warnings"
+  ],
+  "properties": {
+    "contract": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": [
+            "envelope_key",
+            "id",
+            "model",
+            "profile",
+            "schema_path",
+            "status"
+          ],
+          "properties": {
+            "envelope_key": { "type": ["string", "null"] },
+            "id": { "type": "string", "minLength": 1 },
+            "model": { "type": ["string", "null"] },
+            "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+            "schema_path": { "type": ["string", "null"] },
+            "status": { "enum": ["soft", "permissive", "enforced"] }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "contract_id": { "type": "string", "minLength": 1 },
+    "document_metadata": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["contract", "envelope", "schema", "status"],
+          "properties": {
+            "contract": { "type": "string", "minLength": 1 },
+            "envelope": { "type": ["string", "null"] },
+            "schema": { "type": ["string", "null"] },
+            "status": {
+              "oneOf": [
+                { "enum": ["soft", "permissive", "enforced"] },
+                { "type": "null" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "path": { "type": "string", "minLength": 1 },
+    "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+    "semantic": { "$ref": "#/$defs/layer" },
+    "status": { "enum": ["soft", "permissive", "enforced"] },
+    "structural": { "$ref": "#/$defs/structuralLayer" },
+    "values": {
+      "oneOf": [
+        { "type": "object" },
+        { "type": "null" }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message", "severity"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["info", "warning"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "layer": {
+      "type": "object",
+      "required": ["errors", "ok", "skipped_reason"],
+      "properties": {
+        "errors": { "type": "array", "items": { "type": "object" } },
+        "ok": { "type": "boolean" },
+        "skipped_reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "structuralLayer": {
+      "type": "object",
+      "required": ["engine", "errors", "ok", "skipped_reason"],
+      "properties": {
+        "engine": { "const": "json_schema" },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "urn:softschema:draft:conformance:structural-error:v0" }
+        },
+        "ok": { "type": "boolean" },
+        "skipped_reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

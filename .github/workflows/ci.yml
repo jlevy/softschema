@@ -180,3 +180,6 @@ jobs:
 
       - name: Cross-implementation parity diff
         run: bash tests/golden/cross-impl-diff.sh
+
+      - name: Run draft conformance cases under Python, Node, and Bun
+        run: uv run python conformance/run.py --implementation all

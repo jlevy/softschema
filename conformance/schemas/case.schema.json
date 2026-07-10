@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:case:v0",
+  "title": "Draft softschema conformance case",
+  "type": "object",
+  "required": ["id", "operation", "execution", "profiles", "inputs", "options", "expected"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "operation": { "const": "validate" },
+    "execution": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["ready", "pending"] },
+        "owner": { "type": "string", "pattern": "^ss-[a-z0-9]+$" }
+      },
+      "if": {
+        "properties": { "status": { "const": "pending" } },
+        "required": ["status"]
+      },
+      "then": { "required": ["owner"] },
+      "additionalProperties": false
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["artifact", "schema", "resources"],
+      "properties": {
+        "artifact": { "$ref": "#/$defs/fileRef" },
+        "schema": { "$ref": "#/$defs/fileRef" },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["uri", "file"],
+            "properties": {
+              "uri": { "type": "string", "minLength": 1 },
+              "file": { "$ref": "#/$defs/fileRef" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "options": {
+      "type": "object",
+      "required": ["contract", "envelope", "status"],
+      "properties": {
+        "contract": { "$ref": "#/$defs/contractId" },
+        "envelope": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["soft", "permissive", "enforced"] }
+      },
+      "additionalProperties": false
+    },
+    "expected": {
+      "type": "object",
+      "required": ["exit_code", "schema", "result"],
+      "properties": {
+        "exit_code": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+\\.schema\\.json$"
+        },
+        "result": { "$ref": "#/$defs/fileRef" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "contractId": {
+      "type": "string",
+      "pattern": "^(?:[a-z0-9_]+(?:\\.[a-z0-9_]+)*:)?[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z0-9_.-]+)?$"
+    },
+    "fileRef": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

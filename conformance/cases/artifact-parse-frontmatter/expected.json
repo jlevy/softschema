@@ -1,0 +1,6 @@
+{
+  "kind": "parse_error",
+  "message": "artifact frontmatter delimiters are malformed",
+  "reason": "frontmatter",
+  "source": "artifact.md"
+}

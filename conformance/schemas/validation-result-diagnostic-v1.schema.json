@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:validation-result-diagnostic-v1:v0",
+  "title": "Draft diagnostic-v1 aggregate validation result",
+  "type": "object",
+  "required": ["format", "ok", "results", "summary"],
+  "properties": {
+    "format": { "const": "diagnostic-v1" },
+    "ok": { "type": "boolean" },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "input", "validation"],
+        "properties": {
+          "source": { "type": "string", "minLength": 1 },
+          "input": {
+            "$ref": "urn:softschema:draft:conformance:artifact-input-result-v1:v0"
+          },
+          "validation": {
+            "oneOf": [
+              { "$ref": "urn:softschema:draft:conformance:validation-result-legacy:v0" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total", "passed", "validation_failed", "input_failed"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "validation_failed": { "type": "integer", "minimum": 0 },
+        "input_failed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "additionalProperties": false
+}

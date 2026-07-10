@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:release-manifest:v0",
+  "title": "Draft external softschema release manifest",
+  "type": "object",
+  "required": ["schema_version", "logical_version", "source_commit", "subjects"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "logical_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-rc\\.[0-9]+)?$"
+    },
+    "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "subjects": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+      },
+      "additionalProperties": { "$ref": "#/$defs/subject" }
+    }
+  },
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "required": ["kind", "media_type", "size", "sha256"],
+      "properties": {
+        "kind": {
+          "enum": ["wheel", "sdist", "npm", "conformance", "build_metadata", "sbom"]
+        },
+        "media_type": { "type": "string", "minLength": 1 },
+        "size": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:build-metadata:v0",
+  "title": "Draft non-self-referential softschema build metadata",
+  "type": "object",
+  "required": ["schema_version", "release_metadata_sha256", "source_commit", "build_id", "conformance_sha256"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "release_metadata_sha256": { "$ref": "#/$defs/sha256" },
+    "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "build_id": { "type": "string", "minLength": 1 },
+    "conformance_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "additionalProperties": false
+}

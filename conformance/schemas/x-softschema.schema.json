@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:x-softschema:v0",
+  "title": "Draft x-softschema annotation vocabulary",
+  "$defs": {
+    "contractId": {
+      "type": "string",
+      "pattern": "^(?:[a-z0-9_]+(?:\\.[a-z0-9_]+)*:)?[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z0-9_.-]+)?$"
+    },
+    "compilerMetadata": {
+      "type": "object",
+      "required": ["contract", "schema_sha256", "softschema_format_version"],
+      "properties": {
+        "contract": { "$ref": "#/$defs/contractId" },
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "softschema_format_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "fieldAnnotation": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "aliases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "examples": { "type": "array" },
+        "group": { "type": "string", "minLength": 1 },
+        "instruction": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer" },
+        "owner": { "type": "string", "minLength": 1 },
+        "repair": { "type": "string", "minLength": 1 },
+        "tier": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/compilerMetadata" },
+    { "$ref": "#/$defs/fieldAnnotation" }
+  ]
+}

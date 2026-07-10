@@ -8,7 +8,13 @@ from pathlib import Path
 from rich import get_console, reconfigure
 from rich import print as rprint
 
-SRC_PATHS = ["packages/python/src", "packages/python/tests", "devtools", "examples"]
+SRC_PATHS = [
+    "packages/python/src",
+    "packages/python/tests",
+    "devtools",
+    "examples",
+    "conformance",
+]
 DOC_PATHS = [
     "README.md",
     "AGENTS.md",
@@ -30,6 +36,7 @@ DOC_FOOTER_PATHS = [
     Path("packages/python/README.md"),
     Path("packages/typescript/README.md"),
     Path("skills"),
+    Path("conformance/README.md"),
 ]
 
 reconfigure(emoji=not get_console().options.legacy_windows)

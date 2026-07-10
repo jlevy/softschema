@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:structural-error:v0",
+  "title": "Draft softschema structural error",
+  "$defs": {
+    "jsonPointer": {
+      "type": "string",
+      "pattern": "^(?:/(?:[^~/]|~[01])*)*$"
+    },
+    "schemaViolation": {
+      "type": "object",
+      "required": ["kind", "path", "validator", "validator_value", "value", "message"],
+      "properties": {
+        "kind": { "const": "schema_violation" },
+        "path": {
+          "type": "array",
+          "items": { "type": ["string", "integer"] }
+        },
+        "validator": { "type": "string", "minLength": 1 },
+        "validator_value": true,
+        "value": true,
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "schemaInvalid": {
+      "type": "object",
+      "required": ["kind", "reason", "message", "schema_path"],
+      "properties": {
+        "kind": { "const": "schema_invalid" },
+        "reason": {
+          "enum": [
+            "syntax",
+            "value_domain",
+            "root",
+            "dialect",
+            "metaschema",
+            "identity",
+            "profile",
+            "pattern",
+            "reference",
+            "compile"
+          ]
+        },
+        "message": { "type": "string" },
+        "schema_path": { "$ref": "#/$defs/jsonPointer" },
+        "dialect": { "type": "string" },
+        "detail": { "type": "string", "minLength": 1 },
+        "pattern": { "type": "string" },
+        "reference": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "reason": { "const": "syntax" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "compiled schema is not valid YAML or JSON" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "value_domain" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "compiled schema contains a non-portable YAML value" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "root" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "compiled schema root must be a mapping" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "dialect" } }, "required": ["reason"] },
+          "then": {
+            "required": ["dialect"],
+            "properties": { "message": { "const": "compiled schema uses an unsupported JSON Schema dialect" } }
+          }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "metaschema" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "compiled schema does not conform to Draft 2020-12" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "identity" } }, "required": ["reason"] },
+          "then": {
+            "required": ["detail"],
+            "properties": {
+              "message": { "const": "compiled schema resource identity is invalid" },
+              "detail": {
+                "enum": [
+                  "invalid_root_id",
+                  "resource_id_mismatch",
+                  "duplicate_resource_id",
+                  "root_resource_collision",
+                  "nested_resource_collision"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "profile" } }, "required": ["reason"] },
+          "then": {
+            "required": ["detail"],
+            "properties": {
+              "message": { "const": "compiled schema is outside the softschema profile" },
+              "detail": {
+                "enum": [
+                  "x_softschema_invalid",
+                  "legacy_contract_id_mismatch",
+                  "unsupported_compiler_output",
+                  "unsupported_vocabulary"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "pattern" } }, "required": ["reason"] },
+          "then": {
+            "required": ["pattern"],
+            "properties": { "message": { "const": "compiled schema contains an unsupported or invalid pattern" } }
+          }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "reference" } }, "required": ["reason"] },
+          "then": {
+            "required": ["reference"],
+            "properties": { "message": { "const": "compiled schema reference is unavailable offline" } }
+          }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "compile" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "compiled schema could not be compiled" } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "enforcementUnsupported": {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": { "const": "enforcement_unsupported" },
+        "message": { "const": "enforced validation cannot be applied safely to this schema" },
+        "schema_path": { "$ref": "#/$defs/jsonPointer" }
+      },
+      "additionalProperties": false
+    },
+    "artifactError": {
+      "type": "object",
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "contract_unknown",
+            "no_frontmatter",
+            "frontmatter_not_mapping",
+            "metadata_invalid",
+            "document_contract_mismatch",
+            "envelope_mismatch",
+            "values_not_mapping",
+            "parse_error"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "contract_id": { "type": "string" },
+        "expected": true,
+        "actual": true
+      },
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/schemaViolation" },
+    { "$ref": "#/$defs/schemaInvalid" },
+    { "$ref": "#/$defs/enforcementUnsupported" },
+    { "$ref": "#/$defs/artifactError" }
+  ]
+}

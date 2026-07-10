@@ -1,0 +1,26 @@
+id: legacy-validate-ok
+description: A legacy frontmatter artifact passes schema-only enforced validation.
+operation: validate
+execution:
+  status: ready
+profiles:
+- legacy-0.2
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 0a64ad2753e485f6071961683b6e8da69b66df8b9f3d161717abb2c3c903ebcb
+  schema:
+    path: schema.yaml
+    sha256: bcfc38d91aac03428a5ed856755471d16d01c2a467d8201f3098f24725b920c7
+  resources: []
+options:
+  contract: example.conformance:Movie/v1
+  envelope: movie
+  status: enforced
+expected:
+  exit_code: 0
+  schema: validation-result-legacy.schema.json
+  result:
+    path: expected.json
+    sha256: 9d95d7d1867c5b6ace564b7cef57dbcc008939b2a4d038cb94ed9bfc31a761f5

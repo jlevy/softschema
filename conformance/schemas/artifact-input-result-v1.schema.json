@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:softschema:draft:conformance:artifact-input-result-v1:v0",
+  "title": "Draft discriminated artifact input result",
+  "$defs": {
+    "location": {
+      "type": "object",
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "success": {
+      "type": "object",
+      "required": ["kind", "ok", "source", "profile", "values"],
+      "properties": {
+        "kind": { "const": "artifact_input" },
+        "ok": { "const": true },
+        "source": { "type": "string", "minLength": 1 },
+        "profile": { "enum": ["frontmatter-md", "pure-yaml"] },
+        "values": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "parseError": {
+      "type": "object",
+      "required": ["kind", "reason", "message", "source"],
+      "properties": {
+        "kind": { "const": "parse_error" },
+        "reason": { "enum": ["frontmatter", "syntax", "root", "value_domain"] },
+        "message": { "type": "string" },
+        "source": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~[01])*)*$"
+        },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "reason": { "const": "frontmatter" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact frontmatter delimiters are malformed" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "syntax" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact is not valid YAML" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "root" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact YAML root must be a mapping" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "value_domain" } }, "required": ["reason"] },
+          "then": {
+            "required": ["path"],
+            "properties": { "message": { "const": "artifact contains a non-portable YAML value" } }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "inputError": {
+      "type": "object",
+      "required": ["kind", "reason", "message", "source"],
+      "properties": {
+        "kind": { "const": "input_error" },
+        "reason": { "enum": ["not_found", "unreadable", "directory_requires_recursive"] },
+        "message": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "reason": { "const": "not_found" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact path does not exist" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "unreadable" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact path cannot be read" } } }
+        },
+        {
+          "if": { "properties": { "reason": { "const": "directory_requires_recursive" } }, "required": ["reason"] },
+          "then": { "properties": { "message": { "const": "artifact directory requires --recursive" } } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/success" },
+    { "$ref": "#/$defs/parseError" },
+    { "$ref": "#/$defs/inputError" }
+  ]
+}
