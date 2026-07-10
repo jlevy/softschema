@@ -14,17 +14,28 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
+import re
+import warnings as python_warnings
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Never
+from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 from frontmatter_format import FmFormatError, fmf_read, read_yaml_file
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource
+from referencing.jsonschema import DRAFT202012
 from ruamel.yaml import YAMLError
 
 from softschema.canonicalize import apply_enforced_extras
-from softschema.errors import structural_error_record
+from softschema.errors import (
+    SchemaInvalidReason,
+    schema_invalid_error,
+    structural_error_record,
+)
 from softschema.models import (
     Contract,
     SchemaMetadata,
@@ -35,6 +46,10 @@ from softschema.models import (
     parse_schema_metadata,
 )
 from softschema.registry import Contracts
+
+JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+SchemaResource = bool | dict[str, Any]
+SchemaResources = Mapping[str, SchemaResource]
 
 
 @dataclass(frozen=True)
@@ -91,6 +106,7 @@ def validate_structural(
     schema_yaml_path: Path,
     *,
     strict_extras: bool = False,
+    resources: SchemaResources | None = None,
 ) -> StructuralResult:
     """Validate values against a compiled JSON Schema (YAML or JSON).
 
@@ -98,11 +114,111 @@ def validate_structural(
     schemas that declare ``properties`` but omit ``additionalProperties`` are
     validated as ``additionalProperties: false``; see
     :func:`softschema.canonicalize.apply_enforced_extras`.
+
+    ``resources`` maps absolute schema URIs to already-loaded mapping or boolean
+    schemas. Validation never retrieves a resource from the network or filesystem.
     """
-    schema = _read_yaml(schema_yaml_path)
-    if strict_extras and isinstance(schema, dict):
-        schema = apply_enforced_extras(schema)
-    validator = Draft202012Validator(schema)
+    try:
+        schema = _read_yaml(schema_yaml_path)
+    except (OSError, YAMLError):
+        return _schema_failure("syntax", "")
+    if not isinstance(schema, dict):
+        return _schema_failure("root", "")
+    return _validate_structural_schema(
+        values,
+        schema,
+        strict_extras=strict_extras,
+        resources=resources,
+    )
+
+
+def _validate_structural_schema(
+    values: Any,
+    schema: dict[str, Any],
+    *,
+    strict_extras: bool,
+    resources: SchemaResources | None,
+) -> StructuralResult:
+    prepared_resources = dict(resources or {})
+    root_error, legacy_identity = _schema_preflight(
+        schema,
+        allow_boolean=False,
+        legacy_compatible=True,
+    )
+    if root_error is not None:
+        return StructuralResult(ok=False, errors=[root_error])
+
+    for uri in sorted(prepared_resources):
+        resource = prepared_resources[uri]
+        resource_error, _legacy = _schema_preflight(
+            resource,
+            allow_boolean=True,
+            legacy_compatible=False,
+        )
+        if resource_error is not None:
+            return StructuralResult(ok=False, errors=[resource_error])
+        if isinstance(resource, dict) and "$id" in resource and resource["$id"] != uri:
+            return _schema_failure(
+                "identity",
+                "/$id",
+                detail="resource_id_mismatch",
+            )
+
+    root_id = schema.get("$id")
+    if not legacy_identity and isinstance(root_id, str) and root_id in prepared_resources:
+        return _schema_failure(
+            "identity",
+            "/$id",
+            detail="root_resource_collision",
+        )
+
+    schema_for_engine = apply_enforced_extras(schema) if strict_extras else dict(schema)
+    if legacy_identity:
+        schema_for_engine.pop("$id", None)
+    resources_for_engine: dict[str, SchemaResource] = {
+        uri: (
+            apply_enforced_extras(resource)
+            if strict_extras and isinstance(resource, dict)
+            else resource
+        )
+        for uri, resource in prepared_resources.items()
+    }
+
+    unavailable = _first_unavailable_reference(schema_for_engine, resources_for_engine)
+    if unavailable is not None:
+        schema_path, reference = unavailable
+        return _schema_failure(
+            "reference",
+            schema_path,
+            reference=reference,
+        )
+
+    # Keep the engine boundary offline even if preflight misses an unusual
+    # reference shape. Only resources already present in this registry exist.
+    registry: Registry[Any] = Registry(retrieve=_deny_schema_retrieval)
+    try:
+        for uri in sorted(resources_for_engine):
+            registry = registry.with_resource(
+                uri,
+                Resource.from_contents(
+                    resources_for_engine[uri],
+                    default_specification=DRAFT202012,
+                ),
+            )
+        validator = Draft202012Validator(schema_for_engine, registry=registry)
+        engine_errors = list(validator.iter_errors(values))
+    except Exception as exc:
+        reference = _reference_from_exception(exc)
+        if reference is not None:
+            located = _find_reference(schema_for_engine, resources_for_engine, reference)
+            schema_path, original_reference = located or ("", reference)
+            return _schema_failure(
+                "reference",
+                schema_path,
+                reference=original_reference,
+            )
+        return _schema_failure("compile", "")
+
     errors = [
         structural_error_record(
             path=list(error.absolute_path),
@@ -110,12 +226,335 @@ def validate_structural(
             validator_value=error.validator_value,
             value=error.instance,
         )
-        for error in validator.iter_errors(values)
+        for error in engine_errors
     ]
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
     return StructuralResult(ok=not errors, errors=errors)
+
+
+def _schema_preflight(
+    schema: Any,
+    *,
+    allow_boolean: bool,
+    legacy_compatible: bool,
+) -> tuple[dict[str, Any] | None, bool]:
+    if isinstance(schema, bool):
+        if allow_boolean:
+            return None, False
+        return schema_invalid_error("root", schema_path=""), False
+    if not isinstance(schema, dict):
+        return schema_invalid_error("root", schema_path=""), False
+
+    dialect = schema.get("$schema")
+    if isinstance(dialect, str) and dialect != JSON_SCHEMA_DRAFT_2020_12:
+        return (
+            schema_invalid_error(
+                "dialect",
+                schema_path="/$schema",
+                dialect=dialect,
+            ),
+            False,
+        )
+
+    cycle_path = _first_cycle_path(schema)
+    if cycle_path is not None:
+        return schema_invalid_error("compile", schema_path=cycle_path), False
+
+    invalid_pattern = _first_invalid_pattern(schema)
+    if invalid_pattern is not None:
+        schema_path, _pattern = invalid_pattern
+        return schema_invalid_error("compile", schema_path=schema_path), False
+
+    metaschema_path = _metaschema_error_path(schema)
+    if metaschema_path is not None:
+        return (
+            schema_invalid_error(
+                "metaschema",
+                schema_path=metaschema_path,
+            ),
+            False,
+        )
+
+    if legacy_compatible:
+        legacy_identity, identity_error = _legacy_identity(schema)
+        if identity_error is not None:
+            return identity_error, False
+        return None, legacy_identity
+    return None, False
+
+
+def _first_cycle_path(
+    value: Any,
+    path: tuple[str | int, ...] = (),
+    active: set[int] | None = None,
+    complete: set[int] | None = None,
+) -> str | None:
+    if not isinstance(value, dict | list):
+        return None
+    active = set() if active is None else active
+    complete = set() if complete is None else complete
+    identity = id(value)
+    if identity in active:
+        return _json_pointer(list(path))
+    if identity in complete:
+        return None
+
+    active.add(identity)
+    items = (
+        ((str(key), value[key]) for key in sorted(value, key=str))
+        if isinstance(value, dict)
+        else enumerate(value)
+    )
+    for key, item in items:
+        cycle_path = _first_cycle_path(item, (*path, key), active, complete)
+        if cycle_path is not None:
+            return cycle_path
+    active.remove(identity)
+    complete.add(identity)
+    return None
+
+
+def _metaschema_error_path(schema: dict[str, Any]) -> str | None:
+    validator = Draft202012Validator(
+        Draft202012Validator.META_SCHEMA,
+        format_checker=Draft202012Validator.FORMAT_CHECKER,
+    )
+    errors = sorted(
+        validator.iter_errors(schema),
+        key=lambda error: (
+            _json_pointer(list(error.absolute_path)),
+            str(error.validator),
+        ),
+    )
+    if not errors:
+        return None
+    return _json_pointer(list(errors[0].absolute_path))
+
+
+def _legacy_identity(
+    schema: dict[str, Any],
+) -> tuple[bool, dict[str, Any] | None]:
+    schema_id = schema.get("$id")
+    metadata = schema.get("x-softschema")
+    contract_id = metadata.get("contract") if isinstance(metadata, dict) else None
+    if not isinstance(schema_id, str) or not isinstance(contract_id, str):
+        return False, None
+    try:
+        parse_schema_metadata(schema_id)
+        parse_schema_metadata(contract_id)
+    except (ValueError, ValidationError):
+        return False, None
+    if schema_id != contract_id:
+        return (
+            False,
+            schema_invalid_error(
+                "profile",
+                schema_path="/$id",
+                detail="legacy_contract_id_mismatch",
+            ),
+        )
+    return True, None
+
+
+def _first_invalid_pattern(
+    value: Any,
+    path: tuple[str | int, ...] = (),
+) -> tuple[str, str] | None:
+    if isinstance(value, dict):
+        pattern = value.get("pattern")
+        if isinstance(pattern, str) and not _pattern_compiles(pattern):
+            return _json_pointer([*path, "pattern"]), pattern
+        pattern_properties = value.get("patternProperties")
+        if isinstance(pattern_properties, dict):
+            for candidate in sorted(str(key) for key in pattern_properties):
+                if not _pattern_compiles(candidate):
+                    return _json_pointer([*path, "patternProperties", candidate]), candidate
+        for key in sorted(value, key=str):
+            nested = _first_invalid_pattern(value[key], (*path, str(key)))
+            if nested is not None:
+                return nested
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            nested = _first_invalid_pattern(item, (*path, index))
+            if nested is not None:
+                return nested
+    return None
+
+
+def _pattern_compiles(pattern: str) -> bool:
+    try:
+        with python_warnings.catch_warnings():
+            python_warnings.simplefilter("ignore", FutureWarning)
+            re.compile(pattern)
+    except re.error:
+        return False
+    return True
+
+
+@dataclass(frozen=True)
+class _SchemaReference:
+    reference: str
+    schema_path: str
+    source: SchemaResource
+    base_uri: str | None
+
+
+def _schema_references(
+    value: Any,
+    source: SchemaResource,
+    base_uri: str | None,
+    path: tuple[str | int, ...] = (),
+) -> list[_SchemaReference]:
+    references: list[_SchemaReference] = []
+    if isinstance(value, dict):
+        for key in ("$ref", "$dynamicRef"):
+            reference = value.get(key)
+            if isinstance(reference, str):
+                references.append(
+                    _SchemaReference(
+                        reference=reference,
+                        schema_path=_json_pointer([*path, key]),
+                        source=source,
+                        base_uri=base_uri,
+                    )
+                )
+        for key in sorted(value, key=str):
+            references.extend(_schema_references(value[key], source, base_uri, (*path, str(key))))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            references.extend(_schema_references(item, source, base_uri, (*path, index)))
+    return references
+
+
+def _first_unavailable_reference(
+    schema: dict[str, Any],
+    resources: SchemaResources,
+) -> tuple[str, str] | None:
+    resource_index = dict(resources)
+    root_id = schema.get("$id")
+    if isinstance(root_id, str) and _is_absolute_schema_uri(root_id):
+        resource_index[root_id] = schema
+
+    root_base = root_id if isinstance(root_id, str) and _is_absolute_schema_uri(root_id) else None
+    references = _schema_references(schema, schema, root_base)
+    for uri in sorted(resources):
+        references.extend(_schema_references(resources[uri], resources[uri], uri))
+    for reference in references:
+        if not _reference_is_available(reference, resource_index):
+            return reference.schema_path, reference.reference
+    return None
+
+
+def _reference_is_available(
+    candidate: _SchemaReference,
+    resources: SchemaResources,
+) -> bool:
+    reference = candidate.reference
+    if reference.startswith("#"):
+        return _fragment_exists(candidate.source, reference[1:])
+    resource_uri, fragment = urldefrag(reference)
+    if resource_uri == "":
+        return _fragment_exists(candidate.source, fragment)
+    resolved_uri = _resolve_reference_uri(resource_uri, candidate.base_uri)
+    if resolved_uri is None:
+        return False
+    target = resources.get(resolved_uri)
+    if target is None:
+        return False
+    return _fragment_exists(target, fragment)
+
+
+def _resolve_reference_uri(reference: str, base_uri: str | None) -> str | None:
+    if urlsplit(reference).scheme:
+        return reference
+    if base_uri is None:
+        return None
+    resolved = urljoin(base_uri, reference)
+    return resolved if urlsplit(resolved).scheme else None
+
+
+def _fragment_exists(resource: SchemaResource, fragment: str) -> bool:
+    fragment = unquote(fragment)
+    if fragment == "":
+        return True
+    if fragment.startswith("/"):
+        current: Any = resource
+        for encoded_token in fragment[1:].split("/"):
+            token = encoded_token.replace("~1", "/").replace("~0", "~")
+            if isinstance(current, dict) and token in current:
+                current = current[token]
+            elif isinstance(current, list) and token.isdecimal() and int(token) < len(current):
+                current = current[int(token)]
+            else:
+                return False
+        return True
+    return _has_anchor(resource, fragment)
+
+
+def _has_anchor(value: Any, anchor: str) -> bool:
+    if isinstance(value, dict):
+        if value.get("$anchor") == anchor or value.get("$dynamicAnchor") == anchor:
+            return True
+        return any(_has_anchor(item, anchor) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_anchor(item, anchor) for item in value)
+    return False
+
+
+def _is_absolute_schema_uri(value: str) -> bool:
+    return value.startswith(("https://", "urn:"))
+
+
+def _reference_from_exception(exc: Exception) -> str | None:
+    current: BaseException | None = exc
+    while current is not None:
+        reference = getattr(current, "ref", None)
+        if isinstance(reference, str):
+            return reference
+        if current.__class__.__module__.startswith("referencing"):
+            return str(current.args[0]) if current.args else ""
+        current = current.__cause__
+    return None
+
+
+def _deny_schema_retrieval(uri: str) -> Never:
+    """Reject every engine retrieval request; resources must already be loaded."""
+    raise NoSuchResource(ref=uri)
+
+
+def _find_reference(
+    schema: dict[str, Any],
+    resources: SchemaResources,
+    reference: str,
+) -> tuple[str, str] | None:
+    root_id = schema.get("$id")
+    root_base = root_id if isinstance(root_id, str) and _is_absolute_schema_uri(root_id) else None
+    candidates = _schema_references(schema, schema, root_base)
+    for uri in sorted(resources):
+        candidates.extend(_schema_references(resources[uri], resources[uri], uri))
+    for candidate in candidates:
+        resource_uri, _fragment = urldefrag(candidate.reference)
+        resolved = _resolve_reference_uri(resource_uri, candidate.base_uri)
+        if candidate.reference == reference or resolved == urldefrag(reference)[0]:
+            return candidate.schema_path, candidate.reference
+    return None
+
+
+def _json_pointer(path: list[str | int]) -> str:
+    return "".join(f"/{str(part).replace('~', '~0').replace('/', '~1')}" for part in path)
+
+
+def _schema_failure(
+    reason: SchemaInvalidReason,
+    schema_path: str,
+    **details: Any,
+) -> StructuralResult:
+    return StructuralResult(
+        ok=False,
+        errors=[schema_invalid_error(reason, schema_path=schema_path, **details)],
+    )
 
 
 def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult:
@@ -132,6 +571,7 @@ def validate_values(
     *,
     model: type[BaseModel] | None = None,
     schema: Path | None = None,
+    resources: SchemaResources | None = None,
 ) -> ValidationResult:
     """Validate a pre-extracted values mapping against a model, a schema, or both.
 
@@ -142,10 +582,17 @@ def validate_values(
     Use this when values come from somewhere other than a Markdown frontmatter
     document (a body-form runtime, a structured-output adapter, a hand-written
     fixture). For Markdown documents use ``validate_artifact`` instead.
+
+    ``resources`` has the same already-loaded, no-retrieval semantics as
+    :func:`validate_structural`.
     """
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")
-    structural = validate_structural(values, schema) if schema else StructuralResult(ok=True)
+    structural = (
+        validate_structural(values, schema, resources=resources)
+        if schema
+        else StructuralResult(ok=True)
+    )
     semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
     return ValidationResult(structural=structural, semantic=semantic)
 

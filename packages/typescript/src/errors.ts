@@ -8,6 +8,50 @@ import type { ErrorObject } from "ajv";
 
 export const SCHEMA_VIOLATION_KIND = "schema_violation";
 
+export const SCHEMA_INVALID_MESSAGES = {
+  syntax: "compiled schema is not valid YAML or JSON",
+  value_domain: "compiled schema contains a non-portable YAML value",
+  root: "compiled schema root must be a mapping",
+  dialect: "compiled schema uses an unsupported JSON Schema dialect",
+  metaschema: "compiled schema does not conform to Draft 2020-12",
+  identity: "compiled schema resource identity is invalid",
+  profile: "compiled schema is outside the softschema profile",
+  pattern: "compiled schema contains an unsupported or invalid pattern",
+  reference: "compiled schema reference is unavailable offline",
+  compile: "compiled schema could not be compiled",
+} as const;
+
+export type SchemaInvalidReason = keyof typeof SCHEMA_INVALID_MESSAGES;
+
+export interface SchemaInvalidErrorRecord extends Record<string, unknown> {
+  kind: "schema_invalid";
+  reason: SchemaInvalidReason;
+  message: (typeof SCHEMA_INVALID_MESSAGES)[SchemaInvalidReason];
+  schema_path: string;
+  dialect?: string;
+  detail?: string;
+  pattern?: string;
+  reference?: string;
+}
+
+/** Build a stable compiled-schema failure without Ajv exception prose. */
+export function schemaInvalidError(
+  reason: SchemaInvalidReason,
+  schemaPath: string,
+  details: Omit<
+    Partial<SchemaInvalidErrorRecord>,
+    "kind" | "reason" | "message" | "schema_path"
+  > = {},
+): SchemaInvalidErrorRecord {
+  return {
+    kind: "schema_invalid",
+    reason,
+    message: SCHEMA_INVALID_MESSAGES[reason],
+    schema_path: schemaPath,
+    ...details,
+  };
+}
+
 export interface StructuralErrorRecord {
   kind: string;
   path: (string | number)[];

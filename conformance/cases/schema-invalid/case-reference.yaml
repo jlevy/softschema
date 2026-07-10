@@ -1,0 +1,26 @@
+id: schema-invalid-reference
+description: An unavailable reference returns a stable offline-reference failure.
+operation: validate
+execution:
+  status: ready
+profiles:
+- legacy-0.2
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 0cad68d4270edd0a115977a8c04c25b35900e13c4e977e41a00eca1e1e106ba8
+  schema:
+    path: reference.schema.yaml
+    sha256: 3d4d4c8ada1c597d26c78d0447922c7628d26d159359831e88c7961157ae4d13
+  resources: []
+options:
+  contract: example.conformance:Movie/v1
+  envelope: movie
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: reference.expected.json
+    sha256: 500255025a3b1bfe04568db412cb57727122f3ec51d57fdf91d61dfacc051dc1

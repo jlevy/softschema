@@ -27,10 +27,18 @@
       "required": ["kind", "media_type", "size", "sha256"],
       "properties": {
         "kind": {
-          "enum": ["wheel", "sdist", "npm", "conformance", "build_metadata", "sbom"]
+          "enum": [
+            "wheel",
+            "sdist",
+            "npm",
+            "conformance",
+            "release_metadata",
+            "build_metadata",
+            "sbom"
+          ]
         },
         "media_type": { "type": "string", "minLength": 1 },
-        "size": { "type": "integer", "minimum": 0 },
+        "size": { "type": "integer", "minimum": 1 },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       },
       "additionalProperties": false

@@ -26,6 +26,8 @@ from softschema.soft_field import (
 from softschema.validate import (
     ArtifactValidationResult,
     EnvelopeAmbiguityError,
+    SchemaResource,
+    SchemaResources,
     SemanticResult,
     StructuralResult,
     ValidationResult,
@@ -49,6 +51,8 @@ __all__ = [
     "RepairKind",
     "SchemaMetadata",
     "SchemaProfile",
+    "SchemaResource",
+    "SchemaResources",
     "SchemaStatus",
     "SchemaView",
     "SchemaWarning",

@@ -9,6 +9,8 @@
  */
 export const RESOURCE_PATHS: readonly string[] = [
   "README.md",
+  "release-metadata.json",
+  "build-metadata.json",
   "docs/softschema-guide.md",
   "docs/softschema-spec.md",
   "docs/softschema-python-design.md",

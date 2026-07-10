@@ -2,8 +2,7 @@ id: schema-invalid-root
 description: A readable artifact reports a stable error when its compiled schema root is not a mapping.
 operation: validate
 execution:
-  status: pending
-  owner: ss-dbkh
+  status: ready
 profiles:
 - legacy-0.2
 - frontmatter-md

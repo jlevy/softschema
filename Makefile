@@ -19,7 +19,8 @@ default: install format lint test
 # lockfile-backed local binary instead of fetching one). GitHub Actions call uv / bun /
 # npx directly, not this Makefile.
 install:
-	uv sync --all-extras
+	uv sync --all-extras --no-install-project
+	uv pip install --no-build-isolation --no-deps --editable .
 	npm install --silent
 	cd packages/typescript && bun install --frozen-lockfile
 
@@ -72,7 +73,7 @@ upgrade:
 	uv sync --upgrade --all-extras --dev
 
 build:
-	uv build
+	uv build --build-constraint build-constraints.txt --require-hashes
 
 clean:
 	-rm -rf dist/

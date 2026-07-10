@@ -81,38 +81,6 @@ describe("validateArtifact: frontmatter_not_mapping", () => {
   });
 });
 
-describe("compiled schema invalid root", () => {
-  test("scalar YAML root in the compiled schema yields schema_invalid", () => {
-    const compiledSchema = tmpFile("schema.yaml", "just a string\n");
-    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
-    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
-    expect(result.ok).toBe(false);
-    const structural = result.output.structural as {
-      ok: boolean;
-      errors: { kind: string; message: string }[];
-    };
-    expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("schema_invalid");
-    expect(structural.errors[0]?.message).toContain("str");
-    expect(structural.errors[0]?.message).toContain("expected mapping");
-  });
-
-  test("array YAML root in the compiled schema yields schema_invalid", () => {
-    const compiledSchema = tmpFile("schema.yaml", "- a\n- b\n");
-    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
-    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
-    expect(result.ok).toBe(false);
-    const structural = result.output.structural as {
-      ok: boolean;
-      errors: { kind: string; message: string }[];
-    };
-    expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("schema_invalid");
-    expect(structural.errors[0]?.message).toContain("list");
-    expect(structural.errors[0]?.message).toContain("expected mapping");
-  });
-});
-
 describe("validateArtifact: missing/unreadable document file", () => {
   test("nonexistent frontmatter-md file returns parse_error, does not throw", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.md";

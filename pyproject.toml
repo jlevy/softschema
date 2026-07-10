@@ -39,10 +39,14 @@ softschema-py = "softschema.cli:main"
 dev = [
     "basedpyright>=1.39.3",
     "codespell>=2.4.2",
+    "editables==0.6",
+    "hatchling==1.29.0",
     "pytest>=9.0.3",
     "pytest-sugar>=1.1.1",
     "ruff>=0.15.12",
     "rich>=15.0.0",
+    "skills-ref @ git+https://github.com/agentskills/agentskills.git@38a2ff82958afee88dadf4831509e6f7e9d8ef4e#subdirectory=skills-ref",
+    "uv-dynamic-versioning==0.14.0",
 ]
 
 [tool.uv]
@@ -73,6 +77,8 @@ packages = ["packages/python/src/softschema"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "README.md" = "softschema/resources/README.md"
+"release-metadata.json" = "softschema/resources/release-metadata.json"
+"build-metadata.json" = "softschema/resources/build-metadata.json"
 # Bundle only the public docs. Internal planning under docs/project/ (active
 # specs, reviews, research) stays out of the published wheel.
 "docs/softschema-guide.md" = "softschema/resources/docs/softschema-guide.md"
@@ -93,12 +99,16 @@ include = [
     "README.md",
     "AGENTS.md",
     "LICENSE",
+    "build-constraints.txt",
+    "build-metadata.json",
+    "build-requirements.in",
     "docs",
     "examples",
     "packages/python/README.md",
     "packages/python/src",
     "packages/python/tests",
     "packages/typescript/README.md",
+    "release-metadata.json",
     "skills",
 ]
 exclude = [
@@ -110,6 +120,9 @@ exclude = [
     ".codex",
     ".claude",
     ".tbd",
+    "/conformance",
+    "/devtools",
+    "/tests",
 ]
 
 [tool.ruff]

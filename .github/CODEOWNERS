@@ -1,0 +1,19 @@
+# Release authority and package metadata require maintainer review.
+/.github/CODEOWNERS @jlevy
+/.github/workflows/ @jlevy
+/.github/dependabot.yml @jlevy
+/build-constraints.txt @jlevy
+/build-requirements.in @jlevy
+/release-metadata.json @jlevy
+/build-metadata.json @jlevy
+/uv.lock @jlevy
+/devtools/release.py @jlevy
+/devtools/installed_artifact_smoke.py @jlevy
+/conformance/manifest.yaml @jlevy
+/conformance/schemas/build-metadata.schema.json @jlevy
+/conformance/schemas/*release*.schema.json @jlevy
+/pyproject.toml @jlevy
+/packages/typescript/package.json @jlevy
+/packages/typescript/bun.lock @jlevy
+/packages/typescript/scripts/copy-resources.ts @jlevy
+/packages/typescript/src/resources-manifest.ts @jlevy

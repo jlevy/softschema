@@ -1,0 +1,54 @@
+{
+  "artifact_formats": {
+    "current": "legacy-0.2",
+    "supported": [
+      "legacy-0.2"
+    ]
+  },
+  "conformance": {
+    "status": "unavailable",
+    "version": "0.0.0-draft.1"
+  },
+  "discovery_protocol": "1",
+  "expected_artifacts": [],
+  "logical_version": "0.2.2",
+  "packages": {
+    "npm": {
+      "name": "softschema",
+      "pin": "0.2.2",
+      "version": "0.2.2"
+    },
+    "python": {
+      "name": "softschema",
+      "pin": "0.2.2",
+      "version": "0.2.2"
+    }
+  },
+  "release_state": "development",
+  "runtimes": {
+    "bun": {
+      "minimum": "1.3.11",
+      "tested": [
+        "1.3.11",
+        "1.3.14"
+      ]
+    },
+    "node": {
+      "minimum": "22.12",
+      "tested": [
+        "22.12",
+        "24.18"
+      ]
+    },
+    "python": {
+      "minimum": "3.11",
+      "tested": [
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14"
+      ]
+    }
+  },
+  "schema_version": "1"
+}

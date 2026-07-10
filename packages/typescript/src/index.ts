@@ -9,7 +9,10 @@ export {
 export {
   normalizeAjvError,
   renderStructuralMessage,
+  type SchemaInvalidErrorRecord,
+  type SchemaInvalidReason,
   type StructuralErrorRecord,
+  schemaInvalidError,
   structuralErrorRecord,
 } from "./errors.js";
 export {
@@ -45,6 +48,8 @@ export {
   type MetadataMode,
   type RawFrontmatter,
   readFrontmatter,
+  type SchemaResource,
+  type SchemaResources,
   type SemanticResult,
   type StructuralResult,
   type ValidationResult,

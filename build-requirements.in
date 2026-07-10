@@ -1,0 +1,5 @@
+# PEP 517 build requirements. Compile with the reviewed cutoff shown in
+# build-constraints.txt; release builds consume the hash-locked output.
+editables
+hatchling
+uv-dynamic-versioning

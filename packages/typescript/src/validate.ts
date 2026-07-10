@@ -15,7 +15,10 @@ import {
   collapseAdditionalProperties,
   compareStructuralRecords,
   normalizeAjvError,
+  type SchemaInvalidErrorRecord,
+  type SchemaInvalidReason,
   type StructuralErrorRecord,
+  schemaInvalidError,
 } from "./errors.js";
 import { isMapping } from "./guards.js";
 import {
@@ -29,30 +32,14 @@ import {
   type SchemaWarning,
 } from "./models.js";
 
-/** Module-level Ajv2020 instance, initialized once and reused for all validations. */
-const sharedAjv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
-addFormats(sharedAjv);
+const JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
-/** Cache of compiled validators keyed by the stable JSON serialization of the final schema. */
-const validatorCache = new Map<string, ValidateFunction>();
-
-/** Deterministic JSON key for a schema object (sorts keys recursively). */
-function stableCacheKey(obj: unknown): string {
-  return JSON.stringify(obj, (_key, value) => {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(value).sort()) {
-        sorted[k] = value[k];
-      }
-      return sorted;
-    }
-    return value;
-  });
-}
+export type SchemaResource = boolean | Record<string, unknown>;
+export type SchemaResources = Readonly<Record<string, SchemaResource>>;
 
 export interface StructuralResult {
   ok: boolean;
-  errors: (StructuralErrorRecord | Record<string, unknown>)[];
+  errors: (StructuralErrorRecord | SchemaInvalidErrorRecord | Record<string, unknown>)[];
   engine: string;
   skipped_reason: string | null;
 }
@@ -149,28 +136,467 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
   return { code, message, severity: "warning" };
 }
 
+function createSchemaAjv() {
+  const ajv = new Ajv2020({
+    allErrors: true,
+    logger: false,
+    strict: false,
+    verbose: true,
+  });
+  addFormats(ajv);
+  return ajv;
+}
+
+function structuralFailure(error: SchemaInvalidErrorRecord): StructuralResult {
+  return {
+    ok: false,
+    errors: [error],
+    engine: "json_schema",
+    skipped_reason: null,
+  };
+}
+
+function schemaFailure(
+  reason: SchemaInvalidReason,
+  schemaPath: string,
+  details: Omit<
+    Partial<SchemaInvalidErrorRecord>,
+    "kind" | "reason" | "message" | "schema_path"
+  > = {},
+): StructuralResult {
+  return structuralFailure(schemaInvalidError(reason, schemaPath, details));
+}
+
+function schemaPreflight(
+  schema: SchemaResource,
+  allowBoolean: boolean,
+  legacyCompatible: boolean,
+): { error: SchemaInvalidErrorRecord | null; legacyIdentity: boolean } {
+  if (typeof schema === "boolean") {
+    return allowBoolean
+      ? { error: null, legacyIdentity: false }
+      : { error: schemaInvalidError("root", ""), legacyIdentity: false };
+  }
+
+  const dialect = schema.$schema;
+  if (typeof dialect === "string" && dialect !== JSON_SCHEMA_DRAFT_2020_12) {
+    return {
+      error: schemaInvalidError("dialect", "/$schema", { dialect }),
+      legacyIdentity: false,
+    };
+  }
+
+  const cyclePath = firstCyclePath(schema);
+  if (cyclePath !== null) {
+    return {
+      error: schemaInvalidError("compile", cyclePath),
+      legacyIdentity: false,
+    };
+  }
+
+  const invalidPattern = firstInvalidPattern(schema);
+  if (invalidPattern !== null) {
+    return {
+      error: schemaInvalidError("compile", invalidPattern.schemaPath),
+      legacyIdentity: false,
+    };
+  }
+
+  const ajv = createSchemaAjv();
+  let valid: boolean;
+  try {
+    valid = ajv.validateSchema(schema) as boolean;
+  } catch {
+    return {
+      error: schemaInvalidError("metaschema", "/$schema"),
+      legacyIdentity: false,
+    };
+  }
+  if (!valid) {
+    const first = [...(ajv.errors ?? [])].sort((left, right) => {
+      if (left.instancePath < right.instancePath) return -1;
+      if (left.instancePath > right.instancePath) return 1;
+      if (left.keyword < right.keyword) return -1;
+      if (left.keyword > right.keyword) return 1;
+      return 0;
+    })[0];
+    return {
+      error: schemaInvalidError("metaschema", first?.instancePath ?? ""),
+      legacyIdentity: false,
+    };
+  }
+
+  if (legacyCompatible) {
+    const legacy = legacyIdentity(schema);
+    return legacy.error === null
+      ? { error: null, legacyIdentity: legacy.matches }
+      : { error: legacy.error, legacyIdentity: false };
+  }
+  return { error: null, legacyIdentity: false };
+}
+
+function firstCyclePath(
+  value: unknown,
+  path: readonly (string | number)[] = [],
+  active: Set<object> = new Set(),
+  complete: Set<object> = new Set(),
+): string | null {
+  if (!isMapping(value) && !Array.isArray(value)) return null;
+  if (active.has(value)) return jsonPointer(path);
+  if (complete.has(value)) return null;
+
+  active.add(value);
+  const entries: [string | number, unknown][] = Array.isArray(value)
+    ? [...value.entries()]
+    : Object.keys(value)
+        .sort()
+        .map((key) => [key, value[key]]);
+  for (const [key, item] of entries) {
+    const cyclePath = firstCyclePath(item, [...path, key], active, complete);
+    if (cyclePath !== null) return cyclePath;
+  }
+  active.delete(value);
+  complete.add(value);
+  return null;
+}
+
+function legacyIdentity(schema: Record<string, unknown>): {
+  matches: boolean;
+  error: SchemaInvalidErrorRecord | null;
+} {
+  const schemaId = schema.$id;
+  const metadata = schema["x-softschema"];
+  const contractId = isMapping(metadata) ? metadata.contract : undefined;
+  if (
+    typeof schemaId !== "string" ||
+    typeof contractId !== "string" ||
+    !isContractId(schemaId) ||
+    !isContractId(contractId)
+  ) {
+    return { matches: false, error: null };
+  }
+  if (schemaId !== contractId) {
+    return {
+      matches: false,
+      error: schemaInvalidError("profile", "/$id", {
+        detail: "legacy_contract_id_mismatch",
+      }),
+    };
+  }
+  return { matches: true, error: null };
+}
+
+function isContractId(value: string): boolean {
+  try {
+    parseSchemaMetadata(value);
+  } catch (error) {
+    if (error instanceof SchemaMetadataError) return false;
+    throw error;
+  }
+  return true;
+}
+
+function firstInvalidPattern(
+  value: unknown,
+  path: readonly (string | number)[] = [],
+): { schemaPath: string; pattern: string } | null {
+  if (isMapping(value)) {
+    const pattern = value.pattern;
+    if (typeof pattern === "string" && !patternCompiles(pattern)) {
+      return { schemaPath: jsonPointer([...path, "pattern"]), pattern };
+    }
+    const patternProperties = value.patternProperties;
+    if (isMapping(patternProperties)) {
+      for (const candidate of Object.keys(patternProperties).sort()) {
+        if (!patternCompiles(candidate)) {
+          return {
+            schemaPath: jsonPointer([...path, "patternProperties", candidate]),
+            pattern: candidate,
+          };
+        }
+      }
+    }
+    for (const key of Object.keys(value).sort()) {
+      const nested = firstInvalidPattern(value[key], [...path, key]);
+      if (nested !== null) return nested;
+    }
+  } else if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const nested = firstInvalidPattern(item, [...path, index]);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
+}
+
+function patternCompiles(pattern: string): boolean {
+  try {
+    new RegExp(pattern, "u");
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+interface SchemaReference {
+  reference: string;
+  schemaPath: string;
+  source: SchemaResource;
+  baseUri: string | null;
+}
+
+function schemaReferences(
+  value: unknown,
+  source: SchemaResource,
+  baseUri: string | null,
+  path: readonly (string | number)[] = [],
+): SchemaReference[] {
+  const references: SchemaReference[] = [];
+  if (isMapping(value)) {
+    for (const key of ["$ref", "$dynamicRef"] as const) {
+      const reference = value[key];
+      if (typeof reference === "string") {
+        references.push({
+          reference,
+          schemaPath: jsonPointer([...path, key]),
+          source,
+          baseUri,
+        });
+      }
+    }
+    for (const key of Object.keys(value).sort()) {
+      references.push(...schemaReferences(value[key], source, baseUri, [...path, key]));
+    }
+  } else if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      references.push(...schemaReferences(item, source, baseUri, [...path, index]));
+    }
+  }
+  return references;
+}
+
+function allSchemaReferences(
+  schema: Record<string, unknown>,
+  resources: SchemaResources,
+): SchemaReference[] {
+  const rootId = schema.$id;
+  const rootBase = typeof rootId === "string" && isAbsoluteSchemaUri(rootId) ? rootId : null;
+  const references = schemaReferences(schema, schema, rootBase);
+  for (const uri of Object.keys(resources).sort()) {
+    const resource = resources[uri] as SchemaResource;
+    references.push(...schemaReferences(resource, resource, uri));
+  }
+  return references;
+}
+
+function firstUnavailableReference(
+  schema: Record<string, unknown>,
+  resources: SchemaResources,
+): SchemaReference | null {
+  const resourceIndex: Record<string, SchemaResource> = { ...resources };
+  const rootId = schema.$id;
+  if (typeof rootId === "string" && isAbsoluteSchemaUri(rootId)) {
+    resourceIndex[rootId] = schema;
+  }
+  for (const candidate of allSchemaReferences(schema, resources)) {
+    if (!referenceIsAvailable(candidate, resourceIndex)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function referenceIsAvailable(candidate: SchemaReference, resources: SchemaResources): boolean {
+  const { reference } = candidate;
+  if (reference.startsWith("#")) return fragmentExists(candidate.source, reference.slice(1));
+  const hash = reference.indexOf("#");
+  const resourceUri = hash === -1 ? reference : reference.slice(0, hash);
+  const fragment = hash === -1 ? "" : reference.slice(hash + 1);
+  if (resourceUri === "") return fragmentExists(candidate.source, fragment);
+  const resolvedUri = resolveReferenceUri(resourceUri, candidate.baseUri);
+  if (resolvedUri === null || !Object.hasOwn(resources, resolvedUri)) return false;
+  return fragmentExists(resources[resolvedUri] as SchemaResource, fragment);
+}
+
+function resolveReferenceUri(reference: string, baseUri: string | null): string | null {
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference)) return reference;
+  if (baseUri === null) return null;
+  try {
+    return new URL(reference, baseUri).href;
+  } catch {
+    return null;
+  }
+}
+
+function fragmentExists(resource: SchemaResource, encodedFragment: string): boolean {
+  let fragment: string;
+  try {
+    fragment = decodeURIComponent(encodedFragment);
+  } catch {
+    return false;
+  }
+  if (fragment === "") return true;
+  if (fragment.startsWith("/")) {
+    let current: unknown = resource;
+    for (const encodedToken of fragment.slice(1).split("/")) {
+      const token = encodedToken.replace(/~1/g, "/").replace(/~0/g, "~");
+      if (isMapping(current) && Object.hasOwn(current, token)) {
+        current = current[token];
+      } else if (Array.isArray(current) && /^\d+$/.test(token) && Number(token) < current.length) {
+        current = current[Number(token)];
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+  return hasAnchor(resource, fragment);
+}
+
+function hasAnchor(value: unknown, anchor: string): boolean {
+  if (isMapping(value)) {
+    if (value.$anchor === anchor || value.$dynamicAnchor === anchor) return true;
+    return Object.values(value).some((item) => hasAnchor(item, anchor));
+  }
+  return Array.isArray(value) && value.some((item) => hasAnchor(item, anchor));
+}
+
+function isSchemaResource(value: unknown): value is SchemaResource {
+  return typeof value === "boolean" || isMapping(value);
+}
+
+function isAbsoluteSchemaUri(value: string): boolean {
+  return value.startsWith("https://") || value.startsWith("urn:");
+}
+
+function referenceFromError(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const record = error as Record<string, unknown>;
+  if (typeof record.missingRef === "string") return record.missingRef;
+  return referenceFromError(record.cause);
+}
+
+function findReference(
+  schema: Record<string, unknown>,
+  resources: SchemaResources,
+  reference: string,
+): SchemaReference | null {
+  const candidates = allSchemaReferences(schema, resources);
+  return (
+    candidates.find((candidate) => {
+      const hash = candidate.reference.indexOf("#");
+      const resourceUri = hash === -1 ? candidate.reference : candidate.reference.slice(0, hash);
+      const resolved = resolveReferenceUri(resourceUri, candidate.baseUri);
+      const referenceHash = reference.indexOf("#");
+      const reportedUri = referenceHash === -1 ? reference : reference.slice(0, referenceHash);
+      return candidate.reference === reference || resolved === reportedUri;
+    }) ?? (candidates.length === 1 ? (candidates[0] as SchemaReference) : null)
+  );
+}
+
+function jsonPointer(path: readonly (string | number)[]): string {
+  return path.map((part) => `/${String(part).replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
+}
+
+/**
+ * Validate values against a compiled schema. `resources` contains only already-loaded
+ * mapping or boolean schemas; validation never retrieves an external resource.
+ */
 export function validateStructural(
   values: unknown,
-  schemaObject: Record<string, unknown>,
-  options: { strictExtras?: boolean } = {},
+  schemaObject: unknown,
+  options: {
+    strictExtras?: boolean;
+    resources?: SchemaResources;
+  } = {},
 ): StructuralResult {
-  let schema = { ...schemaObject };
-  // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
-  delete schema.$id;
-  if (options.strictExtras) {
-    // The `status: enforced` overlay: object schemas that declare `properties` but
-    // omit `additionalProperties` are validated as closed. See applyEnforcedExtras.
-    schema = applyEnforcedExtras(schema) as Record<string, unknown>;
+  if (!isMapping(schemaObject)) return schemaFailure("root", "");
+
+  const rootPreflight = schemaPreflight(schemaObject, false, true);
+  if (rootPreflight.error !== null) return structuralFailure(rootPreflight.error);
+
+  const rawResources = options.resources ?? {};
+  const resources: Record<string, SchemaResource> = {};
+  for (const uri of Object.keys(rawResources).sort()) {
+    const resource = rawResources[uri];
+    if (!isSchemaResource(resource)) return schemaFailure("root", "");
+    const resourcePreflight = schemaPreflight(resource, true, false);
+    if (resourcePreflight.error !== null) return structuralFailure(resourcePreflight.error);
+    if (isMapping(resource) && "$id" in resource && resource.$id !== uri) {
+      return schemaFailure("identity", "/$id", { detail: "resource_id_mismatch" });
+    }
+    resources[uri] = resource;
   }
-  // Cache key is computed from the FINAL schema (post-$id deletion and post-overlay),
-  // so two calls with the same base schema but different strictExtras won't collide.
-  const cacheKey = stableCacheKey(schema);
-  let validateFn = validatorCache.get(cacheKey);
-  if (validateFn === undefined) {
-    validateFn = sharedAjv.compile(schema);
-    validatorCache.set(cacheKey, validateFn);
+
+  const rootId = schemaObject.$id;
+  if (
+    !rootPreflight.legacyIdentity &&
+    typeof rootId === "string" &&
+    Object.hasOwn(resources, rootId)
+  ) {
+    return schemaFailure("identity", "/$id", { detail: "root_resource_collision" });
   }
-  const ok = validateFn(values);
+
+  let schema = options.strictExtras
+    ? (applyEnforcedExtras(schemaObject as Parameters<typeof applyEnforcedExtras>[0]) as Record<
+        string,
+        unknown
+      >)
+    : { ...schemaObject };
+  if (rootPreflight.legacyIdentity) {
+    schema = { ...schema };
+    delete schema.$id;
+  }
+  const preparedResources = Object.fromEntries(
+    Object.entries(resources).map(([uri, resource]) => [
+      uri,
+      options.strictExtras && isMapping(resource)
+        ? (applyEnforcedExtras(resource as Parameters<typeof applyEnforcedExtras>[0]) as Record<
+            string,
+            unknown
+          >)
+        : resource,
+    ]),
+  ) as Record<string, SchemaResource>;
+
+  const unavailable = firstUnavailableReference(schema, preparedResources);
+  if (unavailable !== null) {
+    return schemaFailure("reference", unavailable.schemaPath, {
+      reference: unavailable.reference,
+    });
+  }
+
+  const ajv = createSchemaAjv();
+  let validateFn: ValidateFunction;
+  try {
+    for (const uri of Object.keys(preparedResources).sort()) {
+      ajv.addSchema(preparedResources[uri] as object | boolean, uri);
+    }
+    validateFn = ajv.compile(schema);
+  } catch (error) {
+    const reference = referenceFromError(error);
+    if (reference !== null) {
+      const located = findReference(schema, preparedResources, reference);
+      return schemaFailure("reference", located?.schemaPath ?? "", {
+        reference: located?.reference ?? reference,
+      });
+    }
+    return schemaFailure("compile", "");
+  }
+
+  let ok: boolean;
+  try {
+    ok = validateFn(values) as boolean;
+  } catch (error) {
+    const reference = referenceFromError(error);
+    if (reference !== null) {
+      const located = findReference(schema, preparedResources, reference);
+      return schemaFailure("reference", located?.schemaPath ?? "", {
+        reference: located?.reference ?? reference,
+      });
+    }
+    return schemaFailure("compile", "");
+  }
   const errors: StructuralErrorRecord[] = ok
     ? []
     : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
@@ -196,18 +622,24 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
 
 /**
  * Validate a pre-extracted values mapping against a model, a schema, or both: the
- * idiomatic mirror of Python `validate_values`. Throws if neither is supplied.
+ * idiomatic mirror of Python `validate_values`. `resources` has the same already-loaded,
+ * no-retrieval semantics as `validateStructural`. Throws if neither layer is supplied.
  */
 export function validateValues(
   values: unknown,
-  options: { model?: z.ZodType; schema?: Record<string, unknown> } = {},
+  options: {
+    model?: z.ZodType;
+    schema?: unknown;
+    resources?: SchemaResources;
+  } = {},
 ): ValidationResult {
   if (options.model === undefined && options.schema === undefined) {
     throw new Error("validateValues() requires at least one of model or schema");
   }
-  const structural = options.schema
-    ? validateStructural(values, options.schema)
-    : { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
+  const structural =
+    options.schema !== undefined
+      ? validateStructural(values, options.schema, { resources: options.resources })
+      : { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
   const semantic = options.model
     ? validateSemantic(values, options.model)
     : { ok: true, errors: [], skipped_reason: null };
@@ -277,27 +709,12 @@ function structuralAgainstSchemaFile(
     compiledSchema = parseYaml(readFileSync(resolved, "utf8"));
   } catch (err) {
     if (err instanceof YamlParseError) {
-      return {
-        ok: false,
-        errors: [structuralError("schema_invalid", err.message)],
-        engine: "json_schema",
-        skipped_reason: null,
-      };
+      return schemaFailure("syntax", "");
+    }
+    if (err instanceof Error && "code" in err) {
+      return schemaFailure("syntax", "");
     }
     throw err;
-  }
-  if (!isMapping(compiledSchema)) {
-    return {
-      ok: false,
-      errors: [
-        structuralError(
-          "schema_invalid",
-          `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`,
-        ),
-      ],
-      engine: "json_schema",
-      skipped_reason: null,
-    };
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }

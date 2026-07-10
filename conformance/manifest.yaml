@@ -9,7 +9,7 @@ profiles:
 policies:
   yaml_value_domain: legacy parser behavior; portable-v1 is reserved for ss-l41u
   format: runtime-specific assertions; annotation-only-v1 is reserved for ss-k381
-  references: internal fragments only; explicit resources are reserved for ss-0sgk
+  references: offline only; trusted already-loaded resource maps are library-only
   serialization: legacy single-file JSON is byte-compatible; diagnostic-v1 is draft
   hash: sha256
 schemas:
@@ -18,7 +18,7 @@ schemas:
   sha256: 4a6f2ec8394ccd64644f5e5337f85730ed804f0cb35736e9b768cffb9ac66237
 - id: urn:softschema:draft:conformance:build-metadata:v0
   path: schemas/build-metadata.schema.json
-  sha256: 4f1206aba327871224aa4ababbdec6f8c290c895f3e272ebe003ef0608c58357
+  sha256: 8cbd27ff4ef5dce83d78546d52bc24b84dd5e7758b46d632a38182492bf36568
 - id: urn:softschema:draft:conformance:case:v0
   path: schemas/case.schema.json
   sha256: aeb20e5dff4fd7b003f3390411771f95a01d89619aba2ee68b73e3bef0a90e87
@@ -39,10 +39,10 @@ schemas:
   sha256: 8f6dfd8bd71c14dfbf0fc53b2961f9e00aa2d90fa71a9be00f2645891047fd32
 - id: urn:softschema:draft:conformance:release-manifest:v0
   path: schemas/release-manifest.schema.json
-  sha256: f6cb76c1c71db1215ee2765b3258b10502d364aa57ff95386737ef9eaed6d7e8
+  sha256: 942c630ba3327a51f5c1eceac3741ebcde64abebadf95373feff4a1489dad06d
 - id: urn:softschema:draft:conformance:release-metadata:v0
   path: schemas/release-metadata.schema.json
-  sha256: c03aee20767efc7d8091864fe8a5bf8703cfe5a07b3e6aca0f4858efef7d57da
+  sha256: 37ce7fcbba2d32a9fe4b14b673434d81c3f5b8515fe8f37554a75b82fcb9bc3d
 - id: urn:softschema:draft:conformance:structural-error:v0
   path: schemas/structural-error.schema.json
   sha256: fb97fce4bd71c11955bc6905a97b6f67c38dabad9e682db797941be3c7b93309
@@ -62,6 +62,30 @@ cases:
 - id: legacy-validate-ok
   path: cases/legacy-validate-ok/case.yaml
   sha256: 6475e6bd5de76e403e55473fbc11d3bf7aa4f1976f921e32ce8c6ca3f627a83f
+- id: schema-invalid-compile
+  path: cases/schema-invalid/case-compile.yaml
+  sha256: 062d483fba5da5e14c8794da1a3e4965107567deb190eeccdb37d4e1b57df27e
+- id: schema-invalid-dialect
+  path: cases/schema-invalid/case-dialect.yaml
+  sha256: 3ce2bb21f483fd9771b7e8c732c1c4559a30927e53d14b8b200ad7988627bf61
+- id: schema-invalid-metaschema
+  path: cases/schema-invalid/case-metaschema.yaml
+  sha256: 2f92e7da935405a0d88cafb61e6686f66b07620dc25a5d01d06d54be799fc6eb
+- id: schema-invalid-reference
+  path: cases/schema-invalid/case-reference.yaml
+  sha256: 0655a1ee59046f020c5d28397479f781f910d3bb48d1efcb71d510970404b827
+- id: schema-invalid-reference-file
+  path: cases/schema-invalid/case-reference-file.yaml
+  sha256: 2a9fd3ac8d89929b4af2db1b510091181ed6d0ac1f8d756968cbe0bc01cc7b30
 - id: schema-invalid-root
   path: cases/schema-invalid-root/case.yaml
-  sha256: 0fced7c9f395220b0c73f9571094b0114058dd838e6bd171c00590d985052115
+  sha256: b8d6fb1cabfb4537bbec507150e79903561178b7bc77f8169fb375d646a56c40
+- id: schema-invalid-root-null
+  path: cases/schema-invalid/case-root-null.yaml
+  sha256: 8debd94c0f602f38de96a03339d6a7af71f13a984371742baec98dd4c3b60657
+- id: schema-invalid-root-scalar
+  path: cases/schema-invalid/case-root-scalar.yaml
+  sha256: e9099692ddd975d5272bf5d117daa5681dda8537eeb3e4f2d105e7082f0569e5
+- id: schema-invalid-syntax
+  path: cases/schema-invalid/case-syntax.yaml
+  sha256: aac17df14684a21bc3a2977158c35bc77450fedb7908c61c330c555a7221db76

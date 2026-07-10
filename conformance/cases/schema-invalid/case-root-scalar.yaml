@@ -1,0 +1,26 @@
+id: schema-invalid-root-scalar
+description: A scalar compiled-schema root returns a stable root failure.
+operation: validate
+execution:
+  status: ready
+profiles:
+- legacy-0.2
+- frontmatter-md
+inputs:
+  artifact:
+    path: artifact.md
+    sha256: 0cad68d4270edd0a115977a8c04c25b35900e13c4e977e41a00eca1e1e106ba8
+  schema:
+    path: root-scalar.schema.yaml
+    sha256: d3516f55fae6d6de0051d9ba93763e2082f8cb68c2263f4ce7cd442b6adca6e1
+  resources: []
+options:
+  contract: example.conformance:Movie/v1
+  envelope: movie
+  status: enforced
+expected:
+  exit_code: 1
+  schema: validation-result-legacy.schema.json
+  result:
+    path: root-scalar.expected.json
+    sha256: 4164b754fd74c12a363b63da66639b05d2a658d6bc895ba3e4c81e75da83bfc8

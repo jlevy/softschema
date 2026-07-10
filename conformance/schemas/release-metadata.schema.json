@@ -98,5 +98,20 @@
       "additionalProperties": false
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "release_state": { "enum": ["candidate", "released"] }
+        },
+        "required": ["release_state"]
+      },
+      "then": {
+        "properties": {
+          "expected_artifacts": { "minItems": 1 }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

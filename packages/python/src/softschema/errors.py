@@ -7,7 +7,7 @@ Instead it normalizes each engine error into a stable record and synthesizes
 the human-readable ``message`` from a shared template keyed on the failing
 JSON Schema keyword (``validator``).
 
-Record shape (every structural validation error):
+Schema-violation record shape:
 
     {
         "kind": "schema_violation",
@@ -23,6 +23,10 @@ a whole-valued float renders without a trailing fraction (``2.0`` -> ``2``), the
 JSON-natural form the TypeScript implementation emits natively. See
 ``canonical_number``.
 
+Malformed compiled schemas instead use a stable ``schema_invalid`` record with a
+reason, constant message, and RFC 6901 ``schema_path``. Engine exception prose is
+never copied into that record.
+
 softschema-level artifact errors (missing envelope, malformed metadata, ...)
 use the separate ``{"kind": ..., "message": ...}`` shape produced by
 ``softschema.validate._error`` and are not routed through here.
@@ -30,9 +34,50 @@ use the separate ``{"kind": ..., "message": ...}`` shape produced by
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 SCHEMA_VIOLATION_KIND = "schema_violation"
+SchemaInvalidReason = Literal[
+    "syntax",
+    "value_domain",
+    "root",
+    "dialect",
+    "metaschema",
+    "identity",
+    "profile",
+    "pattern",
+    "reference",
+    "compile",
+]
+
+SCHEMA_INVALID_MESSAGES: dict[SchemaInvalidReason, str] = {
+    "syntax": "compiled schema is not valid YAML or JSON",
+    "value_domain": "compiled schema contains a non-portable YAML value",
+    "root": "compiled schema root must be a mapping",
+    "dialect": "compiled schema uses an unsupported JSON Schema dialect",
+    "metaschema": "compiled schema does not conform to Draft 2020-12",
+    "identity": "compiled schema resource identity is invalid",
+    "profile": "compiled schema is outside the softschema profile",
+    "pattern": "compiled schema contains an unsupported or invalid pattern",
+    "reference": "compiled schema reference is unavailable offline",
+    "compile": "compiled schema could not be compiled",
+}
+
+
+def schema_invalid_error(
+    reason: SchemaInvalidReason,
+    *,
+    schema_path: str,
+    **details: Any,
+) -> dict[str, Any]:
+    """Build a stable compiled-schema failure without engine exception prose."""
+    return {
+        "kind": "schema_invalid",
+        "reason": reason,
+        "message": SCHEMA_INVALID_MESSAGES[reason],
+        "schema_path": schema_path,
+        **details,
+    }
 
 
 def canonical_number(value: Any) -> Any:
