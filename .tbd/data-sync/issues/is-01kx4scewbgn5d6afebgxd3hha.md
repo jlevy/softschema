@@ -1,18 +1,25 @@
 ---
 type: is
 id: is-01kx4scewbgn5d6afebgxd3hha
-title: Harden reproducible package and release boundaries
+title: Harden CI and the pre-publish artifact boundary
 kind: task
 status: open
 priority: 1
-version: 1
+version: 11
+spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - security
   - typescript
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01kx4scf42fe327rk346dhd0ym
+  - type: blocks
+    target: is-01kx4scemwng8g758svkrcdnh9
+  - type: blocks
+    target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:30.250Z
-updated_at: 2026-07-10T01:13:30.250Z
+updated_at: 2026-07-10T03:21:30.871Z
 ---
-Pin GitHub Actions by full SHA in OIDC publish jobs, avoid unnecessary network installs after publish credentials are enabled, ensure npm pack builds fresh output, test installed wheel and tarball layouts, address caret-ranged CLI dependencies, and make partial PyPI/npm publication recovery explicit and idempotent.
+After the draft release/doctor schemas exist, pin actions by SHA; introduce validated logical/build metadata; build and verify kit/wheel/sdist/npm bytes in correct non-self-referential order; test installed artifacts across the support matrix; and deliver a minimum protected tag-authorized PyPI/npm publisher plus CHANGELOG and 0.2.x safety note before the patch.
