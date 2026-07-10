@@ -5,7 +5,7 @@ title: Normalize JSON Schema numbers before cross-runtime hashing
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
@@ -18,9 +18,11 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
   - type: blocks
     target: is-01kx5qhbc591ekb6dgv61qdsfq
+  - type: blocks
+    target: is-01kx5zjhrha1r5wkdjq66gseth
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T09:40:51.531Z
-updated_at: 2026-07-10T11:51:31.997Z
+updated_at: 2026-07-10T13:10:41.987Z
 closed_at: 2026-07-10T11:51:31.996Z
 close_reason: Implemented portable compiler-number normalization; paired Python/TypeScript compilation and schema hash parity pass.
 ---

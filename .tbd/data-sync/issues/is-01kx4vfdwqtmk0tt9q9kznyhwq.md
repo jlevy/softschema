@@ -5,7 +5,7 @@ title: Align TypeScript runtime contracts, model loading, CLI exits, and wire ty
 kind: feature
 status: closed
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - typescript
@@ -19,11 +19,13 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
   - type: blocks
     target: is-01kx4scf42fe327rk346dhd0ym
+  - type: blocks
+    target: is-01kx62r2xrvqzg0518h4q1z4hg
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 child_order_hints:
   - is-01ksrxy9by354mapnjhdgm7zpv
 created_at: 2026-07-10T01:50:04.694Z
-updated_at: 2026-07-10T08:24:34.060Z
+updated_at: 2026-07-10T13:16:31.655Z
 closed_at: 2026-07-10T08:24:34.060Z
 close_reason: Implemented and verified in 0e4b404
 ---

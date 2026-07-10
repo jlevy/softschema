@@ -3,16 +3,20 @@ type: is
 id: is-01kx5ythj6p61tsv6qh9fwtrra
 title: Remove shell-special placeholders from publishing commands
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - release
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:07:49.061Z
-updated_at: 2026-07-10T12:07:49.061Z
+updated_at: 2026-07-10T12:50:40.203Z
+closed_at: 2026-07-10T12:50:40.202Z
+close_reason: Publishing commands use defined shell variables instead of angle-bracket redirection placeholders; documentation checks pass.
 ---
 docs/publishing.md uses <run-id> in a copyable shell command, which is parsed as redirection. Replace it with a defined or clearly assigned shell variable and verify other new copyable commands.
