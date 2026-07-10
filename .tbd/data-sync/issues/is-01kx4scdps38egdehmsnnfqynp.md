@@ -3,9 +3,9 @@ type: is
 id: is-01kx4scdps38egdehmsnnfqynp
 title: Make canonicalization and enforced overlays semantics-preserving
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
@@ -21,6 +21,8 @@ dependencies:
     target: is-01kx4vfekaj195cy4tav9nrwgg
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:29.048Z
-updated_at: 2026-07-10T05:24:00.779Z
+updated_at: 2026-07-10T06:40:47.580Z
+closed_at: 2026-07-10T06:40:47.579Z
+close_reason: Implemented and verified in 0854bcc
 ---
 Make nullable rewriting and recursive schema traversal semantics-preserving within the documented compiler profile. Normalize additionalProperties and unevaluatedProperties consistently, traverse every supported Draft 2020-12 applicator, and return stable enforcement_unsupported instead of partially closing compositions.

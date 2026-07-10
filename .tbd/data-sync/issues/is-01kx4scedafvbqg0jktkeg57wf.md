@@ -3,9 +3,9 @@ type: is
 id: is-01kx4scedafvbqg0jktkeg57wf
 title: Make skill installation explicit-scope and non-clobbering
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - agents
@@ -16,6 +16,8 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:29.769Z
-updated_at: 2026-07-10T04:34:26.187Z
+updated_at: 2026-07-10T06:40:47.964Z
+closed_at: 2026-07-10T06:40:47.964Z
+close_reason: Implemented and verified in 0854bcc
 ---
 Add explicit project/global scope and agent selectors; enforce canonical target/repository/home/root/symlink/worktree policy; protect unmanaged, newer, unknown, and locally modified managed files by prior digest; acquire sorted locks and revalidate; stage per-file atomic replacements with recoverable rollback; make dry-run mutation-free; and repair crash residue idempotently.
