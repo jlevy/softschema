@@ -5,13 +5,13 @@ title: "P3: Pure-yaml profile honors metadata + envelope rules (or amend spec)"
 kind: feature
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:35.874Z
-updated_at: 2026-06-11T05:18:55.615Z
+updated_at: 2026-07-10T03:49:16.898Z
 closed_at: 2026-06-11T05:18:55.615Z
 close_reason: null
 ---

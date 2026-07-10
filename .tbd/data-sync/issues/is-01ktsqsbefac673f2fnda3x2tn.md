@@ -5,8 +5,8 @@ title: "P2: Golden harness runs TS under Node and Bun (run.sh)"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01ktsqsc7c53he9194darnhdzw
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:33.167Z
-updated_at: 2026-06-10T22:27:24.880Z
+updated_at: 2026-07-10T03:49:15.344Z
 closed_at: 2026-06-10T22:27:24.880Z
 close_reason: null
 ---

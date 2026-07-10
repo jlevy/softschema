@@ -5,13 +5,13 @@ title: Restore strif for atomic file writes
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-29T01:07:34.109Z
-updated_at: 2026-05-29T01:22:01.800Z
+updated_at: 2026-07-10T03:49:03.919Z
 closed_at: 2026-05-29T01:22:01.799Z
 close_reason: Strif restored as runtime dep (>=3.0,<4); compile.py and generate.py refactored to use strif.atomic_output_file; all 63 tests pass; lint clean; wheel builds.
 ---

@@ -5,15 +5,15 @@ title: "errors.ts: required validator_value diverges (single key vs full require
 kind: bug
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-06-01-softschema-typescript-zod-parity.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-06-01-softschema-typescript-zod-parity.md
 labels:
   - parity
   - typescript
 dependencies: []
 parent_id: is-01kt5990p0172ch8443kj99z17
 created_at: 2026-06-02T23:04:26.416Z
-updated_at: 2026-06-02T23:12:50.747Z
+updated_at: 2026-07-10T03:49:12.131Z
 closed_at: 2026-06-02T23:12:50.746Z
 close_reason: "Fixed: validator_value now comes from error.schema = full required list, matching jsonschema (one record per missing key). Golden + unit coverage added."
 ---

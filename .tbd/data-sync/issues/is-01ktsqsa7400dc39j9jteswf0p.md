@@ -5,8 +5,8 @@ title: "P1: TypeScript cli.ts hardening (exit hygiene, EPIPE/SIGINT, safe error 
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01ktsqsexjfpcr1t1j2m7q9jdx
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:31.908Z
-updated_at: 2026-06-10T21:56:58.684Z
+updated_at: 2026-07-10T03:49:14.541Z
 closed_at: 2026-06-10T21:56:58.684Z
 close_reason: null
 ---

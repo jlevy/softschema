@@ -5,13 +5,13 @@ title: Expose softschema.__version__ and CLI --version flag
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-29T04:29:25.380Z
-updated_at: 2026-05-29T04:29:43.450Z
+updated_at: 2026-07-10T03:49:08.455Z
 closed_at: 2026-05-29T04:29:43.450Z
 close_reason: softschema/__init__.py exposes __version__ via importlib.metadata.version with a PackageNotFoundError fallback for non-installed source checkouts. cli.py wires 'softschema --version' through argparse action='version'.
 ---

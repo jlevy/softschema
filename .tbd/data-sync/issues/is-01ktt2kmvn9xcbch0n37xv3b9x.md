@@ -5,13 +5,13 @@ title: "TS generate: runtime errors must exit 2 with 'softschema generate:' pref
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktt2km937gwscjjj37h82nbr
 created_at: 2026-06-11T00:51:40.533Z
-updated_at: 2026-06-11T00:55:47.429Z
+updated_at: 2026-07-10T03:49:17.790Z
 closed_at: 2026-06-11T00:55:47.429Z
 close_reason: null
 ---

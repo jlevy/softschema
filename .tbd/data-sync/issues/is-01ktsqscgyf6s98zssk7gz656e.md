@@ -5,8 +5,8 @@ title: "P2: Expand shared golden corpus with edge-case fixtures"
 kind: task
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 12
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
   - type: blocks
@@ -23,7 +23,7 @@ dependencies:
     target: is-01ktsqsexjfpcr1t1j2m7q9jdx
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:34.270Z
-updated_at: 2026-06-10T22:27:25.728Z
+updated_at: 2026-07-10T03:49:15.919Z
 closed_at: 2026-06-10T22:27:25.727Z
 close_reason: null
 ---

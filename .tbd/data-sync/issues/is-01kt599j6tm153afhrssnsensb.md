@@ -5,15 +5,15 @@ title: "errors.ts: pyRepr renders whole-number floats without trailing .0"
 kind: bug
 status: closed
 priority: 3
-version: 6
-spec_path: docs/project/specs/active/plan-2026-06-01-softschema-typescript-zod-parity.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-06-01-softschema-typescript-zod-parity.md
 labels:
   - parity
   - typescript
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-02T23:04:27.097Z
-updated_at: 2026-06-15T21:32:42.711Z
+updated_at: 2026-07-10T03:49:12.872Z
 closed_at: 2026-06-15T21:32:42.711Z
 close_reason: "Implemented and shipped in v0.2.2 (PR #18). Resolved via the canonical-number rule: whole-valued numbers below 1e21 render without a trailing fraction/exponent; Python's canonical_number normalizes floats to match JS. Byte-identical across impls within the IEEE-754 safe-integer range; non-round >=2^53 documented as out of scope."
 ---

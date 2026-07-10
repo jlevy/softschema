@@ -5,13 +5,13 @@ title: "P2: Close cross-language divergences exposed by the corpus"
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:34.583Z
-updated_at: 2026-06-11T05:18:53.684Z
+updated_at: 2026-07-10T03:49:16.115Z
 closed_at: 2026-06-11T05:18:53.684Z
 close_reason: null
 ---

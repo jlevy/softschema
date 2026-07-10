@@ -5,13 +5,13 @@ title: "P3: Metadata-only validate mode (useful from the soft stage)"
 kind: feature
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:36.722Z
-updated_at: 2026-06-11T05:18:55.061Z
+updated_at: 2026-07-10T03:49:17.280Z
 closed_at: 2026-06-11T05:18:55.061Z
 close_reason: null
 ---

@@ -5,15 +5,15 @@ title: "P3: status:enforced optional teeth (additionalProperties overlay at stru
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01ktsqtfectkne673n97a16rkd
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:35.198Z
-updated_at: 2026-06-11T05:18:54.506Z
+updated_at: 2026-07-10T03:49:16.508Z
 closed_at: 2026-06-11T05:18:54.505Z
 close_reason: null
 ---

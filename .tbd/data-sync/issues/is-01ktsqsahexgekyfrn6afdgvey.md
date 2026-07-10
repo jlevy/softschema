@@ -5,15 +5,15 @@ title: "P1: TypeScript validate.ts hardening (schema sidecar via parseYaml + non
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01ktsqsctqjmexdppec8ddj8rj
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:32.237Z
-updated_at: 2026-06-10T21:56:58.965Z
+updated_at: 2026-07-10T03:49:14.730Z
 closed_at: 2026-06-10T21:56:58.964Z
 close_reason: null
 ---

@@ -5,13 +5,13 @@ title: "[P1] CI integration recipe in development docs"
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-25T06:37:52.344Z
-updated_at: 2026-05-26T05:53:12.862Z
+updated_at: 2026-07-10T03:49:07.525Z
 closed_at: 2026-05-26T05:53:12.859Z
 close_reason: completed
 ---

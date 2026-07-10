@@ -5,15 +5,15 @@ title: "P1: Packaging bundle parity + DOC_TOPICS-resolves test (ship typescript-
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01ktsqtgsd9ryf1ag8n7zx80b3
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:42:32.546Z
-updated_at: 2026-06-10T21:56:59.267Z
+updated_at: 2026-07-10T03:49:14.940Z
 closed_at: 2026-06-10T21:56:59.266Z
 close_reason: null
 ---

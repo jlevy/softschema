@@ -5,8 +5,8 @@ title: "Spec: softschema terminology, spec clarity, and schema linkage"
 kind: epic
 status: closed
 priority: 1
-version: 15
-spec_path: docs/project/specs/active/plan-2026-06-11-softschema-terminology-and-linkage.md
+version: 16
+spec_path: docs/project/specs/done/plan-2026-06-11-softschema-terminology-and-linkage.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -24,7 +24,7 @@ child_order_hints:
   - is-01ktvrdz6b7r4td8ke7t3f9fkj
   - is-01ktvspjy9dp9akrjcnneneaj6
 created_at: 2026-06-11T16:22:51.226Z
-updated_at: 2026-06-15T17:49:34.224Z
+updated_at: 2026-07-10T03:49:20.139Z
 closed_at: 2026-06-15T17:49:34.224Z
 close_reason: "Epic complete: the terminology/spec-clarity/schema-linkage work (contract-ID grammar, softschema.schema binding, sidecar->compiled-schema + error-kind renames, self-describing artifacts) shipped in v0.2.0. All children closed."
 ---

@@ -3,15 +3,17 @@ type: is
 id: is-01ksrzx0w8ndkx2avb3qpjgv2c
 title: "[deferred] Migrate CLI to Typer + Rich per python-cli-patterns"
 kind: task
-status: open
+status: closed
 priority: 3
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-29T04:29:25.767Z
-updated_at: 2026-06-15T17:29:21.794Z
+updated_at: 2026-07-10T03:49:43.131Z
+closed_at: 2026-07-10T03:49:43.130Z
+close_reason: "Rejected after current-main audit: origin/main's argparse/Commander CLIs already satisfy exact Python/TypeScript golden and byte parity, and the July architecture explicitly retains those adapters. Typer and Rich would add dependencies and framework-specific help/error behavior without a current interactive or styled-output requirement."
 ---
 Audit P3. python-cli-patterns recommends Typer (or argparse + rich_argparse) for CLI and Rich for terminal output. Current CLI uses plain argparse with manual JSON emission. A migration would unlock --format text|json|jsonl, --no-progress, NO_COLOR/CI handling, base command pattern, and CLIError class hierarchy out of the box. Wait for a concrete consumer that benefits before the rework.
 

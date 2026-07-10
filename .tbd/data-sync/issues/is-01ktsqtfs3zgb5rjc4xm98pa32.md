@@ -5,13 +5,13 @@ title: "P4: README calibration (drop overclaims; sidecar guarantee wording; shor
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 parent_id: is-01ktsqq6tmxwsdzynnxad1wv50
 created_at: 2026-06-10T21:43:10.371Z
-updated_at: 2026-06-11T06:33:20.130Z
+updated_at: 2026-07-10T03:49:18.518Z
 closed_at: 2026-06-11T06:33:20.129Z
 close_reason: null
 ---

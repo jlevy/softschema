@@ -5,8 +5,8 @@ title: "Spec: Softschema review remediation (quality, parity, design alignment)"
 kind: epic
 status: closed
 priority: 1
-version: 30
-spec_path: docs/project/specs/active/plan-2026-06-10-softschema-review-remediation.md
+version: 31
+spec_path: docs/project/specs/done/plan-2026-06-10-softschema-review-remediation.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -39,7 +39,7 @@ child_order_hints:
   - is-01ktt2km937gwscjjj37h82nbr
   - is-01kttea6nky74a0g5etzctd972
 created_at: 2026-06-10T21:41:22.899Z
-updated_at: 2026-06-11T06:33:51.927Z
+updated_at: 2026-07-10T03:49:13.782Z
 closed_at: 2026-06-11T06:33:51.927Z
 close_reason: "All four phases complete (Phase 1-4); review, plan, and design changes merged/landed; PR #10 green"
 ---

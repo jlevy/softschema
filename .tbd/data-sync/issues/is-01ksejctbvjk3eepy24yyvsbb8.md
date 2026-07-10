@@ -5,13 +5,13 @@ title: Split Open Questions into pre-release vs deferred
 kind: task
 status: closed
 priority: 3
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-25T03:20:59.002Z
-updated_at: 2026-05-25T03:23:44.124Z
+updated_at: 2026-07-10T03:49:09.005Z
 closed_at: 2026-05-25T03:23:44.122Z
 close_reason: Open Questions split into Pre-Release and Deferred, with default fallbacks.
 ---

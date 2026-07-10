@@ -5,13 +5,13 @@ title: Freeze SoftschemaBinding for reliable registry equality
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-29T03:54:50.877Z
-updated_at: 2026-05-29T03:55:22.449Z
+updated_at: 2026-07-10T03:49:08.272Z
 closed_at: 2026-05-29T03:55:22.448Z
 close_reason: SoftschemaBinding.model_config now includes frozen=True alongside extra=forbid and arbitrary_types_allowed=True. Tests pass.
 ---

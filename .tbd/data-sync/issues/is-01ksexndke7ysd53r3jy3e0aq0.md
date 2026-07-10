@@ -5,13 +5,13 @@ title: "[P1] Generated schema sections (epic)"
 kind: epic
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 parent_id: is-01ksdw07thta724tst7r7nv1bp
 created_at: 2026-05-25T06:37:55.181Z
-updated_at: 2026-05-26T07:40:52.879Z
+updated_at: 2026-07-10T03:49:07.715Z
 closed_at: 2026-05-26T07:40:52.877Z
 close_reason: completed
 ---

@@ -5,15 +5,15 @@ title: 'errors.ts: multipleOf validator_value is undefined (message says \"multi
 kind: bug
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-06-01-softschema-typescript-zod-parity.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-06-01-softschema-typescript-zod-parity.md
 labels:
   - parity
   - typescript
 dependencies: []
 parent_id: is-01kt5990p0172ch8443kj99z17
 created_at: 2026-06-02T23:04:25.959Z
-updated_at: 2026-06-02T23:12:50.373Z
+updated_at: 2026-07-10T03:49:11.763Z
 closed_at: 2026-06-02T23:12:50.367Z
 close_reason: "Fixed: normalizeAjvError reads error.schema (verbose) for validator_value; multipleOf now carries the divisor. Unit + golden coverage added."
 ---

@@ -5,8 +5,8 @@ title: Implement softschema public readiness plan
 kind: epic
 status: closed
 priority: 2
-version: 44
-spec_path: docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md
+version: 45
+spec_path: docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -52,7 +52,7 @@ child_order_hints:
   - is-01ksrzx0w8ndkx2avb3qpjgv2c
   - is-01ksrzx1224nr63bc58dg8gg9n
 created_at: 2026-05-24T20:49:38.125Z
-updated_at: 2026-05-29T04:29:25.953Z
+updated_at: 2026-07-10T03:49:05.170Z
 closed_at: 2026-05-26T07:41:06.039Z
 close_reason: completed
 ---
