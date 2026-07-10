@@ -3,9 +3,9 @@ type: is
 id: is-01kx4scczp99jp7ztfmcjqrfb7
 title: Return structured schema_invalid results for every malformed compiled schema
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 13
+version: 15
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - python
@@ -30,6 +30,8 @@ dependencies:
     target: is-01kx50evvgsk1fep50sk4y6za9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:28.308Z
-updated_at: 2026-07-10T03:21:30.263Z
+updated_at: 2026-07-10T05:26:42.900Z
+closed_at: 2026-07-10T05:26:42.898Z
+close_reason: null
 ---
 Centralize root/supplied-resource schema loading behind stable schema_invalid records, normalize engine compile exceptions, dialect/metaschema/reference failures, preserve legacy-0.2 identity compatibility, reserve pattern for later portable semantics, return exit 1 without engine prose/tracebacks, and keep trusted semantic validation independent.
