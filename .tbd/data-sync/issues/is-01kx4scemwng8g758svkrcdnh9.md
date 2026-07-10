@@ -5,7 +5,7 @@ title: Repair and simplify user and agent documentation
 kind: task
 status: closed
 priority: 2
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
@@ -19,9 +19,11 @@ dependencies:
     target: is-01kx61reqsfpmcq0g2nzrz8mj0
   - type: blocks
     target: is-01kx62r2xrvqzg0518h4q1z4hg
+  - type: blocks
+    target: is-01kx64djwdf2rppmq5gv8qfs1t
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:30.011Z
-updated_at: 2026-07-10T13:16:31.819Z
+updated_at: 2026-07-10T13:45:55.138Z
 closed_at: 2026-07-10T11:51:34.731Z
 close_reason: Reorganized and verified public docs, paired examples, migration/changelog/security material, claims checks, and major coding-agent skill/instruction compatibility.
 ---

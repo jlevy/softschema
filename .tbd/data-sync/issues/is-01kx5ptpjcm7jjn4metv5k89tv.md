@@ -5,7 +5,7 @@ title: Implement idempotent release state machines and draft-asset DAG
 kind: task
 status: closed
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
@@ -30,9 +30,11 @@ dependencies:
     target: is-01kx5yx7khf13yny65c58c1jj5
   - type: blocks
     target: is-01kx5z0gv8d14ef9gd7exwpyg2
+  - type: blocks
+    target: is-01kx64djnhdw2q7x5eg26j66vy
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T09:48:05.579Z
-updated_at: 2026-07-10T13:10:41.433Z
+updated_at: 2026-07-10T13:45:54.584Z
 closed_at: 2026-07-10T11:51:32.541Z
 close_reason: Implemented and tested the code-side manifest-driven release DAG, exact state classifiers, provenance gates, and immutable-release preflight. Live authorization/publication remains in ss-0rqn and ss-trn7.
 ---

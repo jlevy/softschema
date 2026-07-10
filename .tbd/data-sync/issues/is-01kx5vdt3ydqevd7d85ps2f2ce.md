@@ -5,7 +5,7 @@ title: Align empty YAML node source anchors
 kind: bug
 status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
@@ -15,9 +15,11 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
   - type: blocks
     target: is-01kx4scemwng8g758svkrcdnh9
+  - type: blocks
+    target: is-01kx64djex6w3yntr7w72ya3zj
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T11:08:26.109Z
-updated_at: 2026-07-10T11:51:33.468Z
+updated_at: 2026-07-10T13:45:54.031Z
 closed_at: 2026-07-10T11:51:33.468Z
 close_reason: Aligned implicit-null anchors across mapping/sequence/flow/comment/CRLF/EOF and CLI diagnostics in both runtimes.
 ---
