@@ -10,6 +10,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -30,8 +31,9 @@ import {
 } from "./validate.js";
 
 // The package root holds the bundled `resources/` dir (copied at build, shipped via the
-// package `files`). Works whether running src/cli.ts (dev) or dist/cli.js (built/published).
-const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// package `files`). Resolve symlinks so npm/pnpm bins retain the installed package identity.
+const MODULE_PATH = realpathSync(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = resolve(dirname(MODULE_PATH), "..");
 
 const BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->";
 const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
@@ -50,19 +52,43 @@ const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
   and bundled docs.`;
 
-/**
- * Read a doc/skill resource by its repo-relative path. Local checkout runs prefer the
- * source file so tests catch source drift; installed packages fall back to bundled
- * `resources/`, so they never depend on the working directory.
- */
-const MAX_RESOURCE_WALK_DEPTH = 6;
+const SOURCE_MODULE_PATHS = [
+  "packages/typescript/src/cli.ts",
+  "packages/typescript/dist/cli.js",
+] as const;
+const SOURCE_CHECKOUT_MARKERS = [
+  "pyproject.toml",
+  "packages/python/src/softschema/cli.py",
+  "skills/softschema/SKILL.md",
+] as const;
 
+/** Return the repo root only when this module has the exact source-tree identity. */
+function sourceCheckoutRoot(modulePath: string): string | null {
+  const packageRoot = resolve(dirname(modulePath), "..");
+  const repoRoot = resolve(packageRoot, "../..");
+  const isSourceModule = SOURCE_MODULE_PATHS.some((relativePath) => {
+    const expected = join(repoRoot, relativePath);
+    return existsSync(expected) && realpathSync(expected) === modulePath;
+  });
+  if (!isSourceModule) return null;
+  if (
+    !SOURCE_CHECKOUT_MARKERS.every((marker) => {
+      const candidate = join(repoRoot, marker);
+      return existsSync(candidate) && statSync(candidate).isFile();
+    })
+  ) {
+    return null;
+  }
+  return repoRoot;
+}
+
+const SOURCE_CHECKOUT_ROOT = sourceCheckoutRoot(MODULE_PATH);
+
+/** Read a reviewed source resource in this checkout, otherwise the installed package bundle. */
 function readResource(relPath: string): string {
-  let dir = PACKAGE_ROOT;
-  for (let i = 0; i < MAX_RESOURCE_WALK_DEPTH; i++) {
-    const candidate = join(dir, relPath);
+  if (SOURCE_CHECKOUT_ROOT !== null) {
+    const candidate = join(SOURCE_CHECKOUT_ROOT, relPath);
     if (existsSync(candidate)) return readFileSync(candidate, "utf8");
-    dir = resolve(dir, "..");
   }
   const bundled = join(PACKAGE_ROOT, "resources", relPath);
   if (existsSync(bundled)) return readFileSync(bundled, "utf8");

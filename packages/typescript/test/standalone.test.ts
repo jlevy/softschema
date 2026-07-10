@@ -6,9 +6,9 @@
  * beforeAll builds the package so the test is self-contained regardless of run order.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { beforeAll, describe, expect, test } from "bun:test";
 
 const PACKAGE_ROOT = resolve(import.meta.dir, "..");
@@ -26,6 +26,59 @@ function runFromTmp(args: string[], files: Record<string, string> = {}): RunResu
     writeFileSync(join(cwd, name), content);
   }
   const r = spawnSync("bun", [CLI, ...args], { cwd, encoding: "utf8" });
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+
+/** Run a copied package from inside a consumer repo with colliding resource paths. */
+function runFromAdversarialInstall(args: string[], files: Record<string, string>): RunResult {
+  const cwd = mkdtempSync(join(tmpdir(), "softschema-consumer-"));
+  const installed = join(cwd, "node_modules", "softschema");
+  mkdirSync(installed, { recursive: true });
+  cpSync(join(PACKAGE_ROOT, "dist"), join(installed, "dist"), { recursive: true });
+  cpSync(join(PACKAGE_ROOT, "resources"), join(installed, "resources"), { recursive: true });
+  writeFileSync(join(installed, "package.json"), '{"name":"softschema","type":"module"}\n');
+  symlinkSync(
+    join(PACKAGE_ROOT, "node_modules"),
+    join(installed, "node_modules"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  for (const [name, content] of Object.entries(files)) {
+    const target = join(cwd, name);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+  const r = spawnSync("node", [join(installed, "dist", "cli.js"), ...args], {
+    cwd,
+    encoding: "utf8",
+  });
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+
+/** Run a built CLI from the repository's exact source-checkout package layout. */
+function runFromExactCheckout(args: string[], files: Record<string, string>): RunResult {
+  const cwd = mkdtempSync(join(tmpdir(), "softschema-checkout-"));
+  const packageRoot = join(cwd, "packages", "typescript");
+  mkdirSync(packageRoot, { recursive: true });
+  cpSync(join(PACKAGE_ROOT, "dist"), join(packageRoot, "dist"), { recursive: true });
+  cpSync(join(PACKAGE_ROOT, "resources"), join(packageRoot, "resources"), { recursive: true });
+  symlinkSync(
+    join(PACKAGE_ROOT, "node_modules"),
+    join(packageRoot, "node_modules"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  writeFileSync(join(cwd, "pyproject.toml"), "[project]\nname = 'softschema'\n");
+  const pythonMarker = join(cwd, "packages", "python", "src", "softschema", "cli.py");
+  mkdirSync(dirname(pythonMarker), { recursive: true });
+  writeFileSync(pythonMarker, "# checkout marker\n");
+  for (const [name, content] of Object.entries(files)) {
+    const target = join(cwd, name);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+  const r = spawnSync("node", [join(packageRoot, "dist", "cli.js"), ...args], {
+    cwd,
+    encoding: "utf8",
+  });
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
@@ -69,6 +122,30 @@ describe("bundled resources (standalone, outside the repo)", () => {
     const r = runFromTmp(["docs", "--list", "--json"]);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('"name": "guide"');
+  });
+
+  test("installed docs and skills ignore colliding consumer-repository files", () => {
+    const guide = runFromAdversarialInstall(["docs", "guide"], {
+      "docs/softschema-guide.md": "# MALICIOUS CONSUMER GUIDE\n",
+    });
+    expect(guide.status).toBe(0);
+    expect(guide.stdout).toContain("# softschema Guide");
+    expect(guide.stdout).not.toContain("MALICIOUS CONSUMER GUIDE");
+
+    const skill = runFromAdversarialInstall(["skill"], {
+      "skills/softschema/SKILL.md": "# MALICIOUS CONSUMER SKILL\n",
+    });
+    expect(skill.status).toBe(0);
+    expect(skill.stdout).toContain("# softschema Skill");
+    expect(skill.stdout).not.toContain("MALICIOUS CONSUMER SKILL");
+  });
+
+  test("exact source-checkout layout prefers live resources over the bundle", () => {
+    const skill = runFromExactCheckout(["skill"], {
+      "skills/softschema/SKILL.md": "# LIVE SOURCE SKILL\n",
+    });
+    expect(skill.status).toBe(0);
+    expect(skill.stdout).toBe("# LIVE SOURCE SKILL\n");
   });
 });
 

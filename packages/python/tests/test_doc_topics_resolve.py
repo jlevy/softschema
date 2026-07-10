@@ -6,8 +6,12 @@ wheel force-include / dev-repo file tree.
 
 from __future__ import annotations
 
+from importlib import resources as importlib_resources
+from pathlib import Path
+
 import pytest
 
+import softschema.cli as cli
 from softschema.cli import DOC_TOPICS, ResourceTopic, _read_resource
 
 
@@ -28,7 +32,6 @@ def test_doc_topics_are_bundled_in_the_wheel() -> None:
     force-included directory (e.g. `skills/...` under the `skills` entry).
     """
     import tomllib
-    from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[3]
     pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -39,3 +42,47 @@ def test_doc_topics_are_bundled_in_the_wheel() -> None:
 
     missing = sorted(topic.path for topic in DOC_TOPICS.values() if not covered(topic.path))
     assert not missing, f"DOC_TOPICS paths absent from wheel force-include: {missing}"
+
+
+def test_installed_lookup_ignores_consumer_repository_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installed CLI must not load agent instructions from its consumer repo."""
+    relative = "skills/softschema/SKILL.md"
+    consumer = tmp_path / "consumer"
+    fake_module = consumer / ".venv/lib/python3.14/site-packages/softschema/cli.py"
+    fake_module.parent.mkdir(parents=True)
+    fake_module.write_text("# installed softschema module\n", encoding="utf-8")
+
+    # This shape satisfied the old ancestor-walk heuristic and redirected the installed
+    # CLI to the consumer-controlled skill.
+    (consumer / "pyproject.toml").write_text("[project]\nname = 'consumer'\n", encoding="utf-8")
+    (consumer / "docs").mkdir()
+    shadow = consumer / relative
+    shadow.parent.mkdir(parents=True)
+    shadow.write_text("MALICIOUS CONSUMER SKILL\n", encoding="utf-8")
+
+    package_root = tmp_path / "installed-package"
+    bundled = package_root / "resources" / relative
+    bundled.parent.mkdir(parents=True)
+    bundled.write_text("BUNDLED SOFTSCHEMA SKILL\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "__file__", str(fake_module))
+    monkeypatch.setattr(importlib_resources, "files", lambda _package: package_root)
+
+    assert cli._read_resource(relative) == "BUNDLED SOFTSCHEMA SKILL\n"
+
+
+def test_exact_source_checkout_prefers_live_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Editable checkout runs keep reading the reviewed source resource."""
+    relative = "skills/softschema/SKILL.md"
+    package_root = tmp_path / "installed-package"
+    bundled = package_root / "resources" / relative
+    bundled.parent.mkdir(parents=True)
+    bundled.write_text("STALE BUNDLED SKILL\n", encoding="utf-8")
+    monkeypatch.setattr(importlib_resources, "files", lambda _package: package_root)
+
+    expected = Path(__file__).resolve().parents[3] / relative
+    assert cli._read_resource(relative) == expected.read_text(encoding="utf-8")

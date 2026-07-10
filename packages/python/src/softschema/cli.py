@@ -660,12 +660,35 @@ def _read_resource(relative_path: str) -> str:
         raise FileNotFoundError(f"bundled softschema resource not found: {relative_path}") from None
 
 
+_SOURCE_CLI_RELATIVE_PATH = Path("packages/python/src/softschema/cli.py")
+_SOURCE_CHECKOUT_MARKERS: tuple[Path, ...] = (
+    Path("pyproject.toml"),
+    Path("packages/typescript/src/cli.ts"),
+    Path("skills/softschema/SKILL.md"),
+)
+
+
+def _source_checkout_root(module_path: Path) -> Path | None:
+    """Return the repo root only when ``module_path`` has the exact source-tree identity."""
+    resolved_module = module_path.resolve()
+    source_depth = len(_SOURCE_CLI_RELATIVE_PATH.parts) - 1
+    if len(resolved_module.parents) <= source_depth:
+        return None
+    root = resolved_module.parents[source_depth]
+    if (root / _SOURCE_CLI_RELATIVE_PATH).resolve() != resolved_module:
+        return None
+    if not all((root / marker).is_file() for marker in _SOURCE_CHECKOUT_MARKERS):
+        return None
+    return root
+
+
 def _dev_resource_path(relative_path: str) -> Path | None:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "pyproject.toml").is_file() and (parent / "docs").is_dir():
-            candidate = parent / relative_path
-            return candidate if candidate.is_file() else None
-    return None
+    """Resolve a live source resource only from this repository's exact checkout layout."""
+    root = _source_checkout_root(Path(__file__))
+    if root is None:
+        return None
+    candidate = root / relative_path
+    return candidate if candidate.is_file() else None
 
 
 def _write_text(text: str) -> None:
