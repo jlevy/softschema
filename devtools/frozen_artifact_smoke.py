@@ -365,7 +365,10 @@ def _candidate_files(
                     raise CandidateError(f"candidate contains a hidden node: {entry.path}")
                 path = Path(entry.path)
                 try:
-                    source_stat = entry.stat(follow_symlinks=False)
+                    # Python 3.11 reports zero device/inode fields from DirEntry.stat()
+                    # on Windows. A fresh path lstat supplies the file index required
+                    # for the descriptor identity check and avoids cached entry data.
+                    source_stat = path.lstat()
                 except OSError as exc:
                     raise CandidateError(f"candidate node cannot be inspected: {path}") from exc
                 if _is_redirect(source_stat):

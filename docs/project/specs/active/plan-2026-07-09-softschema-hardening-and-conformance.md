@@ -1306,6 +1306,10 @@ after public APIs/CLI/docs are complete, and then publishes it.
   In unprivileged smoke jobs, run the exact-commit checkout verifier before any
   transferred driver or helper; prove final-file and parent-directory swaps cannot
   redirect verification.
+- [x] **Use fresh Windows candidate identities (`ss-6crf`).** Do not retain
+  `DirEntry.stat()` identity fields, which are documented as zero on Python 3.11 for
+  Windows. Use a fresh path `lstat()` before descriptor binding and prove the inventory
+  does not consult the cached directory-entry stat.
 - [x] **Bound every frozen release-driver read and verify before execution
   (`ss-bcdi`).** Route manifests, controls, subjects, and npm fixtures through
   descriptor-bound limit-plus-one reads with explicit per-format budgets.
@@ -1419,6 +1423,7 @@ independent security work.
 | `ss-v2h3` | `ss-dku3` | The bounded exact matcher hardens the already iterative glob surface. |
 | `ss-bcdi` | `ss-96ih` | The frozen driver consumes only transfers already covered by descriptor-bound inventory verification. |
 | `ss-xsp8` | `ss-bcdi`, `ss-96ih` | Remaining JSON and streaming-hash readers reuse the settled driver and inventory identity boundaries. |
+| `ss-6crf` | `ss-96ih` | Windows 3.11 inventory identity reuses the settled exact regular-file boundary without trusting zero-valued directory-entry fields. |
 | `ss-ud65` | `ss-bcdi` | Release-review wording follows the exact-checkout trusted-verifier design. |
 | `ss-2upc` | `ss-bj47` | Bounded inspection hardens the settled non-clobbering installer transaction. |
 | `ss-i32z` | `ss-l41u` | Incremental CST construction enforces the settled portable-YAML node and depth budgets before allocation. |
@@ -1450,7 +1455,7 @@ independent security work.
 | `ss-c8ix` | `ss-tge8`, `ss-g8m8` | Release-manifest schema limits must match the standalone boundary and release state machine before publication. |
 | `ss-j2ps` | `ss-v6bv`, `ss-xnr6` | The final compatibility wording follows the settled documentation and diagnostic-output behavior. |
 | `ss-3i41` | `ss-l41u`, `ss-xnr6` | YAML property-token locations build on the portable parser and positioned diagnostic contract. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
 | `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s`, `ss-j2ps`, `ss-66i9` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
@@ -1631,6 +1636,7 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-c8ix` | P2 | Release-manifest/runtime size-policy agreement |
 | `ss-j2ps` | P3 | Qualified legacy single-file JSON compatibility |
 | `ss-96ih` | P1 | Descriptor-bound exact frozen-candidate inventory |
+| `ss-6crf` | P1 | Fresh Windows 3.11 candidate inventory identity |
 | `ss-3i41` | P2 | YAML property-token diagnostic locations |
 | `ss-qq77` | P2 | Tracker and completed-spec reconciliation |
 | `ss-8dt9` | P1 | Protected live `github-release` environment |

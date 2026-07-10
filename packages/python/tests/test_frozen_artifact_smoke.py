@@ -6,6 +6,7 @@ import hashlib
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -42,6 +43,41 @@ def test_transfer_checksum_inventory_is_recursive_and_exact(
     (nested / "package-lock.json").write_text("changed\n", encoding="utf-8")
     with pytest.raises(CandidateError, match="digest mismatch"):
         verify_transfer_checksums(tmp_path)
+
+
+def test_transfer_inventory_does_not_use_cached_directory_entry_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Python 3.11 DirEntry identity fields are zero on Windows."""
+    (tmp_path / "artifact.whl").write_bytes(b"wheel")
+    original_scandir = os.scandir
+
+    class EntryWithoutTrustedStat:
+        def __init__(self, entry: os.DirEntry[str]) -> None:
+            self.name = entry.name
+            self.path = entry.path
+
+        def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
+            del follow_symlinks
+            raise AssertionError("candidate inventory must use a fresh path stat")
+
+    class ScandirWithoutTrustedStat:
+        def __init__(self, path: str | os.PathLike[str]) -> None:
+            self._entries = original_scandir(path)
+
+        def __enter__(self) -> ScandirWithoutTrustedStat:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self._entries.close()
+
+        def __iter__(self) -> Iterator[EntryWithoutTrustedStat]:
+            return (EntryWithoutTrustedStat(entry) for entry in self._entries)
+
+    monkeypatch.setattr(os, "scandir", ScandirWithoutTrustedStat)
+    write_transfer_checksums(tmp_path)
+    verify_transfer_checksums(tmp_path)
 
 
 def test_transfer_checksum_rejects_extra_or_traversing_files(tmp_path: Path) -> None:
