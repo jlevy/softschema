@@ -3,9 +3,9 @@ type: is
 id: is-01kx4wbvw32dj32e68pq3zwepj
 title: Bootstrap draft conformance schemas and the shared case runner
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - conformance
@@ -36,6 +36,8 @@ dependencies:
     target: is-01kx50evvgsk1fep50sk4y6za9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T02:05:36.514Z
-updated_at: 2026-07-10T03:31:24.411Z
+updated_at: 2026-07-10T04:35:14.381Z
+closed_at: 2026-07-10T04:35:14.381Z
+close_reason: Added reviewed draft schemas, digest-bound manifest, ready/pending language-neutral cases, strict standalone runner, and CI execution across Python/Node/Bun; committed as fe5d47c.
 ---
 Create non-public draft manifest, case, compiler-profile, legacy/diagnostic/input/structural-result, release/build/doctor, and public-claims schemas with stable Phase-1 error envelopes, plus a minimal shared Python/Node/Bun runner. Behavior beads finalize owned schemas; the final kit assigns verified HTTPS IDs and publishes.
