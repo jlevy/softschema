@@ -385,14 +385,21 @@ imports, limits, and result types.
 
 ## Validate Collections and CI
 
-One explicit file with JSON output keeps the legacy single-result contract:
+When discovery classifies one single explicit path as a regular file, JSON keeps the
+legacy single-result contract, including when a later read fails:
 
 ```bash
 softschema validate docs/incidents/2026-04-12.md
 ```
 
-Multiple operands or directory discovery select diagnostic-v1. One profile applies to
-the whole invocation:
+For compatibility, one explicit missing path or broken symlink also keeps the legacy
+`input_error/not_found` record.
+Other discovery-input failures, including a FIFO, an unsafe symlink target, or a
+directory without `--recursive`, select a diagnostic-v1 aggregate even when it contains
+one input record.
+
+Multiple operands or directory discovery also select diagnostic-v1. One profile applies
+to the whole invocation:
 
 ```bash
 softschema validate docs/incidents --recursive --profile frontmatter-md
@@ -404,7 +411,10 @@ softschema validate docs --recursive --format sarif > softschema.sarif
 Directory discovery is deterministic, skips discovered symlinks, deduplicates canonical
 file identities, and reports a no-match input error rather than a false green run.
 Includes and excludes are operand-relative, case-sensitive portable globs and require
-`--recursive`.
+`--recursive`. The profile bounds fixed chunks, pattern count, aggregate token
+complexity, traversal depth, and invocation-wide match fuel.
+A statically oversized pattern request is an invocation error; dynamic fuel exhaustion
+is a deterministic discovery-limit input result rather than a partial selection.
 
 Exit precedence is stable:
 
@@ -461,6 +471,13 @@ softschema skill --install --project --text
 softschema skill --brief
 softschema docs --list --json
 ```
+
+The installer inspects each target and its stage/backup recovery files through a stable
+regular-file descriptor with a shared 1 MiB ceiling.
+An oversized, symlinked, or replaced node is a non-mutating conflict in both Python and
+TypeScript, including during `--dry-run`. Installer lock records have a separate 4 KiB
+ceiling; an oversized, redirected, raced, non-UTF-8, or malformed lock remains active
+and blocks mutation.
 
 The skill teaches three jobs and routes details to the CLI:
 

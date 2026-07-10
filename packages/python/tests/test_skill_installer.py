@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -18,6 +19,8 @@ from softschema.skill_installer import (
     BACKUP_SUFFIX,
     KNOWN_PRIOR_EMISSION_SHA256,
     LOCK_NAME,
+    MAX_MANAGED_SKILL_BYTES,
+    MAX_SKILL_LOCK_BYTES,
     STAGE_SUFFIX,
     InstallRequest,
     SkillInstallUsageError,
@@ -92,6 +95,13 @@ def test_known_prior_digest_allowlist_matches_shared_fixture() -> None:
     )
     assert fixture["version"] == "known-prior-emissions-v1"
     assert {item["sha256"] for item in fixture["emissions"]} == set(KNOWN_PRIOR_EMISSION_SHA256)
+
+
+def test_managed_skill_limit_is_the_shared_practical_ceiling() -> None:
+    assert MAX_MANAGED_SKILL_BYTES == 1024 * 1024
+    assert MAX_SKILL_LOCK_BYTES == 4096
+    desired = install_skill_payload(rendered_skill(), SKILL_DO_NOT_EDIT_MARKER).encode("utf-8")
+    assert len(desired) < MAX_MANAGED_SKILL_BYTES
 
 
 def test_implicit_project_dry_run_matches_shared_golden(tmp_path: Path) -> None:
@@ -394,6 +404,25 @@ def test_unrecognized_lock_file_is_never_deleted(tmp_path: Path) -> None:
     assert lock_path.read_text() == "user-owned\n"
 
 
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_oversized_sparse_lock_is_a_non_mutating_conflict(tmp_path: Path, dry_run: bool) -> None:
+    repo = make_repo(tmp_path / "repo")
+    lock_path = repo / LOCK_NAME
+    with lock_path.open("wb") as stream:
+        stream.truncate(MAX_SKILL_LOCK_BYTES + 1)
+
+    code, report = run_install(
+        InstallRequest(agents=("codex",), dry_run=dry_run),
+        cwd=repo,
+        home=tmp_path / "home",
+    )
+
+    assert code == 1
+    assert report["files"][0]["ownership"] == "lock-conflict"  # type: ignore[index]
+    assert lock_path.stat().st_size == MAX_SKILL_LOCK_BYTES + 1
+    assert not (repo / ".agents").exists()
+
+
 def test_concurrent_installer_observes_the_live_process_lock(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo")
     home = tmp_path / "home"
@@ -458,6 +487,122 @@ def test_path_blockers_are_exit_one_conflicts(tmp_path: Path, blocker: str) -> N
     )
     assert code == 1
     assert report["files"][0]["ownership"] == "path-conflict"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("suffix", "ownership"),
+    [
+        ("", "path-conflict"),
+        (STAGE_SUFFIX, "residue-conflict"),
+        (BACKUP_SUFFIX, "residue-conflict"),
+    ],
+)
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_oversized_managed_skill_nodes_are_non_mutating_conflicts(
+    tmp_path: Path,
+    suffix: str,
+    ownership: str,
+    dry_run: bool,
+) -> None:
+    repo = make_repo(tmp_path / "repo")
+    target = repo / ".agents/skills/softschema/SKILL.md"
+    target.parent.mkdir(parents=True)
+    hostile = target.with_name(target.name + suffix)
+    with hostile.open("wb") as stream:
+        stream.truncate(MAX_MANAGED_SKILL_BYTES + 1)
+
+    code, report = run_install(
+        InstallRequest(agents=("codex",), dry_run=dry_run),
+        cwd=repo,
+        home=tmp_path / "home",
+    )
+
+    assert code == 1
+    assert report["files"][0]["ownership"] == ownership  # type: ignore[index]
+    assert report["files"][0]["action"] == "conflict"  # type: ignore[index]
+    assert hostile.stat().st_size == MAX_MANAGED_SKILL_BYTES + 1
+    assert not (repo / LOCK_NAME).exists()
+    if suffix:
+        assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    ("suffix", "ownership"),
+    [
+        ("", "path-conflict"),
+        (STAGE_SUFFIX, "residue-conflict"),
+        (BACKUP_SUFFIX, "residue-conflict"),
+    ],
+)
+def test_managed_skill_symlinks_are_non_mutating_dry_run_conflicts(
+    tmp_path: Path, suffix: str, ownership: str
+) -> None:
+    repo = make_repo(tmp_path / "repo")
+    target = repo / ".agents/skills/softschema/SKILL.md"
+    target.parent.mkdir(parents=True)
+    outside = repo / "user-owned.md"
+    outside.write_text("user-owned\n")
+    hostile = target.with_name(target.name + suffix)
+    try:
+        hostile.symlink_to(outside)
+    except OSError:
+        pytest.skip("platform does not permit test symlinks")
+
+    code, report = run_install(
+        InstallRequest(agents=("codex",), dry_run=True),
+        cwd=repo,
+        home=tmp_path / "home",
+    )
+
+    assert code == 1
+    assert report["files"][0]["ownership"] == ownership  # type: ignore[index]
+    assert hostile.is_symlink()
+    assert outside.read_text() == "user-owned\n"
+    assert not (repo / LOCK_NAME).exists()
+
+
+def test_managed_skill_replacement_between_inspection_and_open_is_a_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path / "repo")
+    target = repo / ".agents/skills/softschema/SKILL.md"
+    target.parent.mkdir(parents=True)
+    original = PRIOR_EMISSION.read_bytes()
+    target.write_bytes(original)
+    replacement = tmp_path / "replacement.md"
+    replacement.write_bytes(b"x" * len(original))
+    displaced = tmp_path / "displaced.md"
+    real_open = os.open
+    replaced = False
+
+    def replace_then_open(
+        path: os.PathLike[str] | str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replaced
+        if Path(path) == target and not replaced:
+            replaced = True
+            target.replace(displaced)
+            replacement.replace(target)
+        if dir_fd is None:
+            return real_open(path, flags, mode)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", replace_then_open)
+    code, report = run_install(
+        InstallRequest(agents=("codex",), dry_run=True),
+        cwd=repo,
+        home=tmp_path / "home",
+    )
+
+    assert code == 1
+    assert report["files"][0]["ownership"] == "path-conflict"  # type: ignore[index]
+    assert target.read_bytes() == b"x" * len(original)
+    assert displaced.read_bytes() == original
+    assert not (repo / LOCK_NAME).exists()
 
 
 def test_locks_are_acquired_in_sorted_base_order(tmp_path: Path) -> None:
@@ -703,6 +848,36 @@ def test_dry_run_does_not_repair_existing_recoverable_residue(tmp_path: Path) ->
     assert not target.exists()
     assert backup.read_bytes() == PRIOR_EMISSION.read_bytes()
     assert stage.exists()
+    assert not (repo / LOCK_NAME).exists()
+
+
+def test_oversized_stage_raced_into_repair_is_a_non_mutating_conflict(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo")
+    target = repo / ".agents/skills/softschema/SKILL.md"
+    target.parent.mkdir(parents=True)
+    backup = target.with_name(target.name + BACKUP_SUFFIX)
+    stage = target.with_name(target.name + STAGE_SUFFIX)
+    prior = PRIOR_EMISSION.read_bytes()
+    backup.write_bytes(prior)
+    stage.write_text(install_skill_payload(rendered_skill(), SKILL_DO_NOT_EDIT_MARKER))
+
+    def race(boundary: str) -> None:
+        if boundary == "after-revalidate":
+            with stage.open("wb") as stream:
+                stream.truncate(MAX_MANAGED_SKILL_BYTES + 1)
+
+    code, report = run_install(
+        InstallRequest(agents=("codex",)),
+        cwd=repo,
+        home=tmp_path / "home",
+        fault=race,
+    )
+
+    assert code == 1
+    assert report["files"][0]["ownership"] == "residue-conflict"  # type: ignore[index]
+    assert not target.exists()
+    assert backup.read_bytes() == prior
+    assert stage.stat().st_size == MAX_MANAGED_SKILL_BYTES + 1
     assert not (repo / LOCK_NAME).exists()
 
 

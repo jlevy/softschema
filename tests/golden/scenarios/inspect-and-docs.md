@@ -94,8 +94,10 @@ Do not improvise another runner.
   `softschema docs spec` for exact rules and `softschema docs example` for copyable
   paired sources.
 - **Validate one or many files:** run `softschema validate --help`; select the profile
-  explicitly, then use legacy JSON for one explicit file or diagnostic JSON/JSONL/SARIF
-  for batch work.
+  explicitly. Legacy JSON applies when discovery classifies one single explicit path as a
+  regular file, including when a later read fails, and for the narrow missing-path or
+  broken-symlink `not_found` exception; other discovery failures and batch work use
+  diagnostic JSON/JSONL/SARIF.
 - **Consume values in application code:** read `softschema docs api` when available;
   otherwise use `softschema docs guide` and the runtime design topic.
   Validate at the boundary and inspect structured result fields, not message prose.

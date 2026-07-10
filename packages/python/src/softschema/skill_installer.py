@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -23,6 +24,11 @@ MANAGED_FORMAT = "f01"
 LOCK_NAME = ".softschema-skill-install.lock"
 STAGE_SUFFIX = ".softschema-stage"
 BACKUP_SUFFIX = ".softschema-backup"
+MAX_MANAGED_SKILL_BYTES = 1024 * 1024
+MAX_SKILL_LOCK_BYTES = 4096
+
+_LIMIT_SENTINEL_BYTES = 1
+_READ_CHUNK_BYTES = 64 * 1024
 
 # These are byte-exact reviewed release or release-candidate installer emissions. A
 # stamped file is not enough: only an allowlisted digest (or the current desired bytes)
@@ -37,6 +43,7 @@ KNOWN_PRIOR_EMISSION_SHA256: frozenset[str] = frozenset(
         "58dce894b18dabdbd6cf44b38c6db0413f848a44a3d44a6e7b794e95bd3c298a",
         "b65f2971a93ddbbf0169a3f35035983f7fd35f98dd5d15e1e7ea25e078a1a62e",
         "9bb289188f95d40214e37f087b993f41540b37bc123e79b052682181ed8d6080",
+        "16b68cf2f425de5c9e2e9f4095207bb5273914c55af580b812d8ad819d08b72b",
     }
 )
 
@@ -96,6 +103,10 @@ class SkillInstallUsageError(ValueError):
 
 class SkillInstallExecutionError(OSError):
     """A recoverable install operation failed after rollback."""
+
+
+class _ManagedSkillReadConflict(Exception):
+    """An existing managed-skill path cannot be inspected safely."""
 
 
 @dataclass(frozen=True)
@@ -326,6 +337,114 @@ def _path_conflict(ownership: str, detail: str) -> Inspection:
     )
 
 
+def _managed_skill_snapshot(value: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _is_managed_skill_file(value: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(value.st_mode)
+        and getattr(value, "st_reparse_tag", 0) == 0
+        and value.st_ino != 0
+    )
+
+
+def _managed_skill_flags() -> int:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    return flags
+
+
+def _read_managed_skill(path: Path, *, base: Path, limit: int) -> bytes | None:
+    """Read an existing target or residue through one bounded, stable descriptor."""
+    try:
+        initial = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise _ManagedSkillReadConflict(str(path)) from exc
+
+    descriptor: int | None = None
+    try:
+        if not _is_managed_skill_file(initial):
+            raise _ManagedSkillReadConflict(str(path))
+        if initial.st_size > limit:
+            raise _ManagedSkillReadConflict(str(path))
+        parent = path.parent.resolve(strict=True)
+        if not _is_relative_to(parent, base):
+            raise _ManagedSkillReadConflict(str(path))
+        snapshot = _managed_skill_snapshot(initial)
+        descriptor = os.open(path, _managed_skill_flags())
+        opened = os.fstat(descriptor)
+        if (
+            not _is_managed_skill_file(opened)
+            or _managed_skill_snapshot(opened) != snapshot
+            or _managed_skill_snapshot(path.lstat()) != snapshot
+            or path.parent.resolve(strict=True) != parent
+        ):
+            raise _ManagedSkillReadConflict(str(path))
+
+        capacity = max(
+            1,
+            min(
+                limit + _LIMIT_SENTINEL_BYTES,
+                initial.st_size + _LIMIT_SENTINEL_BYTES,
+            ),
+        )
+        buffer = bytearray(capacity)
+        total = 0
+        while total < capacity:
+            chunk = os.read(descriptor, min(_READ_CHUNK_BYTES, capacity - total))
+            if not chunk:
+                break
+            buffer[total : total + len(chunk)] = chunk
+            total += len(chunk)
+        content = bytes(buffer[:total])
+        final = os.fstat(descriptor)
+
+        # Python exposes creation time as ctime on Windows. Compare a second pass to
+        # catch ordinary same-size rewrites that therefore may leave this snapshot.
+        if os.name == "nt" and total == initial.st_size:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            verified = 0
+            while verified < total:
+                chunk = os.read(descriptor, min(_READ_CHUNK_BYTES, total - verified))
+                if not chunk or chunk != content[verified : verified + len(chunk)]:
+                    raise _ManagedSkillReadConflict(str(path))
+                verified += len(chunk)
+            final = os.fstat(descriptor)
+
+        current = path.lstat()
+        if (
+            not _is_managed_skill_file(final)
+            or not _is_managed_skill_file(current)
+            or _managed_skill_snapshot(final) != snapshot
+            or _managed_skill_snapshot(current) != snapshot
+            or path.parent.resolve(strict=True) != parent
+            or total != initial.st_size
+            or total > limit
+        ):
+            raise _ManagedSkillReadConflict(str(path))
+        return content
+    except _ManagedSkillReadConflict:
+        raise
+    except (OSError, RuntimeError) as exc:
+        raise _ManagedSkillReadConflict(str(path)) from exc
+    finally:
+        if descriptor is not None:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
 def _managed_format(content: bytes) -> int | None:
     match = MANAGED_MARKER_RE.search(content)
     return int(match.group("format")) if match is not None else None
@@ -388,21 +507,30 @@ def _inspect_target(target: ResolvedTarget, desired: bytes) -> Inspection:
         if (probe.exists() or probe.is_symlink()) and not probe.is_dir():
             return _path_conflict("path-conflict", str(probe))
         probe = probe.parent
-    for residue_path in (stage, backup):
-        if (residue_path.exists() or residue_path.is_symlink()) and not residue_path.is_file():
-            return _path_conflict("residue-conflict", str(residue_path))
-    if (target.target.exists() or target.target.is_symlink()) and not target.target.is_file():
+    try:
+        target_content = _read_managed_skill(
+            target.target,
+            base=target.base_dir,
+            limit=MAX_MANAGED_SKILL_BYTES,
+        )
+    except _ManagedSkillReadConflict:
         return _path_conflict("path-conflict", str(target.target))
     try:
-        target_content = (
-            target.target.read_bytes()
-            if target.target.exists() or target.target.is_symlink()
-            else None
+        stage_content = _read_managed_skill(
+            stage,
+            base=target.base_dir,
+            limit=MAX_MANAGED_SKILL_BYTES,
         )
-        stage_content = stage.read_bytes() if stage.exists() else None
-        backup_content = backup.read_bytes() if backup.exists() else None
-    except OSError as exc:
-        return _path_conflict("path-conflict", f"{exc.filename or target.target}")
+    except _ManagedSkillReadConflict:
+        return _path_conflict("residue-conflict", str(stage))
+    try:
+        backup_content = _read_managed_skill(
+            backup,
+            base=target.base_dir,
+            limit=MAX_MANAGED_SKILL_BYTES,
+        )
+    except _ManagedSkillReadConflict:
+        return _path_conflict("residue-conflict", str(backup))
 
     # Every residue byte must itself be an emission known to this installer.  Never
     # delete a similarly named user file merely because it occupies our recovery path.
@@ -492,7 +620,7 @@ def plan_skill_install(
 ) -> tuple[int, dict[str, Any], tuple[PlannedTarget, ...]]:
     """Return a complete, mutation-free plan and its predicted exit status."""
     scope, primary_base, resolved = resolve_targets(request, cwd=cwd, home=home, env=env)
-    desired = install_skill_payload(rendered_skill, marker).encode("utf-8")
+    desired = _desired_skill_bytes(rendered_skill, marker)
     planned = tuple(PlannedTarget(target, _inspect_target(target, desired)) for target in resolved)
     for base in sorted({item.resolved.base_dir for item in planned}, key=_utf8_sort_key):
         lock_path = base / LOCK_NAME
@@ -524,6 +652,16 @@ def install_skill_payload(rendered: str, marker: str) -> str:
     )
 
 
+def _desired_skill_bytes(rendered: str, marker: str) -> bytes:
+    desired = install_skill_payload(rendered, marker).encode("utf-8")
+    if len(desired) > MAX_MANAGED_SKILL_BYTES:
+        raise SkillInstallExecutionError(
+            errno.EFBIG,
+            f"bundled managed skill exceeds the {MAX_MANAGED_SKILL_BYTES}-byte limit",
+        )
+    return desired
+
+
 def _pid_is_active(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -539,14 +677,19 @@ def _pid_is_active(pid: int) -> bool:
 
 
 def _lock_is_active(path: Path) -> bool:
-    if path.is_symlink():
-        return True
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        content = _read_managed_skill(
+            path,
+            base=path.parent,
+            limit=MAX_SKILL_LOCK_BYTES,
+        )
+        if content is None:
+            return True
+        payload = json.loads(content.decode("utf-8", errors="strict"))
         if not isinstance(payload, dict) or payload.get("format") != "softschema-skill-lock-v1":
             return True
         pid = payload["pid"]
-    except (OSError, ValueError, KeyError, TypeError):
+    except (_ManagedSkillReadConflict, UnicodeError, ValueError, KeyError, TypeError):
         return True
     if type(pid) is not int or pid <= 0:
         return True
@@ -614,21 +757,30 @@ def _cleanup_empty_directories(created: Sequence[Path]) -> None:
             directory.rmdir()
 
 
-def _repair_residue(item: PlannedTarget, desired: bytes) -> None:
+def _repair_residue(item: PlannedTarget, desired: bytes) -> bool:
     target = item.resolved.target
     stage = target.with_name(target.name + STAGE_SUFFIX)
     backup = target.with_name(target.name + BACKUP_SUFFIX)
+    try:
+        stage_content = _read_managed_skill(
+            stage,
+            base=item.resolved.base_dir,
+            limit=MAX_MANAGED_SKILL_BYTES,
+        )
+    except _ManagedSkillReadConflict:
+        return False
+    expected_stage = item.inspection.residue == "discard-stage"
+    if (stage_content is not None) != expected_stage or (
+        stage_content is not None and stage_content != desired
+    ):
+        return False
     if backup.exists() and not target.exists():
         os.replace(backup, target)
     elif backup.exists():
         backup.unlink()
-    if stage.exists():
-        # Revalidation has already proved this is exactly the desired staged payload.
-        if stage.read_bytes() != desired:
-            raise SkillInstallExecutionError(
-                errno.EBUSY, f"installer residue changed during repair: {stage}"
-            )
+    if stage_content is not None:
         stage.unlink(missing_ok=True)
+    return True
 
 
 def _stage_file(path: Path, payload: bytes) -> None:
@@ -713,7 +865,7 @@ def execute_skill_install(
     if code != 0 or request.dry_run:
         return code, report
 
-    desired = install_skill_payload(rendered_skill, marker).encode("utf-8")
+    desired = _desired_skill_bytes(rendered_skill, marker)
     bases = sorted({item.resolved.base_dir for item in planned}, key=_utf8_sort_key)
     held: list[_HeldLock] = []
     created_directories: list[Path] = []
@@ -758,9 +910,34 @@ def execute_skill_install(
         planned = revalidated
         fault("after-revalidate")
 
+        repair_preflight = tuple(
+            PlannedTarget(item.resolved, _inspect_target(item.resolved, desired))
+            for item in planned
+        )
+        if any(
+            new.inspection.fingerprint != old.inspection.fingerprint
+            or new.inspection.action == "conflict"
+            for old, new in zip(planned, repair_preflight, strict=True)
+        ):
+            conflicted = _mark_conflict(repair_preflight, ownership="changed-during-repair")
+            return 1, _build_report(
+                package_version=package_version,
+                scope=report["scope"],
+                primary_base=Path(report["base_dir"]),
+                dry_run=False,
+                targets=conflicted,
+            )
+        planned = repair_preflight
         for item in planned:
-            if item.inspection.residue != "none":
-                _repair_residue(item, desired)
+            if item.inspection.residue != "none" and not _repair_residue(item, desired):
+                conflicted = _mark_conflict(planned, ownership="changed-during-repair")
+                return 1, _build_report(
+                    package_version=package_version,
+                    scope=report["scope"],
+                    primary_base=Path(report["base_dir"]),
+                    dry_run=False,
+                    targets=conflicted,
+                )
         # Repair can change the effective action (for example restore a prior backup),
         # so inspect once more before staging.
         planned = tuple(

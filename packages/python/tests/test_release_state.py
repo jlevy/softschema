@@ -1,4 +1,4 @@
-"""Release-state classifiers and no-checkout workflow orchestration tests."""
+"""Release-state classifiers and privileged workflow orchestration tests."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
 from ruamel.yaml import YAML
 
 from devtools import release_state
@@ -324,6 +325,23 @@ def test_controls_are_deterministic_and_have_no_digest_cycle(tmp_path: Path) -> 
     assert "sha256" not in index.get("release_index", {})
 
 
+def test_release_control_rejects_a_huge_sparse_file_before_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory, _ = _candidate(tmp_path)
+    write_controls(directory)
+    control = directory / PRIMARY_CHECKSUMS_NAME
+    with control.open("wb") as stream:
+        stream.truncate(MAX_RELEASE_SUBJECT_BYTES + 1)
+
+    def reject_unbounded_read(_path: Path) -> bytes:
+        pytest.fail("release controls must not use Path.read_bytes()")
+
+    monkeypatch.setattr(Path, "read_bytes", reject_unbounded_read)
+    with pytest.raises(ReleaseStateError, match=r"release input exceeds the \d+-byte limit"):
+        expected_github_assets(directory)
+
+
 def test_manifest_loader_rejects_duplicate_keys_and_wrong_package_names(tmp_path: Path) -> None:
     path = tmp_path / RELEASE_MANIFEST_NAME
     path.write_text('{"schema_version":"1","schema_version":"1"}\n', encoding="utf-8")
@@ -371,6 +389,32 @@ def test_manifest_loader_bounds_each_subject_and_the_aggregate_before_reads(
         load_manifest(manifest_path)
 
 
+def test_manifest_schema_and_runtime_share_declared_byte_limits(tmp_path: Path) -> None:
+    schema = json.loads(
+        (ROOT / "conformance/schemas/release-manifest.schema.json").read_text(encoding="utf-8")
+    )
+    subjects_schema = schema["properties"]["subjects"]
+    size_schema = schema["$defs"]["subject"]["properties"]["size"]
+    assert size_schema["maximum"] == MAX_RELEASE_SUBJECT_BYTES
+    assert str(MAX_RELEASE_TOTAL_BYTES) in subjects_schema["description"]
+
+    directory, _ = _candidate(tmp_path / "candidate")
+    manifest_path = directory / RELEASE_MANIFEST_NAME
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    first = next(iter(payload["subjects"].values()))
+    first["size"] = MAX_RELEASE_SUBJECT_BYTES
+    validator = Draft202012Validator(schema)
+    assert validator.is_valid(payload)
+    manifest_path.write_bytes(_canonical_json(payload))
+    assert load_manifest(manifest_path).subjects
+
+    first["size"] = MAX_RELEASE_SUBJECT_BYTES + 1
+    assert not validator.is_valid(payload)
+    manifest_path.write_bytes(_canonical_json(payload))
+    with pytest.raises(ReleaseStateError, match="subject byte limit"):
+        load_manifest(manifest_path)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -402,8 +446,136 @@ def test_release_json_read_enforces_limit_after_open(
         return result
 
     monkeypatch.setattr(Path, "stat", stale_stat)
-    with pytest.raises(ReleaseStateError, match="exceeds the byte limit"):
+    with pytest.raises(ReleaseStateError, match=r"exceeds the \d+-byte limit"):
         release_state._read_json(path)
+
+
+def test_release_json_rejects_replacement_between_inspection_and_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "fixture.json"
+    replacement = tmp_path / "replacement.json"
+    displaced = tmp_path / "displaced.json"
+    path.write_bytes(b'{"safe":true}')
+    replacement.write_bytes(b'{"evil":true}')
+    real_open = os.open
+    replaced = False
+
+    def replace_then_open(candidate: os.PathLike[str], flags: int) -> int:
+        nonlocal replaced
+        if Path(candidate) == path and not replaced:
+            replaced = True
+            path.replace(displaced)
+            replacement.replace(path)
+        return real_open(candidate, flags)
+
+    monkeypatch.setattr(os, "open", replace_then_open)
+    with pytest.raises(ReleaseStateError, match="JSON fixture changed while opening"):
+        release_state._read_json(path)
+    assert replaced
+
+
+def test_release_regular_bytes_rejects_replacement_between_inspection_and_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "subject.bin"
+    replacement = tmp_path / "replacement.bin"
+    displaced = tmp_path / "displaced.bin"
+    path.write_bytes(b"safe")
+    replacement.write_bytes(b"evil")
+    real_open = os.open
+    replaced = False
+
+    def replace_then_open(candidate: os.PathLike[str], flags: int) -> int:
+        nonlocal replaced
+        if Path(candidate) == path and not replaced:
+            replaced = True
+            path.replace(displaced)
+            replacement.replace(path)
+        return real_open(candidate, flags)
+
+    monkeypatch.setattr(os, "open", replace_then_open)
+    with pytest.raises(ReleaseStateError, match="changed while opening"):
+        release_state._regular_bytes(path, limit=4, expected_size=4)
+
+
+def test_release_regular_bytes_rejects_growth_after_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "subject.bin"
+    path.write_bytes(b"safe")
+    real_read = os.read
+    grew = False
+
+    def grow_after_first_read(descriptor: int, count: int) -> bytes:
+        nonlocal grew
+        chunk = real_read(descriptor, min(count, 2))
+        if chunk and not grew:
+            grew = True
+            with path.open("ab") as stream:
+                stream.write(b"!")
+        return chunk
+
+    monkeypatch.setattr(os, "read", grow_after_first_read)
+    with pytest.raises(ReleaseStateError, match="exceeds the 4-byte limit"):
+        release_state._regular_bytes(path, limit=4, expected_size=4)
+
+
+def test_release_hash_rejects_replacement_between_inspection_and_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "subject.bin"
+    replacement = tmp_path / "replacement.bin"
+    displaced = tmp_path / "displaced.bin"
+    path.write_bytes(b"safe")
+    replacement.write_bytes(b"evil")
+    real_open = os.open
+    replaced = False
+
+    def replace_then_open(candidate: os.PathLike[str], flags: int) -> int:
+        nonlocal replaced
+        if Path(candidate) == path and not replaced:
+            replaced = True
+            path.replace(displaced)
+            replacement.replace(path)
+        return real_open(candidate, flags)
+
+    monkeypatch.setattr(os, "open", replace_then_open)
+    with pytest.raises(ReleaseStateError, match="release input changed while opening"):
+        release_state._sha256_regular_file(path, limit=4, expected_size=4)
+    assert replaced
+
+
+def test_release_hash_rejects_growth_after_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "subject.bin"
+    path.write_bytes(b"safe")
+    real_read = os.read
+    grew = False
+
+    def grow_after_first_read(descriptor: int, count: int) -> bytes:
+        nonlocal grew
+        chunk = real_read(descriptor, min(count, 2))
+        if chunk and not grew:
+            grew = True
+            with path.open("ab") as stream:
+                stream.write(b"!")
+        return chunk
+
+    monkeypatch.setattr(os, "read", grow_after_first_read)
+    with pytest.raises(ReleaseStateError, match="exceeds the 4-byte limit"):
+        release_state._sha256_regular_file(path, limit=4, expected_size=4)
+    assert grew
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="platform has no FIFO support")
+def test_release_hash_rejects_special_nodes_without_opening(tmp_path: Path) -> None:
+    path = tmp_path / "subject.pipe"
+    os.mkfifo(path)
+
+    with pytest.raises(ReleaseStateError, match="release input must be a regular file"):
+        release_state._sha256_regular_file(path, limit=1)
 
 
 def test_pypi_state_machine_covers_absent_partial_complete_and_conflict(tmp_path: Path) -> None:
@@ -1030,7 +1202,7 @@ def test_fixture_responses_are_bounded_before_json_parsing(
     oversized.write_bytes(b" " * (release_state.MAX_JSON_BYTES + 1))
 
     assert release_state.main(["pypi-plan", str(directory), "--fixture", str(oversized)]) == 2
-    assert "exceeds the byte limit" in capsys.readouterr().err
+    assert f"exceeds the {release_state.MAX_JSON_BYTES}-byte limit" in capsys.readouterr().err
 
 
 def test_state_driver_runs_from_the_frozen_transfer_with_stdlib_only(tmp_path: Path) -> None:
@@ -1246,6 +1418,22 @@ def test_publish_workflow_has_manifest_driven_release_dag_and_least_privilege() 
     yaml.allow_duplicate_keys = False
     workflow = yaml.load(ROOT / ".github/workflows/publish.yml")
     jobs = workflow["jobs"]
+
+    def assert_trusted_checkout(job: dict[str, Any]) -> None:
+        steps = job["steps"]
+        assert isinstance(steps, list)
+        checkouts = [
+            step
+            for step in steps
+            if isinstance(step, dict) and str(step.get("uses", "")).startswith("actions/checkout@")
+        ]
+        assert len(checkouts) == 1
+        assert checkouts[0]["with"] == {
+            "fetch-depth": 1,
+            "persist-credentials": False,
+            "ref": "${{ needs.preflight.outputs.source-commit }}",
+        }
+
     assert workflow["permissions"] == {}
     assert jobs["preflight"]["permissions"] == {"contents": "read"}
     assert jobs["draft-release"]["permissions"] == {
@@ -1295,15 +1483,11 @@ def test_publish_workflow_has_manifest_driven_release_dag_and_least_privilege() 
                 "pytest",
             ]
         )
-        assert not any(
-            step.get("uses", "").startswith("actions/checkout@") for step in job["steps"]
-        )
+        assert_trusted_checkout(job)
     for name in ["draft-release", "publish-pypi", "publish-npm", "finalize-release"]:
         job = jobs[name]
         scripts = "\n".join(step.get("run", "") for step in job["steps"])
-        assert not any(
-            step.get("uses", "").startswith("actions/checkout@") for step in job["steps"]
-        )
+        assert_trusted_checkout(job)
         assert not any(
             forbidden in scripts
             for forbidden in [
@@ -1316,7 +1500,12 @@ def test_publish_workflow_has_manifest_driven_release_dag_and_least_privilege() 
                 "pytest",
             ]
         )
-    assert jobs["finalize-release"]["needs"] == ["draft-release", "verify-pypi", "verify-npm"]
+    assert jobs["finalize-release"]["needs"] == [
+        "preflight",
+        "draft-release",
+        "verify-pypi",
+        "verify-npm",
+    ]
     assert jobs["finalize-release"]["permissions"] == {
         "attestations": "read",
         "contents": "write",

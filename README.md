@@ -107,10 +107,11 @@ softschema validate docs --recursive --format sarif > softschema.sarif
 ```
 
 `frontmatter-md` is the default.
-A `.yaml` or `.yml` suffix never selects `pure-yaml`. One explicit file with JSON output
-retains the legacy result contract.
-Multiple or discovered paths use diagnostic-v1; JSONL emits one self-contained result
-per line, and SARIF carries source positions for code-scanning tools.
+A `.yaml` or `.yml` suffix never selects `pure-yaml`. One explicit path classified as a
+regular file retains legacy JSON even if a later read fails.
+Missing paths and broken symlinks keep legacy `not_found`; other discovery failures,
+multiple paths, and directory discovery use diagnostic-v1. JSONL emits one
+self-contained result per line; SARIF carries source positions for code-scanning tools.
 
 Validation is offline: fragments and already-loaded explicit resources are available,
 but a schema URI never authorizes HTTP, file, or implicit relative-path retrieval.
@@ -158,6 +159,7 @@ softschema skill --install --project --text
 The default project targets are `.agents/skills/softschema/SKILL.md` and
 `.claude/skills/softschema/SKILL.md`. Explicit selectors support nine documented native
 skill hosts; Aider uses an explicit read recipe.
+Installer reads are bounded and fail closed on unsafe targets, recovery files, or locks.
 See [Coding-Agent Compatibility](docs/agent-compatibility.md) for evidence and limits.
 
 ## Documentation

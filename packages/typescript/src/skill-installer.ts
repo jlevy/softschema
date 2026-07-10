@@ -1,15 +1,17 @@
 /** Safe, cross-agent installation for the bundled softschema skill. */
 
 import { createHash } from "node:crypto";
+import type { BigIntStats } from "node:fs";
 import {
   closeSync,
+  constants,
   existsSync,
   fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmdirSync,
@@ -35,6 +37,11 @@ export const MANAGED_FORMAT = "f01";
 export const LOCK_NAME = ".softschema-skill-install.lock";
 export const STAGE_SUFFIX = ".softschema-stage";
 export const BACKUP_SUFFIX = ".softschema-backup";
+export const MAX_MANAGED_SKILL_BYTES = 1024 * 1024;
+export const MAX_SKILL_LOCK_BYTES = 4096;
+
+const LIMIT_SENTINEL_BYTES = 1;
+const READ_CHUNK_BYTES = 64 * 1024;
 
 export const KNOWN_PRIOR_EMISSION_SHA256 = new Set([
   "554bf881da03dbf3c36a2c7444d7ef469d38783ba2c27c7b2e035e4b233339c0",
@@ -45,6 +52,7 @@ export const KNOWN_PRIOR_EMISSION_SHA256 = new Set([
   "58dce894b18dabdbd6cf44b38c6db0413f848a44a3d44a6e7b794e95bd3c298a",
   "b65f2971a93ddbbf0169a3f35035983f7fd35f98dd5d15e1e7ea25e078a1a62e",
   "9bb289188f95d40214e37f087b993f41540b37bc123e79b052682181ed8d6080",
+  "16b68cf2f425de5c9e2e9f4095207bb5273914c55af580b812d8ad819d08b72b",
 ]);
 
 const MANAGED_MARKER_RE =
@@ -129,6 +137,7 @@ const IMPLICIT_PROJECT_AGENTS = ["codex", "claude"] as const;
 
 export class SkillInstallUsageError extends Error {}
 export class SkillInstallExecutionError extends Error {}
+class ManagedSkillReadConflict extends Error {}
 
 export interface InstallRequest {
   project?: boolean;
@@ -406,6 +415,114 @@ function pathConflict(ownership: string, detail: string): Inspection {
   };
 }
 
+function isSameManagedSkillFile(value: BigIntStats, expected: BigIntStats): boolean {
+  return (
+    value.isFile() &&
+    value.ino !== 0n &&
+    expected.ino !== 0n &&
+    value.dev === expected.dev &&
+    value.ino === expected.ino &&
+    value.mode === expected.mode &&
+    value.size === expected.size &&
+    value.mtimeNs === expected.mtimeNs &&
+    value.ctimeNs === expected.ctimeNs
+  );
+}
+
+function readManagedSkill(path: string, base: string, limit: number): Buffer | null {
+  let initial: BigIntStats;
+  try {
+    initial = lstatSync(path, { bigint: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new ManagedSkillReadConflict(path, { cause: error });
+  }
+  if (!initial.isFile() || initial.ino === 0n) throw new ManagedSkillReadConflict(path);
+  if (initial.size > BigInt(limit)) {
+    throw new ManagedSkillReadConflict(path);
+  }
+  const parent = realpathAllowMissing(dirname(path));
+  if (!isWithin(parent, base)) throw new ManagedSkillReadConflict(path);
+
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const opened = fstatSync(descriptor, { bigint: true });
+    const reopenedPath = lstatSync(path, { bigint: true });
+    if (
+      !isSameManagedSkillFile(opened, initial) ||
+      !isSameManagedSkillFile(reopenedPath, initial) ||
+      realpathAllowMissing(dirname(path)) !== parent
+    ) {
+      throw new ManagedSkillReadConflict(path);
+    }
+
+    const capacity = Math.max(
+      1,
+      Math.min(limit + LIMIT_SENTINEL_BYTES, Number(initial.size) + LIMIT_SENTINEL_BYTES),
+    );
+    const buffer = Buffer.alloc(capacity);
+    let total = 0;
+    while (total < capacity) {
+      const count = readSync(
+        descriptor,
+        buffer,
+        total,
+        Math.min(READ_CHUNK_BYTES, capacity - total),
+        null,
+      );
+      if (count === 0) break;
+      total += count;
+    }
+    const content = Buffer.from(buffer.subarray(0, total));
+    let final = fstatSync(descriptor, { bigint: true });
+
+    // Compare a second pass on Windows as defense in depth for runtimes or filesystems
+    // that cannot expose a dependable change timestamp for a same-size rewrite.
+    if (process.platform === "win32" && BigInt(total) === initial.size) {
+      const verification = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, capacity));
+      let verified = 0;
+      while (verified < total) {
+        const count = readSync(
+          descriptor,
+          verification,
+          0,
+          Math.min(verification.byteLength, total - verified),
+          verified,
+        );
+        if (
+          count === 0 ||
+          Buffer.compare(
+            verification.subarray(0, count),
+            content.subarray(verified, verified + count),
+          ) !== 0
+        ) {
+          throw new ManagedSkillReadConflict(path);
+        }
+        verified += count;
+      }
+      final = fstatSync(descriptor, { bigint: true });
+    }
+
+    const current = lstatSync(path, { bigint: true });
+    if (
+      !isSameManagedSkillFile(final, initial) ||
+      !isSameManagedSkillFile(current, initial) ||
+      realpathAllowMissing(dirname(path)) !== parent ||
+      BigInt(total) !== initial.size ||
+      total > limit
+    ) {
+      throw new ManagedSkillReadConflict(path);
+    }
+    return content;
+  } catch (error) {
+    if (error instanceof ManagedSkillReadConflict) throw error;
+    throw new ManagedSkillReadConflict(path, { cause: error });
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
+}
+
 function managedFormat(content: Buffer): number | null {
   const match = MANAGED_MARKER_RE.exec(content.toString("utf8"));
   const value = match?.groups?.format;
@@ -483,31 +600,23 @@ function inspectTarget(target: ResolvedTarget, desired: Buffer): Inspection {
     }
     probe = dirname(probe);
   }
-  for (const residuePath of [stage, backup]) {
-    try {
-      if (lexists(residuePath) && !statSync(residuePath).isFile()) {
-        return pathConflict("residue-conflict", residuePath);
-      }
-    } catch {
-      return pathConflict("residue-conflict", residuePath);
-    }
-  }
+  let targetContent: Buffer | null;
   try {
-    if (lexists(target.target) && !statSync(target.target).isFile()) {
-      return pathConflict("path-conflict", target.target);
-    }
+    targetContent = readManagedSkill(target.target, target.baseDir, MAX_MANAGED_SKILL_BYTES);
   } catch {
     return pathConflict("path-conflict", target.target);
   }
-  let targetContent: Buffer | null;
   let stageContent: Buffer | null;
+  try {
+    stageContent = readManagedSkill(stage, target.baseDir, MAX_MANAGED_SKILL_BYTES);
+  } catch {
+    return pathConflict("residue-conflict", stage);
+  }
   let backupContent: Buffer | null;
   try {
-    targetContent = lexists(target.target) ? readFileSync(target.target) : null;
-    stageContent = lexists(stage) ? readFileSync(stage) : null;
-    backupContent = lexists(backup) ? readFileSync(backup) : null;
-  } catch (error) {
-    return pathConflict("path-conflict", (error as NodeJS.ErrnoException).path ?? target.target);
+    backupContent = readManagedSkill(backup, target.baseDir, MAX_MANAGED_SKILL_BYTES);
+  } catch {
+    return pathConflict("residue-conflict", backup);
   }
 
   if (stageContent !== null && !stageContent.equals(desired)) {
@@ -606,6 +715,16 @@ export function installSkillPayload(rendered: string, marker: string): string {
   );
 }
 
+function desiredSkillBytes(rendered: string, marker: string): Buffer {
+  const desired = Buffer.from(installSkillPayload(rendered, marker), "utf8");
+  if (desired.byteLength > MAX_MANAGED_SKILL_BYTES) {
+    throw new SkillInstallExecutionError(
+      `bundled managed skill exceeds the ${MAX_MANAGED_SKILL_BYTES}-byte limit`,
+    );
+  }
+  return desired;
+}
+
 export function planSkillInstall(
   request: InstallRequest,
   options: {
@@ -618,7 +737,7 @@ export function planSkillInstall(
   },
 ): { code: number; report: InstallReport; planned: PlannedTarget[] } {
   const { scope, primaryBase, targets } = resolveTargets(request, options);
-  const desired = Buffer.from(installSkillPayload(options.renderedSkill, options.marker), "utf8");
+  const desired = desiredSkillBytes(options.renderedSkill, options.marker);
   let planned = targets.map((target) => ({
     resolved: target,
     inspection: inspectTarget(target, desired),
@@ -655,8 +774,9 @@ function pidIsActive(pid: number): boolean {
 
 function lockIsActive(path: string): boolean {
   try {
-    if (lstatSync(path).isSymbolicLink()) return true;
-    const payload = JSON.parse(readFileSync(path, "utf8")) as {
+    const content = readManagedSkill(path, dirname(path), MAX_SKILL_LOCK_BYTES);
+    if (content === null) return true;
+    const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(content)) as {
       format?: unknown;
       pid?: unknown;
     };
@@ -748,18 +868,27 @@ function cleanupEmptyDirectories(created: readonly string[]): void {
   }
 }
 
-function repairResidue(item: PlannedTarget, desired: Buffer): void {
+function repairResidue(item: PlannedTarget, desired: Buffer): boolean {
   const target = item.resolved.target;
   const stage = `${target}${STAGE_SUFFIX}`;
   const backup = `${target}${BACKUP_SUFFIX}`;
+  let stageContent: Buffer | null;
+  try {
+    stageContent = readManagedSkill(stage, item.resolved.baseDir, MAX_MANAGED_SKILL_BYTES);
+  } catch {
+    return false;
+  }
+  const expectedStage = item.inspection.residue === "discard-stage";
+  if (
+    (stageContent !== null) !== expectedStage ||
+    (stageContent !== null && !stageContent.equals(desired))
+  ) {
+    return false;
+  }
   if (existsSync(backup) && !existsSync(target)) renameSync(backup, target);
   else if (existsSync(backup)) unlinkSync(backup);
-  if (existsSync(stage)) {
-    if (!readFileSync(stage).equals(desired)) {
-      throw new SkillInstallExecutionError(`installer residue changed during repair: ${stage}`);
-    }
-    unlinkSync(stage);
-  }
+  if (stageContent !== null) unlinkSync(stage);
+  return true;
 }
 
 function stageFile(path: string, payload: Buffer): void {
@@ -836,7 +965,7 @@ export function executeSkillInstall(
     return { code: initial.code, report: initial.report };
   }
 
-  const desired = Buffer.from(installSkillPayload(options.renderedSkill, options.marker), "utf8");
+  const desired = desiredSkillBytes(options.renderedSkill, options.marker);
   let planned = initial.planned;
   const bases = [...new Set(planned.map((item) => item.resolved.baseDir))].sort(compareUtf8);
   const held: HeldLock[] = [];
@@ -895,8 +1024,45 @@ export function executeSkillInstall(
     planned = revalidated;
     fault("after-revalidate");
 
+    const repairPreflight = planned.map((item) => ({
+      resolved: item.resolved,
+      inspection: inspectTarget(item.resolved, desired),
+    }));
+    if (
+      repairPreflight.some(
+        (item, index) =>
+          item.inspection.fingerprint[0] !== planned[index]?.inspection.fingerprint[0] ||
+          item.inspection.fingerprint[1] !== planned[index]?.inspection.fingerprint[1] ||
+          item.inspection.action === "conflict",
+      )
+    ) {
+      const conflicted = markConflict(repairPreflight, "changed-during-repair");
+      return {
+        code: 1,
+        report: buildReport(
+          options.packageVersion,
+          initial.report.scope,
+          initial.report.base_dir,
+          false,
+          conflicted,
+        ),
+      };
+    }
+    planned = repairPreflight;
     for (const item of planned) {
-      if (item.inspection.residue !== "none") repairResidue(item, desired);
+      if (item.inspection.residue !== "none" && !repairResidue(item, desired)) {
+        const conflicted = markConflict(planned, "changed-during-repair");
+        return {
+          code: 1,
+          report: buildReport(
+            options.packageVersion,
+            initial.report.scope,
+            initial.report.base_dir,
+            false,
+            conflicted,
+          ),
+        };
+      }
     }
     planned = planned.map((item) => ({
       resolved: item.resolved,

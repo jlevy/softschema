@@ -6,6 +6,7 @@ import type { SourceSpan } from "../src/core/source-map.js";
 import {
   type JsonValue,
   parsePortableYamlWithLocations,
+  PortableValueError,
   PortableYamlSyntaxError,
 } from "../src/yaml-value-domain.js";
 
@@ -49,6 +50,27 @@ interface EmptyNullAnchorVector {
   diagnostic?: { path: string; line: number; column: number };
 }
 
+interface FirstErrorVector {
+  id: string;
+  yaml: string;
+  limits?: { max_nodes_per_resource?: number; max_depth?: number };
+  message: string;
+  path: string;
+  line: number;
+  column: number;
+}
+
+interface SyntaxClassificationVector {
+  id: string;
+  yaml: string;
+  limits?: { max_nodes_per_resource?: number; max_depth?: number };
+  kind: "syntax" | "value";
+  message: string;
+  path: string;
+  line: number;
+  column: number;
+}
+
 interface YamlParityEdgeVectors {
   compact_flow_policy: {
     message: string;
@@ -56,6 +78,43 @@ interface YamlParityEdgeVectors {
     accepted: AcceptedCompactFlowVector[];
   };
   composer_syntax_errors: ComposerSyntaxVector[];
+  flow_opener_comment_policy: {
+    message: string;
+    rejected: RejectedCompactFlowVector[];
+    accepted: AcceptedCompactFlowVector[];
+  };
+  tag_directive_policy: {
+    accepted: AcceptedCompactFlowVector[];
+    rejected: {
+      id: string;
+      yaml: string;
+      message: string;
+      path: string;
+      line: number;
+      column: number;
+    }[];
+    syntax_rejected: {
+      id: string;
+      yaml: string;
+      message: string;
+      path: string;
+      line: number;
+      column: number;
+    }[];
+  };
+  explicit_numeric_tags: {
+    accepted: AcceptedCompactFlowVector[];
+    rejected: {
+      id: string;
+      yaml: string;
+      message: string;
+      path: string;
+      line: number;
+      column: number;
+    }[];
+  };
+  first_error_precedence: FirstErrorVector[];
+  syntax_classification: SyntaxClassificationVector[];
   empty_null_anchors: EmptyNullAnchorVector[];
 }
 
@@ -116,6 +175,130 @@ test("yaml parser exceptions with codes become portable syntax errors", () => {
       line: vector.line,
       column: vector.column,
     });
+  }
+});
+
+test("flow opener comments require separation in both runtimes", () => {
+  const policy = VECTORS.flow_opener_comment_policy;
+  for (const vector of policy.rejected) {
+    try {
+      parsePortableYamlWithLocations(vector.yaml);
+      throw new Error(`expected ${vector.id} to fail`);
+    } catch (error) {
+      expect(error, vector.id).toBeInstanceOf(PortableYamlSyntaxError);
+      expect((error as PortableYamlSyntaxError).message, vector.id).toBe(policy.message);
+      expect(
+        {
+          line: (error as PortableYamlSyntaxError).line,
+          column: (error as PortableYamlSyntaxError).column,
+        },
+        vector.id,
+      ).toEqual({ line: vector.line, column: vector.column });
+    }
+  }
+
+  for (const vector of policy.accepted) {
+    expect(parsePortableYamlWithLocations(vector.yaml).value, vector.id).toEqual(vector.value);
+  }
+});
+
+test("tag directives expand before portable tag classification", () => {
+  for (const vector of VECTORS.tag_directive_policy.accepted) {
+    expect(parsePortableYamlWithLocations(vector.yaml).value, vector.id).toEqual(vector.value);
+  }
+  for (const vector of VECTORS.tag_directive_policy.rejected) {
+    try {
+      parsePortableYamlWithLocations(vector.yaml);
+      throw new Error(`expected ${vector.id} to fail`);
+    } catch (error) {
+      expect(error, vector.id).toBeInstanceOf(PortableValueError);
+      expect(error, vector.id).toMatchObject({
+        message: vector.message,
+        path: vector.path,
+        line: vector.line,
+        column: vector.column,
+      });
+    }
+  }
+  for (const vector of VECTORS.tag_directive_policy.syntax_rejected) {
+    try {
+      parsePortableYamlWithLocations(vector.yaml);
+      throw new Error(`expected ${vector.id} to fail`);
+    } catch (error) {
+      expect(error, vector.id).toBeInstanceOf(PortableYamlSyntaxError);
+      expect(error, vector.id).toMatchObject({
+        message: vector.message,
+        path: vector.path,
+        line: vector.line,
+        column: vector.column,
+      });
+    }
+  }
+});
+
+test("explicit numeric tags use the shared portable grammar", () => {
+  for (const vector of VECTORS.explicit_numeric_tags.accepted) {
+    expect(parsePortableYamlWithLocations(vector.yaml).value, vector.id).toEqual(vector.value);
+  }
+  for (const vector of VECTORS.explicit_numeric_tags.rejected) {
+    try {
+      parsePortableYamlWithLocations(vector.yaml);
+      throw new Error(`expected ${vector.id} to fail`);
+    } catch (error) {
+      expect(error, vector.id).toBeInstanceOf(PortableValueError);
+      expect(error, vector.id).toMatchObject({
+        message: vector.message,
+        path: vector.path,
+        line: vector.line,
+        column: vector.column,
+      });
+    }
+  }
+});
+
+test("semantic and resource failures follow shared event order", () => {
+  for (const vector of VECTORS.first_error_precedence) {
+    const limits: { maxNodesPerResource?: number; maxDepth?: number } = {};
+    if (vector.limits?.max_nodes_per_resource !== undefined) {
+      limits.maxNodesPerResource = vector.limits.max_nodes_per_resource;
+    }
+    if (vector.limits?.max_depth !== undefined) limits.maxDepth = vector.limits.max_depth;
+    try {
+      parsePortableYamlWithLocations(vector.yaml, limits);
+      throw new Error(`expected ${vector.id} to fail`);
+    } catch (error) {
+      expect(error, vector.id).toBeInstanceOf(PortableValueError);
+      expect(error, vector.id).toMatchObject({
+        message: vector.message,
+        path: vector.path,
+        line: vector.line,
+        column: vector.column,
+      });
+    }
+  }
+});
+
+test("document and empty-key edges use shared syntax classifications", () => {
+  for (const vector of VECTORS.syntax_classification) {
+    const limits: { maxNodesPerResource?: number; maxDepth?: number } = {};
+    if (vector.limits?.max_nodes_per_resource !== undefined) {
+      limits.maxNodesPerResource = vector.limits.max_nodes_per_resource;
+    }
+    if (vector.limits?.max_depth !== undefined) limits.maxDepth = vector.limits.max_depth;
+    try {
+      parsePortableYamlWithLocations(vector.yaml, limits);
+      throw new Error(`expected ${vector.id} to fail`);
+    } catch (error) {
+      expect(error, vector.id).toBeInstanceOf(
+        vector.kind === "syntax" ? PortableYamlSyntaxError : PortableValueError,
+      );
+      expect(error, vector.id).toMatchObject({
+        message: vector.message,
+        path: vector.path,
+        line: vector.line,
+        column: vector.column,
+      });
+    }
   }
 });
 

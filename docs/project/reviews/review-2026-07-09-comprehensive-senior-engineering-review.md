@@ -122,8 +122,8 @@ Release builds depended on ambient project state and did not fully prove archive
 contents, metadata identity, SBOM subjects, checksums, console aliases, runtime loading,
 or partial-release recovery.
 A release candidate should be a manifest-closed set of artifacts built once,
-smoke-tested after installation, and published by OIDC-only jobs that neither check out
-source nor rebuild.
+smoke-tested after installation, and published by OIDC-only jobs that check out only the
+exact source verifier and never rebuild candidate artifacts.
 
 ## Adversarial Closure Findings
 
@@ -209,6 +209,82 @@ The code-side findings are closed as `ss-j81s`, `ss-3x0g`, `ss-pykr`, `ss-qezc`,
 `ss-1mf4`, and `ss-bhz6`, with focused cross-runtime, release-security, or coverage-gate
 regressions. Live-state bead `ss-8dt9` remains open until an authorized maintainer
 provisions and re-reads the protected environment.
+
+### Final Runtime and CI Audit
+
+The first draft pull-request run and independent runtime/adversarial passes exposed a
+final set of implementation-level gaps:
+
+- the transferred artifact verifier generated Python bytecode inside the frozen
+  candidate before authenticating its exact checksum inventory;
+- `SchemaView` and compile drift checks still allocated complete schema files before
+  applying the documented byte limit, could open special nodes before classifying them,
+  and decoded committed TypeScript schemas with replacement characters;
+- the source-resource trust test implicitly required an editable install and failed
+  after CI correctly installed the candidate wheel;
+- recursive portable-glob matchers could exhaust the Python or JavaScript stack on a
+  valid long pattern or path;
+- TypeScript constructed a complete YAML CST before checking its node/depth budgets; the
+  first incremental pass then undercounted flow scalars and implicit maps, rescanned
+  flow items quadratically, and could let a later limit beat earlier syntax or semantic
+  failures;
+- several TypeScript failure-selection traversals still used UTF-16 rather than Unicode
+  scalar order, while Python materialized-value traversal still used insertion order;
+- implicit and explicit flow mappings and custom-tag failures did not share all Python
+  source boundaries and property-token coordinates;
+- the release-manifest schema omitted the runtime subject-size ceiling and aggregate
+  semantic limit; and
+- the compatibility text overgeneralized the legacy single-file JSON result to unsafe
+  non-files and discovery failures.
+
+The adversarial inventory pass also found that exact verification ignored FIFOs and
+other non-regular nodes and could be redirected by replacing a verified file or parent
+directory with a symlink before hashing.
+A final workflow review then found that the unprivileged smoke jobs executed the
+transferred verifier before authenticating the candidate, Windows junctions were not
+classified as redirects, and the actual candidate tree and checksum writer lacked
+matching hard bounds.
+These findings are tracked as `ss-lp5a`, `ss-tpr2`, `ss-1v5i`, `ss-dku3`, `ss-i32z`,
+`ss-kfnc`, `ss-n7m1`, `ss-c8ix`, `ss-j2ps`, `ss-96ih`, and `ss-3i41`. The closure keeps
+candidate verification non-mutating and descriptor-bound, runs an exact-commit checkout
+verifier before candidate code, rejects POSIX and Windows redirects, and bounds both
+inventory directions.
+It also centralizes identity-stable limit-plus-one readers, makes wheel-first resource
+tests explicit, uses iterative glob dynamic programming, enforces CST construction
+budgets with global error precedence, applies one scalar comparator to parity-visible
+traversal, aligns source locations and manifest limits, and narrows the legacy output
+claim to implemented CLI behavior.
+
+### Post-remediation resource-bound audit
+
+A final complexity, compiler, and identity audit challenged the fixes at their declared
+maximums instead of accepting bounded-looking constants at face value.
+It found:
+
+- the compilers applied value budgets before adding the digest field; Python check mode
+  treated booleans and integers as equal, and Windows text translation could change
+  already-sized output bytes;
+- a Thompson NFA removed catastrophic backtracking but its first implementation still
+  scanned large active-state and character-class sets, repeated pattern/key work across
+  `patternProperties`, and retained no aggregate validation fuel;
+- wildcard segments had a bounded inner matcher but an invocation could multiply many
+  patterns by every discovered candidate without a total work budget;
+- diagnostics reopened a schema after validation and could project locations from
+  replacement bytes, while TypeScript’s missing-path canonicalization did not follow a
+  dangling symlink’s target prefix;
+- the final privileged release job executed a transferred helper before trusted
+  verification, and the frozen state driver still had racy unbounded reads; and
+- skill dry runs read arbitrary target, recovery, and lock files without a managed-file
+  byte ceiling.
+
+The resulting work is tracked as `ss-84vm`, `ss-7ykr`, `ss-v2h3`, `ss-clz0`, `ss-bcdi`,
+and `ss-2upc`. The remediation validates the final sidecar, writes exact UTF-8 bytes,
+uses normalized character intervals and cached bounded automata with total fuel, caps
+discovery pattern and invocation work, carries the exact parsed source map, resolves
+missing symlink components consistently, verifies transfers before candidate execution,
+and bounds release and skill-installer reads.
+These late findings reinforce the main review lesson: a limit is credible only when it
+charges the actual expensive operation and is exercised at the supported boundary.
 
 ## Design and Product Findings
 
@@ -313,12 +389,12 @@ both registry trusted-publisher claims are verified.
 The release-specific threat model and residual controls are recorded in the
 [release boundary review](review-2026-07-09-release-boundary.md).
 
-## Remediation Status on 2026-07-10
+## Remediation Status on 2026-07-09
 
-The code candidate passes 656 Python tests, 534 TypeScript tests, Python/Node/Bun golden
-corpora, direct Python-to-Node byte comparison, and 25 artifact cases plus 77 portable
-vectors under all three runtimes.
-These are dated review observations, not stable product claims.
+The code candidate passes 773 Python tests with one platform skip, 591 TypeScript tests,
+62/60/62 Python/Node/Bun golden cases, a 26-command direct Python-to-Node byte
+comparison, and 25 ready artifact cases plus 80 portable vectors under all three
+runtimes. These are dated review observations, not stable product claims.
 Python and Bun dependency audits report no known vulnerabilities.
 The deterministic wheel, sdist, npm tarball, and extracted conformance consumer smoke
 tests pass.

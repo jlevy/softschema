@@ -1,9 +1,9 @@
 # Release-Boundary Risk Review
 
-**Reviewed:** July 9, 2026; final boundary pass July 10, 2026\
+**Reviewed:** July 9, 2026\
 **Scope:** `ss-o21w` and the final dual-registry recovery/publication closures\
 **Status:** Code complete; immutable-release policy, the protected GitHub environment,
-registry identity claims, and first-run CI validation remain release gates
+registry identity claims, and a final green CI rerun remain release gates
 
 ## Decision
 
@@ -11,16 +11,17 @@ The revised workflow has a defensible build-once boundary.
 An unprivileged job tests source, creates deterministic metadata, builds each package
 once, inventories and hashes the primary subjects, generates artifact-specific SPDX
 SBOMs, and transfers the result to an unprivileged installed-artifact smoke job.
-PyPI and npm jobs receive only the tested transfer and registry OIDC permission.
-They do not check out source, resolve project dependencies, rebuild, or execute package
+PyPI and npm jobs receive the tested transfer, registry OIDC permission, and an exact
+preflight-commit checkout used only for the trusted verifier.
+They do not resolve project dependencies, rebuild, or execute candidate package
 lifecycle scripts. The final boundary pass also binds every recovery bootstrap to the
 exact workflow commit before parsing or execution, authenticates the checksum inventory
 itself, preflights extraction depth and implied-directory budgets before writes, and
 rechecks immutable-release policy immediately before final publication.
 
 Do not use this path for a release until the two registry trusted-publisher records have
-been re-certified with the `pypi` and `npm` environment claims and one pull request has
-established the final required-check context names.
+been re-certified with the `pypi` and `npm` environment claims and the final
+pull-request revision passes every required check.
 Both registry settings pages required fresh authentication during this review, so their
 live claims could not be inspected.
 
@@ -33,12 +34,23 @@ live claims could not be inspected.
 | Dependency substitution during the build | Frozen runtime locks; build backend and transitives are version/hash locked; project editable install uses the already installed backend without isolation | Constraint build and installed-artifact smoke |
 | Rebuild after identity elevation | Package builds occur only in `preflight`; registry jobs download, checksum, select manifest subjects, and publish exact files | Static permission/script test |
 | Package/metadata/version divergence | Logical coordinates map separately to PEP 440 and SemVer; candidate expected filenames and subject kinds are exact; package-internal versions and metadata bytes are inspected | Unit tests and artifact smoke |
+| Declared subject-size amplification | The release-manifest schema caps each subject at 512 MiB; the runtime caps the aggregate at 1 GiB before reading subject files | Schema/runtime boundary agreement tests |
 | Source-checkout or consumer-resource shadowing | Wheel/npm resources are package-rooted; installed smoke uses a nested unrelated directory containing malicious colliding docs/skill paths | Installed wheel/npm smoke under Python, Node, and Bun |
 | Digest cycle | Build metadata hashes only source inputs; the external manifest hashes primary subjects but not itself; checksums are generated last | Determinism and manifest tests |
-| Partial or hidden transfer | Python builds outside the transfer directory with no generated `.gitignore`; manifest rejects unexpected top-level subjects; recursive checksums cover nested smoke controls | Workflow regression tests |
+| Partial, hidden, redirected, oversized, or verifier-mutated transfer | Python builds outside the transfer directory with no generated `.gitignore`; recursive inventory has a hard node budget and rejects hidden or undeclared files, unexplained directories, POSIX links, Windows reparse redirects, non-regular nodes, missing stable identities, subjects over 512 MiB, and aggregates over 1 GiB; the checksum writer and reader share a 4 MiB ceiling; bounded subject reads use regular-file descriptors, device/inode/size/mtime/ctime snapshots, and component-wise no-follow traversal where available; unprivileged smoke jobs run the exact-commit checkout verifier before the transferred driver or helpers | Workflow regressions, exact-checkout assertions, inventory/output/byte-budget tests, file/parent/checksum swap probes, reparse/special-node tests, and a default-interpreter subprocess that leaves no bytecode nodes |
 | Recovery bootstrap or checksum substitution | The checksum, archive, and frozen driver each require exact workflow/ref/commit attestations before parsing or execution; checksum names and bytes are bounded and closed | Recovery-order and hostile-checksum workflow tests |
 | Archive path amplification | Recovery preflights depth, file count, conflicting file/directory paths, and every unique implied directory before any archive-driven write | Deep and sparse-parent archive tests |
 | OIDC claim overreach | Workflow default is `{}`; only registry jobs receive `id-token: write`; both use tag-scoped GitHub environments with maintainer approval | GitHub API plus static workflow test |
+
+The exact-checkout verifier proves a static transfer: every declared regular file
+matched the closed checksum inventory when the trusted verifier read it, and observed
+replacement or mutation fails closed.
+It does not freeze the directory after returning.
+The workflow’s security argument therefore assumes a fresh isolated GitHub-hosted
+runner, sequential steps, no candidate code before trusted verification, and no
+concurrent same-UID writer.
+That is the deliberately narrow Actions threat model; an active local writer that can
+mutate verified files after the verifier returns is out of scope.
 
 ## Live GitHub State
 
@@ -56,8 +68,10 @@ The review configured and then re-read these repository controls:
 
 The main ruleset requires all Python, golden, TypeScript, cross-implementation, and six
 cross-platform artifact-smoke contexts.
-Confirm that the expanded names match the first pull-request run exactly; a missing
-context blocks merge and must be corrected in the ruleset rather than bypassed.
+The expanded names match the contexts observed on this pull request exactly.
+A failed initial run exposed the verifier-mutation defect now covered by `ss-lp5a`; the
+final revision still requires a completely green rerun.
+A future missing context must be corrected in the ruleset rather than bypassed.
 The same environment inventory did not contain `github-release`; the workflow names it,
 but its required reviewer, `v*` restriction, and administrator-bypass policy remain an
 explicit live gate rather than a verified control.
@@ -92,8 +106,10 @@ publication surface.
 
 ## Release Gates
 
-- [ ] Observe the new CI matrix on this pull request and confirm every configured
+- [x] Observe the new CI matrix on this pull request and confirm every configured
   required context matches exactly.
+- [ ] Rerun the final pull-request revision and require every configured context to
+  pass.
 - [ ] Sign in to PyPI and set workflow `publish.yml`, environment `pypi`.
 - [ ] Sign in to npm and set workflow `publish.yml`, environment `npm`, allowed action
   `npm publish`.
@@ -112,6 +128,7 @@ publication surface.
 - [GitHub secure-use reference](https://docs.github.com/en/actions/reference/security/secure-use)
 - [GitHub rulesets](https://docs.github.com/en/rest/repos/rules)
 - [GitHub deployment environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
+- [Node.js filesystem flags and platform support](https://nodejs.org/api/fs.html#fsconstants)
 - [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
 - [PyPI trusted-publisher security model](https://docs.pypi.org/trusted-publishers/security-model/)
 - [uv build constraints](https://docs.astral.sh/uv/concepts/projects/build/)

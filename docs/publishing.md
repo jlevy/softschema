@@ -139,6 +139,12 @@ For each stable or release-candidate version:
    The protected workflow repeats this check before creating or modifying a GitHub
    release and fails closed when the setting is disabled.
 
+   Each privileged consumer checks out the exact preflight commit and runs that trusted
+   verifier before executing any transferred helper.
+   This proves a static transfer on a fresh, isolated GitHub-hosted runner; it is not a
+   filesystem freeze and does not defend against a concurrent same-UID process that
+   mutates files after verification.
+
    Re-read `github-release` through the repository environment API. It must already
    exist, disallow administrator bypass, require a reviewer, and restrict deployments to
    protected `v*` release tags before the workflow is allowed to rely on it:
@@ -174,6 +180,12 @@ For each stable or release-candidate version:
    bounded digest/provenance verification, and finally publishes the existing draft.
    A conflicting same-version byte fails closed.
    `devtools/release_state.py` owns those classifications.
+
+   Each release-manifest subject must declare a size from 1 through 536,870,912 bytes
+   (512 MiB). The release driver also rejects a manifest whose declared subject sizes
+   total more than 1,073,741,824 bytes (1 GiB). The release-manifest schema enforces the
+   per-subject bound; the driver enforces the aggregate semantic invariant before it
+   reads subject files.
 
    The recovery bundle contains the complete original candidate transfer, including its
    recursive checksums, locked npm consumer, smoke support, and frozen standard-library

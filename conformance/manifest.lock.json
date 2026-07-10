@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "conformance/README.md",
-      "sha256": "416d19735c8c484eac4ea90f5b91cd18a5a7e43642908602c6b608e63357e444",
-      "size": 4450
+      "sha256": "36b21c18379fa364ff4372556f227259726eb1e8baf11a7663767596c916a405",
+      "size": 4890
     },
     {
       "path": "conformance/WALKTHROUGH.md",
@@ -502,7 +502,7 @@
     },
     {
       "path": "conformance/manifest.yaml",
-      "sha256": "4553b1ad8bb43608b81876e3abf4e7042f399691d696ddd6afc55852c02a13ca",
+      "sha256": "74882eea61227ee251f973225d6ce267dc099572510e014881e252c87f6f6528",
       "size": 13918
     },
     {
@@ -592,8 +592,8 @@
     },
     {
       "path": "conformance/schemas/release-manifest.schema.json",
-      "sha256": "ab300d5cb42e20c4da466dd1b74a5a10bf1ea5758ebd515b150882a1f9388634",
-      "size": 1417
+      "sha256": "fa1285921ae557a353cb779616cae4f1f3e8b9ca9ace7cb7abb792bc9321c2be",
+      "size": 1662
     },
     {
       "path": "conformance/schemas/release-metadata.schema.json",
@@ -652,8 +652,8 @@
     },
     {
       "path": "conformance/vectors/portable-pattern-v1.json",
-      "sha256": "3bb6fbb910f77b7877c74dfd2e805b5bdfb034760219a3b5b152858a2bd8cb64",
-      "size": 1867
+      "sha256": "d5a6e0cbb1b8082bcdfe45c8df3a5e65e8ac586aee1d9b2f05d956a3296d2942",
+      "size": 2142
     },
     {
       "path": "conformance/vectors/portable-yaml-v1.json",
@@ -662,8 +662,8 @@
     },
     {
       "path": "conformance/vectors/structural-resources-v1.json",
-      "sha256": "3e5e20a886ea3653fd52063447512140500938d396e531acc0e0d5c678c257f7",
-      "size": 5944
+      "sha256": "02bc4bad6a110d32bdcf13fcc552e56051e84928ae9a59e2f4bfe84592f3c87a",
+      "size": 7421
     },
     {
       "path": "conformance/vendor/SARIF-SCHEMA-NOTICE.md",

@@ -21,6 +21,7 @@ from frontmatter_format import FmFormatError
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAMLError
 
+from softschema._bounded_file import BoundedFileExpectation, read_bounded_file
 from softschema.compile import compile_model
 from softschema.core.diagnostics import (
     DiagnosticResultV1,
@@ -58,14 +59,15 @@ from softschema.skill_installer import (
 )
 from softschema.validate import (
     EnvelopeAmbiguityError,
-    _read_bounded_bytes,
+    _resolve_metadata_schema,
     artifact_error_record,
+    capture_validated_schema_source,
     infer_envelope_key,
     read_frontmatter,
     read_frontmatter_with_locations,
-    read_yaml_artifact,
     read_yaml_artifact_with_locations,
     structural_error_offending_property,
+    take_validated_schema_source,
     validate_artifact,
 )
 from softschema.value_domain import (
@@ -487,6 +489,7 @@ class _BatchArtifact:
     source: str
     root: dict[str, Any] | None
     source_map: SourceMap
+    source_file: BoundedFileExpectation
     contract_id: str
     status: SchemaStatus
     envelope_key: str | None
@@ -548,9 +551,13 @@ def _validate_legacy(
     # while access failures remain exit 2.
     try:
         if profile == SchemaProfile.pure_yaml:
-            parsed_root: Any = read_yaml_artifact(path)
+            located_yaml = read_yaml_artifact_with_locations(path)
+            parsed_root: Any = located_yaml.value
+            source_file = located_yaml.source_file
         else:
-            _content, parsed_root = read_frontmatter(path)
+            located_frontmatter = read_frontmatter_with_locations(path)
+            parsed_root = located_frontmatter.value
+            source_file = located_frontmatter.source_file
     except Exception as exc:
         record = artifact_error_record(path, exc)
         if record is None:
@@ -567,7 +574,12 @@ def _validate_legacy(
         status=status,
         profile=profile,
     )
-    result = validate_artifact(path, contract=contract, frontmatter=parsed_root)
+    result = validate_artifact(
+        path,
+        contract=contract,
+        frontmatter=parsed_root,
+        source_file=source_file,
+    )
     print(_json(result))
     return 0 if result.ok else 1
 
@@ -586,12 +598,14 @@ def _validate_diagnostic(
         try:
             if profile == SchemaProfile.pure_yaml:
                 located_yaml = read_yaml_artifact_with_locations(Path(entry.path))
-                root = cast(dict[str, Any], located_yaml.value)
+                root = located_yaml.value
                 source_map = located_yaml.source_map
+                source_file = located_yaml.source_file
             else:
                 located_frontmatter = read_frontmatter_with_locations(Path(entry.path))
                 root = cast(dict[str, Any] | None, located_frontmatter.value)
                 source_map = located_frontmatter.source_map
+                source_file = located_frontmatter.source_file
         except Exception as exc:
             record = artifact_error_record(entry.display_path, exc, include_location=True)
             if record is None:
@@ -622,6 +636,7 @@ def _validate_diagnostic(
                 source=entry.display_path,
                 root=root,
                 source_map=source_map,
+                source_file=source_file,
                 contract_id=contract_id,
                 status=status,
                 envelope_key=envelope_key,
@@ -634,7 +649,7 @@ def _validate_diagnostic(
         else None
     )
     results: list[DiagnosticResultV1] = []
-    schema_maps: dict[Path, SourceMap] = {}
+    schema_maps: dict[Path, tuple[BoundedFileExpectation, SourceMap]] = {}
     for item in prepared:
         if not isinstance(item, _BatchArtifact):
             results.append(item)
@@ -647,16 +662,19 @@ def _validate_diagnostic(
             status=item.status,
             profile=profile,
         )
-        validation_result = validate_artifact(
-            item.path,
-            contract=contract,
-            frontmatter=item.root,
-            limits=DEFAULT_VALIDATION_LIMITS,
-        )
+        with capture_validated_schema_source():
+            validation_result = validate_artifact(
+                item.path,
+                contract=contract,
+                frontmatter=item.root,
+                source_file=item.source_file,
+                limits=DEFAULT_VALIDATION_LIMITS,
+            )
         structural_offending_properties = [
             structural_error_offending_property(error)
             for error in validation_result.structural.errors
         ]
+        validated_schema_source = take_validated_schema_source(validation_result.structural)
         legacy_wire = cast(dict[str, Any], _plain(validation_result))
         input_result = _artifact_input_success(item.source, profile, item.root)
         validation_wire = project_validation_wire(legacy_wire)
@@ -666,6 +684,8 @@ def _validate_diagnostic(
                 args.schema,
                 validation_wire,
                 schema_maps,
+                item.source_file,
+                validated_schema_source,
             )
             if _has_schema_diagnostic(validation_wire)
             else None
@@ -938,8 +958,13 @@ def _schema_diagnostic_source(
     artifact_path: Path,
     explicit_schema: Path | None,
     validation: Mapping[str, Any],
-    cache: dict[Path, SourceMap],
+    cache: dict[Path, tuple[BoundedFileExpectation, SourceMap]],
+    source_file: BoundedFileExpectation,
+    validated_source: tuple[Path, SourceMap] | None = None,
 ) -> _SchemaDiagnosticSource | None:
+    if validated_source is not None:
+        path, source_map = validated_source
+        return _SchemaDiagnosticSource(_display_path(path, already_canonical=True), source_map)
     selected: Path | None = explicit_schema
     metadata = validation.get("document_metadata")
     if (
@@ -951,39 +976,52 @@ def _schema_diagnostic_source(
     if selected is None:
         return None
 
-    candidates: tuple[Path, ...]
-    if selected.is_absolute():
-        candidates = (selected,)
-    elif explicit_schema is not None:
-        candidates = (selected, artifact_path.parent / selected, Path.cwd() / selected)
+    expected: BoundedFileExpectation | None = None
+    if explicit_schema is None:
+        bound, _error = _resolve_metadata_schema(
+            str(selected),
+            artifact_path,
+            source_file=source_file,
+        )
+        if bound is None:
+            return None
+        schema_path = bound.path
+        expected = bound.expected
     else:
-        candidates = (artifact_path.parent / selected,)
-    schema_path = next(
-        (candidate.resolve() for candidate in candidates if candidate.is_file()), None
-    )
-    if schema_path is None:
-        return None
+        candidates: tuple[Path, ...]
+        if selected.is_absolute():
+            candidates = (selected,)
+        else:
+            candidates = (selected, artifact_path.parent / selected, Path.cwd() / selected)
+        schema_path = next(
+            (candidate.resolve() for candidate in candidates if candidate.is_file()), None
+        )
+        if schema_path is None:
+            return None
 
-    source_map = cache.get(schema_path)
-    if source_map is None:
-        try:
-            encoded = _read_bounded_bytes(
-                schema_path,
-                DEFAULT_VALIDATION_LIMITS.max_resource_bytes,
-            )
+    try:
+        source = read_bounded_file(
+            schema_path,
+            DEFAULT_VALIDATION_LIMITS.max_resource_bytes,
+            expected=expected,
+        )
+        cached = cache.get(schema_path)
+        if cached is not None and cached[0] == source.expectation:
+            source_map = cached[1]
+        else:
             parsed = parse_portable_yaml_with_locations(
-                encoded.decode("utf-8-sig"),
-                encoded_size=len(encoded),
+                source.data.decode("utf-8-sig"),
+                encoded_size=len(source.data),
             )
             source_map = parsed.source_map
-        except (OSError, UnicodeDecodeError, PortableValueError, PortableYamlSyntaxError):
-            source_map = SourceMap.empty()
-        cache[schema_path] = source_map
+            cache[schema_path] = (source.expectation, source_map)
+    except (OSError, UnicodeDecodeError, PortableValueError, PortableYamlSyntaxError):
+        source_map = SourceMap.empty()
     return _SchemaDiagnosticSource(_display_path(schema_path), source_map)
 
 
-def _display_path(path: Path) -> str:
-    resolved = path.resolve()
+def _display_path(path: Path, *, already_canonical: bool = False) -> str:
+    resolved = path if already_canonical else path.resolve()
     try:
         return resolved.relative_to(Path.cwd().resolve()).as_posix()
     except ValueError:

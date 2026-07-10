@@ -32,6 +32,10 @@
     {
       "release": "v0.3.0-candidate-2",
       "sha256": "9bb289188f95d40214e37f087b993f41540b37bc123e79b052682181ed8d6080"
+    },
+    {
+      "release": "v0.3.0-candidate-3",
+      "sha256": "16b68cf2f425de5c9e2e9f4095207bb5273914c55af580b812d8ad819d08b72b"
     }
   ]
 }

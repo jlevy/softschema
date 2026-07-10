@@ -3,7 +3,15 @@
     "id": "portable-regex-v1",
     "match_mode": "unicode-search",
     "max_quantifier": 1000,
-    "semantics": "ECMA-262 Unicode regular-expression semantics without flags",
+    "max_pattern_codepoints": 1024,
+    "max_group_depth": 64,
+    "max_nfa_states": 4096,
+    "max_dfa_states": 4096,
+    "max_dfa_transitions": 4096,
+    "max_schema_patterns": 256,
+    "max_schema_codepoints": 16384,
+    "max_validation_work": 8388608,
+    "semantics": "ECMA-262-derived Unicode regular-expression semantics without flags and with strict true-end $",
     "grammar": {
       "pattern": "alternative *( '|' alternative )",
       "alternative": "*piece",
@@ -47,6 +55,13 @@
     { "id": "lazy-quantifiers", "pattern": "^a+?b*?c??$", "supported": true },
     { "id": "open-upper-bound", "pattern": "^a{2,}$", "supported": true },
     { "id": "maximum-bound", "pattern": "^a{0,1000}$", "supported": true },
+    { "id": "nested-quantifiers-are-linear", "pattern": "^(a+)+$", "supported": true },
+    { "id": "maximum-group-depth", "pattern": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))", "supported": true },
+    { "id": "unsupported-group-depth", "pattern": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))", "supported": false },
+    { "id": "maximum-pattern-size", "pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "supported": true },
+    { "id": "unsupported-pattern-size", "pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "supported": false },
+    { "id": "within-nfa-state-budget", "pattern": "(?:abcd){1000}", "supported": true },
+    { "id": "unsupported-nfa-state-budget", "pattern": "(?:abcde){1000}", "supported": false },
     { "id": "ascii-shorthands", "pattern": "^\\d+[\\-_]\\w+$", "supported": true },
     { "id": "whitespace-shorthands", "pattern": "^\\s+\\S+$", "supported": true },
     { "id": "shorthands-in-class", "pattern": "^[\\d\\w]+$", "supported": true },
@@ -81,6 +96,16 @@
     { "id": "unsupported-complement-in-class", "pattern": "[\\S]", "supported": false }
   ],
   "matching": [
+    {
+      "id": "nested-quantifier",
+      "pattern": "^(a+)+$",
+      "cases": [
+        { "value": "a", "matches": true },
+        { "value": "aaaa", "matches": true },
+        { "value": "aaaa!", "matches": false },
+        { "value": "", "matches": false }
+      ]
+    },
     {
       "id": "strict-end-anchor",
       "pattern": "^a$",
@@ -125,12 +150,39 @@
       ]
     },
     {
+      "id": "ascii-nondigit-shorthand",
+      "pattern": "^\\D+$",
+      "cases": [
+        { "value": "é😀", "matches": true },
+        { "value": "abc", "matches": true },
+        { "value": "1", "matches": false }
+      ]
+    },
+    {
       "id": "ascii-word-shorthand",
       "pattern": "^\\w+$",
       "cases": [
         { "value": "Az_09", "matches": true },
         { "value": "café", "matches": false },
         { "value": "東京", "matches": false }
+      ]
+    },
+    {
+      "id": "ascii-nonword-shorthand",
+      "pattern": "^\\W+$",
+      "cases": [
+        { "value": "é😀!", "matches": true },
+        { "value": "abc", "matches": false },
+        { "value": "1_", "matches": false }
+      ]
+    },
+    {
+      "id": "ascii-complement-in-negated-class",
+      "pattern": "^[^\\W]+$",
+      "cases": [
+        { "value": "Az_09", "matches": true },
+        { "value": "é", "matches": false },
+        { "value": "!", "matches": false }
       ]
     },
     {

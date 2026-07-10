@@ -26,7 +26,7 @@ core package.
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
 | `softschema.value_domain` | Bounded portable-YAML parsing, materialized-value normalization, and `ValidationLimits` |
-| `softschema.patterns` | `portable-regex-v1` parsing, matching, schema traversal, and private Python-engine lowering |
+| `softschema.patterns` | Bounded `portable-regex-v1` parsing, Thompson-NFA compilation, normalized classes, lazy DFA state/transition/membership budgets, schema traversal, and safe jsonschema keyword integration |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.core.diagnostics` | Pure diagnostic-v1, JSONL, and SARIF projection |
@@ -212,9 +212,14 @@ default is `frontmatter-md`, and extensions do not select a profile.
 
 `validate` accepts multiple file operands and recursive directory discovery.
 The filesystem adapter owns portable include/exclude globs, display paths, identity
-deduplication, symlink policy, and deterministic ordering.
-The CLI projects typed core results as aggregate diagnostic-v1 JSON, self-contained
-JSONL records, or SARIF. One explicit file with JSON retains the legacy serializer.
+deduplication, symlink policy, deterministic ordering, static invocation caps, and
+shared candidate-code-point match fuel.
+Static glob-budget failures precede filesystem access; dynamic exhaustion is
+`discovery_limit`. The CLI projects typed core results as aggregate diagnostic-v1 JSON,
+self-contained JSONL records, or SARIF. When discovery classifies one single explicit
+path as a regular file, JSON retains the legacy serializer, including when a later read
+fails. A single explicit `not_found` result is the narrow legacy exception; every other
+discovery-input result uses a diagnostic-v1 aggregate.
 
 `softschema docs` and `softschema skill` are informational commands.
 They print bundled Markdown resources to stdout so agents in installed environments can
@@ -368,13 +373,14 @@ as the documented surface and open an issue if a consumer needs a typed constant
 ```bash
 softschema compile examples.movie_page.model:MoviePage \
   --contract example.movies:MoviePage/v1 \
+  --schema-id https://schemas.example.org/movie-page/v1 \
   --out examples/movie_page/movie-page.schema.yaml
 ```
 
 The emitted schema includes:
 
 - `$schema` for JSON Schema 2020-12
-- `$id` when a contract ID is supplied
+- `$id` when an explicit schema identity is supplied with `--schema-id`
 - an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
   `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
   The block is deliberately language-neutral; it carries no `generated_from` provenance,
@@ -487,6 +493,17 @@ for field in view.fields_by_group("taxonomy"):
 
 `SchemaView.load()` parses YAML or JSON through the bounded portable-value boundary and
 accepts a trusted `limits=` override with the same defaults as validation.
+File loads resolve one canonical regular-file target, bind the open descriptor to the
+inspected device/inode/size/mtime/ctime, fail closed when no stable inode is available,
+read through the limit plus one byte, and decode strict UTF-8. Document-declared schema
+containment passes that canonical identity into the reader; POSIX traversal opens each
+canonical parent relative to a no-follow directory descriptor, while the portable
+fallback repeats canonical checks around the open.
+The repeated metadata checks detect normal replacement and in-place mutation.
+On Windows, where CPython exposes creation time through `st_ctime`, a second descriptor
+pass must return the same bytes as defense in depth against same-size rewrites.
+These checks are not an atomic snapshot against a hostile writer able to coordinate both
+reads or restore all observable metadata.
 The constructor accepts an already normalized JSON-compatible mapping and takes a deep
 snapshot without running the boundary again.
 The `raw` property returns a new deep copy; mutating constructor input, `raw`, root

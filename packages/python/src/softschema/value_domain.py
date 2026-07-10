@@ -22,6 +22,7 @@ from ruamel.yaml.events import (
     StreamEndEvent,
     StreamStartEvent,
 )
+from ruamel.yaml.tokens import DirectiveToken, FlowMappingStartToken, FlowSequenceStartToken
 
 from softschema.core.source_map import NodeSource, SourceMap, SourcePoint, SourceSpan
 from softschema.core.value_domain import (
@@ -98,6 +99,11 @@ _INTEGER_RE = re.compile(r"[-+]?(?:0|[1-9][0-9_]*|0o[0-7_]+|0x[0-9a-fA-F_]+)\Z")
 _FLOAT_RE = re.compile(
     r"[-+]?(?:(?:[0-9][0-9_]*)?\.[0-9_]+(?:[eE][-+]?[0-9]+)?|"
     r"[0-9][0-9_]*(?:\.[0-9_]*)?[eE][-+]?[0-9]+|"
+    r"\.(?:inf|Inf|INF|nan|NaN|NAN))\Z"
+)
+_TAGGED_INTEGER_RE = re.compile(r"[-+]?(?:[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+)\Z")
+_TAGGED_FLOAT_RE = re.compile(
+    r"[-+]?(?:(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?|"
     r"\.(?:inf|Inf|INF|nan|NaN|NAN))\Z"
 )
 _JSON_SCALAR_TAGS = {
@@ -191,8 +197,29 @@ def parse_portable_yaml_with_locations(
 def _preflight_yaml_syntax(yaml: YAML, text: str, line_offset: int) -> None:
     """Consume a separate event stream so document syntax wins over prefix semantics."""
     try:
+        for token in yaml.scan(text):
+            if (
+                isinstance(token, DirectiveToken)
+                and token.name == "YAML"
+                and token.value not in {(1, 1), (1, 2)}
+            ):
+                raise PortableYamlSyntaxError(
+                    "invalid YAML syntax",
+                    line=token.start_mark.line + 1 + line_offset,
+                    column=token.start_mark.column + 1,
+                )
+            if isinstance(token, (FlowMappingStartToken, FlowSequenceStartToken)):
+                offset = token.end_mark.index
+                if text[offset : offset + 1] == "#":
+                    raise PortableYamlSyntaxError(
+                        "invalid YAML syntax",
+                        line=token.end_mark.line + 1 + line_offset,
+                        column=token.end_mark.column + 1,
+                    )
         for _event in yaml.parse(text):
             pass
+    except PortableYamlSyntaxError:
+        raise
     except YAMLError as exc:
         raise _yaml_syntax_error(exc, line_offset) from exc
 
@@ -454,6 +481,8 @@ def _parse_integer(
     line_offset: int,
 ) -> int:
     cleaned = source.replace("_", "")
+    if not _TAGGED_INTEGER_RE.fullmatch(cleaned):
+        raise _value_error("invalid integer scalar", path, event, line_offset)
     sign = -1 if cleaned.startswith("-") else 1
     unsigned = cleaned.lstrip("+-")
     base = 10
@@ -468,7 +497,10 @@ def _parse_integer(
     safe_digits = 16 if base == 10 else 18 if base == 8 else 13
     if len(significant) > safe_digits:
         raise _value_error("integer is outside the safe range", path, event, line_offset)
-    value = sign * int(digits, base)
+    try:
+        value = sign * int(digits, base)
+    except ValueError as exc:
+        raise _value_error("invalid integer scalar", path, event, line_offset) from exc
     if abs(value) > MAX_SAFE_INTEGER:
         raise _value_error("integer is outside the safe range", path, event, line_offset)
     return value
@@ -481,6 +513,8 @@ def _parse_float(
     line_offset: int,
 ) -> int | float:
     cleaned = source.replace("_", "")
+    if not _TAGGED_FLOAT_RE.fullmatch(cleaned):
+        raise _value_error("invalid numeric scalar", path, event, line_offset)
     if cleaned.lstrip("+-").lower() in {".inf", ".nan"}:
         raise _value_error("number must be finite", path, event, line_offset)
     try:

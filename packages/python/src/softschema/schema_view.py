@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from softschema._bounded_file import read_bounded_bytes
 from softschema.models import validate_contract_id, validate_schema_id
 from softschema.value_domain import (
     DEFAULT_VALIDATION_LIMITS,
@@ -84,7 +85,7 @@ class SchemaView:
         UTF-8, a portable-YAML error for invalid or out-of-domain YAML, and
         ``ValueError`` when the parsed root is not a mapping.
         """
-        encoded = schema_path.read_bytes()
+        encoded = read_bounded_bytes(schema_path, limits.max_resource_bytes)
         data = parse_portable_yaml(
             encoded.decode("utf-8-sig"),
             limits=limits,

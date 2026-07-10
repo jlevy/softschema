@@ -21,11 +21,14 @@ jobs:
       logical-version: ${{ steps.coordinates.outputs.logical-version }}
       npm-tag: ${{ steps.coordinates.outputs.npm-tag }}
       prerelease: ${{ steps.coordinates.outputs.prerelease }}
+      source-commit: ${{ steps.source.outputs.commit }}
     steps:
       - name: Checkout exact source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Peel and record the source commit
         id: source
@@ -220,10 +223,9 @@ jobs:
           python3 release-out/devtools/release_state.py controls release-out
 
       - name: Generate transfer checksums last
-        working-directory: release-out
-        run: |
-          find . -type f ! -name SHA256SUMS -print0 \
-            | sort -z | xargs -0 sha256sum > SHA256SUMS
+        run: >-
+          uv run --no-sync python
+          devtools/frozen_artifact_smoke.py checksums release-out
 
       - name: Upload immutable candidate transfer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -239,7 +241,16 @@ jobs:
     name: Install and execute exact candidate bytes
     needs: preflight
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -256,7 +267,7 @@ jobs:
       - name: Verify transfer checksums before any candidate install
         run: >-
           uv run --no-project --python 3.12.13 python
-          release-out/devtools/frozen_artifact_smoke.py verify-checksums release-out
+          devtools/frozen_artifact_smoke.py verify-checksums release-out
 
       - name: Set up pinned Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -289,6 +300,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Require immutable GitHub releases before any release mutation
         run: |
           test "$(gh api \
@@ -350,7 +368,7 @@ jobs:
 
       - name: Verify the complete transfer before release access
         run: |
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
 
       - name: Recreate deterministic durable recovery assets
@@ -441,6 +459,13 @@ jobs:
       pypi_state: ${{ steps.classify.outputs.pypi_state }}
       npm_state: ${{ steps.classify.outputs.npm_state }}
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         id: candidate
         continue-on-error: true
@@ -498,7 +523,7 @@ jobs:
       - name: Verify transfer and classify exact public bytes
         id: classify
         run: |
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
           python3 release-out/devtools/release_state.py pypi-plan release-out \
             > pypi-plan.json
@@ -521,6 +546,13 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         id: candidate
         continue-on-error: true
@@ -578,7 +610,7 @@ jobs:
       - name: Reclassify and stage only still-missing files
         id: state
         run: |
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
           python3 release-out/devtools/release_state.py pypi-plan release-out \
             > pypi-plan.json
@@ -612,6 +644,13 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         id: candidate
         continue-on-error: true
@@ -677,7 +716,7 @@ jobs:
         id: state
         run: |
           test "$(npm --version)" = "11.16.0"
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
           python3 release-out/devtools/release_state.py npm-plan release-out \
             > npm-plan.json
@@ -712,6 +751,13 @@ jobs:
       attestations: read
       contents: read
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         id: candidate
         continue-on-error: true
@@ -768,7 +814,7 @@ jobs:
 
       - name: Poll bounded propagation and check Integrity API publisher metadata
         run: |
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
           python3 release-out/devtools/release_state.py pypi-plan release-out \
             --require-state complete --require-publisher-metadata --attempts 8 --delay 5 \
@@ -786,6 +832,13 @@ jobs:
       attestations: read
       contents: read
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         id: candidate
         continue-on-error: true
@@ -850,7 +903,7 @@ jobs:
       - name: Poll exact npm bytes and the stable or prerelease channel
         run: |
           test "$(npm --version)" = "11.16.0"
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
           python3 release-out/devtools/release_state.py npm-plan release-out \
             --require-state complete --require-channel --attempts 8 --delay 5 \
@@ -871,7 +924,7 @@ jobs:
 
   finalize-release:
     name: Publish the exact existing GitHub draft
-    needs: [draft-release, verify-pypi, verify-npm]
+    needs: [preflight, draft-release, verify-pypi, verify-npm]
     if: >-
       github.event_name == 'push' &&
       needs.draft-release.result == 'success' &&
@@ -886,6 +939,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout exact source for transfer verification
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.preflight.outputs.source-commit }}
+
       - name: Download immutable candidate transfer
         id: candidate
         continue-on-error: true
@@ -938,6 +998,11 @@ jobs:
               --deny-self-hosted-runners
           done
 
+      - name: Verify the complete transfer before release access
+        run: |
+          python3 devtools/frozen_artifact_smoke.py \
+            verify-checksums release-out
+
       - name: Recreate deterministic durable recovery assets
         run: |
           rm -rf recovery
@@ -951,7 +1016,7 @@ jobs:
       - name: Reverify exact assets and every GitHub provenance attestation
         id: state
         run: |
-          python3 release-out/devtools/frozen_artifact_smoke.py \
+          python3 devtools/frozen_artifact_smoke.py \
             verify-checksums release-out
           python3 release-out/devtools/release_state.py github-plan release-out \
             --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" \

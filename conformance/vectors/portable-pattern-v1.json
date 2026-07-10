@@ -1,7 +1,7 @@
 {
   "format": "softschema-vector-suite-v1",
   "id": "portable-pattern-v1",
-  "description": "Portable ECMA-262 Unicode-search regular expression syntax and matching.",
+  "description": "Portable ECMA-262-derived Unicode-search regular expression syntax and matching.",
   "operation": "pattern",
   "cases": [
     {
@@ -28,6 +28,14 @@
       "id": "unanchored-search",
       "input": { "pattern": "cat", "value": "concatenate" },
       "expected": { "ok": true, "supported": true, "matches": true }
+    },
+    {
+      "id": "nested-repetition-is-linear",
+      "input": {
+        "pattern": "^(a+)+$",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
+      },
+      "expected": { "ok": true, "supported": true, "matches": false }
     },
     {
       "id": "unsupported-lookaround",

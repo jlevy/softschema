@@ -55,17 +55,18 @@ Annotated, the parts fit together like this:
 
 ```markdown
 ---
-softschema:                               # the metadata block
-  format: "1"                            # the artifact-format version
-  contract: example.movies:MoviePage/v1   # the contract ID
-  schema: movie-page.schema.yaml          # optional pointer to the compiled schema
-  envelope: movie                         # optional declared envelope key
-  status: enforced                        # the status
-movie:                               # the envelope key
-  title: Spirited Away               # ── the payload ──
-  release_year: 2001                 #
+softschema: # the metadata block
+  format: "1" # the artifact-format version
+  contract: example.movies:MoviePage/v1 # the contract ID
+  schema: movie-page.schema.yaml # optional pointer to the compiled schema
+  envelope: movie # optional declared envelope key
+  status: enforced # the status
+movie: # the envelope key
+  title: Spirited Away # ── the payload ──
+  release_year: 2001 #
 ---
-# Spirited Away (2001)              # ── the body (reader-facing) ──
+
+# Spirited Away (2001) # ── the body (reader-facing) ──
 ```
 
 ## Artifact Profiles
@@ -147,6 +148,17 @@ scalar or an empty mapping value.
 Forms such as `{a:}` and `[a:]` are syntax errors.
 Separate an intended empty value (`{a: }` or `[a: ]`) or quote the key.
 
+A comment immediately after `[` or `{` without intervening separation is not portable;
+write `[ # comment` or `{ # comment` instead.
+An implicit mapping inside a flow sequence must have a key, so `[: 1]` is a syntax
+error; an explicit empty key such as `[? : 1]` reaches the ordinary non-string-key value
+boundary. A document-end marker (`...`) cannot by itself create the accepted empty
+document. Empty or comment-only input still materializes as null.
+
+Explicit core tags do not bypass the portable scalar grammar.
+An invalid `!!bool`, `!!int`, or `!!float` value is a positioned value-domain error at
+the tag property, never a host-language conversion exception.
+
 The default limits are:
 
 - 8 MiB of encoded input per artifact or schema resource
@@ -156,8 +168,24 @@ The default limits are:
 - a maximum representation depth of 128
 - 1 MiB of Unicode code points per scalar
 
-File-backed inputs are read only through the limit plus one byte, so byte limits apply
-before whole-file allocation, decoding, or parsing.
+File-backed inputs resolve one canonical target, require it to be a regular file before
+opening, bind the open descriptor to the inspected file identity, and read only through
+the limit plus one byte.
+Byte and special-file checks therefore apply before whole-file allocation, strict UTF-8
+decoding, or parsing.
+For a document-declared schema, the containment check also carries the authorized
+canonical path, device/inode, byte size, modification time, and change time into the
+bounded read. A filesystem that reports no stable file identity fails closed rather than
+weakening this authorization.
+Platforms with descriptor-relative no-follow traversal pin each parent component; other
+platforms repeat canonical-path checks around the descriptor open and require the
+authorized file identity without claiming that every parent component is pinned.
+The reader repeats descriptor metadata checks after the last byte, which detects
+ordinary replacement, truncation, growth, and in-place mutation.
+These portable checks do not claim an atomic snapshot against a privileged or same-user
+hostile writer that can mutate one open inode while restoring every observable
+timestamp; a host requiring that stronger boundary must validate a private immutable
+copy or use an operating-system snapshot primitive.
 Node, depth, scalar, alias, and merge checks apply before ordinary object construction.
 Already-materialized library resources are sized as compact, key-sorted UTF-8 JSON after
 normalization. Trusted library callers may set explicit lower or higher limits through
@@ -210,7 +238,29 @@ They support `*`, `?`, character classes, and `**` only as a complete path segme
 Excludes win; hidden entries are ordinary candidates.
 Empty, absolute, drive-qualified, backslash-containing, dot-segment, unterminated-class,
 and partial-globstar patterns are invocation errors.
-Include/exclude flags require `--recursive`.
+To keep matching work portable and bounded, every fixed chunk between two `*` tokens in
+one path segment has at most 256 units of match complexity.
+A literal or `?` costs one; a character class costs at least one and otherwise one per
+normalized range. A pattern that exceeds this fixed profile limit is an invocation error
+with reason `match_work_limit`. Prefix and suffix chunks are checked once and do not
+have this interior limit.
+Character-class ranges are merged and membership uses an indexed lookup.
+One invocation accepts at most 64 include/exclude patterns, 4,096 aggregate tokens, and
+8,192 aggregate static match-complexity units.
+One pattern contains at most 262,144 Unicode code points, and all patterns contain at
+most 1,048,576 aggregate code points; these raw-source limits are checked before
+tokenization. Crossing an invocation limit is a pre-filesystem invocation error with
+reason `match_work_limit`.
+
+Within one path segment, the exact matcher runs in
+`O(pattern + 256 * candidate-code-points)` work without recursion or a
+pattern-by-candidate dynamic-programming matrix.
+Complete-segment `**` uses an outer `O(pattern-segments * path-segments)` dynamic
+program; recursive discovery separately bounds path depth at 64. A shared 8,388,608-unit
+invocation fuel conservatively charges candidate code points, token work, and that outer
+dynamic program across every pattern/candidate pair.
+Dynamic exhaustion is the ordinary `discovery_limit` input result, not a partial
+selection. Include/exclude flags require `--recursive`.
 
 Operands retain command-line order.
 Each directory is enumerated by case-sensitive Unicode code-point order over its display
@@ -235,8 +285,12 @@ Output compatibility depends on the request shape, not the number of resulting f
 
 <!-- BEGIN SOFTSCHEMA CLAIM result-formats -->
 
-- one explicit file with JSON output uses `validation-result-legacy`;
-- multiple operands or directory expansion uses aggregate `diagnostic-v1` JSON;
+- one single explicit path that discovery classifies as a regular file uses
+  `validation-result-legacy` for JSON, including when a later read fails;
+- one explicit missing path or broken symlink retains the legacy `input_error/not_found`
+  record for compatibility;
+- every other discovery-input failure, multiple operands, or directory expansion uses
+  aggregate `diagnostic-v1` JSON;
 - `--format jsonl` writes one self-contained `diagnostic-v1-record` per result and no
   summary record; and
 - `--format sarif` writes `sarif-2.1.0` (SARIF 2.1.0) with stable rules, percent-encoded
@@ -244,15 +298,21 @@ Output compatibility depends on the request shape, not the number of resulting f
 
 <!-- END SOFTSCHEMA CLAIM result-formats -->
 
-A one-file JSONL or SARIF request opts into diagnostic-v1. Missing, unreadable,
-unexpanded-directory, and no-match inputs produce per-path input records while other
-inputs continue.
+A one-file JSONL or SARIF request opts into diagnostic-v1. For default JSON, an explicit
+FIFO, symlink loop, symlink to a directory or other non-file, and unexpanded directory
+produce a diagnostic-v1 aggregate even when the aggregate has one input record.
+Directory discovery errors and no-match inputs also produce aggregate per-path input
+records while later operands continue.
+A single explicit `not_found` result is the narrow legacy compatibility exception
+described above.
 
 <!-- BEGIN SOFTSCHEMA CLAIM exit-codes -->
+
 Exit 0 means every selected artifact passed.
 Exit 1 means at least one readable artifact failed parsing or validation.
 Exit 2 means at least one input could not be selected or read.
 Aggregate precedence is 2, then 1, then 0.
+
 <!-- END SOFTSCHEMA CLAIM exit-codes -->
 
 Diagnostic positions are one-based.
@@ -294,19 +354,20 @@ movie:
       score: 8.6
       total_votes: 850000
 ---
+
 # Spirited Away (2001)
 
-*Spirited Away* is Hayao Miyazaki’s animated fantasy about ten-year-old Chihiro, who
+_Spirited Away_ is Hayao Miyazaki’s animated fantasy about ten-year-old Chihiro, who
 slips into a spirit world and takes a job in a bathhouse for the gods to free her parents.
 It won the 2003 Academy Award for Best Animated Feature.
 
 ## Movie Details
 
-| Field | Value |
-| --- | --- |
-| Release year | 2001 |
-| Runtime | 125 minutes |
-| Director | Hayao Miyazaki |
+| Field        | Value          |
+| ------------ | -------------- |
+| Release year | 2001           |
+| Runtime      | 125 minutes    |
+| Director     | Hayao Miyazaki |
 ```
 
 The YAML frontmatter is the only authoritative source of structured values.
@@ -518,6 +579,17 @@ A compiled schema is a generated validation contract, usually JSON Schema writte
 YAML. It is the language-neutral form of a contract: a Pydantic class or Zod schema
 compiles to it (provably identically—the conformance machinery guarantees an equal
 `schema_sha256`), and any language can validate against it.
+The official compilers normalize and budget the complete emitted value after inserting
+`x-softschema.schema_sha256`. Acceptance uses the compact canonical JSON byte size, so
+it is language neutral.
+The preferred output is deterministic human-readable YAML; when a YAML writer’s
+formatting overhead would cross the default 8 MiB resource limit, the compiler emits the
+canonical JSON instead (JSON is valid YAML 1.2). Both forms are therefore reopenable by
+the bounded reader. Python writes the already-sized UTF-8 bytes directly so Windows
+newline translation cannot change the checked size.
+Check-only compilation reads the committed sidecar through the same bounded regular-file
+and strict UTF-8 boundary as validation and compares canonical JSON values, not
+host-language equality.
 
 An artifact may bind to its compiled schema with the optional `softschema.schema` key.
 The compiled schema a validator uses is resolved in this precedence (highest first):
@@ -538,7 +610,11 @@ that carries it; this spec requires only that the value be a non-empty string an
 the exact resolution to the host, because file layout is situational.
 (The reference CLIs accept only relative values in metadata—an absolute path must use
 `--schema`—resolve them from the document’s directory, and reject a path whose
-normalized result escapes both the document directory and the working directory.)
+normalized result escapes both the document directory and the working directory.
+They also reject C0 control characters and DEL in the metadata path before filesystem
+resolution, returning `schema_missing` rather than passing ambiguous path bytes to a
+host API. The exact rejected code-point set is fixed by
+`tests/parity/metadata-schema-paths.json`.)
 
 A compiled schema is not a per-document companion data file.
 The two are unrelated: one schema validates many artifacts, while companion data would
@@ -563,17 +639,21 @@ be relative and resolve against their containing resource; duplicate resolved id
 are invalid. A root without `$id` has no synthetic filesystem or working-directory base.
 
 <!-- BEGIN SOFTSCHEMA CLAIM reference-policy -->
+
 The reference policy is `offline-only-v1`: fragment references are available, but
 validation performs no HTTP, HTTPS, file, or implicit relative-file retrieval.
+
 <!-- END SOFTSCHEMA CLAIM reference-policy -->
 
 <!-- BEGIN SOFTSCHEMA CLAIM resource-bundle-policy -->
+
 Explicit supplied resources use `explicit-closed-bundle-v1`. A trusted library caller
 may provide an already-loaded mapping from canonical absolute URI to a schema mapping or
 boolean. Each resource passes the same value-domain, limit, dialect, metaschema,
 identity, pattern, and no-retrieval checks as the root.
 The mapping key is authoritative; a resource `$id` must be absent or canonically equal
 to it.
+
 <!-- END SOFTSCHEMA CLAIM resource-bundle-policy -->
 
 Through 0.3, `legacy-0.2` accepts official older compiler output only when root `$id`
@@ -606,9 +686,11 @@ model.
 ### Portable Regular Expressions
 
 The `pattern` and `patternProperties` keywords use `portable-regex-v1`. This profile has
-ECMA-262 Unicode semantics, uses unanchored search when the pattern is not anchored, and
-applies no flags. It keeps the useful common syntax below while excluding constructs
-whose meaning or availability differs across Python and JavaScript engines.
+ECMA-262-derived Unicode semantics, uses unanchored search when the pattern is not
+anchored, and applies no flags.
+Its strict true-end `$` rule is an intentional divergence from native ECMA-262. The
+profile keeps the useful common syntax below while excluding constructs whose meaning or
+availability differs across Python and JavaScript engines.
 
 ```text
 pattern      = alternative *( "|" alternative )
@@ -643,6 +725,12 @@ In that grammar:
 - An assertion (`^` or `$`) cannot be quantified.
   A bounded quantifier has no leading zero, its upper bound is not less than its lower
   bound, and neither bound exceeds 1000.
+- An authored pattern contains at most 1,024 Unicode code points, nests at most 64
+  groups, and compiles to at most 4,096 Thompson-NFA states including the accept state.
+  One schema resource contains at most 256 patterns and 16,384 aggregate authored
+  pattern code points.
+  These are profile limits, not runtime tuning knobs; exceeding one makes the pattern
+  unsupported in every implementation.
 
 The profile rejects lookaround, backreferences, word-boundary assertions, named and
 atomic groups, inline flags, Unicode property escapes, possessive quantifiers, surrogate
@@ -653,16 +741,41 @@ such as `examples` is not schema and is not inspected.
 An invalid or unsupported expression produces `schema_invalid` with reason `pattern`,
 the JSON Pointer in `schema_path`, and the original expression in `pattern`.
 
-Python validators lower the few divergent tokens in a private in-memory schema copy;
-TypeScript validators execute the authored ECMA-262 expression directly.
-Lowering never changes the authored file, canonical compiled schema, or `schema_sha256`,
-and structural errors report the original expression.
+The reference validators compile the profile into a bounded Thompson NFA, normalize
+character classes to merged ranges with indexed membership, and lazily cache exact DFA
+subsets and alphabet-class transitions.
+One compiled match retains at most 4,096 DFA states and 4,096 transitions.
+The reference implementations also charge every retained NFA-state index in pending
+subsets and cached closures: one compiled matcher retains at most 32,768 such
+memberships, and the 32-entry persistent cache retains at most 1,048,576 in aggregate.
+Crossing the membership cap discards reusable DFA state and continues from the exact
+current NFA subset; it never approximates a transition or changes the match result.
+Implementations must also bound any persistent compiled-pattern cache; its eviction
+capacity is an implementation detail because eviction changes performance, never
+acceptance or matching semantics.
+
+Every structural validation shares an 8,388,608-unit pattern-work fuel across `pattern`,
+`patternProperties`, additional-property, and unevaluated-property decisions.
+The fuel charges input code points plus uncached closure and transition work.
+A bounded context-local `(pattern, value)` memo avoids repeated classification and is
+discarded after the validation.
+One match also has a 4,194,304-unit uncached-computation ceiling.
+Exhaustion never returns an inexact match: structural validation fails with the stable
+`schema_invalid` reason `compile` and an empty `schema_path`.
+
+Once a subset transition is cached, matching consumes one alphabet-class lookup per
+input code point. Uncached work is explicitly fuel-bounded, and no path delegates an
+untrusted expression to a native backtracking engine.
+Python may still lower divergent tokens when checking host-engine syntax, but lowering
+never changes the authored file, canonical compiled schema, or `schema_sha256`, and
+structural errors always report the original expression.
 The shared machine-readable syntax and matching vectors are
 `tests/parity/portable-patterns.json` in the source repository.
 
-This is an interoperability profile, not a proof that a backtracking expression is
-linear-time. Schema authors should still avoid nested ambiguous repetition, and hosts
-should apply the validation limits defined for untrusted artifacts.
+Nested ambiguous repetition such as `^(a+)+$` is regular and remains supported; the
+bounded automaton evaluates it without catastrophic backtracking.
+Pattern, automaton, artifact-scalar, and schema-resource limits together bound memory
+and work at the untrusted boundary.
 
 ### Format Annotations
 
@@ -734,8 +847,8 @@ artifact shape and does not appear in introductory examples.
 ```markdown
 <!-- softschema:generated kind="enum_table" schema="movie-page.schema.yaml" -->
 
-| Field | Allowed values |
-| --- | --- |
+| Field         | Allowed values             |
+| ------------- | -------------------------- |
 | `mpaa_rating` | G, PG, PG-13, R, NC-17, NR |
 
 <!-- /softschema:generated -->

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,6 +12,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +27,8 @@ import {
   installSkillPayload,
   KNOWN_PRIOR_EMISSION_SHA256,
   LOCK_NAME,
+  MAX_MANAGED_SKILL_BYTES,
+  MAX_SKILL_LOCK_BYTES,
   planSkillInstall,
   releaseLock,
   resolveTargets,
@@ -115,6 +119,16 @@ describe("agent-targets-v1 parity", () => {
     expect(new Set(fixture.emissions.map((item) => item.sha256))).toEqual(
       KNOWN_PRIOR_EMISSION_SHA256,
     );
+  });
+
+  test("uses the shared practical managed-skill ceiling", () => {
+    expect(MAX_MANAGED_SKILL_BYTES).toBe(1024 * 1024);
+    expect(MAX_SKILL_LOCK_BYTES).toBe(4096);
+    const desired = Buffer.from(
+      installSkillPayload(renderedSkill(), SKILL_DO_NOT_EDIT_MARKER),
+      "utf8",
+    );
+    expect(desired.byteLength).toBeLessThan(MAX_MANAGED_SKILL_BYTES);
   });
 
   test("implicit project dry-run matches the shared golden without mutation", () => {
@@ -363,6 +377,23 @@ describe("ownership and transaction safety", () => {
     expect(readFileSync(lockPath, "utf8")).toBe("user-owned\n");
   });
 
+  test.each([true, false])(
+    "reports an oversized sparse lock as a non-mutating conflict",
+    (dryRun) => {
+      const repo = makeRepo();
+      const lockPath = join(repo, LOCK_NAME);
+      writeFileSync(lockPath, "");
+      truncateSync(lockPath, MAX_SKILL_LOCK_BYTES + 1);
+
+      const result = runInstall({ agents: ["codex"], dryRun }, { cwd: repo });
+
+      expect(result.code).toBe(1);
+      expect(result.report.files[0]?.ownership).toBe("lock-conflict");
+      expect(lstatSync(lockPath).size).toBe(MAX_SKILL_LOCK_BYTES + 1);
+      expect(existsSync(join(repo, ".agents"))).toBe(false);
+    },
+  );
+
   test.each(["target-directory", "parent-file"])(
     "reports %s as a path conflict",
     (blocker) => {
@@ -373,6 +404,59 @@ describe("ownership and transaction safety", () => {
       const result = runInstall({ agents: ["codex"], dryRun: true }, { cwd: repo });
       expect(result.code).toBe(1);
       expect(result.report.files[0]?.ownership).toBe("path-conflict");
+    },
+  );
+
+  test.each([
+    ["", "path-conflict", true],
+    [STAGE_SUFFIX, "residue-conflict", true],
+    [BACKUP_SUFFIX, "residue-conflict", true],
+    ["", "path-conflict", false],
+    [STAGE_SUFFIX, "residue-conflict", false],
+    [BACKUP_SUFFIX, "residue-conflict", false],
+  ] as const)(
+    "reports an oversized %s managed-skill node as a %s conflict",
+    (suffix, ownership, dryRun) => {
+      const repo = makeRepo();
+      const target = join(repo, ".agents/skills/softschema/SKILL.md");
+      mkdirSync(resolve(target, ".."), { recursive: true });
+      const hostile = `${target}${suffix}`;
+      writeFileSync(hostile, "");
+      truncateSync(hostile, MAX_MANAGED_SKILL_BYTES + 1);
+
+      const result = runInstall({ agents: ["codex"], dryRun }, { cwd: repo });
+
+      expect(result.code).toBe(1);
+      expect(result.report.files[0]?.ownership).toBe(ownership);
+      expect(result.report.files[0]?.action).toBe("conflict");
+      expect(lstatSync(hostile).size).toBe(MAX_MANAGED_SKILL_BYTES + 1);
+      expect(existsSync(join(repo, LOCK_NAME))).toBe(false);
+      if (suffix !== "") expect(existsSync(target)).toBe(false);
+    },
+  );
+
+  test.each([
+    ["", "path-conflict"],
+    [STAGE_SUFFIX, "residue-conflict"],
+    [BACKUP_SUFFIX, "residue-conflict"],
+  ] as const)(
+    "reports a managed-skill symlink at suffix %s as a non-mutating dry-run conflict",
+    (suffix, ownership) => {
+      const repo = makeRepo();
+      const target = join(repo, ".agents/skills/softschema/SKILL.md");
+      mkdirSync(resolve(target, ".."), { recursive: true });
+      const outside = join(repo, "user-owned.md");
+      writeFileSync(outside, "user-owned\n");
+      const hostile = `${target}${suffix}`;
+      symlinkSync(outside, hostile, "file");
+
+      const result = runInstall({ agents: ["codex"], dryRun: true }, { cwd: repo });
+
+      expect(result.code).toBe(1);
+      expect(result.report.files[0]?.ownership).toBe(ownership);
+      expect(lstatSync(hostile).isSymbolicLink()).toBe(true);
+      expect(readFileSync(outside, "utf8")).toBe("user-owned\n");
+      expect(existsSync(join(repo, LOCK_NAME))).toBe(false);
     },
   );
 
@@ -571,6 +655,37 @@ describe("ownership and transaction safety", () => {
     expect(existsSync(target)).toBe(false);
     expect(readFileSync(`${target}${BACKUP_SUFFIX}`)).toEqual(readFileSync(PRIOR_EMISSION));
     expect(existsSync(`${target}${STAGE_SUFFIX}`)).toBe(true);
+    expect(existsSync(join(repo, LOCK_NAME))).toBe(false);
+  });
+
+  test("reports an oversized stage raced into repair without mutating residue", () => {
+    const repo = makeRepo();
+    const target = join(repo, ".agents/skills/softschema/SKILL.md");
+    mkdirSync(resolve(target, ".."), { recursive: true });
+    const prior = readFileSync(PRIOR_EMISSION);
+    writeFileSync(`${target}${BACKUP_SUFFIX}`, prior);
+    writeFileSync(
+      `${target}${STAGE_SUFFIX}`,
+      installSkillPayload(renderedSkill(), SKILL_DO_NOT_EDIT_MARKER),
+    );
+
+    const result = runInstall(
+      { agents: ["codex"] },
+      {
+        cwd: repo,
+        faultInjector: (boundary) => {
+          if (boundary === "after-revalidate") {
+            truncateSync(`${target}${STAGE_SUFFIX}`, MAX_MANAGED_SKILL_BYTES + 1);
+          }
+        },
+      },
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.report.files[0]?.ownership).toBe("residue-conflict");
+    expect(existsSync(target)).toBe(false);
+    expect(readFileSync(`${target}${BACKUP_SUFFIX}`)).toEqual(prior);
+    expect(lstatSync(`${target}${STAGE_SUFFIX}`).size).toBe(MAX_MANAGED_SKILL_BYTES + 1);
     expect(existsSync(join(repo, LOCK_NAME))).toBe(false);
   });
 

@@ -9,13 +9,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from frontmatter_format import new_yaml, read_yaml_file
+from frontmatter_format import new_yaml
 from pydantic import BaseModel
-from strif import atomic_write_text
+from strif import atomic_write_bytes
 
+from softschema._bounded_file import read_bounded_bytes
 from softschema.canonicalize import canonicalize_json_schema
-from softschema.core.value_domain import normalize_portable_value
+from softschema.core.value_domain import (
+    DEFAULT_VALIDATION_LIMITS,
+    PortableValueError,
+    normalize_portable_value,
+)
 from softschema.models import validate_contract_id, validate_schema_id
+from softschema.value_domain import parse_portable_yaml
 
 # Version of the `x-softschema` block format emitted into compiled schemas,
 # not the installed package version (use `importlib.metadata.version("softschema")`
@@ -71,7 +77,14 @@ def compile_model(
     if not isinstance(compiler_metadata, dict):  # defensive: ``_augment_schema`` owns this block
         raise TypeError("compiled schema metadata must be a mapping")
     compiler_metadata["schema_sha256"] = schema_sha256
-    rendered = _yaml_dump(schema)
+    # The digest field is part of the emitted value even though it cannot be part of
+    # its own preimage. Charge it against the same portable node/scalar budgets before
+    # rendering so compiler output is always loadable by SchemaView.
+    final_schema, _final_size = normalize_portable_value(schema)
+    if not isinstance(final_schema, dict):  # defensive: metadata insertion keeps a map
+        raise TypeError("compiled schema root must be a mapping")
+    schema = final_schema
+    rendered = _render_schema_within_limit(schema)
 
     if check_only:
         if not out_path.is_file():
@@ -85,8 +98,15 @@ def compile_model(
         # Compare parsed content, not raw bytes, so YAML formatting differences (e.g.
         # a different writer in another implementation) are not treated as drift; only a
         # genuine schema change is.
-        existing = read_yaml_file(out_path)
-        if existing == schema:
+        encoded = read_bounded_bytes(out_path, DEFAULT_VALIDATION_LIMITS.max_resource_bytes)
+        existing = parse_portable_yaml(
+            encoded.decode("utf-8-sig"),
+            limits=DEFAULT_VALIDATION_LIMITS,
+            encoded_size=len(encoded),
+        )
+        # Python considers ``True == 1``; canonical JSON does not. Compare the shared
+        # language-neutral representation so boolean/number drift is never hidden.
+        if _canonical_json(existing) == _canonical_json(schema):
             return CompileResult(
                 out_path=out_path,
                 schema_yaml=rendered,
@@ -101,13 +121,35 @@ def compile_model(
             schema_sha256=schema_sha256,
         )
 
-    atomic_write_text(out_path, rendered, make_parents=True)
+    # Write the exact LF-normalized bytes whose size was checked above. Text-mode
+    # Path.write_text translates newlines on Windows and could otherwise create an
+    # artifact larger than the shared 8 MiB boundary after validation.
+    atomic_write_bytes(out_path, rendered.encode("utf-8"), make_parents=True)
     return CompileResult(
         out_path=out_path,
         schema_yaml=rendered,
         drift=False,
         schema_sha256=schema_sha256,
     )
+
+
+def _render_schema_within_limit(schema: dict[str, Any]) -> str:
+    """Render a sidecar that both runtimes accept and bounded readers can reopen."""
+    canonical_json = json.dumps(
+        schema,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    limit = DEFAULT_VALIDATION_LIMITS.max_resource_bytes
+    if len(canonical_json.encode("utf-8")) > limit:
+        raise PortableValueError("maximum resource size exceeded")
+    rendered = _yaml_dump(schema)
+    # JSON is a YAML 1.2 document and is already the shared canonical byte form. A
+    # runtime's human-readable YAML writer may add different wrapping, quoting, or
+    # indentation overhead near the boundary; fall back to canonical JSON rather than
+    # making compiler acceptance depend on that writer.
+    return rendered if len(rendered.encode("utf-8")) <= limit else canonical_json
 
 
 def _augment_schema(
@@ -141,8 +183,13 @@ def _augment_schema(
 def _schema_sha256(schema: dict[str, Any]) -> str:
     # ensure_ascii=False so the hash is over literal UTF-8 (matching the TypeScript
     # JSON.stringify); otherwise non-ASCII in descriptions would hash differently.
-    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    canonical = _canonical_json(schema)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _canonical_json(value: Any) -> str:
+    """Return the shared canonical JSON spelling used for identity and drift."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _yaml_dump(schema: dict[str, Any]) -> str:
@@ -151,10 +198,11 @@ def _yaml_dump(schema: dict[str, Any]) -> str:
     # its default empty/None suppression: a schema serializer must never drop a
     # field (e.g. an empty `properties` or a `null` enum member).
     writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
-    # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
-    # wrapped onto continuation lines; keeps the compiled schema clean and the byte
-    # output reproducible across implementations.
-    writer.width = 4096
+    # TypeScript's canonical writer uses ``lineWidth: 0`` (no wrapping). Match that
+    # policy rather than introducing runtime-specific continuation bytes near the
+    # shared resource limit. This width is above every portable scalar and resource
+    # budget while remaining within ruamel.yaml's integer interface.
+    writer.width = 2**31 - 1
     buffer = io.StringIO()
     writer.dump(schema, buffer)
     return buffer.getvalue()

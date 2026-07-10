@@ -13,6 +13,7 @@
     "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "subjects": {
       "type": "object",
+      "description": "The release driver rejects a manifest when the sum of all declared subject sizes exceeds 1073741824 bytes (1 GiB). JSON Schema validates each subject; this cross-subject sum is a semantic invariant.",
       "minProperties": 1,
       "propertyNames": {
         "type": "string",
@@ -38,7 +39,7 @@
           ]
         },
         "media_type": { "type": "string", "minLength": 1 },
-        "size": { "type": "integer", "minimum": 1 },
+        "size": { "type": "integer", "minimum": 1, "maximum": 536870912 },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       },
       "additionalProperties": false

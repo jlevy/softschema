@@ -1,6 +1,6 @@
 # Feature: softschema Hardening, Conformance, and Agent Portability
 
-**Date:** 2026-07-09 (last updated 2026-07-10)
+**Date:** 2026-07-09
 
 **Author:** Codex, from the July 2026 senior engineering review
 
@@ -208,6 +208,11 @@ Both parsers then reject, rather than stringify or coerce:
 Plain date-looking and timestamp-looking scalars follow YAML 1.2 Core behavior and stay
 strings. Values that require YAML-specific runtime types must be quoted or rewritten as
 ordinary JSON-compatible values.
+The shared lexical policy rejects compact plain flow keys immediately before a
+delimiter, a comment immediately after a flow opener without separation, an implicit
+flow-sequence mapping with no key, and a suffix-only document-end marker.
+Malformed explicitly tagged core scalars are positioned value-domain failures at the tag
+property rather than host conversion exceptions.
 
 Interpret each numeric scalar exactly before conversion.
 If its mathematical value is integral, enforce the safe-integer interval regardless of
@@ -273,15 +278,15 @@ available; it never echoes an unserializable runtime value.
 - JSON Schema regexes use `portable-regex-v1`, the grammar specified in
   [softschema Spec](../../../softschema-spec.md#portable-regular-expressions) and
   encoded with its differential vectors in `tests/parity/portable-patterns.json`. Its
-  contract is ECMA-262 Unicode, no-flag, unanchored-search semantics; bounds are at most
-  1000\. It supports literals, dot, both anchors, capturing/noncapturing groups,
+  contract is ECMA-262-derived Unicode, no-flag, unanchored-search semantics; bounds are
+  at most 1000. It supports literals, dot, both anchors, capturing/noncapturing groups,
   alternation, classes/ranges, simple/lazy/bounded quantifiers, ASCII digit/word
   shorthands, ECMA whitespace shorthands, controls, hex/Unicode escapes, and escaped
   syntax. It rejects lookaround, backreferences, word boundaries, named/atomic groups,
   inline flags, property escapes, possessive quantifiers, surrogate escapes, and
   ambiguous future class operators.
-  Python lowers only the divergent dot/end-anchor/shorthand semantics in a private
-  engine copy; TypeScript executes the authored ECMA pattern.
+  Both runtimes compile the authored expression to the same bounded portable automaton;
+  neither delegates untrusted matching to a native backtracking engine.
   Compiled bytes and hashes stay unchanged, and error records restore the authored
   pattern. Eager traversal covers actual Draft 2020-12 schema positions, not annotation
   payloads; unsupported syntax returns the stable `pattern` record before engine
@@ -520,20 +525,24 @@ Batch validation extends `validate` without breaking a single-path invocation:
   Sort by case-sensitive Unicode code-point order over the unnormalized filesystem
   spelling of that display path on every OS; never case-fold, locale-sort, or silently
   NFC/NFD-normalize;
-- preserve the current single-result JSON for a request containing one explicit file
-  operand with default format or `--format json`, even if harmless `--recursive` is
-  present. Choose compatibility mode from the request shape, not from the result count:
-  directory expansion, multiple operands, JSONL, or SARIF always selects diagnostic-v1,
-  even when discovery or deduplication leaves one artifact;
+- preserve the current single-result JSON for a request containing one single explicit
+  file operand with default format or `--format json` when discovery classifies that
+  operand as a regular file, including when a later read fails and when harmless
+  `--recursive` is present.
+  A single explicit missing path or broken symlink is the narrow legacy
+  `input_error/not_found` exception.
+  Directory expansion, multiple operands, JSONL, SARIF, and every other single-path
+  discovery failure select diagnostic-v1, even when discovery or deduplication leaves
+  one result;
 - use aggregate diagnostic-v1 JSON by default for multiple/discovered paths,
   one-result-per-line diagnostic-v1 for `--format jsonl`, and SARIF 2.1.0 for
   `--format sarif`. A one-path request for JSONL/SARIF opts into diagnostic-v1;
 - exit 0 when every discovered artifact passes and 1 when any readable artifact fails
   validation. A recursive directory with no matches emits `input_error/no_matches` so a
   wrong profile or filter cannot produce a false green run.
-  Missing, unreadable, and no-match paths produce per-path input-error records,
-  processing continues, and the aggregate exits 2 if any such input failure occurred;
-  and
+  In diagnostic mode, missing, unreadable, and no-match paths produce per-path
+  input-error records, processing continues, and the aggregate exits 2 if any such input
+  failure occurred; and
 - report partial success honestly.
 
 Parse and access records are discriminated results, not partially populated validation
@@ -1222,12 +1231,102 @@ after public APIs/CLI/docs are complete, and then publishes it.
   and claims, agent compatibility matrix/instruction adapters, research-derived
   alternatives section, changelog/migration note, public-claims drift matrix, and
   docs-as-written package tests.
+- [x] **Qualify activation-fixture coverage (`ss-66i9`).** Describe the shared positive
+  and negative prompts separately from the per-product availability observations; do not
+  imply ten independent live product test matrices.
 - [x] **Reconcile research follow-ups (`ss-azpv`).** Mark the product decisions and
   network-free trust-boundary requirements complete while retaining future adapter
   recipe and pre-publication source-review work.
 - [x] **Stabilize the TypeScript coverage gate (`ss-bhz6`).** Keep package source under
   the configured thresholds while excluding generated bundles and runtime-created
   integration copies that Bun otherwise treats as separate per-file coverage subjects.
+- [x] **Keep frozen verification non-mutating (`ss-lp5a`).** Suppress Python bytecode
+  writes while the transferred driver imports its candidate-local helpers, then restore
+  the interpreter setting.
+  Prove in a subprocess with default bytecode behavior that a fresh candidate verifies
+  its exact inventory without creating `.pyc` or `__pycache__` nodes; continue rejecting
+  every genuinely unexpected node.
+- [x] **Bound every schema-file read (`ss-tpr2`).** Route `SchemaView`, compile drift
+  checks, validation, and diagnostic reloads through shared limit-plus-one readers in
+  both runtimes; resolve the complete path once, reject non-regular targets before open,
+  bind the descriptor to the inspected device/inode, loop short reads, and decode strict
+  UTF-8. Carry a document-declared schema’s authorized canonical path and identity from
+  containment into the read; reject parent substitution before it can redirect the
+  schema. Prove oversized and special files stop before whole-file allocation or
+  blocking, and reject compiler output that its own bounded readers could not reopen.
+- [x] **Make source-resource tests installation-independent (`ss-1v5i`).** Bind the
+  exact-checkout fixture to the source module path explicitly so wheel-first CI and
+  editable runs test the same source-versus-bundle trust decision.
+- [x] **Make portable glob matching iterative (`ss-dku3`).** Replace recursive segment
+  and globstar matchers in Python and TypeScript with bounded dynamic programming, and
+  execute shared long-pattern and long-path vectors without stack exhaustion.
+- [x] **Replace regex backtracking with bounded linear engines (`ss-7ykr`).** Parse the
+  shared `portable-regex-v1` grammar within explicit pattern, group, and automaton
+  budgets; execute pattern, pattern-properties, additional-property, and
+  unevaluated-property checks through Thompson-style engines in both runtimes; and prove
+  nested repetition plus deep groups cannot trigger native-engine ReDoS or stack leaks.
+- [x] **Bound retained lazy-DFA subsets (`ss-9zsj`).** Cap per-engine and aggregate
+  cached NFA-state membership as well as state and transition counts; stop caching or
+  evict before retained subset arrays can amplify memory across the 32-entry cache, and
+  cover the adversarial accepted pattern in both runtimes.
+- [x] **Validate the final compiled sidecar (`ss-84vm`).** Reapply the portable budget
+  after inserting the digest field, distinguish JSON booleans from integers in Python
+  drift checks, use canonical JSON as the cross-writer byte acceptance criterion, and
+  write exact LF-normalized UTF-8 bytes on Windows.
+- [x] **Carry the validated schema source into diagnostics (`ss-clz0`).** Bind size,
+  mtime, and ctime as well as path/device/inode; retain the exact source map produced by
+  the schema bytes used for structural validation; and consume that map without a second
+  diagnostic read or any new public wire field.
+- [x] **Make wildcard segment matching linear (`ss-v2h3`).** Replace the quadratic
+  segment bitset with the bounded exact prefix/interior/suffix algorithm, define the
+  shared interior-complexity limit and stable invocation error, and prove the long
+  adversarial shapes scale as `O(pattern + C * path)` in both runtimes.
+- [x] **Enforce YAML construction budgets incrementally (`ss-i32z`).** Drive the
+  TypeScript lexer/parser token by token, stop CST node/depth growth at the configured
+  limits, retain syntax precedence with bounded lookahead, and preserve exact semantic
+  node thresholds.
+- [x] **Complete Unicode-scalar traversal ordering (`ss-kfnc`).** Use the shared scalar
+  comparator for parity-visible pattern scans, structural records, materialized object
+  traversal, resource registration, and portable sizing; cover astral-versus-BMP keys.
+- [x] **Align multiline flow-pair spans (`ss-n7m1`).** Extend implicit flow-mapping
+  spans through trailing newline tokens so Python and TypeScript share the mapping-end
+  event boundary and exact source-location vectors.
+- [x] **Align release-manifest size policy (`ss-c8ix`).** Enforce the runtime 512 MiB
+  per-subject ceiling in the schema, document the 1 GiB aggregate semantic invariant,
+  and test schema/runtime agreement at both sides of the boundary.
+- [x] **Qualify legacy JSON compatibility (`ss-j2ps`).** Limit the single-result claim
+  to one single explicit path classified as regular during discovery, including later
+  read failures, plus the narrow `not_found` exception; document the diagnostic
+  aggregate used for every other discovery-input failure.
+- [x] **Reject every non-regular frozen-candidate node (`ss-96ih`).** Authenticate the
+  checksum file and each subject through descriptor-bound regular-file reads, traverse
+  parents without following POSIX links or Windows reparse redirects, stream bounded
+  bytes, bound actual traversal and generated inventory output, and reject empty or
+  hidden inventory nodes.
+  In unprivileged smoke jobs, run the exact-commit checkout verifier before any
+  transferred driver or helper; prove final-file and parent-directory swaps cannot
+  redirect verification.
+- [x] **Bound every frozen release-driver read and verify before execution
+  (`ss-bcdi`).** Route manifests, controls, subjects, and npm fixtures through
+  descriptor-bound limit-plus-one reads with explicit per-format budgets.
+  Require the exact-checkout verifier to run before the first transferred helper in
+  every consumer, and prove growth, oversized controls, and workflow-order regressions
+  fail closed.
+- [x] **Descriptor-bind remaining release-state reads (`ss-xsp8`).** Route JSON parsing
+  through the explicit-budget regular-file reader and bind streaming recovery/asset
+  hashes to lstat/open/fstat/path identity plus stable metadata; reject replacement,
+  growth, special nodes, and Windows second-pass drift.
+- [x] **Correct the release-checkout review claim (`ss-ud65`).** State that registry
+  jobs check out only the exact preflight commit for the trusted verifier and do not
+  resolve dependencies, rebuild, or execute candidate lifecycle scripts.
+- [x] **Bound skill-installer inspection reads (`ss-2upc`).** Apply one shared 1 MiB
+  managed-skill byte ceiling to target, stage, and backup inspection in both runtimes.
+  Read regular files through limit-plus-one descriptor checks, give installer locks a
+  separate 4 KiB ceiling, treat oversized or replaced nodes as non-mutating conflicts,
+  and cover dry-run plus repair parity.
+- [x] **Align YAML property-token locations (`ss-3i41`).** Associate composed scalars
+  and collections with their CST tag property so custom-tag diagnostics select the same
+  source coordinate in Python, Node, and Bun.
 - [ ] **Provision the GitHub release approval gate (`ss-8dt9`).** Create or re-read the
   `github-release` environment with a `v*` deployment restriction, required reviewer,
   and no administrator bypass before any protected-tag execution; preserve the
@@ -1241,9 +1340,9 @@ after public APIs/CLI/docs are complete, and then publishes it.
 - [x] **Implement idempotent release orchestration (`ss-g8m8`).** Add standalone
   manifest-driven GitHub/PyPI/npm state classifiers, a draft-assets and attestation
   stage, conditional exact-byte uploads, final-release gating, and post-publish
-  verification hooks. Privileged jobs consume the frozen transfer without checkout,
-  dependency resolution, or rebuilding; live authorization and publication remain
-  separate gates.
+  verification hooks. Privileged jobs check out only the exact preflight commit for the
+  trusted verifier, then consume the frozen transfer without dependency resolution or
+  rebuilding; live authorization and publication remain separate gates.
 - [x] **Require retry postconditions (`ss-prjf`).** Retain a complete registry decision
   only after its required publisher/provenance postcondition succeeds; exhaust the
   bounded retry window and fail closed when metadata never qualifies.
@@ -1305,10 +1404,26 @@ independent security work.
 | `ss-o04h` | `ss-tge8`, `ss-g8m8` | Every standalone JSON boundary must exist before its Unicode/depth/node failures can be closed consistently. |
 | `ss-j81s` | `ss-tge8`, `ss-o04h` | Operation-specific adapter validation closes the strict standalone boundary after its generic JSON defenses exist. |
 | `ss-oyr4` | `ss-tge8` | Immutable Pages publication consumes the hostile-input-tested publication boundary. |
-| `ss-6i6d` | `ss-0sgk`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-o21w`, `ss-b5l4`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-k381`, `ss-1yt7`, `ss-u30p`, `ss-hwws`, `ss-2d33`, `ss-fbtq`, `ss-tge8`, `ss-oyr4`, `ss-o04h`, `ss-zknx`, `ss-3o3w`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg`, `ss-stbo`, `ss-4uki`, `ss-ej3x`, `ss-jfat`, `ss-ycm4`, `ss-6okz`, `ss-j81s` | Fill and package the public foundation only after every represented behavior and artifact boundary settles. |
+| `ss-6i6d` | `ss-0sgk`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-o21w`, `ss-b5l4`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-k381`, `ss-1yt7`, `ss-u30p`, `ss-hwws`, `ss-2d33`, `ss-fbtq`, `ss-tge8`, `ss-oyr4`, `ss-o04h`, `ss-zknx`, `ss-3o3w`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg`, `ss-stbo`, `ss-4uki`, `ss-ej3x`, `ss-jfat`, `ss-ycm4`, `ss-6okz`, `ss-j81s`, `ss-tpr2`, `ss-dku3`, `ss-i32z`, `ss-kfnc`, `ss-n7m1`, `ss-1v5i`, `ss-3i41`, `ss-7ykr`, `ss-84vm`, `ss-clz0`, `ss-v2h3`, `ss-bcdi`, `ss-2upc`, `ss-9zsj` | Fill and package the public foundation only after every represented behavior and artifact boundary settles. |
 | `ss-v6bv` | `ss-0sgk`, `ss-7eoa`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-1aa6`, `ss-bj47`, `ss-o21w`, `ss-b5l4`, `ss-3n2k`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-slas`, `ss-srtz`, `ss-k381`, `ss-1yt7`, `ss-hwws`, `ss-2d33`, `ss-zknx`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg` | Final information architecture describes the exact settled candidate and labels unavailable live state explicitly. |
+| `ss-66i9` | `ss-v6bv` | The activation claim follows the settled compatibility matrix and shared fixture shape. |
 | `ss-azpv` | `ss-v6bv` | Research completion markers follow the implemented public documentation decisions. |
 | `ss-bhz6` | `ss-b5l4`, `ss-v6bv` | The final TypeScript gate measures settled package source without counting transient integration copies as duplicate source files. |
+| `ss-tpr2` | `ss-zknx` | Every remaining schema-file consumer must use the settled bounded-read boundary before the kit can close. |
+| `ss-1v5i` | `ss-7eoa` | Wheel-first tests must select source or bundled resources from an explicit module identity rather than the ambient installation mode. |
+| `ss-dku3` | `ss-yn4e` | Iterative glob evaluation closes the discovery surface after filesystem traversal limits settle. |
+| `ss-7ykr` | `ss-vn04` | The bounded linear engine implements the already frozen portable-pattern language. |
+| `ss-9zsj` | `ss-7ykr` | Retained-subset accounting closes the lazy-DFA memory boundary after engine semantics settle. |
+| `ss-84vm` | `ss-hwws`, `ss-tpr2` | Final sidecar budgeting follows canonical hashing and the bounded reopen contract. |
+| `ss-clz0` | `ss-xnr6`, `ss-tpr2` | Exact schema locations consume positioned diagnostics and identity-bound file reads. |
+| `ss-v2h3` | `ss-dku3` | The bounded exact matcher hardens the already iterative glob surface. |
+| `ss-bcdi` | `ss-96ih` | The frozen driver consumes only transfers already covered by descriptor-bound inventory verification. |
+| `ss-xsp8` | `ss-bcdi`, `ss-96ih` | Remaining JSON and streaming-hash readers reuse the settled driver and inventory identity boundaries. |
+| `ss-ud65` | `ss-bcdi` | Release-review wording follows the exact-checkout trusted-verifier design. |
+| `ss-2upc` | `ss-bj47` | Bounded inspection hardens the settled non-clobbering installer transaction. |
+| `ss-i32z` | `ss-l41u` | Incremental CST construction enforces the settled portable-YAML node and depth budgets before allocation. |
+| `ss-kfnc` | `ss-vn04`, `ss-ycm4` | Every parity-visible schema traversal reuses the settled portable-pattern and canonical Unicode ordering. |
+| `ss-n7m1` | `ss-xnr6`, `ss-23yg` | Multiline flow-pair spans extend the positioned diagnostic and implicit-null source contracts. |
 | `ss-8dt9` | — | The protected GitHub release environment is an external live-state prerequisite rather than a code dependency. |
 | `ss-0rqn` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-8dt9` | Live authorization and a real preflight require the complete candidate and protected GitHub release environment but are external to the code-side artifact boundary. |
 | `ss-g8m8` | `ss-o21w` | The code-side release state machines extend the already hardened frozen-artifact boundary without requiring live credentials. |
@@ -1330,8 +1445,13 @@ independent security work.
 | `ss-23vm` | `ss-g8m8` | Latest-channel verification is a final GitHub state-machine postcondition. |
 | `ss-2t5m` | `ss-g8m8` | Manifest byte budgets bound every release-state read and download. |
 | `ss-1157` | `ss-prjf` | Retry postconditions also require a finite bounded delay. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
-| `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
+| `ss-lp5a` | `ss-o21w` | The downloaded-candidate verifier extends the frozen artifact boundary and must not mutate the inventory it authenticates. |
+| `ss-96ih` | `ss-lp5a` | Exact transferred-candidate verification must classify every node and bind every read to an authenticated regular-file path. |
+| `ss-c8ix` | `ss-tge8`, `ss-g8m8` | Release-manifest schema limits must match the standalone boundary and release state machine before publication. |
+| `ss-j2ps` | `ss-v6bv`, `ss-xnr6` | The final compatibility wording follows the settled documentation and diagnostic-output behavior. |
+| `ss-3i41` | `ss-l41u`, `ss-xnr6` | YAML property-token locations build on the portable parser and positioned diagnostic contract. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
+| `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s`, `ss-j2ps`, `ss-66i9` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
 `ss-pvxi`, `ss-7eoa`, `ss-slas`, `ss-srtz`, and `ss-qq77` may begin in parallel.
@@ -1489,8 +1609,29 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-6i6d` | P2 | Versioned conformance kit, vocabulary, bundles, evolution |
 | `ss-srtz` | P2 | Related-effort research and strategic positioning |
 | `ss-v6bv` | P2 | Documentation and agent surfaces |
+| `ss-66i9` | P3 | Accurate activation-fixture coverage wording |
 | `ss-azpv` | P3 | Completed research follow-up markers |
 | `ss-bhz6` | P1 | Stable package-source TypeScript coverage gate |
+| `ss-lp5a` | P1 | Non-mutating transferred-candidate checksum verification |
+| `ss-tpr2` | P1 | Bounded SchemaView and compile-drift file reads |
+| `ss-1v5i` | P1 | Installation-independent source-resource trust test |
+| `ss-dku3` | P1 | Iterative portable glob matching |
+| `ss-7ykr` | P1 | Bounded linear portable-regex engines |
+| `ss-9zsj` | P1 | Bounded retained lazy-DFA subset membership |
+| `ss-84vm` | P1 | Final compiled-sidecar budget and byte invariants |
+| `ss-clz0` | P2 | Exact validated-schema source maps in diagnostics |
+| `ss-v2h3` | P2 | Bounded linear wildcard segment matching |
+| `ss-bcdi` | P1 | Bounded frozen-driver reads and pre-execution verification |
+| `ss-xsp8` | P1 | Descriptor-bound release-state JSON and streaming-hash reads |
+| `ss-ud65` | P2 | Accurate exact-checkout release-review wording |
+| `ss-2upc` | P2 | Bounded skill-installer target and residue inspection |
+| `ss-i32z` | P2 | Incremental TypeScript YAML construction budgets |
+| `ss-kfnc` | P2 | Complete Unicode-scalar traversal ordering |
+| `ss-n7m1` | P2 | Multiline flow-mapping source-span parity |
+| `ss-c8ix` | P2 | Release-manifest/runtime size-policy agreement |
+| `ss-j2ps` | P3 | Qualified legacy single-file JSON compatibility |
+| `ss-96ih` | P1 | Descriptor-bound exact frozen-candidate inventory |
+| `ss-3i41` | P2 | YAML property-token diagnostic locations |
 | `ss-qq77` | P2 | Tracker and completed-spec reconciliation |
 | `ss-8dt9` | P1 | Protected live `github-release` environment |
 | `ss-0rqn` | P1 | Live publisher authorization, protected PR, and preflight evidence |
@@ -1534,7 +1675,7 @@ No product-design question blocks the code candidate.
 The portable regular-expression, format, identity, YAML, serialization, diagnostics, and
 release-state decisions are settled in the normative spec and executable vectors.
 
-Four external-state gates keep this plan In Progress as of 2026-07-10:
+Four external-state gates keep this plan In Progress as of 2026-07-09:
 
 - the repository immutable-release setting is disabled, so `publish.yml` will fail
   before its first GitHub release mutation;

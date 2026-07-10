@@ -455,7 +455,7 @@ def test_unsafe_nonfiles_never_enter_the_legacy_reader(
         assert fifo_result["results"][0]["input"]["reason"] == "unreadable"
 
 
-def test_broken_symlink_and_missing_file_keep_safe_legacy_input_bytes(
+def test_broken_symlink_and_missing_file_keep_legacy_not_found_compatibility(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

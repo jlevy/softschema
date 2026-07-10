@@ -320,11 +320,9 @@ export function compareStructuralRecords(
   for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
     const x = pa[i] as string;
     const y = pb[i] as string;
-    if (x < y) return -1;
-    if (x > y) return 1;
+    const order = compareUnicodeCodePoints(x, y);
+    if (order !== 0) return order;
   }
   if (pa.length !== pb.length) return pa.length - pb.length;
-  if (a.validator < b.validator) return -1;
-  if (a.validator > b.validator) return 1;
-  return 0;
+  return compareUnicodeCodePoints(a.validator, b.validator);
 }

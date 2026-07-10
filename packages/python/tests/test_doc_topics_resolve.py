@@ -84,5 +84,11 @@ def test_exact_source_checkout_prefers_live_source(
     bundled.write_text("STALE BUNDLED SKILL\n", encoding="utf-8")
     monkeypatch.setattr(importlib_resources, "files", lambda _package: package_root)
 
-    expected = Path(__file__).resolve().parents[3] / relative
+    repository = Path(__file__).resolve().parents[3]
+    monkeypatch.setattr(
+        cli,
+        "__file__",
+        str(repository / "packages/python/src/softschema/cli.py"),
+    )
+    expected = repository / relative
     assert cli._read_resource(relative) == expected.read_text(encoding="utf-8")

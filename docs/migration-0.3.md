@@ -25,8 +25,11 @@ published install instructions until registry verification succeeds.
    Existing artifacts may retain the absent-format legacy grammar during migration.
 6. Update TypeScript callers to `ContractDescriptor` plus `bindContract`; compile Node
    model modules to `.js` or `.mjs`, or use Bun for direct `.ts`.
-7. Keep parsers of the existing single-file JSON result unchanged.
-   Opt into diagnostic-v1 only when invoking multiple/discovered paths, JSONL, or SARIF.
+7. Keep parsers of the existing single-file JSON result unchanged when discovery
+   classifies one single explicit path as a regular file, including when a later read
+   fails, and for the narrow missing-path or broken-symlink `not_found` exception.
+   Expect diagnostic-v1 for other discovery failures, multiple or discovered paths,
+   JSONL, and SARIF.
 8. Preview every skill install with explicit scope and review every target before
    writing.
 
@@ -81,7 +84,15 @@ references and migration guidance.
 JSON Schema `format` is annotation-only in the default portable profile.
 Patterns must fit `portable-regex-v1`; unsupported lookaround, backreferences, named
 groups, property escapes, inline flags, or ambiguous class operators fail as
-`schema_invalid/pattern`.
+`schema_invalid/pattern`. Character classes are normalized to merged ranges, and
+matching uses bounded lazy-DFA caches plus one validation-wide work budget.
+A schema-resource aggregate pattern limit fails as `schema_invalid/pattern`; runtime
+work exhaustion fails deterministically as `schema_invalid/compile` rather than
+returning an inexact match.
+
+Document-declared `softschema.schema` paths containing C0 control characters or DEL now
+fail closed as `schema_missing`. Replace such metadata with an ordinary relative path;
+use the host-controlled `--schema` or library binding for an absolute schema location.
 
 Recompile and review rather than editing `schema_sha256` by hand:
 
@@ -99,8 +110,10 @@ Per-field annotations remain supported.
 
 ## Results, Batch Validation, and Exits
 
-One explicit file with JSON output keeps the legacy result shape and bytes for values in
-the portable domain.
+When discovery classifies one single explicit path as a regular file, JSON keeps the
+legacy result shape and bytes, including when a later read fails.
+A single explicit missing path or broken symlink keeps the legacy
+`input_error/not_found` record as a narrow compatibility exception.
 New result families are separate contracts:
 
 - readable parse or validation failure exits 1;
@@ -112,8 +125,10 @@ New result families are separate contracts:
   otherwise 0; and
 - JSONL emits one self-contained diagnostic-v1 result per line and no summary line.
 
-Directory discovery and multiple operands select diagnostic-v1. Use one explicit profile
-for the whole invocation:
+Directory discovery, multiple operands, and other discovery-input failures select
+diagnostic-v1. An explicit FIFO, unsafe symlink target, or directory without
+`--recursive` therefore produces an aggregate even when it is the only input record.
+Use one explicit profile for the whole invocation:
 
 ```bash
 softschema validate docs --recursive --profile frontmatter-md --format json
@@ -123,9 +138,11 @@ softschema validate docs --recursive --format sarif > softschema.sarif
 
 Discovered symlinks are skipped.
 Explicit symlinks to regular files are allowed after checks.
-Includes and excludes are operand-relative portable globs and require `--recursive`.
-Directory revisits are suppressed by filesystem identity, and discovery never returns a
-partial operand result after a traversal budget is exceeded.
+Includes and excludes are operand-relative portable globs and require `--recursive`. An
+invocation has fixed aggregate pattern, token, static-complexity, and dynamic match
+budgets. Static exhaustion is `match_work_limit`; candidate-dependent exhaustion is
+`discovery_limit`. Directory revisits are suppressed by filesystem identity, and
+discovery never returns a partial operand result after a traversal budget is exceeded.
 
 Portable YAML now rejects ambiguous compact flow spellings such as `{a:}` and `[a:]`.
 Write `{a: }` or `[a: ]` when the intended value is null.

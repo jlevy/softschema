@@ -5,8 +5,27 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from softschema.patterns import is_portable_pattern, portable_pattern_matches
-from softschema.validate import ValidationResult, validate_values
+from softschema.patterns import (
+    PORTABLE_PATTERN_CACHE_SIZE,
+    PORTABLE_PATTERN_MAX_CODEPOINTS,
+    PORTABLE_PATTERN_MAX_DFA_STATES,
+    PORTABLE_PATTERN_MAX_DFA_TRANSITIONS,
+    PORTABLE_PATTERN_MAX_GROUP_DEPTH,
+    PORTABLE_PATTERN_MAX_NFA_STATES,
+    PORTABLE_PATTERN_MAX_SCHEMA_CODEPOINTS,
+    PORTABLE_PATTERN_MAX_SCHEMA_PATTERNS,
+    PORTABLE_PATTERN_MAX_VALIDATION_WORK,
+    _portable_pattern_cache_membership_info,
+    is_portable_pattern,
+    portable_pattern_cache_info,
+    portable_pattern_matches,
+    portable_pattern_validation_budget,
+)
+from softschema.validate import (
+    ValidationResult,
+    structural_error_offending_property,
+    validate_values,
+)
 
 VECTORS_PATH = Path(__file__).resolve().parents[3] / "tests/parity/portable-patterns.json"
 
@@ -28,6 +47,15 @@ def _validate(
 
 
 def test_portable_pattern_syntax_matches_shared_profile() -> None:
+    profile = _vectors()["profile"]
+    assert profile["max_pattern_codepoints"] == PORTABLE_PATTERN_MAX_CODEPOINTS
+    assert profile["max_group_depth"] == PORTABLE_PATTERN_MAX_GROUP_DEPTH
+    assert profile["max_nfa_states"] == PORTABLE_PATTERN_MAX_NFA_STATES
+    assert profile["max_dfa_states"] == PORTABLE_PATTERN_MAX_DFA_STATES
+    assert profile["max_dfa_transitions"] == PORTABLE_PATTERN_MAX_DFA_TRANSITIONS
+    assert profile["max_schema_patterns"] == PORTABLE_PATTERN_MAX_SCHEMA_PATTERNS
+    assert profile["max_schema_codepoints"] == PORTABLE_PATTERN_MAX_SCHEMA_CODEPOINTS
+    assert profile["max_validation_work"] == PORTABLE_PATTERN_MAX_VALIDATION_WORK
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         for case in _vectors()["syntax"]:
@@ -42,6 +70,97 @@ def test_portable_pattern_matching_matches_shared_vectors_without_warnings() -> 
                 assert (
                     portable_pattern_matches(vector["pattern"], case["value"]) is case["matches"]
                 ), (vector["id"], case["value"])
+
+
+def test_nested_quantifier_failure_is_linear_at_large_input_scale() -> None:
+    # A backtracking engine takes exponential time on this classic ReDoS shape.
+    # The bounded NFA consumes each code point once per active instruction.
+    assert portable_pattern_matches("^(a+)+$", "a" * 100_000 + "!") is False
+
+
+def test_normalized_character_classes_and_cache_retention_are_bounded() -> None:
+    repeated_class = "[" + "a" * 1000 + "]"
+    assert portable_pattern_matches(repeated_class, "b" * 100_000) is False
+    assert portable_pattern_matches(repeated_class, "a") is True
+
+    for index in range(PORTABLE_PATTERN_CACHE_SIZE + 8):
+        pattern = f"^cache{index:02d}[a-c]+$"
+        assert portable_pattern_matches(pattern, f"cache{index:02d}abc") is True
+    patterns, transitions, maximum = portable_pattern_cache_info()
+    assert patterns == PORTABLE_PATTERN_CACHE_SIZE
+    assert transitions <= maximum
+
+
+def test_adversarial_dfa_subsets_cannot_amplify_persistent_cache_memory() -> None:
+    # Each successive input position creates a larger exact subset for this accepted
+    # expression. State/transition counts alone do not bound the sum of those arrays.
+    pattern = "(?:a|b)*a(?:a|b){1000}"
+    assert portable_pattern_matches(pattern, "a" * 1001) is True
+    assert portable_pattern_matches(pattern, "b" * 1001) is False
+
+    aggregate, peak, aggregate_limit, per_engine_limit = _portable_pattern_cache_membership_info()
+    assert peak <= per_engine_limit
+    assert aggregate <= aggregate_limit
+
+
+def test_validation_memo_reuses_identical_pattern_key_classification() -> None:
+    value = "a" * 10_000
+    assert portable_pattern_matches("z", value) is False
+    with portable_pattern_validation_budget(len(value) + 20):
+        assert portable_pattern_matches("z", value) is False
+        assert portable_pattern_matches("z", value) is False
+
+
+def test_aggregate_pattern_key_work_has_stable_structural_classification(tmp_path: Path) -> None:
+    key = "a" * 120_000
+    patterns = {f"z{index:02d}": True for index in range(70)}
+    result = _validate(tmp_path, {key: 1}, {"type": "object", "patternProperties": patterns})
+    assert result.structural.errors == [
+        {
+            "kind": "schema_invalid",
+            "reason": "compile",
+            "message": "compiled schema could not be compiled",
+            "schema_path": "",
+        }
+    ]
+
+
+def test_pattern_parser_limits_fail_closed_before_recursion_or_allocation() -> None:
+    assert is_portable_pattern("(" * 64 + "a" + ")" * 64) is True
+    assert is_portable_pattern("(" * 65 + "a" + ")" * 65) is False
+    assert is_portable_pattern("a" * 1024) is True
+    assert is_portable_pattern("a" * 1025) is False
+    assert is_portable_pattern("(?:abcd){1000}") is True
+    assert is_portable_pattern("(?:abcde){1000}") is False
+
+
+def test_regex_sensitive_object_keywords_remain_linear_at_scale(tmp_path: Path) -> None:
+    pattern = "^(a+)+$"
+    adversarial_key = "a" * 50_000 + "!"
+
+    additional = _validate(
+        tmp_path,
+        {adversarial_key: 1},
+        {
+            "type": "object",
+            "patternProperties": {pattern: {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    )
+    assert additional.structural.errors[0]["validator"] == "additionalProperties"
+    assert structural_error_offending_property(additional.structural.errors[0]) == adversarial_key
+
+    unevaluated = _validate(
+        tmp_path,
+        {adversarial_key: 1},
+        {
+            "type": "object",
+            "allOf": [{"patternProperties": {pattern: {"type": "integer"}}}],
+            "unevaluatedProperties": False,
+        },
+    )
+    assert unevaluated.structural.errors[0]["validator"] == "unevaluatedProperties"
+    assert structural_error_offending_property(unevaluated.structural.errors[0]) == adversarial_key
 
 
 def test_validation_uses_portable_end_dot_and_original_error_pattern(tmp_path: Path) -> None:

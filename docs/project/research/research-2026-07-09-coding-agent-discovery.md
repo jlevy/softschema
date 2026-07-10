@@ -9,7 +9,8 @@ author: Joshua Levy with Codex
 
 **Author:** Joshua Levy with Codex
 
-**Status:** Complete research; implementation and full activation testing pending
+**Status:** Complete research and installer implementation; full activation testing
+pending
 
 **Normative target table:** `agent-targets-v1`
 
@@ -296,10 +297,10 @@ unmanaged duplicates as conflicts.
 The [Agent Skills specification](https://agentskills.io/specification) requires `name`
 and `description`, encourages progressive disclosure, and defines `allowed-tools` as an
 experimental space-delimited string when a host supports it.
-The current source skill uses a YAML list for `allowed-tools`. That is a portability
+The reviewed source skill used a YAML list for `allowed-tools`. That was a portability
 defect, not a target-table difference.
-The next skill revision should omit the field unless the project deliberately adopts the
-standard string form and tests host behavior.
+The current portable source omits the field; add it only if the project deliberately
+adopts the standard string form and tests host behavior.
 
 ## Practical Smoke Evidence
 
@@ -363,11 +364,11 @@ silently break byte-exact managed copies.
 
 ### Make Compatibility Data-Driven
 
-Publish the target table as a small versioned data file consumed by both runtimes and
-documentation. Each row should include selector, aliases, project root, personal-root
-template, supported scope, override variable semantics, status, evidence URL,
-verification date, and target-table version.
-Python and TypeScript should execute the same golden cases for expansion and errors.
+Keep the target table in the small versioned
+`conformance/skill-installer/agent-targets-v1.json` artifact checked by both runtimes
+and documentation. Each row records selector, project root, personal-root template, and
+override semantics; the research records status, evidence URL, and verification date.
+Python and TypeScript execute the same golden cases for expansion and errors.
 
 This structure makes product churn a data review instead of duplicated control-flow
 changes.

@@ -156,14 +156,18 @@ def _normalize_materialized(
                 _normalize_materialized(item, (*path, index), depth + 1, budget, active)
                 for index, item in enumerate(value)
             ]
-        result: dict[str, JsonValue] = {}
-        for key, item in value.items():
+        keys = list(value)
+        ordered_keys = sorted(keys) if all(isinstance(key, str) for key in keys) else keys
+        normalized_values: dict[str, JsonValue] = {}
+        for key in ordered_keys:
             budget.node(path, depth + 1)
             if not isinstance(key, str):
                 raise _value_error("mapping keys must be strings", path)
             budget.scalar(key, path)
-            result[key] = _normalize_materialized(item, (*path, key), depth + 1, budget, active)
-        return result
+            normalized_values[key] = _normalize_materialized(
+                value[key], (*path, key), depth + 1, budget, active
+            )
+        return {key: normalized_values[key] for key in keys}
     finally:
         active.remove(identity)
 

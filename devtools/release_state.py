@@ -17,6 +17,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import sys
 import tarfile
 import time
@@ -323,20 +324,7 @@ def _loads_json(value: bytes, label: str) -> Any:
 
 
 def _read_json(path: Path) -> Any:
-    try:
-        if path.is_symlink() or not path.is_file():
-            raise ReleaseStateError(f"JSON fixture must be a regular file: {path}")
-        size = path.stat().st_size
-        if size > MAX_JSON_BYTES:
-            raise ReleaseStateError(f"JSON fixture exceeds the byte limit: {path}")
-        with path.open("rb") as stream:
-            value = stream.read(MAX_JSON_BYTES + 1)
-        if len(value) > MAX_JSON_BYTES:
-            raise ReleaseStateError(f"JSON fixture exceeds the byte limit: {path}")
-        if len(value) != size:
-            raise ReleaseStateError(f"JSON fixture changed while reading: {path}")
-    except OSError as exc:
-        raise ReleaseStateError(f"cannot read JSON fixture {path}: {exc}") from exc
+    value = _regular_bytes(path, limit=MAX_JSON_BYTES, label="JSON fixture")
     return _loads_json(value, str(path))
 
 
@@ -440,39 +428,160 @@ def load_manifest(path: Path) -> Manifest:
     return manifest
 
 
-def _regular_bytes(path: Path, *, expected_size: int | None = None) -> bytes:
-    try:
-        if path.is_symlink() or not path.is_file():
-            raise ReleaseStateError(f"release input must be a regular file: {path}")
-        size = path.stat().st_size
-        if expected_size is not None and size != expected_size:
-            raise ReleaseStateError(
-                f"release input size mismatch for {path.name}: expected {expected_size}, got {size}"
-            )
-        value = path.read_bytes()
-    except OSError as exc:
-        raise ReleaseStateError(f"cannot read release input {path}: {exc}") from exc
-    return value
+@dataclass(frozen=True)
+class _RegularFileSnapshot:
+    """Regular-file identity and mutation-sensitive metadata."""
+
+    device: int
+    inode: int
+    mode: int
+    size: int
+    modified_ns: int
+    changed_ns: int
+
+    @classmethod
+    def from_stat(cls, value: os.stat_result) -> _RegularFileSnapshot:
+        return cls(
+            device=value.st_dev,
+            inode=value.st_ino,
+            mode=value.st_mode,
+            size=value.st_size,
+            modified_ns=value.st_mtime_ns,
+            changed_ns=value.st_ctime_ns,
+        )
 
 
-def _bounded_regular_bytes(path: Path, *, limit: int, label: str) -> bytes:
+def _open_regular_descriptor(
+    path: Path,
+    *,
+    limit: int,
+    expected_size: int | None,
+    label: str,
+    operation: str,
+) -> tuple[int, _RegularFileSnapshot]:
+    """Open one identity-bound regular file without following redirects."""
+    if limit < 0:
+        raise ValueError("release input byte limit cannot be negative")
+    if expected_size is not None and expected_size < 0:
+        raise ValueError("expected release input size cannot be negative")
+
+    descriptor: int | None = None
     try:
-        if path.is_symlink() or not path.is_file():
+        initial = path.lstat()
+        snapshot = _RegularFileSnapshot.from_stat(initial)
+        if (
+            not stat.S_ISREG(initial.st_mode)
+            or getattr(initial, "st_reparse_tag", 0) != 0
+            or snapshot.inode == 0
+        ):
             raise ReleaseStateError(f"{label} must be a regular file: {path}")
-        size = path.stat().st_size
-        if size > limit:
-            raise ReleaseStateError(f"{label} exceeds the {limit}-byte limit")
-        with path.open("rb") as stream:
-            value = stream.read(limit + 1)
-        if len(value) > limit:
-            raise ReleaseStateError(f"{label} exceeds the {limit}-byte limit")
-        if len(value) != size:
+        if expected_size is not None and snapshot.size != expected_size:
+            raise ReleaseStateError(
+                f"{label} size mismatch for {path.name}: "
+                f"expected {expected_size}, got {snapshot.size}"
+            )
+        if snapshot.size > limit:
+            raise ReleaseStateError(f"{label} exceeds the {limit}-byte limit: {path}")
+
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or getattr(opened, "st_reparse_tag", 0) != 0
+            or opened.st_ino == 0
+            or _RegularFileSnapshot.from_stat(opened) != snapshot
+            or _RegularFileSnapshot.from_stat(path.lstat()) != snapshot
+        ):
+            raise ReleaseStateError(f"{label} changed while opening: {path}")
+        result = descriptor
+        descriptor = None
+        return result, snapshot
+    except ReleaseStateError:
+        raise
+    except OSError as exc:
+        raise ReleaseStateError(f"cannot {operation} {label} {path}: {exc}") from exc
+    finally:
+        if descriptor is not None:
+            with suppress(OSError):
+                os.close(descriptor)
+
+
+def _require_stable_descriptor(
+    descriptor: int,
+    path: Path,
+    snapshot: _RegularFileSnapshot,
+    *,
+    label: str,
+) -> None:
+    if (
+        _RegularFileSnapshot.from_stat(os.fstat(descriptor)) != snapshot
+        or _RegularFileSnapshot.from_stat(path.lstat()) != snapshot
+    ):
+        raise ReleaseStateError(f"{label} changed while reading: {path}")
+
+
+def _regular_bytes(
+    path: Path,
+    *,
+    limit: int,
+    expected_size: int | None = None,
+    label: str = "release input",
+) -> bytes:
+    """Read one stable regular-file snapshot through a bounded descriptor."""
+    descriptor, snapshot = _open_regular_descriptor(
+        path,
+        limit=limit,
+        expected_size=expected_size,
+        label=label,
+        operation="read",
+    )
+    try:
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, limit + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > limit:
+                raise ReleaseStateError(f"{label} exceeds the {limit}-byte limit: {path}")
+        value = b"".join(chunks)
+        if total != snapshot.size:
             raise ReleaseStateError(f"{label} changed while reading: {path}")
+        _require_stable_descriptor(descriptor, path, snapshot, label=label)
+
+        # Windows exposes creation time as ctime. A second descriptor pass catches
+        # ordinary same-size rewrites that therefore may not alter the snapshot.
+        if os.name == "nt":
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            offset = 0
+            while True:
+                chunk = os.read(descriptor, min(1024 * 1024, limit + 1 - offset))
+                if not chunk:
+                    break
+                if value[offset : offset + len(chunk)] != chunk:
+                    raise ReleaseStateError(f"{label} changed while reading: {path}")
+                offset += len(chunk)
+                if offset > limit:
+                    raise ReleaseStateError(f"{label} exceeds the {limit}-byte limit: {path}")
+            if offset != len(value):
+                raise ReleaseStateError(f"{label} changed while reading: {path}")
+            _require_stable_descriptor(descriptor, path, snapshot, label=label)
         return value
     except ReleaseStateError:
         raise
     except OSError as exc:
         raise ReleaseStateError(f"cannot read {label} {path}: {exc}") from exc
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+
+
+def _bounded_regular_bytes(path: Path, *, limit: int, label: str) -> bytes:
+    return _regular_bytes(path, limit=limit, label=label)
 
 
 def _sha256_regular_file(
@@ -481,32 +590,52 @@ def _sha256_regular_file(
     limit: int,
     expected_size: int | None = None,
 ) -> tuple[int, str]:
+    descriptor, snapshot = _open_regular_descriptor(
+        path,
+        limit=limit,
+        expected_size=expected_size,
+        label="release input",
+        operation="hash",
+    )
     try:
-        if path.is_symlink() or not path.is_file():
-            raise ReleaseStateError(f"release input must be a regular file: {path}")
-        initial = path.stat().st_size
-        if initial > limit:
-            raise ReleaseStateError(f"release input exceeds the {limit}-byte limit: {path}")
-        if expected_size is not None and initial != expected_size:
-            raise ReleaseStateError(
-                f"release input size mismatch for {path.name}: "
-                f"expected {expected_size}, got {initial}"
-            )
         digest = hashlib.sha256()
         total = 0
-        with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                total += len(chunk)
-                if total > limit:
-                    raise ReleaseStateError(f"release input exceeds the {limit}-byte limit: {path}")
-                digest.update(chunk)
-        if total != initial or path.stat().st_size != initial:
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, limit + 1 - total))
+            if not chunk:
+                break
+            digest.update(chunk)
+            total += len(chunk)
+            if total > limit:
+                raise ReleaseStateError(f"release input exceeds the {limit}-byte limit: {path}")
+        if total != snapshot.size:
             raise ReleaseStateError(f"release input changed while reading: {path}")
-        return total, digest.hexdigest()
+        _require_stable_descriptor(descriptor, path, snapshot, label="release input")
+
+        result = digest.hexdigest()
+        if os.name == "nt":
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            second_digest = hashlib.sha256()
+            second_total = 0
+            while True:
+                chunk = os.read(descriptor, min(1024 * 1024, limit + 1 - second_total))
+                if not chunk:
+                    break
+                second_digest.update(chunk)
+                second_total += len(chunk)
+                if second_total > limit:
+                    raise ReleaseStateError(f"release input exceeds the {limit}-byte limit: {path}")
+            if second_total != total or second_digest.hexdigest() != result:
+                raise ReleaseStateError(f"release input changed while reading: {path}")
+            _require_stable_descriptor(descriptor, path, snapshot, label="release input")
+        return total, result
     except ReleaseStateError:
         raise
     except OSError as exc:
         raise ReleaseStateError(f"cannot hash release input {path}: {exc}") from exc
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
 
 
 def _safe_recovery_path(value: str) -> str:
@@ -769,7 +898,11 @@ def _verify_subject_files(directory: Path, manifest: Manifest) -> None:
     except OSError as exc:
         raise ReleaseStateError(f"cannot inspect release candidate {directory}: {exc}") from exc
     for subject in manifest.subjects.values():
-        value = _regular_bytes(directory / subject.name, expected_size=subject.size)
+        value = _regular_bytes(
+            directory / subject.name,
+            limit=subject.size,
+            expected_size=subject.size,
+        )
         actual = _sha256_bytes(value)
         if actual != subject.sha256:
             raise ReleaseStateError(
@@ -785,7 +918,7 @@ def _primary_checksums_bytes(manifest: Manifest) -> bytes:
 
 
 def _release_index_bytes(directory: Path, manifest: Manifest, primary: bytes) -> bytes:
-    manifest_bytes = _regular_bytes(directory / RELEASE_MANIFEST_NAME)
+    manifest_bytes = _regular_bytes(directory / RELEASE_MANIFEST_NAME, limit=MAX_JSON_BYTES)
     value = {
         "schema_version": "1",
         "logical_version": manifest.logical_version,
@@ -841,7 +974,9 @@ def write_controls(directory: Path) -> dict[str, str]:
     return {
         PRIMARY_CHECKSUMS_NAME: _sha256_bytes(primary),
         RELEASE_INDEX_NAME: _sha256_bytes(index),
-        RELEASE_MANIFEST_NAME: _sha256_bytes(_regular_bytes(directory / RELEASE_MANIFEST_NAME)),
+        RELEASE_MANIFEST_NAME: _sha256_bytes(
+            _regular_bytes(directory / RELEASE_MANIFEST_NAME, limit=MAX_JSON_BYTES)
+        ),
     }
 
 
@@ -853,7 +988,7 @@ def _verify_controls(directory: Path, manifest: Manifest) -> None:
         (PRIMARY_CHECKSUMS_NAME, primary),
         (RELEASE_INDEX_NAME, index),
     ):
-        actual = _regular_bytes(directory / name)
+        actual = _regular_bytes(directory / name, limit=len(expected))
         if actual != expected:
             raise ReleaseStateError(f"derived release control differs from regeneration: {name}")
 
@@ -1543,7 +1678,11 @@ def check_npm_audit_attestations(
             f"npm audit signatures must report exactly one verified {PACKAGE_NAME}@{version}"
         )
     subject = manifest.one("npm")
-    tarball = _regular_bytes(directory / subject.name, expected_size=subject.size)
+    tarball = _regular_bytes(
+        directory / subject.name,
+        limit=subject.size,
+        expected_size=subject.size,
+    )
     if _sha256_bytes(tarball) != subject.sha256:
         raise ReleaseStateError("npm candidate bytes differ from the release manifest")
     bundles = matches[0].get("attestationBundles")
@@ -1701,6 +1840,7 @@ def _npm_payloads(
     require_channel: bool,
 ) -> tuple[Any | None, bytes | None, Any | None]:
     version = quote(manifest.coordinates.npm_version, safe="")
+    subject = manifest.one("npm")
     payload = (
         _read_json(fixture)
         if fixture is not None
@@ -1713,13 +1853,16 @@ def _npm_payloads(
     tarball: bytes | None = None
     if payload is not None:
         if tarball_fixture is not None:
-            tarball = _regular_bytes(tarball_fixture)
+            tarball = _regular_bytes(
+                tarball_fixture,
+                limit=subject.size,
+                expected_size=subject.size,
+            )
         else:
             raw_dist = payload.get("dist") if isinstance(payload, dict) else None
             tarball_url = raw_dist.get("tarball") if isinstance(raw_dist, dict) else None
             if not isinstance(tarball_url, str):
                 raise ReleaseStateError("npm version metadata has no tarball URL")
-            subject = manifest.one("npm")
             if tarball_url == _npm_tarball_url(subject):
                 tarball = _download(
                     tarball_url,
@@ -1795,6 +1938,7 @@ def _github_payloads(
             if asset_fixtures is not None:
                 value = _regular_bytes(
                     asset_fixtures / name,
+                    limit=expected_asset.size,
                     expected_size=expected_asset.size,
                 )
             else:
@@ -1898,7 +2042,11 @@ def stage_pypi(directory: Path, plan_path: Path, output: Path) -> None:
     for name in sorted(names):
         subject = manifest.subjects[name]
         source = directory / name
-        value = _regular_bytes(source, expected_size=subject.size)
+        value = _regular_bytes(
+            source,
+            limit=subject.size,
+            expected_size=subject.size,
+        )
         if _sha256_bytes(value) != subject.sha256:
             raise ReleaseStateError(f"cannot stage a mismatched PyPI subject: {name}")
         sources[name] = source
@@ -1918,7 +2066,11 @@ def stage_npm_signature_consumer(directory: Path, output: Path) -> None:
     """Retarget the frozen local-tarball lock to the identical registry tarball."""
     manifest = load_manifest(directory / RELEASE_MANIFEST_NAME)
     subject = manifest.one("npm")
-    tarball = _regular_bytes(directory / subject.name, expected_size=subject.size)
+    tarball = _regular_bytes(
+        directory / subject.name,
+        limit=subject.size,
+        expected_size=subject.size,
+    )
     if _sha256_bytes(tarball) != subject.sha256:
         raise ReleaseStateError("npm subject differs from the release manifest")
     bundle = directory / "npm-consumer"

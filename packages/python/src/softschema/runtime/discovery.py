@@ -8,9 +8,10 @@ import os
 import posixpath
 import re
 import stat as stat_module
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from functools import cache
+from itertools import pairwise
 from typing import Literal, Protocol, TypeAlias
 
 DiscoveryProfile: TypeAlias = Literal["frontmatter-md", "pure-yaml"]
@@ -31,6 +32,7 @@ GlobPatternReason: TypeAlias = Literal[
     "dot_segment",
     "unterminated_class",
     "partial_globstar",
+    "match_work_limit",
 ]
 
 _PROFILE_EXTENSIONS: dict[DiscoveryProfile, tuple[str, ...]] = {
@@ -50,6 +52,17 @@ _DRIVE_PATTERN = re.compile(r"^[A-Za-z]:")
 DISCOVERY_MAX_DEPTH = 64
 DISCOVERY_MAX_ENTRIES = 100_000
 
+# Fixed chunks between two stars require substring search. Bounding the cost of each
+# such chunk makes segment matching O(m + C*n), where C is this constant, while prefix
+# and suffix chunks remain arbitrarily long because each is checked exactly once.
+GLOB_MAX_INTERIOR_MATCH_COMPLEXITY = 256
+GLOB_MAX_PATTERN_CODEPOINTS = 262_144
+GLOB_MAX_TOTAL_PATTERN_CODEPOINTS = 1_048_576
+GLOB_MAX_PATTERNS = 64
+GLOB_MAX_TOTAL_TOKENS = 4096
+GLOB_MAX_TOTAL_MATCH_COMPLEXITY = 8192
+GLOB_MAX_INVOCATION_MATCH_WORK = 8_388_608
+
 
 class GlobPatternError(ValueError):
     """A pattern falls outside the shared portable discovery-glob grammar."""
@@ -65,6 +78,20 @@ class GlobPatternError(ValueError):
 
 class DiscoveryUsageError(ValueError):
     """A discovery request combines options that cannot be interpreted safely."""
+
+
+class _GlobWorkLimitExceeded(RuntimeError):
+    pass
+
+
+@dataclass(slots=True)
+class _GlobWorkBudget:
+    remaining: int = GLOB_MAX_INVOCATION_MATCH_WORK
+
+    def charge(self, amount: int) -> None:
+        self.remaining -= amount
+        if self.remaining < 0:
+            raise _GlobWorkLimitExceeded
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,15 +171,25 @@ class _StarToken:
 class _ClassToken:
     negated: bool
     ranges: tuple[tuple[int, int], ...]
+    starts: tuple[int, ...]
 
     def matches(self, value: str) -> bool:
         code_point = ord(value)
-        contained = any(start <= code_point <= end for start, end in self.ranges)
+        index = bisect_right(self.starts, code_point) - 1
+        contained = index >= 0 and code_point <= self.ranges[index][1]
         return not contained if self.negated else contained
 
 
 _SegmentToken: TypeAlias = _LiteralToken | _AnyToken | _StarToken | _ClassToken
-_GlobSegment: TypeAlias = Literal["**"] | tuple[_SegmentToken, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _TokenSegment:
+    tokens: tuple[_SegmentToken, ...]
+    min_code_points: int
+
+
+_GlobSegment: TypeAlias = Literal["**"] | _TokenSegment
 
 
 def _parse_class(pattern: str, segment: str, start: int) -> tuple[_ClassToken, int]:
@@ -178,7 +215,20 @@ def _parse_class(pattern: str, segment: str, start: int) -> tuple[_ClassToken, i
             value = ord(content[index])
             ranges.append((value, value))
             index += 1
-    return _ClassToken(negated=negated, ranges=tuple(ranges)), end + 1
+    normalized: list[tuple[int, int]] = []
+    for range_start, range_end in sorted(ranges):
+        if normalized and range_start <= normalized[-1][1] + 1:
+            normalized[-1] = (normalized[-1][0], max(normalized[-1][1], range_end))
+        else:
+            normalized.append((range_start, range_end))
+    return (
+        _ClassToken(
+            negated=negated,
+            ranges=tuple(normalized),
+            starts=tuple(item[0] for item in normalized),
+        ),
+        end + 1,
+    )
 
 
 def _parse_segment(pattern: str, segment: str) -> _GlobSegment:
@@ -202,10 +252,23 @@ def _parse_segment(pattern: str, segment: str) -> _GlobSegment:
         else:
             tokens.append(_LiteralToken(value))
             index += 1
-    return tuple(tokens)
+    star_indexes = [index for index, token in enumerate(tokens) if isinstance(token, _StarToken)]
+    for left_star, right_star in pairwise(star_indexes):
+        complexity = sum(
+            max(1, len(token.ranges)) if isinstance(token, _ClassToken) else 1
+            for token in tokens[left_star + 1 : right_star]
+        )
+        if complexity > GLOB_MAX_INTERIOR_MATCH_COMPLEXITY:
+            raise GlobPatternError(pattern, "match_work_limit")
+    return _TokenSegment(
+        tokens=tuple(tokens),
+        min_code_points=sum(not isinstance(token, _StarToken) for token in tokens),
+    )
 
 
 def _validate_glob(pattern: str) -> None:
+    if len(pattern) > GLOB_MAX_PATTERN_CODEPOINTS:
+        raise GlobPatternError(pattern, "match_work_limit")
     if pattern == "":
         raise GlobPatternError(pattern, "empty")
     if pattern.startswith("/"):
@@ -228,26 +291,54 @@ def _valid_candidate_path(path: str) -> bool:
 def _match_segment(tokens: tuple[_SegmentToken, ...], value: str) -> bool:
     code_points = tuple(value)
 
-    @cache
-    def match(token_index: int, value_index: int) -> bool:
-        if token_index == len(tokens):
-            return value_index == len(code_points)
-        token = tokens[token_index]
-        if isinstance(token, _StarToken):
-            return match(token_index + 1, value_index) or (
-                value_index < len(code_points) and match(token_index, value_index + 1)
-            )
-        if value_index == len(code_points):
-            return False
-        if isinstance(token, _AnyToken):
-            return match(token_index + 1, value_index + 1)
-        if isinstance(token, _LiteralToken):
-            return token.value == code_points[value_index] and match(
-                token_index + 1, value_index + 1
-            )
-        return token.matches(code_points[value_index]) and match(token_index + 1, value_index + 1)
+    def fixed_matches(fixed: tuple[_SegmentToken, ...], start: int) -> bool:
+        for offset, token in enumerate(fixed):
+            candidate = code_points[start + offset]
+            if isinstance(token, _AnyToken):
+                continue
+            if isinstance(token, _LiteralToken):
+                if token.value != candidate:
+                    return False
+                continue
+            if isinstance(token, _ClassToken):
+                if not token.matches(candidate):
+                    return False
+                continue
+            raise TypeError("fixed glob chunk contains a star")
+        return True
 
-    return match(0, 0)
+    star_indexes = tuple(
+        index for index, token in enumerate(tokens) if isinstance(token, _StarToken)
+    )
+    if not star_indexes:
+        return len(tokens) == len(code_points) and fixed_matches(tokens, 0)
+
+    required = len(tokens) - len(star_indexes)
+    if len(code_points) < required:
+        return False
+
+    first_star = star_indexes[0]
+    last_star = star_indexes[-1]
+    prefix = tokens[:first_star]
+    suffix = tokens[last_star + 1 :]
+    suffix_start = len(code_points) - len(suffix)
+    if not fixed_matches(prefix, 0) or not fixed_matches(suffix, suffix_start):
+        return False
+
+    # A star can absorb every gap, so choosing the earliest occurrence of each interior
+    # fixed chunk cannot prevent a later match. Failed candidate starts advance once and
+    # successful chunks never move the cursor backward. With the compile-time chunk
+    # bound above, this is exact O(m + C*n) work and O(m + n) memory.
+    cursor = len(prefix)
+    for left_star, right_star in pairwise(star_indexes):
+        chunk = tokens[left_star + 1 : right_star]
+        last_start = suffix_start - len(chunk)
+        while cursor <= last_start and not fixed_matches(chunk, cursor):
+            cursor += 1
+        if cursor > last_start:
+            return False
+        cursor += len(chunk)
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,38 +347,75 @@ class CompiledGlob:
 
     pattern: str
     _segments: tuple[_GlobSegment, ...] = field(repr=False)
+    _min_segments: int = field(repr=False)
+    _token_count: int = field(repr=False)
+    _work_factor: int = field(repr=False)
 
     @classmethod
     def compile(cls, pattern: str) -> CompiledGlob:
         """Validate and compile one invocation pattern."""
         _validate_glob(pattern)
+        compact: list[_GlobSegment] = []
+        for part in pattern.split("/"):
+            segment: _GlobSegment = _parse_segment(pattern, part)
+            if segment == "**" and compact and compact[-1] == "**":
+                continue
+            compact.append(segment)
+        segments = tuple(compact)
+        token_count = sum(1 if segment == "**" else len(segment.tokens) for segment in segments)
+        work_factor = sum(
+            1
+            if segment == "**"
+            else sum(
+                max(1, len(token.ranges)) if isinstance(token, _ClassToken) else 1
+                for token in segment.tokens
+            )
+            for segment in segments
+        )
         return cls(
             pattern=pattern,
-            _segments=tuple(_parse_segment(pattern, part) for part in pattern.split("/")),
+            _segments=segments,
+            _min_segments=sum(segment != "**" for segment in segments),
+            _token_count=token_count,
+            _work_factor=work_factor,
         )
 
     def matches(self, path: str) -> bool:
         """Match one normalized operand-relative path case-sensitively."""
+        return self._matches(path, None)
+
+    def _matches(self, path: str, budget: _GlobWorkBudget | None) -> bool:
         if not _valid_candidate_path(path):
             return False
         path_segments = tuple(path.split("/"))
-
-        @cache
-        def match(pattern_index: int, path_index: int) -> bool:
-            if pattern_index == len(self._segments):
-                return path_index == len(path_segments)
-            segment = self._segments[pattern_index]
-            if segment == "**":
-                return match(pattern_index + 1, path_index) or (
-                    path_index < len(path_segments) and match(pattern_index, path_index + 1)
-                )
-            return (
-                path_index < len(path_segments)
-                and _match_segment(segment, path_segments[path_index])
-                and match(pattern_index + 1, path_index + 1)
+        if budget is not None:
+            candidate_code_points = sum(len(segment) for segment in path_segments)
+            budget.charge(
+                len(self._segments) * (len(path_segments) + 1)
+                + max(1, self._work_factor) * max(1, candidate_code_points)
             )
+        if len(path_segments) < self._min_segments:
+            return False
+        previous = [True, *([False] * len(path_segments))]
 
-        return match(0, 0)
+        for segment in self._segments:
+            current = [False] * (len(path_segments) + 1)
+            if segment == "**":
+                current[0] = previous[0]
+                for path_index in range(1, len(path_segments) + 1):
+                    current[path_index] = previous[path_index] or current[path_index - 1]
+            else:
+                for path_index, path_segment in enumerate(path_segments, start=1):
+                    current[path_index] = (
+                        previous[path_index - 1]
+                        and len(path_segment) >= segment.min_code_points
+                        and _match_segment(segment.tokens, path_segment)
+                    )
+            previous = current
+            if not any(previous):
+                return False
+
+        return previous[-1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,12 +554,13 @@ def _eligible(
     profile: DiscoveryProfile,
     includes: tuple[CompiledGlob, ...],
     excludes: tuple[CompiledGlob, ...],
+    work_budget: _GlobWorkBudget,
 ) -> bool:
     if not relative_path.endswith(_PROFILE_EXTENSIONS[profile]):
         return False
-    if includes and not any(pattern.matches(relative_path) for pattern in includes):
+    if includes and not any(pattern._matches(relative_path, work_budget) for pattern in includes):
         return False
-    return not any(pattern.matches(relative_path) for pattern in excludes)
+    return not any(pattern._matches(relative_path, work_budget) for pattern in excludes)
 
 
 def _discover_directory(
@@ -442,6 +571,7 @@ def _discover_directory(
     filesystem: DiscoveryFileSystem,
     includes: tuple[CompiledGlob, ...],
     excludes: tuple[CompiledGlob, ...],
+    work_budget: _GlobWorkBudget,
 ) -> tuple[list[_GroupEntry], bool]:
     entries: list[_GroupEntry] = []
     found_candidate_or_failure = False
@@ -499,8 +629,20 @@ def _discover_directory(
                     break
                 child_directories.append(_DirectoryWork(path=child, info=info, depth=child_depth))
                 continue
-            if not _eligible(relative, request.profile, includes, excludes):
-                continue
+            try:
+                if not _eligible(
+                    relative,
+                    request.profile,
+                    includes,
+                    excludes,
+                    work_budget,
+                ):
+                    continue
+            except _GlobWorkLimitExceeded:
+                found_candidate_or_failure = True
+                entries.append(_input_error("discovery_limit", display))
+                budget_exceeded = True
+                break
             found_candidate_or_failure = True
             if info.kind == "file":
                 entries.append(_Candidate(path=child, display_path=display, info=info))
@@ -557,8 +699,27 @@ def _validate_request(
         raise DiscoveryUsageError(f"invalid path flavor: {request.path_flavor}")
     if not request.recursive and (request.includes or request.excludes):
         raise DiscoveryUsageError("include and exclude patterns require recursive discovery")
-    includes = tuple(CompiledGlob.compile(pattern) for pattern in request.includes)
-    excludes = tuple(CompiledGlob.compile(pattern) for pattern in request.excludes)
+    compiled: list[CompiledGlob] = []
+    total_tokens = 0
+    total_complexity = 0
+    total_code_points = 0
+    for pattern in (*request.includes, *request.excludes):
+        total_code_points += len(pattern)
+        if total_code_points > GLOB_MAX_TOTAL_PATTERN_CODEPOINTS:
+            raise GlobPatternError(pattern, "match_work_limit")
+        item = CompiledGlob.compile(pattern)
+        compiled.append(item)
+        total_tokens += item._token_count
+        total_complexity += item._work_factor
+        if (
+            len(compiled) > GLOB_MAX_PATTERNS
+            or total_tokens > GLOB_MAX_TOTAL_TOKENS
+            or total_complexity > GLOB_MAX_TOTAL_MATCH_COMPLEXITY
+        ):
+            raise GlobPatternError(pattern, "match_work_limit")
+    split = len(request.includes)
+    includes = tuple(compiled[:split])
+    excludes = tuple(compiled[split:])
     return includes, excludes
 
 
@@ -591,6 +752,7 @@ def discover_artifacts(
     )
     entries: list[DiscoveryEntry] = []
     identities: set[_Identity] = set()
+    glob_work_budget = _GlobWorkBudget()
 
     for operand in request.operands:
         path = operations.absolute(operand, cwd)
@@ -641,6 +803,7 @@ def discover_artifacts(
             native_filesystem,
             includes,
             excludes,
+            glob_work_budget,
         )
         if not found_candidate_or_failure:
             entries.append(_input_error("no_matches", display))

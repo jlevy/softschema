@@ -255,7 +255,7 @@ def test_both_packages_embed_release_and_build_metadata() -> None:
     assert '"build-metadata.json"' in resources
 
 
-def test_every_github_action_is_pinned_and_publishers_do_not_checkout_source() -> None:
+def test_every_github_action_is_pinned_and_publishers_use_only_trusted_source() -> None:
     for workflow_path in [".github/workflows/ci.yml", ".github/workflows/publish.yml"]:
         workflow = _workflow(workflow_path)
         for job_name, job in workflow["jobs"].items():
@@ -274,8 +274,15 @@ def test_every_github_action_is_pinned_and_publishers_do_not_checkout_source() -
             "id-token": "write",
         }
         assert job["environment"] in {"pypi", "npm"}
-        actions = [step.get("uses", "") for step in job["steps"]]
-        assert not any(action.startswith("actions/checkout@") for action in actions)
+        checkouts = [
+            step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
+        ]
+        assert len(checkouts) == 1
+        assert checkouts[0]["with"] == {
+            "fetch-depth": 1,
+            "persist-credentials": False,
+            "ref": "${{ needs.preflight.outputs.source-commit }}",
+        }
         assert job["needs"] == ["preflight", "draft-release", "classify-registries"]
         scripts = "\n".join(step.get("run", "") for step in job["steps"])
         assert not any(
@@ -359,7 +366,26 @@ def test_ci_installs_and_verifies_local_wheels_while_forbidding_dependency_build
     assert artifact_smoke["needs"] == "artifact-candidate"
     actions = [step.get("uses", "") for step in artifact_smoke["steps"]]
     assert sum(action.startswith("actions/download-artifact@") for action in actions) == 1
-    assert not any(action.startswith("actions/checkout@") for action in actions)
+    checkouts = [
+        step
+        for step in artifact_smoke["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert len(checkouts) == 1
+    assert checkouts[0]["with"] == {
+        "fetch-depth": 1,
+        "persist-credentials": False,
+        "ref": "${{ github.sha }}",
+    }
+    junction_probe = next(
+        step
+        for step in artifact_smoke["steps"]
+        if step.get("name") == "Prove Windows junction roots are rejected"
+    )
+    assert junction_probe["if"] == "runner.os == 'Windows' && matrix.python == '3.11.15'"
+    assert junction_probe["shell"] == "pwsh"
+    assert "New-Item -ItemType Junction" in junction_probe["run"]
+    assert "redirected Windows junction candidate was accepted" in junction_probe["run"]
     checksum_index = next(
         index
         for index, step in enumerate(artifact_smoke["steps"])
@@ -372,7 +398,11 @@ def test_ci_installs_and_verifies_local_wheels_while_forbidding_dependency_build
     )
     assert checksum_index < smoke_index
     smoke_scripts = "\n".join(step.get("run", "") for step in artifact_smoke["steps"])
-    assert "frozen_artifact_smoke.py verify-checksums artifact-out" in smoke_scripts
+    assert "devtools/frozen_artifact_smoke.py verify-checksums artifact-out" in smoke_scripts
+    assert (
+        "artifact-out/devtools/frozen_artifact_smoke.py verify-checksums artifact-out"
+        not in smoke_scripts
+    )
     assert "frozen_artifact_smoke.py smoke artifact-out" in smoke_scripts
     assert not any(
         forbidden in smoke_scripts
@@ -426,9 +456,82 @@ def test_publish_forbids_dependency_builds_without_prebuilding_the_candidate() -
     scripts = "\n".join(step.get("run", "") for step in steps)
     assert "npm_consumer.py create release-out/npm-consumer" in scripts
     assert "frozen_artifact_smoke.py stage release-out" in scripts
-    smoke_scripts = "\n".join(step.get("run", "") for step in publish["jobs"]["smoke"]["steps"])
-    assert "frozen_artifact_smoke.py verify-checksums release-out" in smoke_scripts
+    assert "devtools/frozen_artifact_smoke.py checksums release-out" in scripts
+    assert "find . -type f ! -name SHA256SUMS" not in scripts
+    smoke = publish["jobs"]["smoke"]
+    assert publish["jobs"]["preflight"]["outputs"]["source-commit"] == (
+        "${{ steps.source.outputs.commit }}"
+    )
+    assert smoke["permissions"] == {"contents": "read"}
+    checkouts = [
+        step for step in smoke["steps"] if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert len(checkouts) == 1
+    assert checkouts[0]["with"] == {
+        "fetch-depth": 1,
+        "persist-credentials": False,
+        "ref": "${{ needs.preflight.outputs.source-commit }}",
+    }
+    smoke_scripts = "\n".join(step.get("run", "") for step in smoke["steps"])
+    assert "devtools/frozen_artifact_smoke.py verify-checksums release-out" in smoke_scripts
+    assert (
+        "release-out/devtools/frozen_artifact_smoke.py verify-checksums release-out"
+        not in smoke_scripts
+    )
     assert "frozen_artifact_smoke.py smoke release-out" in smoke_scripts
+
+    privileged_consumers = [
+        "draft-release",
+        "classify-registries",
+        "publish-pypi",
+        "publish-npm",
+        "verify-pypi",
+        "verify-npm",
+        "finalize-release",
+    ]
+
+    def compact(script: str) -> str:
+        return " ".join(script.replace("\\\n", " ").split())
+
+    for job_name in privileged_consumers:
+        job = publish["jobs"][job_name]
+        job_checkouts = [
+            step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")
+        ]
+        assert len(job_checkouts) == 1, job_name
+        assert job_checkouts[0]["with"] == {
+            "fetch-depth": 1,
+            "persist-credentials": False,
+            "ref": "${{ needs.preflight.outputs.source-commit }}",
+        }
+        job_scripts = "\n".join(step.get("run", "") for step in job["steps"])
+        compact_scripts = compact(job_scripts)
+        assert "devtools/frozen_artifact_smoke.py verify-checksums release-out" in compact_scripts
+        assert (
+            "release-out/devtools/frozen_artifact_smoke.py verify-checksums release-out"
+            not in job_scripts
+        )
+        verifier_index = next(
+            index
+            for index, step in enumerate(job["steps"])
+            if "devtools/frozen_artifact_smoke.py verify-checksums release-out"
+            in compact(step.get("run", ""))
+            and "release-out/devtools/frozen_artifact_smoke.py" not in step.get("run", "")
+        )
+        candidate_indexes = [
+            index
+            for index, step in enumerate(job["steps"])
+            if re.search(r"(?:^|[ /])release-out/devtools/", step.get("run", ""))
+        ]
+        assert candidate_indexes, job_name
+        first_candidate_index = min(candidate_indexes)
+        if verifier_index == first_candidate_index:
+            script = job["steps"][verifier_index]["run"]
+            assert script.index("devtools/frozen_artifact_smoke.py") < script.index(
+                "release-out/devtools/"
+            ), job_name
+        else:
+            assert verifier_index < first_candidate_index, job_name
 
 
 def test_locked_dependency_audits_fail_without_downgrade() -> None:

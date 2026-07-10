@@ -19,7 +19,8 @@ export type GlobPatternReason =
   | "backslash"
   | "dot_segment"
   | "unterminated_class"
-  | "partial_globstar";
+  | "partial_globstar"
+  | "match_work_limit";
 
 const profileExtensions: Record<DiscoveryProfile, readonly string[]> = {
   "frontmatter-md": [".md", ".markdown"],
@@ -42,6 +43,20 @@ export const DISCOVERY_MAX_DEPTH = 64;
 /** Maximum directory entries inspected below one recursive operand. */
 export const DISCOVERY_MAX_ENTRIES = 100_000;
 
+/**
+ * Maximum predicate work in a fixed chunk bounded by two segment stars.
+ *
+ * Prefix and suffix chunks remain arbitrarily long because each is checked once. This
+ * fixed bound makes segment matching O(m + C*n), where C is this constant.
+ */
+export const GLOB_MAX_INTERIOR_MATCH_COMPLEXITY = 256;
+export const GLOB_MAX_PATTERN_CODEPOINTS = 262_144;
+export const GLOB_MAX_TOTAL_PATTERN_CODEPOINTS = 1_048_576;
+export const GLOB_MAX_PATTERNS = 64;
+export const GLOB_MAX_TOTAL_TOKENS = 4096;
+export const GLOB_MAX_TOTAL_MATCH_COMPLEXITY = 8192;
+export const GLOB_MAX_INVOCATION_MATCH_WORK = 8_388_608;
+
 /** A pattern falls outside the shared portable discovery-glob grammar. */
 export class GlobPatternError extends Error {
   readonly pattern: string;
@@ -56,6 +71,17 @@ export class GlobPatternError extends Error {
 
 /** A discovery request combines options that cannot be interpreted safely. */
 export class DiscoveryUsageError extends Error {}
+
+class GlobWorkLimitExceeded extends Error {}
+
+class GlobWorkBudget {
+  private remaining = GLOB_MAX_INVOCATION_MATCH_WORK;
+
+  charge(amount: number): void {
+    this.remaining -= amount;
+    if (this.remaining < 0) throw new GlobWorkLimitExceeded();
+  }
+}
 
 /** Filesystem metadata required for kind checks and stable identity. */
 export interface DiscoveryFileInfo {
@@ -143,6 +169,7 @@ interface GlobstarSegment {
 interface TokenSegment {
   readonly kind: "tokens";
   readonly tokens: readonly SegmentToken[];
+  readonly minCodePoints: number;
 }
 
 type GlobSegment = GlobstarSegment | TokenSegment;
@@ -180,7 +207,17 @@ function parseClass(
       index += 1;
     }
   }
-  return [{ kind: "class", negated, ranges }, end + 1];
+  ranges.sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  const normalized: [number, number][] = [];
+  for (const [rangeStart, rangeEnd] of ranges) {
+    const previous = normalized[normalized.length - 1];
+    if (previous !== undefined && rangeStart <= previous[1] + 1) {
+      previous[1] = Math.max(previous[1], rangeEnd);
+    } else {
+      normalized.push([rangeStart, rangeEnd]);
+    }
+  }
+  return [{ kind: "class", negated, ranges: normalized }, end + 1];
 }
 
 function parseSegment(pattern: string, segment: string): GlobSegment {
@@ -206,10 +243,31 @@ function parseSegment(pattern: string, segment: string): GlobSegment {
       index += 1;
     }
   }
-  return { kind: "tokens", tokens };
+  const starIndexes = tokens.flatMap((token, tokenIndex) =>
+    token.kind === "star" ? [tokenIndex] : [],
+  );
+  for (let index = 1; index < starIndexes.length; index += 1) {
+    const leftStar = starIndexes[index - 1] as number;
+    const rightStar = starIndexes[index] as number;
+    const complexity = tokens.slice(leftStar + 1, rightStar).reduce((total, token) => {
+      if (token.kind === "class") return total + Math.max(1, token.ranges.length);
+      return total + 1;
+    }, 0);
+    if (complexity > GLOB_MAX_INTERIOR_MATCH_COMPLEXITY) {
+      throw new GlobPatternError(pattern, "match_work_limit");
+    }
+  }
+  return {
+    kind: "tokens",
+    tokens,
+    minCodePoints: tokens.filter((token) => token.kind !== "star").length,
+  };
 }
 
 function validateGlob(pattern: string): void {
+  if (globCodePointLength(pattern, GLOB_MAX_PATTERN_CODEPOINTS + 1) > GLOB_MAX_PATTERN_CODEPOINTS) {
+    throw new GlobPatternError(pattern, "match_work_limit");
+  }
   if (pattern === "") throw new GlobPatternError(pattern, "empty");
   if (pattern.startsWith("/")) throw new GlobPatternError(pattern, "absolute");
   if (drivePattern.test(pattern)) throw new GlobPatternError(pattern, "drive_qualified");
@@ -217,6 +275,15 @@ function validateGlob(pattern: string): void {
   if (pattern.split("/").some((segment) => segment === "." || segment === "..")) {
     throw new GlobPatternError(pattern, "dot_segment");
   }
+}
+
+function globCodePointLength(pattern: string, stopAfter = Number.POSITIVE_INFINITY): number {
+  let count = 0;
+  for (const _character of pattern) {
+    count += 1;
+    if (count >= stopAfter) break;
+  }
+  return count;
 }
 
 function validCandidatePath(path: string): boolean {
@@ -228,101 +295,173 @@ function validCandidatePath(path: string): boolean {
 
 function classMatches(token: ClassToken, value: string): boolean {
   const candidate = codePoint(value);
-  const contained = token.ranges.some(([start, end]) => start <= candidate && candidate <= end);
+  let low = 0;
+  let high = token.ranges.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if ((token.ranges[middle]?.[0] ?? 0) <= candidate) low = middle + 1;
+    else high = middle;
+  }
+  const range = token.ranges[low - 1];
+  const contained = range !== undefined && candidate <= range[1];
   return token.negated ? !contained : contained;
 }
 
 function matchSegment(tokens: readonly SegmentToken[], value: string): boolean {
   const codePoints = Array.from(value);
-  const memo = new Map<string, boolean>();
-  const match = (tokenIndex: number, valueIndex: number): boolean => {
-    const key = `${tokenIndex}:${valueIndex}`;
-    const known = memo.get(key);
-    if (known !== undefined) return known;
-    let result: boolean;
-    if (tokenIndex === tokens.length) {
-      result = valueIndex === codePoints.length;
-    } else {
-      const token = tokens[tokenIndex] as SegmentToken;
-      if (token.kind === "star") {
-        result =
-          match(tokenIndex + 1, valueIndex) ||
-          (valueIndex < codePoints.length && match(tokenIndex, valueIndex + 1));
-      } else if (valueIndex === codePoints.length) {
-        result = false;
-      } else {
-        const candidate = codePoints[valueIndex] as string;
-        switch (token.kind) {
-          case "any":
-            result = match(tokenIndex + 1, valueIndex + 1);
-            break;
-          case "literal":
-            result = token.value === candidate && match(tokenIndex + 1, valueIndex + 1);
-            break;
-          case "class":
-            result = classMatches(token, candidate) && match(tokenIndex + 1, valueIndex + 1);
-            break;
-          default: {
-            const exhaustive: never = token;
-            throw new Error(`unhandled segment token: ${String(exhaustive)}`);
-          }
+
+  const fixedMatches = (fixed: readonly SegmentToken[], start: number): boolean => {
+    for (const [offset, token] of fixed.entries()) {
+      const candidate = codePoints[start + offset] as string;
+      switch (token.kind) {
+        case "any":
+          break;
+        case "literal":
+          if (token.value !== candidate) return false;
+          break;
+        case "class":
+          if (!classMatches(token, candidate)) return false;
+          break;
+        case "star":
+          throw new Error("fixed glob chunk contains a star");
+        default: {
+          const exhaustive: never = token;
+          throw new Error(`unhandled segment token: ${String(exhaustive)}`);
         }
       }
     }
-    memo.set(key, result);
-    return result;
+    return true;
   };
-  return match(0, 0);
+
+  const starIndexes = tokens.flatMap((token, tokenIndex) =>
+    token.kind === "star" ? [tokenIndex] : [],
+  );
+  if (starIndexes.length === 0) {
+    return tokens.length === codePoints.length && fixedMatches(tokens, 0);
+  }
+
+  const required = tokens.length - starIndexes.length;
+  if (codePoints.length < required) return false;
+
+  const firstStar = starIndexes[0] as number;
+  const lastStar = starIndexes[starIndexes.length - 1] as number;
+  const prefix = tokens.slice(0, firstStar);
+  const suffix = tokens.slice(lastStar + 1);
+  const suffixStart = codePoints.length - suffix.length;
+  if (!fixedMatches(prefix, 0) || !fixedMatches(suffix, suffixStart)) return false;
+
+  // A star can absorb every gap, so choosing the earliest occurrence of each interior
+  // fixed chunk cannot prevent a later match. Failed candidate starts advance once and
+  // successful chunks never move the cursor backward. With the compile-time bound
+  // above, this is exact O(m + C*n) work and O(m + n) memory.
+  let cursor = prefix.length;
+  for (let index = 1; index < starIndexes.length; index += 1) {
+    const leftStar = starIndexes[index - 1] as number;
+    const rightStar = starIndexes[index] as number;
+    const chunk = tokens.slice(leftStar + 1, rightStar);
+    const lastStart = suffixStart - chunk.length;
+    while (cursor <= lastStart && !fixedMatches(chunk, cursor)) cursor += 1;
+    if (cursor > lastStart) return false;
+    cursor += chunk.length;
+  }
+  return true;
 }
 
 /** Compiled shared glob with complete-segment globstar semantics. */
 export class CompiledGlob {
   readonly pattern: string;
   private readonly segments: readonly GlobSegment[];
+  private readonly minSegments: number;
+  private readonly tokenCount: number;
+  private readonly workFactor: number;
 
   private constructor(pattern: string, segments: readonly GlobSegment[]) {
     this.pattern = pattern;
     this.segments = segments;
+    this.minSegments = segments.filter((segment) => segment.kind !== "globstar").length;
+    this.tokenCount = segments.reduce(
+      (total, segment) => total + (segment.kind === "globstar" ? 1 : segment.tokens.length),
+      0,
+    );
+    this.workFactor = segments.reduce(
+      (total, segment) =>
+        total +
+        (segment.kind === "globstar"
+          ? 1
+          : segment.tokens.reduce(
+              (subtotal, token) =>
+                subtotal + (token.kind === "class" ? Math.max(1, token.ranges.length) : 1),
+              0,
+            )),
+      0,
+    );
   }
 
   /** Validate and compile one invocation pattern. */
   static compile(pattern: string): CompiledGlob {
     validateGlob(pattern);
-    return new CompiledGlob(
-      pattern,
-      pattern.split("/").map((part) => parseSegment(pattern, part)),
-    );
+    const segments: GlobSegment[] = [];
+    for (const part of pattern.split("/")) {
+      const segment = parseSegment(pattern, part);
+      if (
+        segment.kind === "globstar" &&
+        segments.length > 0 &&
+        segments[segments.length - 1]?.kind === "globstar"
+      ) {
+        continue;
+      }
+      segments.push(segment);
+    }
+    return new CompiledGlob(pattern, segments);
   }
 
   /** Match one normalized operand-relative path case-sensitively. */
   matches(path: string): boolean {
+    return this.matchesForDiscovery(path);
+  }
+
+  private matchesForDiscovery(path: string, budget?: GlobWorkBudget): boolean {
     if (!validCandidatePath(path)) return false;
     const pathSegments = path.split("/");
-    const memo = new Map<string, boolean>();
-    const match = (patternIndex: number, pathIndex: number): boolean => {
-      const key = `${patternIndex}:${pathIndex}`;
-      const known = memo.get(key);
-      if (known !== undefined) return known;
-      let result: boolean;
-      if (patternIndex === this.segments.length) {
-        result = pathIndex === pathSegments.length;
+    const pathSegmentLengths = pathSegments.map((segment) => Array.from(segment).length);
+    budget?.charge(
+      this.segments.length * (pathSegments.length + 1) +
+        Math.max(1, this.workFactor) *
+          Math.max(
+            1,
+            pathSegmentLengths.reduce((total, length) => total + length, 0),
+          ),
+    );
+    if (pathSegments.length < this.minSegments) return false;
+    let previous = Array.from({ length: pathSegments.length + 1 }, (_, index) => index === 0);
+    for (const segment of this.segments) {
+      const current = Array.from({ length: pathSegments.length + 1 }, () => false);
+      if (segment.kind === "globstar") {
+        current[0] = previous[0] as boolean;
+        for (let pathIndex = 1; pathIndex <= pathSegments.length; pathIndex += 1) {
+          current[pathIndex] =
+            (previous[pathIndex] as boolean) || (current[pathIndex - 1] as boolean);
+        }
       } else {
-        const segment = this.segments[patternIndex] as GlobSegment;
-        if (segment.kind === "globstar") {
-          result =
-            match(patternIndex + 1, pathIndex) ||
-            (pathIndex < pathSegments.length && match(patternIndex, pathIndex + 1));
-        } else {
-          result =
-            pathIndex < pathSegments.length &&
-            matchSegment(segment.tokens, pathSegments[pathIndex] as string) &&
-            match(patternIndex + 1, pathIndex + 1);
+        for (let pathIndex = 1; pathIndex <= pathSegments.length; pathIndex += 1) {
+          current[pathIndex] =
+            (previous[pathIndex - 1] as boolean) &&
+            (pathSegmentLengths[pathIndex - 1] as number) >= segment.minCodePoints &&
+            matchSegment(segment.tokens, pathSegments[pathIndex - 1] as string);
         }
       }
-      memo.set(key, result);
-      return result;
-    };
-    return match(0, 0);
+      previous = current;
+      if (!previous.some(Boolean)) return false;
+    }
+    return previous[pathSegments.length] as boolean;
+  }
+
+  static boundedMatch(pattern: CompiledGlob, path: string, budget: GlobWorkBudget): boolean {
+    return pattern.matchesForDiscovery(path, budget);
+  }
+
+  static aggregateCost(pattern: CompiledGlob): { tokens: number; complexity: number } {
+    return { tokens: pattern.tokenCount, complexity: pattern.workFactor };
   }
 }
 
@@ -462,14 +601,18 @@ function eligible(
   profile: DiscoveryProfile,
   includes: readonly CompiledGlob[],
   excludes: readonly CompiledGlob[],
+  workBudget: GlobWorkBudget,
 ): boolean {
   if (!profileExtensions[profile].some((extension) => relativePath.endsWith(extension))) {
     return false;
   }
-  if (includes.length > 0 && !includes.some((pattern) => pattern.matches(relativePath))) {
+  if (
+    includes.length > 0 &&
+    !includes.some((pattern) => CompiledGlob.boundedMatch(pattern, relativePath, workBudget))
+  ) {
     return false;
   }
-  return !excludes.some((pattern) => pattern.matches(relativePath));
+  return !excludes.some((pattern) => CompiledGlob.boundedMatch(pattern, relativePath, workBudget));
 }
 
 function discoverDirectory(
@@ -480,6 +623,7 @@ function discoverDirectory(
   filesystem: DiscoveryFileSystem,
   includes: readonly CompiledGlob[],
   excludes: readonly CompiledGlob[],
+  workBudget: GlobWorkBudget,
 ): { entries: GroupEntry[]; foundCandidateOrFailure: boolean } {
   const entries: GroupEntry[] = [];
   let foundCandidateOrFailure = false;
@@ -544,7 +688,15 @@ function discoverDirectory(
         childDirectories.push({ path: child, info, depth: childDepth });
         continue;
       }
-      if (!eligible(relativePath, request.profile, includes, excludes)) continue;
+      try {
+        if (!eligible(relativePath, request.profile, includes, excludes, workBudget)) continue;
+      } catch (error) {
+        if (!(error instanceof GlobWorkLimitExceeded)) throw error;
+        foundCandidateOrFailure = true;
+        entries.push(inputError("discovery_limit", displayPath));
+        budgetExceeded = true;
+        break;
+      }
       foundCandidateOrFailure = true;
       if (info.kind === "file") entries.push({ path: child, displayPath, info });
       else entries.push(inputError("unreadable", displayPath));
@@ -606,9 +758,31 @@ function validateRequest(request: DiscoveryRequest): {
   if (!request.recursive && (request.includes.length > 0 || request.excludes.length > 0)) {
     throw new DiscoveryUsageError("include and exclude patterns require recursive discovery");
   }
+  const compiled: CompiledGlob[] = [];
+  let totalTokens = 0;
+  let totalComplexity = 0;
+  let totalCodePoints = 0;
+  for (const pattern of [...request.includes, ...request.excludes]) {
+    totalCodePoints += globCodePointLength(pattern, GLOB_MAX_PATTERN_CODEPOINTS + 1);
+    if (totalCodePoints > GLOB_MAX_TOTAL_PATTERN_CODEPOINTS) {
+      throw new GlobPatternError(pattern, "match_work_limit");
+    }
+    const item = CompiledGlob.compile(pattern);
+    compiled.push(item);
+    const cost = CompiledGlob.aggregateCost(item);
+    totalTokens += cost.tokens;
+    totalComplexity += cost.complexity;
+    if (
+      compiled.length > GLOB_MAX_PATTERNS ||
+      totalTokens > GLOB_MAX_TOTAL_TOKENS ||
+      totalComplexity > GLOB_MAX_TOTAL_MATCH_COMPLEXITY
+    ) {
+      throw new GlobPatternError(pattern, "match_work_limit");
+    }
+  }
   return {
-    includes: request.includes.map((pattern) => CompiledGlob.compile(pattern)),
-    excludes: request.excludes.map((pattern) => CompiledGlob.compile(pattern)),
+    includes: compiled.slice(0, request.includes.length),
+    excludes: compiled.slice(request.includes.length),
   };
 }
 
@@ -634,6 +808,7 @@ export function discoverArtifacts(
   const normalizedRequest: DiscoveryRequest = { ...request, invocationDirectory: cwd };
   const entries: DiscoveryEntry[] = [];
   const identities = new Set<string>();
+  const globWorkBudget = new GlobWorkBudget();
 
   for (const operand of request.operands) {
     const path = operations.absolute(operand, cwd);
@@ -686,6 +861,7 @@ export function discoverArtifacts(
       filesystem,
       patterns.includes,
       patterns.excludes,
+      globWorkBudget,
     );
     if (!group.foundCandidateOrFailure) {
       entries.push(inputError("no_matches", displayPath));

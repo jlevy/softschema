@@ -13,6 +13,7 @@ import {
   type DiscoveryInputError,
   discoverArtifacts,
 } from "./artifact-discovery.js";
+import { type BoundedFileExpectation, readBoundedFile } from "./bounded-file.js";
 import { compileSchema } from "./compile.js";
 import {
   type ArtifactInputResult,
@@ -57,14 +58,15 @@ import {
 } from "./skill-installer.js";
 import {
   artifactErrorRecord,
+  captureValidatedSchemaSource,
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type RawFrontmatter,
-  readBoundedBytes,
   readFrontmatter,
   readFrontmatterWithLocations,
-  readPureYamlArtifact,
   readPureYamlArtifactWithLocations,
+  resolveMetadataSchema,
+  takeValidatedSchemaSource,
   validateArtifact,
   YamlParseError,
 } from "./validate.js";
@@ -637,11 +639,17 @@ interface PreparedBatchArtifact {
   readonly source: string;
   readonly root: Record<string, unknown> | null;
   readonly sourceMap: SourceMap;
+  readonly sourceFile: BoundedFileExpectation;
   readonly binding: ValidationBinding;
 }
 
 interface SchemaDiagnosticSource {
   readonly source: string;
+  readonly sourceMap: SourceMap;
+}
+
+interface CachedSchemaSource {
+  readonly expectation: BoundedFileExpectation;
   readonly sourceMap: SourceMap;
 }
 
@@ -717,9 +725,17 @@ async function runValidateLegacy(
   // while access failures remain exit 2.
   let parsed: RawFrontmatter | undefined;
   let pureYaml: Record<string, unknown> | undefined;
+  let sourceFile: BoundedFileExpectation;
   try {
-    if (profile === "pure-yaml") pureYaml = readPureYamlArtifact(path);
-    else parsed = readFrontmatter(path);
+    if (profile === "pure-yaml") {
+      const located = readPureYamlArtifactWithLocations(path);
+      pureYaml = located.value;
+      sourceFile = located.sourceFile;
+    } else {
+      const located = readFrontmatterWithLocations(path);
+      parsed = { hasFence: located.hasFence, value: located.value };
+      sourceFile = located.sourceFile;
+    }
   } catch (err) {
     const record = artifactErrorRecord(path, err);
     if (record !== null) {
@@ -748,6 +764,7 @@ async function runValidateLegacy(
   const result = validateArtifact(path, contract, {
     preParsed: parsed,
     preParsedYaml: pureYaml,
+    preParsedSource: sourceFile,
   });
   writeText(stableStringify(result.output));
   return result.ok ? 0 : 1;
@@ -767,15 +784,18 @@ async function runValidateDiagnostic(
     }
     let root: Record<string, unknown> | null;
     let sourceMap: SourceMap;
+    let sourceFile: BoundedFileExpectation;
     try {
       if (profile === "pure-yaml") {
         const located = readPureYamlArtifactWithLocations(entry.path);
         root = located.value;
         sourceMap = located.sourceMap;
+        sourceFile = located.sourceFile;
       } else {
         const located = readFrontmatterWithLocations(entry.path);
         root = located.hasFence ? (located.value as Record<string, unknown>) : null;
         sourceMap = located.sourceMap;
+        sourceFile = located.sourceFile;
       }
     } catch (error) {
       const record = artifactErrorRecord(entry.displayPath, error, { includeLocation: true });
@@ -803,6 +823,7 @@ async function runValidateDiagnostic(
       source: entry.displayPath,
       root,
       sourceMap,
+      sourceFile,
       binding,
     });
   }
@@ -811,7 +832,7 @@ async function runValidateDiagnostic(
   const semanticModel =
     opts.model !== undefined && hasPrepared ? await loadZodModel(opts.model) : null;
   const results: DiagnosticResultV1[] = [];
-  const schemaMaps = new Map<string, SourceMap>();
+  const schemaMaps = new Map<string, CachedSchemaSource>();
   for (const item of prepared) {
     if (!isPreparedBatchArtifact(item)) {
       results.push(item);
@@ -826,12 +847,16 @@ async function runValidateDiagnostic(
       schemaPath: opts.schema ?? null,
     };
     const contract = bindContract(descriptor, semanticModel);
-    const validationResult = validateArtifact(item.path, contract, {
-      ...(profile === "pure-yaml"
-        ? { preParsedYaml: item.root }
-        : { preParsed: { hasFence: item.root !== null, value: item.root } }),
-      validationLimits: DEFAULT_VALIDATION_LIMITS,
-    });
+    const validationResult = captureValidatedSchemaSource(() =>
+      validateArtifact(item.path, contract, {
+        ...(profile === "pure-yaml"
+          ? { preParsedYaml: item.root }
+          : { preParsed: { hasFence: item.root !== null, value: item.root } }),
+        validationLimits: DEFAULT_VALIDATION_LIMITS,
+        preParsedSource: item.sourceFile,
+      }),
+    );
+    const validatedSchemaSource = takeValidatedSchemaSource(validationResult.output.structural);
     const input = artifactInputSuccess(item.source, profile, item.root);
     const structuralOffendingProperties = validationResult.output.structural.errors.map((error) =>
       structuralErrorOffendingProperty(error),
@@ -840,7 +865,14 @@ async function runValidateDiagnostic(
     const schemaSource = validation.structural.errors.some(
       (error) => error.kind === "schema_invalid",
     )
-      ? schemaDiagnosticSource(item.path, opts.schema, validation, schemaMaps)
+      ? schemaDiagnosticSource(
+          item.path,
+          opts.schema,
+          validation,
+          schemaMaps,
+          item.sourceFile,
+          validatedSchemaSource,
+        )
       : null;
     const diagnostics = validationDiagnostics(
       validation,
@@ -1068,50 +1100,72 @@ function schemaDiagnosticSource(
   artifactPath: string,
   explicitSchema: string | undefined,
   validation: DiagnosticValidationWire,
-  cache: Map<string, SourceMap>,
+  cache: Map<string, CachedSchemaSource>,
+  sourceFile: BoundedFileExpectation,
+  validatedSource?: { readonly path: string; readonly sourceMap: SourceMap },
 ): SchemaDiagnosticSource | null {
+  if (validatedSource !== undefined) {
+    return {
+      source: displayPath(validatedSource.path),
+      sourceMap: validatedSource.sourceMap,
+    };
+  }
   const selected = explicitSchema ?? validation.document_metadata?.schema ?? undefined;
   if (selected === undefined) return null;
-  const candidates =
-    explicitSchema !== undefined
-      ? [resolve(selected), resolve(dirname(artifactPath), selected)]
-      : [resolve(dirname(artifactPath), selected)];
+  let expected: BoundedFileExpectation | undefined;
   let schemaPath: string | undefined;
-  for (const candidate of candidates) {
-    try {
-      if (statSync(candidate).isFile()) {
-        schemaPath = realpathSync(candidate);
-        break;
+  if (explicitSchema === undefined) {
+    const bound = resolveMetadataSchema(selected, artifactPath, sourceFile);
+    if (bound.path === null) return null;
+    schemaPath = bound.path;
+    expected = bound.expectation;
+  } else {
+    const candidates = [resolve(selected), resolve(dirname(artifactPath), selected)];
+    for (const candidate of candidates) {
+      try {
+        if (statSync(candidate).isFile()) {
+          schemaPath = realpathSync(candidate);
+          break;
+        }
+      } catch (error) {
+        if (!isFileSystemError(error)) throw error;
       }
-    } catch (error) {
-      if (!isFileSystemError(error)) throw error;
     }
   }
   if (schemaPath === undefined) return null;
 
-  let sourceMap = cache.get(schemaPath);
-  if (sourceMap === undefined) {
-    let encoded: Uint8Array;
-    try {
-      encoded = readBoundedBytes(schemaPath, DEFAULT_VALIDATION_LIMITS.maxResourceBytes);
-    } catch (error) {
-      if (error instanceof PortableValueError) {
-        sourceMap = SourceMap.empty();
-        cache.set(schemaPath, sourceMap);
-        return { source: displayPath(schemaPath), sourceMap };
-      }
-      if (!isFileSystemError(error)) throw error;
-      sourceMap = SourceMap.empty();
-      cache.set(schemaPath, sourceMap);
-      return { source: displayPath(schemaPath), sourceMap };
-    }
+  let sourceMap: SourceMap;
+  let encoded: Uint8Array;
+  let actualExpectation: BoundedFileExpectation;
+  try {
+    const source = readBoundedFile(
+      schemaPath,
+      DEFAULT_VALIDATION_LIMITS.maxResourceBytes,
+      expected,
+    );
+    encoded = source.data;
+    actualExpectation = source.expectation;
+  } catch (error) {
+    if (!(error instanceof PortableValueError) && !isFileSystemError(error)) throw error;
+    return { source: displayPath(schemaPath), sourceMap: SourceMap.empty() };
+  }
+  const cached = cache.get(schemaPath);
+  if (
+    cached !== undefined &&
+    cached.expectation.canonicalPath === actualExpectation.canonicalPath &&
+    cached.expectation.device === actualExpectation.device &&
+    cached.expectation.inode === actualExpectation.inode &&
+    cached.expectation.size === actualExpectation.size &&
+    cached.expectation.modifiedNs === actualExpectation.modifiedNs &&
+    cached.expectation.changedNs === actualExpectation.changedNs
+  ) {
+    sourceMap = cached.sourceMap;
+  } else {
     let text: string;
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(encoded);
     } catch {
-      sourceMap = SourceMap.empty();
-      cache.set(schemaPath, sourceMap);
-      return { source: displayPath(schemaPath), sourceMap };
+      return { source: displayPath(schemaPath), sourceMap: SourceMap.empty() };
     }
     try {
       sourceMap = parsePortableYamlWithLocations(
@@ -1125,7 +1179,7 @@ function schemaDiagnosticSource(
       }
       sourceMap = SourceMap.empty();
     }
-    cache.set(schemaPath, sourceMap);
+    cache.set(schemaPath, { expectation: actualExpectation, sourceMap });
   }
   return { source: displayPath(schemaPath), sourceMap };
 }

@@ -13,6 +13,13 @@ import {
   CompiledGlob,
   DISCOVERY_MAX_DEPTH,
   DISCOVERY_MAX_ENTRIES,
+  GLOB_MAX_INTERIOR_MATCH_COMPLEXITY,
+  GLOB_MAX_INVOCATION_MATCH_WORK,
+  GLOB_MAX_PATTERN_CODEPOINTS,
+  GLOB_MAX_PATTERNS,
+  GLOB_MAX_TOTAL_MATCH_COMPLEXITY,
+  GLOB_MAX_TOTAL_TOKENS,
+  GLOB_MAX_TOTAL_PATTERN_CODEPOINTS,
   type DiscoveryFileInfo,
   type DiscoveryFileSystem,
   type DiscoveryInputReason,
@@ -36,6 +43,18 @@ interface InvalidGlobVector {
   id: string;
   pattern: string;
   reason: GlobPatternReason;
+}
+
+interface AdversarialGlobVector {
+  id: string;
+  shape:
+    | "question_segment"
+    | "leading_star_segment"
+    | "star_required_suffix"
+    | "repeated_globstar"
+    | "literal_segments"
+    | "leading_globstar";
+  length: number;
 }
 
 type ExpectedDiscoveryEntry =
@@ -92,6 +111,54 @@ type LimitVector =
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(join(BATCH_VECTORS, name), "utf8")) as T;
+}
+
+function expandAdversarialGlob(vector: AdversarialGlobVector): {
+  pattern: string;
+  matching: string;
+  missing: string;
+} {
+  if (vector.shape === "question_segment") {
+    return {
+      pattern: `${"?".repeat(vector.length)}.md`,
+      matching: `${"a".repeat(vector.length)}.md`,
+      missing: `${"a".repeat(vector.length - 1)}.md`,
+    };
+  }
+  if (vector.shape === "leading_star_segment") {
+    return {
+      pattern: "*.md",
+      matching: `${"a".repeat(vector.length)}.md`,
+      missing: `${"a".repeat(vector.length)}.txt`,
+    };
+  }
+  if (vector.shape === "star_required_suffix") {
+    return {
+      pattern: `*${"?".repeat(vector.length)}`,
+      matching: "a".repeat(vector.length),
+      missing: "a".repeat(64),
+    };
+  }
+  if (vector.shape === "repeated_globstar") {
+    return {
+      pattern: [...Array.from({ length: vector.length }, () => "**"), "target.md"].join("/"),
+      matching: "target.md",
+      missing: "other.md",
+    };
+  }
+  const repeated = Array.from({ length: vector.length }, () => "x");
+  if (vector.shape === "literal_segments") {
+    return {
+      pattern: [...repeated, "target.md"].join("/"),
+      matching: [...repeated, "target.md"].join("/"),
+      missing: [...repeated.slice(0, 64), "other.md"].join("/"),
+    };
+  }
+  return {
+    pattern: "**/target.md",
+    matching: [...repeated, "target.md"].join("/"),
+    missing: [...repeated, "other.md"].join("/"),
+  };
 }
 
 function filesystemError(code: VectorFailure["code"], path: string): Error {
@@ -274,11 +341,23 @@ function expectedLimitResult(vector: LimitVector): ExpectedDiscoveryEntry[] {
 }
 
 describe("portable discovery globs", () => {
-  const vectors = loadJson<{ valid: GlobVector[]; invalid: InvalidGlobVector[] }>(
-    "glob-vectors.json",
-  );
+  const vectors = loadJson<{
+    limits: Record<string, number>;
+    valid: GlobVector[];
+    adversarial: AdversarialGlobVector[];
+    invalid: InvalidGlobVector[];
+  }>("glob-vectors.json");
 
   test("matches every shared valid vector", () => {
+    expect(vectors.limits).toEqual({
+      max_interior_match_complexity: GLOB_MAX_INTERIOR_MATCH_COMPLEXITY,
+      max_pattern_codepoints: GLOB_MAX_PATTERN_CODEPOINTS,
+      max_total_pattern_codepoints: GLOB_MAX_TOTAL_PATTERN_CODEPOINTS,
+      max_patterns: GLOB_MAX_PATTERNS,
+      max_total_tokens: GLOB_MAX_TOTAL_TOKENS,
+      max_total_match_complexity: GLOB_MAX_TOTAL_MATCH_COMPLEXITY,
+      max_invocation_match_work: GLOB_MAX_INVOCATION_MATCH_WORK,
+    });
     for (const vector of vectors.valid) {
       const compiled = CompiledGlob.compile(vector.pattern);
       for (const candidate of vector.matches) {
@@ -302,6 +381,57 @@ describe("portable discovery globs", () => {
         expect(error.message).toBe(`invalid glob ${JSON.stringify(vector.pattern)}: ${vector.reason}`);
       }
     }
+  });
+
+  test("matches shared long patterns and paths without exhausting the stack", () => {
+    for (const vector of vectors.adversarial) {
+      const { pattern, matching, missing } = expandAdversarialGlob(vector);
+      const compiled = CompiledGlob.compile(pattern);
+      expect(compiled.matches(matching), vector.id).toBe(true);
+      expect(compiled.matches(missing), vector.id).toBe(false);
+    }
+  });
+
+  test("matches unbounded anchored chunks in linear time", () => {
+    const largeLength = 200_000;
+    const requiredSuffix = "?".repeat(largeLength);
+    const compiled = CompiledGlob.compile(`*${requiredSuffix}`);
+
+    expect(compiled.matches("a".repeat(largeLength))).toBe(true);
+    expect(compiled.matches(`prefix${"a".repeat(largeLength)}`)).toBe(true);
+    expect(compiled.matches("a".repeat(largeLength - 1))).toBe(false);
+  });
+
+  test("bounds interior search work and preserves exact matches", () => {
+    const overlapLength = 20_000;
+    const interior = `${"a".repeat(GLOB_MAX_INTERIOR_MATCH_COMPLEXITY - 1)}b`;
+    const compiled = CompiledGlob.compile(`*${interior}*`);
+
+    expect(compiled.matches(`${"a".repeat(overlapLength)}b`)).toBe(true);
+    expect(compiled.matches(`${"a".repeat(overlapLength)}c`)).toBe(false);
+
+    const overLimit = "a".repeat(GLOB_MAX_INTERIOR_MATCH_COMPLEXITY + 1);
+    try {
+      CompiledGlob.compile(`*${overLimit}*`);
+      throw new Error("expected interior match work limit");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GlobPatternError);
+      if (!(error instanceof GlobPatternError)) throw error;
+      expect(error.reason).toBe("match_work_limit");
+    }
+
+    const normalizedClass = CompiledGlob.compile(`*[${overLimit}]*`);
+    expect(normalizedClass.matches("a")).toBe(true);
+    expect(normalizedClass.matches("b")).toBe(false);
+  });
+
+  test("uses earliest exact matches for multi-star segments", () => {
+    const compiled = CompiledGlob.compile("start*a?c*[x-z]9*end");
+
+    expect(compiled.matches("start--abc--y9--end")).toBe(true);
+    expect(compiled.matches("startaXcx9end")).toBe(true);
+    expect(compiled.matches("start--abc--w9--end")).toBe(false);
+    expect(compiled.matches("start--ab--y9--end")).toBe(false);
   });
 });
 
@@ -397,6 +527,22 @@ describe("artifact discovery", () => {
       "at least one operand",
     );
     expect(filesystem.calls).toEqual([]);
+    try {
+      discoverArtifacts(
+        {
+          ...base,
+          recursive: true,
+          includes: [`[${"a".repeat(GLOB_MAX_PATTERN_CODEPOINTS)}`],
+        },
+        filesystem,
+      );
+      throw new Error("expected raw glob source limit");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GlobPatternError);
+      if (!(error instanceof GlobPatternError)) throw error;
+      expect(error.reason).toBe("match_work_limit");
+    }
+    expect(filesystem.calls).toEqual([]);
     expect(() => discoverArtifacts(base, filesystem)).toThrow(DiscoveryUsageError);
     expect(filesystem.calls).toEqual([]);
     expect(() =>
@@ -406,6 +552,60 @@ describe("artifact discovery", () => {
       ),
     ).toThrow(GlobPatternError);
     expect(filesystem.calls).toEqual([]);
+    try {
+      discoverArtifacts(
+        {
+          ...base,
+          recursive: true,
+          includes: Array.from({ length: GLOB_MAX_PATTERNS + 1 }, () => "*.md"),
+        },
+        filesystem,
+      );
+      throw new Error("expected aggregate glob work limit");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GlobPatternError);
+      if (!(error instanceof GlobPatternError)) throw error;
+      expect(error.reason).toBe("match_work_limit");
+    }
+    expect(filesystem.calls).toEqual([]);
+  });
+
+  test("classifies long-candidate aggregate glob work as discovery_limit", () => {
+    const name = `${"a".repeat(140_000)}.md`;
+    const filesystem = new VectorFileSystem({
+      nodes: [
+        {
+          path: "/work/root",
+          kind: "directory",
+          device: "1",
+          inode: "1",
+          entries: [name],
+        },
+        {
+          path: `/work/root/${name}`,
+          kind: "file",
+          device: "1",
+          inode: "2",
+        },
+      ],
+      failures: [],
+    });
+    const result = discoverArtifacts(
+      {
+        operands: ["root"],
+        recursive: true,
+        profile: "frontmatter-md",
+        includes: Array.from({ length: GLOB_MAX_PATTERNS }, () => "*z*"),
+        excludes: [],
+        invocationDirectory: "/work",
+        pathFlavor: "posix",
+      },
+      filesystem,
+    );
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]?.kind).toBe("input_error");
+    if (result.entries[0]?.kind !== "input_error") throw new Error("expected input error");
+    expect(result.entries[0].reason).toBe("discovery_limit");
   });
 
   test("native filesystem discovery includes hidden entries", () => {

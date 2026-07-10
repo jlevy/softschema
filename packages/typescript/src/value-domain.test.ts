@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Composer, CST, Parser } from "yaml";
 import { validateArtifact, validateStructural } from "./validate.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
   type JsonValue,
   normalizePortableValue,
   PortableValueError,
+  PortableYamlSyntaxError,
   parsePortableYaml,
 } from "./yaml-value-domain.js";
 
@@ -76,6 +78,111 @@ test("each parser resource limit can be overridden", () => {
       expect(error).toBeInstanceOf(PortableValueError);
       expect((error as PortableValueError).path).toBe(path);
     }
+  }
+});
+
+test("YAML node limits stop CST construction during token iteration", () => {
+  const originalNext = Parser.prototype.next;
+  Parser.prototype.next = function* guardedNext(
+    this: Parser,
+    source: string,
+  ): Generator<CST.Token, void> {
+    yield* originalNext.call(this, source);
+    const allocatedItems = this.stack.reduce(
+      (total, token) => total + (CST.isCollection(token) ? token.items.length : 0),
+      0,
+    );
+    if (allocatedItems > 150) throw new Error("CST construction crossed the test sentinel");
+  };
+
+  const caught: unknown[] = [];
+  try {
+    for (const source of ["- 0\n".repeat(1000), `[${"0,".repeat(1000)}0]`]) {
+      try {
+        parsePortableYaml(source, { maxNodesPerResource: 100 });
+      } catch (error) {
+        caught.push(error);
+      }
+    }
+  } finally {
+    Parser.prototype.next = originalNext;
+  }
+
+  expect(caught).toHaveLength(2);
+  for (const error of caught) {
+    expect(error).toBeInstanceOf(PortableValueError);
+    expect((error as PortableValueError).message).toBe("maximum node count exceeded");
+  }
+});
+
+test("YAML construction limits retain global syntax precedence", () => {
+  const cases = [
+    ["- a\n- b\n- c\n- [\n", { maxNodesPerResource: 3 }, 5, 1],
+    ["- a\n- b\n- [\n", { maxNodesPerResource: 1 }, 4, 1],
+    [`[${"0,".repeat(100)}[\n`, { maxNodesPerResource: 10 }, 2, 1],
+    [`["a" "b",${"0,".repeat(100)}0]\n`, { maxNodesPerResource: 10 }, 1, 6],
+  ] as const;
+
+  for (const [source, limits, line, column] of cases) {
+    try {
+      parsePortableYaml(source, limits);
+      throw new Error("expected syntax failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PortableYamlSyntaxError);
+      expect((error as PortableYamlSyntaxError).message).toBe("invalid YAML syntax");
+      expect((error as PortableYamlSyntaxError).line).toBe(line);
+      expect((error as PortableYamlSyntaxError).column).toBe(column);
+    }
+  }
+});
+
+test("YAML limits use Python event paths and source locations", () => {
+  const cases = [
+    ["{a:1,b:2}", { maxNodesPerResource: 1 }, "maximum node count exceeded", "", 1, 2],
+    ["[a: [b: [c: [d: 1]]]]", { maxDepth: 3 }, "maximum depth exceeded", "/0/a/0", 1, 6],
+  ] as const;
+
+  for (const [source, limits, message, path, line, column] of cases) {
+    try {
+      parsePortableYaml(source, limits);
+      throw new Error("expected value-domain limit failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PortableValueError);
+      expect((error as PortableValueError).message).toBe(message);
+      expect((error as PortableValueError).path).toBe(path);
+      expect((error as PortableValueError).line).toBe(line);
+      expect((error as PortableValueError).column).toBe(column);
+    }
+  }
+});
+
+test("empty multi-document floods do not accumulate CST documents", () => {
+  const source = "---\n...\n".repeat(1000);
+  expect(() => parsePortableYaml(source, { maxNodesPerResource: 100 })).toThrow(
+    PortableYamlSyntaxError,
+  );
+});
+
+test("discarded multi-document directives stay bounded per document", () => {
+  const originalCompose = Composer.prototype.compose;
+  Composer.prototype.compose = function* guardedCompose(
+    this: Composer,
+    tokens: Iterable<CST.Token>,
+    forceDoc?: boolean,
+    endOffset?: number,
+  ) {
+    const materialized = [...tokens];
+    if (materialized.length > 3) {
+      throw new Error("directives accumulated across discarded documents");
+    }
+    yield* originalCompose.call(this, materialized, forceDoc, endOffset);
+  };
+
+  try {
+    const source = "%YAML 1.2\n---\nvalue\n...\n".repeat(1000);
+    expect(() => parsePortableYaml(source)).toThrow(PortableYamlSyntaxError);
+  } finally {
+    Composer.prototype.compose = originalCompose;
   }
 });
 
@@ -283,5 +390,13 @@ test("materialized values reject cycles, non-JSON types, and unsafe integers", (
     expect(() => normalizePortableValue(invalidScalar)).toThrow(PortableValueError);
     expect(() => parsePortableYaml(`value: "${invalidScalar}"\n`)).toThrow(PortableValueError);
     expect(() => normalizePortableValue({ [invalidScalar]: true })).toThrow(PortableValueError);
+  }
+
+  try {
+    normalizePortableValue({ "😀": new Date(0), "\uE000": new Date(0) });
+    throw new Error("expected a materialized-value failure");
+  } catch (error) {
+    expect(error).toBeInstanceOf(PortableValueError);
+    expect((error as PortableValueError).path).toBe("/\uE000");
   }
 });

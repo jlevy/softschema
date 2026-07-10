@@ -144,9 +144,10 @@ targets an unexpected project or personal root.
 softschema updates only absent, identical, or byte-exact known prior emissions.
 It does not offer a force-overwrite flag for unmanaged content.
 
-The repository’s activation fixture includes positive and negative prompts for all ten
-named products. It records unavailable observations as unavailable; it does not turn a
-fixture into a live product test.
+The repository’s activation fixture includes shared positive and negative prompts and
+records availability or observations for all ten named products.
+It records unavailable observations as unavailable; it does not turn a fixture into a
+live product test.
 
 ## Primary Product Sources
 

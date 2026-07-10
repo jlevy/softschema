@@ -112,6 +112,27 @@
     "error_path": "/value"
   },
   {
+    "id": "invalid-explicit-boolean",
+    "yaml": "value: !!bool maybe\n",
+    "error_path": "/value",
+    "line": 1,
+    "column": 8
+  },
+  {
+    "id": "invalid-explicit-integer",
+    "yaml": "value: !!int nope\n",
+    "error_path": "/value",
+    "line": 1,
+    "column": 8
+  },
+  {
+    "id": "invalid-explicit-float",
+    "yaml": "value: !!float nope\n",
+    "error_path": "/value",
+    "line": 1,
+    "column": 8
+  },
+  {
     "id": "binary-tag",
     "yaml": "value: !!binary SGk=\n",
     "error_path": "/value"

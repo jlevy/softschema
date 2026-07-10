@@ -11,6 +11,7 @@ from softschema.cli import main as softschema_main
 from softschema.core import SourceSpan
 from softschema.value_domain import (
     DEFAULT_VALIDATION_LIMITS,
+    PortableValueError,
     PortableYamlSyntaxError,
     parse_portable_yaml_with_locations,
 )
@@ -56,6 +57,96 @@ def test_yaml_parser_exceptions_with_codes_become_portable_syntax_errors() -> No
             parse_portable_yaml_with_locations(vector["yaml"])
 
         assert str(caught.value) == vector["message"]
+        assert (caught.value.line, caught.value.column) == (
+            vector["line"],
+            vector["column"],
+        )
+
+
+def test_flow_opener_comments_require_separation_in_both_runtimes() -> None:
+    policy = VECTORS["flow_opener_comment_policy"]
+    for vector in policy["rejected"]:
+        with pytest.raises(PortableYamlSyntaxError) as caught:
+            parse_portable_yaml_with_locations(vector["yaml"])
+
+        assert str(caught.value) == policy["message"]
+        assert (caught.value.line, caught.value.column) == (
+            vector["line"],
+            vector["column"],
+        )
+
+    for vector in policy["accepted"]:
+        assert parse_portable_yaml_with_locations(vector["yaml"]).value == vector["value"]
+
+
+def test_tag_directives_expand_before_portable_tag_classification() -> None:
+    policy = VECTORS["tag_directive_policy"]
+    for vector in policy["accepted"]:
+        assert parse_portable_yaml_with_locations(vector["yaml"]).value == vector["value"]
+
+    for vector in policy["rejected"]:
+        with pytest.raises(PortableValueError) as caught:
+            parse_portable_yaml_with_locations(vector["yaml"])
+
+        assert str(caught.value) == vector["message"]
+        assert caught.value.path == vector["path"]
+        assert (caught.value.line, caught.value.column) == (
+            vector["line"],
+            vector["column"],
+        )
+
+    for vector in policy["syntax_rejected"]:
+        with pytest.raises(PortableYamlSyntaxError) as caught:
+            parse_portable_yaml_with_locations(vector["yaml"])
+
+        assert str(caught.value) == vector["message"]
+        assert caught.value.path == vector["path"]
+        assert (caught.value.line, caught.value.column) == (
+            vector["line"],
+            vector["column"],
+        )
+
+
+def test_explicit_numeric_tags_use_the_shared_portable_grammar() -> None:
+    policy = VECTORS["explicit_numeric_tags"]
+    for vector in policy["accepted"]:
+        assert parse_portable_yaml_with_locations(vector["yaml"]).value == vector["value"]
+
+    for vector in policy["rejected"]:
+        with pytest.raises(PortableValueError) as caught:
+            parse_portable_yaml_with_locations(vector["yaml"])
+
+        assert str(caught.value) == vector["message"]
+        assert caught.value.path == vector["path"]
+        assert (caught.value.line, caught.value.column) == (
+            vector["line"],
+            vector["column"],
+        )
+
+
+def test_semantic_and_resource_failures_follow_shared_event_order() -> None:
+    for vector in VECTORS["first_error_precedence"]:
+        limits = replace(DEFAULT_VALIDATION_LIMITS, **vector.get("limits", {}))
+        with pytest.raises(PortableValueError) as caught:
+            parse_portable_yaml_with_locations(vector["yaml"], limits=limits)
+
+        assert str(caught.value) == vector["message"]
+        assert caught.value.path == vector["path"]
+        assert (caught.value.line, caught.value.column) == (
+            vector["line"],
+            vector["column"],
+        )
+
+
+def test_document_and_empty_key_edges_use_shared_syntax_classifications() -> None:
+    for vector in VECTORS["syntax_classification"]:
+        error_type = PortableYamlSyntaxError if vector["kind"] == "syntax" else PortableValueError
+        limits = replace(DEFAULT_VALIDATION_LIMITS, **vector.get("limits", {}))
+        with pytest.raises(error_type) as caught:
+            parse_portable_yaml_with_locations(vector["yaml"], limits=limits)
+
+        assert str(caught.value) == vector["message"]
+        assert caught.value.path == vector["path"]
         assert (caught.value.line, caught.value.column) == (
             vector["line"],
             vector["column"],

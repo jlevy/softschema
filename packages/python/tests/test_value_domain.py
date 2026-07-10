@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from typing_extensions import override
 
 from softschema import (
     DEFAULT_VALIDATION_LIMITS,
@@ -222,3 +223,25 @@ def test_materialized_values_reject_cycles_non_json_types_and_negative_zero(
         resources={"https://schemas.example/value": normalized},
     )
     assert result.ok is True
+
+
+def test_materialized_mapping_failures_use_unicode_scalar_order() -> None:
+    value = {"😀": object(), "\ue000": object()}
+    with pytest.raises(PortableValueError) as caught:
+        normalize_portable_value(value)
+    assert caught.value.path == "/\ue000"
+
+    valid = {"😀": 1, "\ue000": 2}
+    normalized, _ = normalize_portable_value(valid)
+    assert isinstance(normalized, dict)
+    assert list(normalized) == list(valid)
+
+
+def test_materialized_non_string_keys_are_not_coerced() -> None:
+    class HostileKey:
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("key coercion must not run")
+
+    with pytest.raises(PortableValueError, match="mapping keys must be strings"):
+        normalize_portable_value({HostileKey(): True})

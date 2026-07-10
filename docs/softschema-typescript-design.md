@@ -31,7 +31,7 @@ conformance tests; see the parity development process in
 | `errors` | Engine-neutral structural error records and ajv normalization |
 | `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic` |
 | `yaml-value-domain` | Bounded portable-YAML parsing, materialized-value normalization, and `ValidationLimits` |
-| `portable-pattern` | `portable-regex-v1` parsing, matching, and schema-position traversal |
+| `portable-pattern` | Bounded `portable-regex-v1` parsing, Thompson-NFA compilation, normalized classes, lazy DFA state/transition/membership budgets, Ajv regex-engine integration, and schema-position traversal |
 | `core/diagnostics` | Pure diagnostic-v1, JSONL, and SARIF projection |
 | `core/source-map` | Runtime-neutral source positions and JSON-path anchors |
 | `artifact-discovery` | Deterministic path/glob discovery and file identity |
@@ -134,8 +134,18 @@ requires a documented pre-1.0 migration.
 
 `SchemaView.load()` parses YAML or JSON through the bounded portable-value boundary and
 accepts a trusted validation-limit override with the same defaults as validation.
-The constructor accepts an already normalized JSON-compatible mapping and takes a deep
-snapshot without running the boundary again.
+File loads resolve one canonical regular-file target, bind the open descriptor to the
+inspected device/inode/size/mtime/ctime, fail closed when no stable inode is available,
+read through the limit plus one byte, and decode strict UTF-8. Document-declared schema
+containment passes that canonical identity into the reader, which repeats canonical-path
+checks around the descriptor open and rejects a different identity or mutation-sensitive
+metadata rather than claiming descriptor-relative parent traversal on Node.
+A second descriptor pass compares bytes on platforms where timestamp behavior may not
+expose a same-size rewrite.
+This detects ordinary replacement and in-place mutation; it is not an atomic snapshot
+against a hostile writer able to coordinate both reads or restore every observable
+timestamp. The constructor accepts an already normalized JSON-compatible mapping and
+takes a deep snapshot without running the boundary again.
 The `raw` getter returns a new deep copy; mutating constructor input, `raw`, root
 metadata, or field metadata never changes later navigation.
 
@@ -190,7 +200,10 @@ aggregate success flag; `output` is the typed legacy single-artifact wire (`cont
 `contract_id`, `document_metadata`, `path`, `profile`, `semantic`, `status`,
 `structural`, `values`, `warnings`). Callers must retain and inspect `output` on failure
 instead of assuming failed validation throws.
-One explicit file with JSON output emits those `output` bytes.
+When discovery classifies one single explicit path as a regular file, JSON emits those
+legacy `output` bytes, including when a later read fails.
+A single explicit `not_found` result is the narrow legacy exception; every other
+discovery-input result uses a diagnostic-v1 aggregate.
 Structural errors are engine-neutral discriminated records with softschema-owned
 messages and deterministic ordering; semantic Zod issue detail remains
 implementation-specific.
@@ -235,8 +248,10 @@ records and exit 2. The CLI accepts an explicit `--profile frontmatter-md|pure-y
 defaults to `frontmatter-md`, and never infers the profile from an extension.
 
 For batch work, the filesystem adapter applies the shared portable glob grammar,
-display-path sorting, file-identity deduplication, and explicit/discovered symlink
-rules. The YAML adapter retains source spans until diagnostic projection.
+display-path sorting, file-identity deduplication, explicit/discovered symlink rules,
+static invocation caps, and shared candidate-code-point match fuel.
+Static glob-budget failures precede filesystem access; dynamic exhaustion is
+`discovery_limit`. The YAML adapter retains source spans until diagnostic projection.
 Parser and discovery mechanics stay outside `softschema/core`; diagnostic construction
 itself is pure core logic and shares vectors with Python.
 

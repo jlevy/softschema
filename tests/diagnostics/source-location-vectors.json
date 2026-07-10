@@ -189,6 +189,36 @@
       }
     },
     {
+      "id": "yaml-multiline-flow-pair",
+      "kind": "yaml",
+      "content": "[a:\n]\n",
+      "value": [{ "a": null }],
+      "nodes": {
+        "": {
+          "value": {
+            "start": { "line": 1, "column": 1 },
+            "end": { "line": 2, "column": 2 }
+          }
+        },
+        "/0": {
+          "value": {
+            "start": { "line": 1, "column": 2 },
+            "end": { "line": 2, "column": 1 }
+          }
+        },
+        "/0/a": {
+          "key": {
+            "start": { "line": 1, "column": 2 },
+            "end": { "line": 1, "column": 3 }
+          },
+          "value": {
+            "start": { "line": 2, "column": 1 },
+            "end": { "line": 2, "column": 1 }
+          }
+        }
+      }
+    },
+    {
       "id": "yaml-empty-document",
       "kind": "yaml",
       "content": "",

@@ -113,7 +113,7 @@ schemas:
   sha256: eb44473aa297ce7cd1ab7d1a046a9d1d629c6864bec17c767119c255311b1e17
 - id: urn:softschema:draft:conformance:release-manifest:v0
   path: schemas/release-manifest.schema.json
-  sha256: ab300d5cb42e20c4da466dd1b74a5a10bf1ea5758ebd515b150882a1f9388634
+  sha256: fa1285921ae557a353cb779616cae4f1f3e8b9ca9ace7cb7abb792bc9321c2be
 - id: urn:softschema:draft:conformance:release-metadata:v0
   path: schemas/release-metadata.schema.json
   sha256: c29b9fec7eb46b45c30012e2137df03ddf34153f2891c4970232d8cf61feef1f
@@ -150,13 +150,13 @@ vector_suites:
   sha256: 86601556da4cb6b52bd8e9eda4087fd130912bb7ce698f81029b539d3a0490b8
 - id: portable-pattern-v1
   path: vectors/portable-pattern-v1.json
-  sha256: 3bb6fbb910f77b7877c74dfd2e805b5bdfb034760219a3b5b152858a2bd8cb64
+  sha256: d5a6e0cbb1b8082bcdfe45c8df3a5e65e8ac586aee1d9b2f05d956a3296d2942
 - id: portable-yaml-v1
   path: vectors/portable-yaml-v1.json
   sha256: de31875fd7e046db4c25cc0cb3e40f529af8bce41a196963b4384c4ba792812f
 - id: structural-resources-v1
   path: vectors/structural-resources-v1.json
-  sha256: 3e5e20a886ea3653fd52063447512140500938d396e531acc0e0d5c678c257f7
+  sha256: 02bc4bad6a110d32bdcf13fcc552e56051e84928ae9a59e2f4bfe84592f3c87a
 artifacts:
 - id: evolution
   role: evolution

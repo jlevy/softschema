@@ -14,20 +14,29 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import stat
+import weakref
+from collections.abc import Generator, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Never
 from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 from frontmatter_format import FmFormatError
-from jsonschema import Draft202012Validator, _keywords, _utils
+from jsonschema import Draft202012Validator, _utils, validators
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from referencing import Registry, Resource
 from referencing.exceptions import NoSuchResource
 from referencing.jsonschema import DRAFT202012
 
+from softschema._bounded_file import (
+    BoundedFileExpectation,
+    read_bounded_file,
+    resolve_file_path,
+)
 from softschema.canonicalize import (
     ENFORCEMENT_UNSUPPORTED_MESSAGE,
     EnforcementUnsupportedError,
@@ -65,16 +74,18 @@ from softschema.models import (
     validate_contract_id,
     validate_schema_id,
 )
-from softschema.patterns import first_unsupported_pattern, lower_schema_patterns_for_python
+from softschema.patterns import (
+    first_unsupported_pattern,
+    portable_pattern_matches,
+    portable_pattern_validation_budget,
+)
 from softschema.registry import Contracts
 from softschema.value_domain import (
     DEFAULT_VALIDATION_LIMITS,
-    ParsedPortableYaml,
     PortableValueError,
     PortableYamlSyntaxError,
     ValidationLimits,
     normalize_portable_value,
-    parse_portable_yaml,
     parse_portable_yaml_with_locations,
 )
 
@@ -152,6 +163,335 @@ class LocatedFrontmatter:
     content: str
     value: Any | None
     source_map: SourceMap
+    source_file: BoundedFileExpectation
+
+
+@dataclass(frozen=True)
+class LocatedYamlArtifact:
+    """A portable YAML mapping plus source spans and its canonical file identity."""
+
+    value: dict[str, Any]
+    source_map: SourceMap
+    source_file: BoundedFileExpectation
+
+
+@dataclass(frozen=True)
+class _ResolvedMetadataSchema:
+    """A metadata schema path plus the file identity authorized by containment."""
+
+    path: Path
+    expected: BoundedFileExpectation
+
+
+@dataclass(frozen=True)
+class _ValidatedSchemaSource:
+    """Exact schema identity and source map consumed by structural validation."""
+
+    path: Path
+    source_map: SourceMap
+
+
+_VALIDATED_SCHEMA_SOURCES: dict[int, _ValidatedSchemaSource] = {}
+_CAPTURE_VALIDATED_SCHEMA_SOURCE: ContextVar[bool] = ContextVar(
+    "softschema_capture_validated_schema_source",
+    default=False,
+)
+
+
+@contextmanager
+def capture_validated_schema_source() -> Generator[None, None, None]:
+    """Enable exact schema provenance only around CLI diagnostic validation."""
+    token = _CAPTURE_VALIDATED_SCHEMA_SOURCE.set(True)
+    try:
+        yield
+    finally:
+        _CAPTURE_VALIDATED_SCHEMA_SOURCE.reset(token)
+
+
+def _remember_validated_schema_source(
+    result: StructuralResult,
+    source: _ValidatedSchemaSource,
+) -> None:
+    """Attach private diagnostic provenance without extending the public result wire."""
+    if not _CAPTURE_VALIDATED_SCHEMA_SOURCE.get():
+        return
+    key = id(result)
+    _VALIDATED_SCHEMA_SOURCES[key] = source
+    weakref.finalize(result, _VALIDATED_SCHEMA_SOURCES.pop, key, None)
+
+
+def take_validated_schema_source(
+    result: StructuralResult,
+) -> tuple[Path, SourceMap] | None:
+    """Consume the exact source map paired with one structural result."""
+    source = _VALIDATED_SCHEMA_SOURCES.pop(id(result), None)
+    return None if source is None else (source.path, source.source_map)
+
+
+def _portable_pattern_keyword(
+    validator: Any,
+    pattern: str,
+    instance: Any,
+    schema: Mapping[str, Any],
+) -> Iterator[JsonSchemaValidationError]:
+    """Validate ``pattern`` with the bounded portable matcher."""
+    del schema
+    if validator.is_type(instance, "string") and not portable_pattern_matches(pattern, instance):
+        yield JsonSchemaValidationError(f"{instance!r} does not match {pattern!r}")
+
+
+def _portable_pattern_properties_keyword(
+    validator: Any,
+    pattern_properties: Mapping[str, Any],
+    instance: Any,
+    schema: Mapping[str, Any],
+) -> Iterator[JsonSchemaValidationError]:
+    """Validate pattern properties without invoking jsonschema's native regex path."""
+    del schema
+    if not validator.is_type(instance, "object"):
+        return
+    for pattern, subschema in pattern_properties.items():
+        for key, value in instance.items():
+            if portable_pattern_matches(pattern, key):
+                yield from validator.descend(
+                    value,
+                    subschema,
+                    path=key,
+                    schema_path=pattern,
+                )
+
+
+def _portable_find_additional_properties(
+    instance: Mapping[str, Any],
+    schema: Mapping[str, Any],
+) -> Iterator[str]:
+    """Yield extras using each portable pattern independently.
+
+    jsonschema joins pattern-property names into a new native regular expression;
+    doing so changes grammar and reintroduces backtracking.
+    """
+    properties = schema.get("properties", {})
+    declared = properties if isinstance(properties, Mapping) else {}
+    pattern_properties = schema.get("patternProperties", {})
+    patterns = pattern_properties if isinstance(pattern_properties, Mapping) else {}
+    matched = {
+        key
+        for pattern in patterns
+        for key in instance
+        if key not in declared and portable_pattern_matches(pattern, key)
+    }
+    for key in instance:
+        if key not in declared and key not in matched:
+            yield key
+
+
+def _portable_additional_properties_keyword(
+    validator: Any,
+    additional_properties: Any,
+    instance: Any,
+    schema: Mapping[str, Any],
+) -> Iterator[JsonSchemaValidationError]:
+    """Validate additional properties with portable pattern classification."""
+    if not validator.is_type(instance, "object"):
+        return
+    extras = set(_portable_find_additional_properties(instance, schema))
+    if validator.is_type(additional_properties, "object"):
+        for extra in extras:
+            yield from validator.descend(instance[extra], additional_properties, path=extra)
+    elif not additional_properties and extras:
+        if "patternProperties" in schema:
+            verb = "does" if len(extras) == 1 else "do"
+            joined = ", ".join(repr(each) for each in sorted(extras))
+            raw_patterns = schema["patternProperties"]
+            patterns = ", ".join(
+                repr(each)
+                for each in sorted(raw_patterns if isinstance(raw_patterns, dict) else {})
+            )
+            yield JsonSchemaValidationError(
+                f"{joined} {verb} not match any of the regexes: {patterns}"
+            )
+        else:
+            message = "Additional properties are not allowed (%s %s unexpected)"
+            yield JsonSchemaValidationError(message % _utils.extras_msg(sorted(extras, key=str)))
+
+
+def _portable_find_evaluated_property_keys_by_schema(
+    validator: Any,
+    instance: Mapping[str, Any],
+    schema: Any,
+) -> set[str]:
+    """Mirror jsonschema's Draft 2020-12 evaluator with portable matching."""
+    if validator.is_type(schema, "boolean"):
+        return set()
+    evaluated_keys: set[str] = set()
+
+    reference = schema.get("$ref")
+    if reference is not None:
+        resolved = validator._resolver.lookup(reference)
+        evaluated_keys.update(
+            _portable_find_evaluated_property_keys_by_schema(
+                validator.evolve(
+                    schema=resolved.contents,
+                    _resolver=resolved.resolver,
+                ),
+                instance,
+                resolved.contents,
+            )
+        )
+
+    dynamic_reference = schema.get("$dynamicRef")
+    if dynamic_reference is not None:
+        resolved = validator._resolver.lookup(dynamic_reference)
+        evaluated_keys.update(
+            _portable_find_evaluated_property_keys_by_schema(
+                validator.evolve(
+                    schema=resolved.contents,
+                    _resolver=resolved.resolver,
+                ),
+                instance,
+                resolved.contents,
+            )
+        )
+
+    properties = schema.get("properties")
+    if validator.is_type(properties, "object"):
+        evaluated_keys.update(properties.keys() & instance.keys())
+
+    for keyword in ("additionalProperties", "unevaluatedProperties"):
+        subschema = schema.get(keyword)
+        if subschema is None:
+            continue
+        evaluated_keys.update(
+            key
+            for key, value in instance.items()
+            if _utils.is_valid(validator.descend(value, subschema))
+        )
+
+    pattern_properties = schema.get("patternProperties")
+    if isinstance(pattern_properties, Mapping):
+        for pattern in pattern_properties:
+            for key in instance:
+                if portable_pattern_matches(pattern, key):
+                    evaluated_keys.add(key)
+
+    dependent_schemas = schema.get("dependentSchemas")
+    if isinstance(dependent_schemas, Mapping):
+        for key, subschema in dependent_schemas.items():
+            if key in instance:
+                evaluated_keys.update(
+                    _portable_find_evaluated_property_keys_by_schema(
+                        validator,
+                        instance,
+                        subschema,
+                    )
+                )
+
+    for keyword in ("allOf", "oneOf", "anyOf"):
+        for subschema in schema.get(keyword, []):
+            if _utils.is_valid(validator.descend(instance, subschema)):
+                evaluated_keys.update(
+                    _portable_find_evaluated_property_keys_by_schema(
+                        validator,
+                        instance,
+                        subschema,
+                    )
+                )
+
+    if "if" in schema:
+        if validator.evolve(schema=schema["if"]).is_valid(instance):
+            evaluated_keys.update(
+                _portable_find_evaluated_property_keys_by_schema(
+                    validator,
+                    instance,
+                    schema["if"],
+                )
+            )
+            if "then" in schema:
+                evaluated_keys.update(
+                    _portable_find_evaluated_property_keys_by_schema(
+                        validator,
+                        instance,
+                        schema["then"],
+                    )
+                )
+        elif "else" in schema:
+            evaluated_keys.update(
+                _portable_find_evaluated_property_keys_by_schema(
+                    validator,
+                    instance,
+                    schema["else"],
+                )
+            )
+    return evaluated_keys
+
+
+def _portable_unevaluated_properties_keyword(
+    validator: Any,
+    unevaluated_properties: Any,
+    instance: Any,
+    schema: Mapping[str, Any],
+) -> Iterator[JsonSchemaValidationError]:
+    """Validate unevaluated properties with portable evaluated-key discovery."""
+    if not validator.is_type(instance, "object"):
+        return
+    evaluated_keys = _portable_find_evaluated_property_keys_by_schema(validator, instance, schema)
+    unevaluated_keys = []
+    for key in instance:
+        if key not in evaluated_keys and not _utils.is_valid(
+            validator.descend(
+                instance[key],
+                unevaluated_properties,
+                path=key,
+                schema_path=key,
+            )
+        ):
+            unevaluated_keys.append(key)
+
+    if not unevaluated_keys:
+        return
+    if unevaluated_properties is False:
+        message = "Unevaluated properties are not allowed (%s %s unexpected)"
+        extras = sorted(unevaluated_keys, key=str)
+        yield JsonSchemaValidationError(message % _utils.extras_msg(extras))
+    else:
+        message = (
+            "Unevaluated properties are not valid under the given schema "
+            "(%s %s unevaluated and invalid)"
+        )
+        yield JsonSchemaValidationError(message % _utils.extras_msg(unevaluated_keys))
+
+
+PortableDraft202012Validator: Any = validators.extend(
+    Draft202012Validator,
+    validators={
+        "pattern": _portable_pattern_keyword,
+        "patternProperties": _portable_pattern_properties_keyword,
+        "additionalProperties": _portable_additional_properties_keyword,
+        "unevaluatedProperties": _portable_unevaluated_properties_keyword,
+    },
+)
+
+
+def _portable_validator_evolve(validator: Any, **changes: Any) -> Any:
+    """Keep the portable keyword implementation across referenced resources.
+
+    jsonschema's generated ``evolve`` method selects its stock validator again
+    whenever a referenced resource repeats ``$schema``.  That would silently
+    restore native regex matching at exactly the resource boundary this class is
+    intended to protect.
+    """
+    changes.setdefault("schema", validator.schema)
+    for attribute, argument in (
+        ("_ref_resolver", "resolver"),
+        ("format_checker", "format_checker"),
+        ("_registry", "registry"),
+        ("_resolver", "_resolver"),
+    ):
+        changes.setdefault(argument, getattr(validator, attribute))
+    return validator.__class__(**changes)
+
+
+PortableDraft202012Validator.evolve = _portable_validator_evolve
 
 
 @dataclass(frozen=True)
@@ -196,22 +536,78 @@ def validate_structural(
     ``resources`` maps absolute schema URIs to already-loaded mapping or boolean
     schemas. Validation never retrieves a resource from the network or filesystem.
     """
-    try:
-        schema, root_size_bytes = _read_yaml_resource(schema_yaml_path, limits)
-    except PortableValueError as exc:
-        return _schema_failure("value_domain", exc.path)
-    except (OSError, PortableYamlSyntaxError, UnicodeDecodeError):
-        return _schema_failure("syntax", "")
-    if not isinstance(schema, dict):
-        return _schema_failure("root", "")
-    return _validate_structural_schema(
+    return _validate_structural_file(
         values,
-        schema,
+        schema_yaml_path,
         strict_extras=strict_extras,
         resources=resources,
         limits=limits,
-        root_size_bytes=root_size_bytes,
+        expected=None,
     )
+
+
+def _validate_structural_file(
+    values: Any,
+    schema_yaml_path: Path,
+    *,
+    strict_extras: bool,
+    resources: SchemaResources | None,
+    limits: ValidationLimits,
+    expected: BoundedFileExpectation | None,
+) -> StructuralResult:
+    """Validate a schema file, optionally enforcing a prior file authorization."""
+    source_record = _ValidatedSchemaSource(
+        path=schema_yaml_path.absolute(),
+        source_map=SourceMap.empty(),
+    )
+    try:
+        source = read_bounded_file(schema_yaml_path, limits.max_resource_bytes, expected=expected)
+    except PortableValueError as exc:
+        result = _schema_failure("value_domain", exc.path)
+        _remember_validated_schema_source(result, source_record)
+        return result
+    except OSError:
+        result = _schema_failure("syntax", "")
+        _remember_validated_schema_source(result, source_record)
+        return result
+    source_record = _ValidatedSchemaSource(
+        path=source.expectation.canonical_path,
+        source_map=SourceMap.empty(),
+    )
+    encoded = source.data
+    try:
+        parsed = parse_portable_yaml_with_locations(
+            encoded.decode("utf-8-sig"),
+            limits=limits,
+            encoded_size=len(encoded),
+        )
+    except PortableValueError as exc:
+        result = _schema_failure("value_domain", exc.path)
+        _remember_validated_schema_source(result, source_record)
+        return result
+    except (PortableYamlSyntaxError, UnicodeDecodeError):
+        result = _schema_failure("syntax", "")
+        _remember_validated_schema_source(result, source_record)
+        return result
+    schema = parsed.value
+    root_size_bytes = len(encoded)
+    source_record = _ValidatedSchemaSource(
+        path=source.expectation.canonical_path,
+        source_map=parsed.source_map,
+    )
+    if not isinstance(schema, dict):
+        result = _schema_failure("root", "")
+    else:
+        result = _validate_structural_schema(
+            values,
+            schema,
+            strict_extras=strict_extras,
+            resources=resources,
+            limits=limits,
+            root_size_bytes=root_size_bytes,
+        )
+    _remember_validated_schema_source(result, source_record)
+    return result
 
 
 def _validate_structural_schema(
@@ -311,16 +707,7 @@ def _validate_structural_schema(
         )
     if legacy_identity:
         schema_for_engine.pop("$id", None)
-    lowered_schema, pattern_reversals = lower_schema_patterns_for_python(schema_for_engine)
-    assert isinstance(lowered_schema, dict)
-    schema_for_engine = lowered_schema
-    resources_for_engine: dict[str, SchemaResource] = {}
-    for uri in sorted(prepared_resources):
-        lowered_resource, resource_reversals = lower_schema_patterns_for_python(
-            prepared_resources[uri]
-        )
-        resources_for_engine[uri] = lowered_resource
-        pattern_reversals.update(resource_reversals)
+    resources_for_engine = prepared_resources
 
     # Keep the engine boundary offline even if preflight misses an unusual
     # reference shape. Only resources already present in this registry exist.
@@ -334,8 +721,32 @@ def _validate_structural_schema(
                     default_specification=DRAFT202012,
                 ),
             )
-        engine_validator = Draft202012Validator(schema_for_engine, registry=registry)
-        engine_errors = list(engine_validator.iter_errors(values))
+        engine_validator = PortableDraft202012Validator(schema_for_engine, registry=registry)
+        with portable_pattern_validation_budget():
+            engine_errors = list(engine_validator.iter_errors(values))
+            # Additional/unevaluated-property diagnostics reconstruct the offending key
+            # from structured validator state. Keep that replay inside the same fuel and
+            # memo context as the engine decision so diagnostic projection cannot create
+            # an uncharged second pattern-by-key pass.
+            errors = []
+            for error in engine_errors:
+                validator = str(error.validator)
+                validator_value = error.validator_value
+                errors.append(
+                    _LocatedStructuralError(
+                        structural_error_record(
+                            path=list(error.absolute_path),
+                            validator=validator,
+                            validator_value=validator_value,
+                            value=error.instance,
+                        ),
+                        offending_property=_offending_property(
+                            engine_validator,
+                            error,
+                            validator,
+                        ),
+                    )
+                )
     except Exception as exc:
         reference = _reference_from_exception(exc)
         if reference is not None:
@@ -348,23 +759,6 @@ def _validate_structural_schema(
             )
         return _schema_failure("compile", "")
 
-    errors = []
-    for error in engine_errors:
-        validator = str(error.validator)
-        validator_value = error.validator_value
-        if validator == "pattern" and isinstance(validator_value, str):
-            validator_value = pattern_reversals.get(validator_value, validator_value)
-        errors.append(
-            _LocatedStructuralError(
-                structural_error_record(
-                    path=list(error.absolute_path),
-                    validator=validator,
-                    validator_value=validator_value,
-                    value=error.instance,
-                ),
-                offending_property=_offending_property(engine_validator, error, validator),
-            )
-        )
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
@@ -372,7 +766,7 @@ def _validate_structural_schema(
 
 
 def _offending_property(
-    engine_validator: Draft202012Validator,
+    engine_validator: Any,
     error: JsonSchemaValidationError,
     keyword: str,
 ) -> str | None:
@@ -383,11 +777,16 @@ def _offending_property(
         return None
     try:
         if keyword == "additionalProperties":
-            candidates = list(_utils.find_additional_properties(error.instance, error.schema))
+            candidates = list(_portable_find_additional_properties(error.instance, error.schema))
         else:
             current = engine_validator.evolve(schema=error.schema)
-            find_evaluated_keys: Any = vars(_keywords)["find_evaluated_property_keys_by_schema"]
-            evaluated = set(find_evaluated_keys(current, error.instance, error.schema))
+            evaluated = set(
+                _portable_find_evaluated_property_keys_by_schema(
+                    current,
+                    error.instance,
+                    error.schema,
+                )
+            )
             candidates = [key for key in error.instance if key not in evaluated]
             if error.validator_value is not False:
                 candidates = [
@@ -974,6 +1373,7 @@ def validate_artifact(
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
     frontmatter: Any = _UNREAD,
+    source_file: BoundedFileExpectation | None = None,
     limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
@@ -1021,6 +1421,7 @@ def validate_artifact(
             metadata_mode,
             limits,
             raw=frontmatter,
+            source_file=source_file,
         )
     return _validate_frontmatter_artifact(
         doc_path,
@@ -1029,6 +1430,7 @@ def validate_artifact(
         metadata_mode,
         frontmatter,
         limits,
+        source_file=source_file,
     )
 
 
@@ -1039,10 +1441,14 @@ def _validate_frontmatter_artifact(
     metadata_mode: Literal["enforced", "advisory"],
     frontmatter: Any = _UNREAD,
     limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
+    *,
+    source_file: BoundedFileExpectation | None = None,
 ) -> ArtifactValidationResult:
     if frontmatter is _UNREAD:
         try:
-            _content, frontmatter = _read_frontmatter_doc(doc_path, limits)
+            located = read_frontmatter_with_locations(doc_path, limits)
+            frontmatter = located.value
+            source_file = located.source_file
         except (
             ArtifactFrontmatterError,
             ArtifactRootError,
@@ -1125,6 +1531,7 @@ def _validate_frontmatter_artifact(
         metadata=metadata,
         warnings=warnings,
         limits=limits,
+        source_file=source_file,
     )
 
 
@@ -1168,6 +1575,7 @@ def _validate_pure_yaml_artifact(
     limits: ValidationLimits,
     *,
     raw: Any = _UNREAD,
+    source_file: BoundedFileExpectation | None = None,
 ) -> ArtifactValidationResult:
     """Validate a pure-yaml artifact.
 
@@ -1182,7 +1590,9 @@ def _validate_pure_yaml_artifact(
     """
     if raw is _UNREAD:
         try:
-            raw = read_yaml_artifact(doc_path, limits)
+            located = read_yaml_artifact_with_locations(doc_path, limits)
+            raw = located.value
+            source_file = located.source_file
         except (
             ArtifactRootError,
             PortableValueError,
@@ -1233,6 +1643,7 @@ def _validate_pure_yaml_artifact(
         metadata=metadata,
         warnings=warnings,
         limits=limits,
+        source_file=source_file,
     )
 
 
@@ -1291,6 +1702,7 @@ def _validate_extracted_values(
     metadata: SchemaMetadata | None,
     warnings: list[SchemaWarning],
     limits: ValidationLimits,
+    source_file: BoundedFileExpectation | None,
 ) -> ArtifactValidationResult:
     # Schema precedence (host over document): a caller/registry schema_path,
     # then the document's own softschema.schema binding, then none.
@@ -1316,18 +1728,24 @@ def _validate_extracted_values(
                 limits=limits,
             )
     elif metadata_schema is not None:
-        bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
-        if bound_path is None:
+        bound_schema, bind_error = _resolve_metadata_schema(
+            metadata_schema,
+            doc_path,
+            source_file=source_file,
+        )
+        if bound_schema is None:
             structural = StructuralResult(
                 ok=False,
                 errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
             )
         else:
-            structural = validate_structural(
+            structural = _validate_structural_file(
                 values,
-                bound_path,
+                bound_schema.path,
                 strict_extras=contract.status == SchemaStatus.enforced,
+                resources=None,
                 limits=limits,
+                expected=bound_schema.expected,
             )
     elif contract.model is not None:
         structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
@@ -1373,7 +1791,12 @@ def _resolve_schema_path(path: Path | None, doc_path: Path) -> Path | None:
     return None
 
 
-def _resolve_metadata_schema(schema_ref: str, doc_path: Path) -> tuple[Path | None, str | None]:
+def _resolve_metadata_schema(
+    schema_ref: str,
+    doc_path: Path,
+    *,
+    source_file: BoundedFileExpectation | None = None,
+) -> tuple[_ResolvedMetadataSchema | None, str | None]:
     """Resolve a document-declared ``softschema.schema`` value, strictly bounded.
 
     Stricter than :func:`_resolve_schema_path` because the value comes from the
@@ -1383,20 +1806,64 @@ def _resolve_metadata_schema(schema_ref: str, doc_path: Path) -> tuple[Path | No
     arbitrary file). Returns ``(path, None)`` on success or ``(None, message)``
     on rejection; every rejection reports as ``schema_missing``.
     """
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in schema_ref):
+        return None, f"compiled schema not found: {schema_ref}"
     ref = Path(schema_ref)
     if ref.is_absolute():
         return None, f"softschema.schema must be a relative path: {schema_ref}"
-    resolved = (doc_path.parent / ref).resolve()
-    doc_dir = doc_path.parent.resolve()
+    if source_file is not None:
+        try:
+            current_document = resolve_file_path(doc_path)
+            current_stat = current_document.lstat()
+        except (OSError, ValueError):
+            return None, f"compiled schema not found: {schema_ref}"
+        if current_document != source_file.canonical_path or not source_file.matches(current_stat):
+            return None, f"compiled schema not found: {schema_ref}"
+        doc_dir = source_file.canonical_path.parent
+    else:
+        doc_dir = doc_path.parent.resolve()
+    candidate = doc_dir / ref
     cwd = Path.cwd().resolve()
+    try:
+        resolved = resolve_file_path(candidate)
+    except (OSError, ValueError):
+        # Preserve escape diagnostics for broken or missing paths when their
+        # resolvable prefix already leaves both authorized roots.
+        try:
+            unresolved = resolve_file_path(candidate, strict=False)
+        except (OSError, ValueError):
+            return None, f"compiled schema not found: {schema_ref}"
+        if not (unresolved.is_relative_to(doc_dir) or unresolved.is_relative_to(cwd)):
+            return None, (
+                "softschema.schema escapes the document directory and the working "
+                f"directory: {schema_ref}"
+            )
+        return None, f"compiled schema not found: {schema_ref}"
     if not (resolved.is_relative_to(doc_dir) or resolved.is_relative_to(cwd)):
         return None, (
             "softschema.schema escapes the document directory and the working "
             f"directory: {schema_ref}"
         )
-    if not resolved.is_file():
+    try:
+        source_stat = resolved.lstat()
+    except (OSError, ValueError):
         return None, f"compiled schema not found: {schema_ref}"
-    return resolved, None
+    if not stat.S_ISREG(source_stat.st_mode):
+        return None, f"compiled schema not found: {schema_ref}"
+    if source_stat.st_ino == 0:
+        return None, f"compiled schema not found: {schema_ref}"
+    try:
+        if resolve_file_path(candidate) != resolved:
+            return None, f"compiled schema not found: {schema_ref}"
+    except (OSError, ValueError):
+        return None, f"compiled schema not found: {schema_ref}"
+    return (
+        _ResolvedMetadataSchema(
+            path=resolved,
+            expected=BoundedFileExpectation.from_stat(resolved, source_stat),
+        ),
+        None,
+    )
 
 
 def _artifact_failure(
@@ -1558,14 +2025,15 @@ def read_frontmatter_with_locations(
     limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
 ) -> LocatedFrontmatter:
     """Read frontmatter once while retaining exact key/value source spans."""
-    encoded = _read_bounded_bytes(path, limits.max_resource_bytes)
+    source = read_bounded_file(path, limits.max_resource_bytes)
+    encoded = source.data
     text = encoded.decode("utf-8-sig")
     # Python's ``str.splitlines`` treats U+0085/U+2028/U+2029 as line breaks, while
     # the portable source model permits only CR, LF, and CRLF. Fence recognition must
     # use that same model or a separator outside YAML could create a Python-only fence.
     lines = _portable_source_lines(text)
     if not lines or not _is_frontmatter_fence(lines[0]):
-        return LocatedFrontmatter(text, None, SourceMap.empty())
+        return LocatedFrontmatter(text, None, SourceMap.empty(), source.expectation)
     end = next(
         (index for index, line in enumerate(lines[1:], 1) if _is_frontmatter_fence(line)),
         -1,
@@ -1576,7 +2044,7 @@ def read_frontmatter_with_locations(
         )
     body = "".join(lines[end + 1 :])
     if end == 1:
-        return LocatedFrontmatter(body, None, SourceMap.empty())
+        return LocatedFrontmatter(body, None, SourceMap.empty(), source.expectation)
     parsed = parse_portable_yaml_with_locations(
         "".join(lines[1:end]),
         limits=limits,
@@ -1592,7 +2060,7 @@ def read_frontmatter_with_locations(
             line=start.start.line if start is not None else None,
             column=start.start.column if start is not None else None,
         )
-    return LocatedFrontmatter(body, frontmatter, parsed.source_map)
+    return LocatedFrontmatter(body, frontmatter, parsed.source_map, source.expectation)
 
 
 def _portable_source_lines(text: str) -> list[str]:
@@ -1650,9 +2118,10 @@ def read_yaml_artifact(
 def read_yaml_artifact_with_locations(
     path: Path,
     limits: ValidationLimits = DEFAULT_VALIDATION_LIMITS,
-) -> ParsedPortableYaml:
+) -> LocatedYamlArtifact:
     """Read one bounded pure-YAML artifact and retain its source map."""
-    encoded = _read_bounded_bytes(path, limits.max_resource_bytes)
+    source = read_bounded_file(path, limits.max_resource_bytes)
+    encoded = source.data
     parsed = parse_portable_yaml_with_locations(
         encoded.decode("utf-8-sig"),
         limits=limits,
@@ -1666,28 +2135,11 @@ def read_yaml_artifact_with_locations(
             line=start.start.line if start is not None else None,
             column=start.start.column if start is not None else None,
         )
-    return parsed
-
-
-def _read_yaml_resource(path: Path, limits: ValidationLimits) -> tuple[Any, int]:
-    encoded = _read_bounded_bytes(path, limits.max_resource_bytes)
-    value = parse_portable_yaml(
-        encoded.decode("utf-8-sig"),
-        limits=limits,
-        encoded_size=len(encoded),
+    return LocatedYamlArtifact(
+        value=value,
+        source_map=parsed.source_map,
+        source_file=source.expectation,
     )
-    return value, len(encoded)
-
-
-def _read_bounded_bytes(path: Path, max_bytes: int) -> bytes:
-    """Read at most one byte beyond a trusted resource limit."""
-    if path.is_dir():
-        raise IsADirectoryError(path)
-    with path.open("rb") as stream:
-        encoded = stream.read(max_bytes + 1)
-    if len(encoded) > max_bytes:
-        raise PortableValueError("maximum resource size exceeded")
-    return encoded
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

@@ -3,11 +3,14 @@
  * and run structural validation against the compiled JSON Schema via ajv. The result
  * object serializes (via stableStringify) byte-identically to the Python CLI output.
  */
-import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+
+import type { BigIntStats } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
+import { type BoundedFileExpectation, readBoundedFile } from "./bounded-file.js";
 import {
   applyEnforcedExtras,
   ENFORCEMENT_UNSUPPORTED_MESSAGE,
@@ -59,7 +62,11 @@ import {
   validateSchemaId,
 } from "./models.js";
 import { isFileSystemError } from "./node-errors.js";
-import { firstUnsupportedPattern } from "./portable-pattern.js";
+import {
+  firstUnsupportedPattern,
+  portableRegExpEngine,
+  withPortablePatternValidationBudget,
+} from "./portable-pattern.js";
 import { RuntimeContract } from "./runtime-contract.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
@@ -98,29 +105,6 @@ export type {
 } from "./core/results.js";
 
 const JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
-const FILE_READ_CHUNK_BYTES = 64 * 1024;
-
-/** Read no more than one byte beyond a trusted resource limit. */
-export function readBoundedBytes(path: string, maxBytes: number): Uint8Array {
-  const handle = openSync(path, "r");
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (total <= maxBytes) {
-      const remaining = maxBytes + 1 - total;
-      const chunk = Buffer.allocUnsafe(Math.min(FILE_READ_CHUNK_BYTES, remaining));
-      const count = readSync(handle, chunk, 0, chunk.byteLength, null);
-      if (count === 0) break;
-      chunks.push(chunk.subarray(0, count));
-      total += count;
-    }
-  } finally {
-    closeSync(handle);
-  }
-  if (total > maxBytes) throw new PortableValueError("maximum resource size exceeded");
-  return Buffer.concat(chunks, total);
-}
-
 const ARTIFACT_PARSE_MESSAGES: Record<ArtifactParseReason, string> = {
   frontmatter: "artifact frontmatter delimiters are malformed",
   syntax: "artifact is not valid YAML",
@@ -171,14 +155,6 @@ function decodeUtf8(encoded: Uint8Array): string {
   }
 }
 
-function parseYaml(
-  text: string,
-  validationLimits: ValidationLimitOverrides = {},
-  encodedSize?: number,
-): unknown {
-  return parseYamlWithLocations(text, validationLimits, encodedSize).value;
-}
-
 function parseYamlWithLocations(
   text: string,
   validationLimits: ValidationLimitOverrides = {},
@@ -199,8 +175,44 @@ function parseYamlWithLocations(
   }
 }
 
+interface ValidatedSchemaSource {
+  readonly path: string;
+  readonly sourceMap: SourceMap;
+}
+
+const validatedSchemaSources = new WeakMap<StructuralResult, ValidatedSchemaSource>();
+let validatedSchemaSourceCaptureDepth = 0;
+
+/** @internal Opt in to retaining exact schema provenance for synchronous CLI diagnostics. */
+export function captureValidatedSchemaSource<T>(callback: () => T): T {
+  validatedSchemaSourceCaptureDepth += 1;
+  try {
+    return callback();
+  } finally {
+    validatedSchemaSourceCaptureDepth -= 1;
+  }
+}
+
+function rememberValidatedSchemaSource(
+  result: StructuralResult,
+  source: ValidatedSchemaSource,
+): StructuralResult {
+  if (validatedSchemaSourceCaptureDepth > 0) validatedSchemaSources.set(result, source);
+  return result;
+}
+
+/** @internal Consume exact schema provenance without extending the public result wire. */
+export function takeValidatedSchemaSource(
+  result: StructuralResult,
+): ValidatedSchemaSource | undefined {
+  const source = validatedSchemaSources.get(result);
+  validatedSchemaSources.delete(result);
+  return source;
+}
+
 export interface LocatedRawFrontmatter extends RawFrontmatter {
   readonly sourceMap: SourceMap;
+  readonly sourceFile: BoundedFileExpectation;
 }
 
 /**
@@ -224,11 +236,17 @@ export function readFrontmatterWithLocations(
 ): LocatedRawFrontmatter {
   if (statSync(path).isDirectory()) throw new ArtifactDirectoryError();
   const limits = resolveValidationLimits(validationLimits);
-  const encoded = readBoundedBytes(path, limits.maxResourceBytes);
+  const source = readBoundedFile(path, limits.maxResourceBytes);
+  const encoded = source.data;
   const text = decodeUtf8(encoded);
   const lines = sourceLines(text);
   if (lines[0] === undefined || !isFrontmatterFence(text, lines[0])) {
-    return { hasFence: false, value: null, sourceMap: SourceMap.empty() };
+    return {
+      hasFence: false,
+      value: null,
+      sourceMap: SourceMap.empty(),
+      sourceFile: source.expectation,
+    };
   }
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
@@ -246,7 +264,14 @@ export function readFrontmatterWithLocations(
   }
   // Empty frontmatter (end-fence at line 1, zero content lines between fences):
   // Python's fmf_read returns metadata=None → no_frontmatter.
-  if (end === 1) return { hasFence: false, value: null, sourceMap: SourceMap.empty() };
+  if (end === 1) {
+    return {
+      hasFence: false,
+      value: null,
+      sourceMap: SourceMap.empty(),
+      sourceFile: source.expectation,
+    };
+  }
   const opening = lines[0];
   const closing = lines[end];
   if (opening === undefined || closing === undefined) throw new Error("frontmatter scan failed");
@@ -262,7 +287,12 @@ export function readFrontmatterWithLocations(
       locationOptions(parsed.sourceMap),
     );
   }
-  return { hasFence: true, value: parsed.value, sourceMap: parsed.sourceMap };
+  return {
+    hasFence: true,
+    value: parsed.value,
+    sourceMap: parsed.sourceMap,
+    sourceFile: source.expectation,
+  };
 }
 
 interface SourceLine {
@@ -336,6 +366,7 @@ function createSchemaAjv() {
     strict: false,
     validateFormats: false,
     verbose: true,
+    code: { regExp: portableRegExpEngine },
   });
   return ajv;
 }
@@ -409,11 +440,9 @@ function schemaPreflight(
   }
   if (!valid) {
     const first = [...(ajv.errors ?? [])].sort((left, right) => {
-      if (left.instancePath < right.instancePath) return -1;
-      if (left.instancePath > right.instancePath) return 1;
-      if (left.keyword < right.keyword) return -1;
-      if (left.keyword > right.keyword) return 1;
-      return 0;
+      const instanceOrder = compareUnicodeCodePoints(left.instancePath, right.instancePath);
+      if (instanceOrder !== 0) return instanceOrder;
+      return compareUnicodeCodePoints(left.keyword, right.keyword);
     })[0];
     return {
       error: schemaInvalidError("metaschema", first?.instancePath ?? ""),
@@ -453,7 +482,7 @@ function firstCyclePath(
   const entries: [string | number, unknown][] = Array.isArray(value)
     ? [...value.entries()]
     : Object.keys(value)
-        .sort()
+        .sort(compareUnicodeCodePoints)
         .map((key) => [key, value[key]]);
   for (const [key, item] of entries) {
     const cyclePath = firstCyclePath(item, [...path, key], active, complete);
@@ -900,7 +929,7 @@ function validateStructuralCore(
   }
   if (bundleSize > limits.maxBundleBytes) return schemaFailure("value_domain", "");
   const resources: Record<string, SchemaResource> = {};
-  for (const uri of Object.keys(rawResources).sort()) {
+  for (const uri of Object.keys(rawResources).sort(compareUnicodeCodePoints)) {
     try {
       validateSchemaId(uri);
     } catch {
@@ -967,7 +996,7 @@ function validateStructuralCore(
   const ajv = createSchemaAjv();
   let validateFn: ValidateFunction;
   try {
-    for (const uri of Object.keys(preparedResources).sort()) {
+    for (const uri of Object.keys(preparedResources).sort(compareUnicodeCodePoints)) {
       ajv.addSchema(preparedResources[uri] as object | boolean, uri);
     }
     validateFn = ajv.compile(schema);
@@ -984,7 +1013,7 @@ function validateStructuralCore(
 
   let ok: boolean;
   try {
-    ok = validateFn(values) as boolean;
+    ok = withPortablePatternValidationBudget(() => validateFn(values) as boolean);
   } catch (error) {
     const reference = referenceFromError(error);
     if (reference !== null) {
@@ -1227,6 +1256,7 @@ export function readPureYamlArtifact(
 export interface LocatedYamlArtifact {
   readonly value: JsonObject;
   readonly sourceMap: SourceMap;
+  readonly sourceFile: BoundedFileExpectation;
 }
 
 /** Read one bounded pure-YAML artifact and retain its immutable source map. */
@@ -1236,7 +1266,8 @@ export function readPureYamlArtifactWithLocations(
 ): LocatedYamlArtifact {
   if (statSync(path).isDirectory()) throw new ArtifactDirectoryError();
   const limits = resolveValidationLimits(validationLimits);
-  const encoded = readBoundedBytes(path, limits.maxResourceBytes);
+  const source = readBoundedFile(path, limits.maxResourceBytes);
+  const encoded = source.data;
   const parsed = parseYamlWithLocations(decodeUtf8(encoded), limits, encoded.byteLength);
   if (!isMapping(parsed.value)) {
     throw new ArtifactRootError(
@@ -1244,7 +1275,11 @@ export function readPureYamlArtifactWithLocations(
       locationOptions(parsed.sourceMap),
     );
   }
-  return { value: parsed.value as JsonObject, sourceMap: parsed.sourceMap };
+  return {
+    value: parsed.value as JsonObject,
+    sourceMap: parsed.sourceMap,
+    sourceFile: source.expectation,
+  };
 }
 
 /** Load a resolved compiled-schema file and run structural validation against it. */
@@ -1253,39 +1288,104 @@ function structuralAgainstSchemaFile(
   values: unknown,
   strictExtras: boolean,
   validationLimits: ValidationLimitOverrides,
+  expected?: BoundedFileExpectation,
 ): StructuralResult {
   let compiledSchema: unknown;
   let encodedSchemaSize = 0;
+  let validatedSource: ValidatedSchemaSource = {
+    path: resolve(resolved),
+    sourceMap: SourceMap.empty(),
+  };
   try {
     const limits = resolveValidationLimits(validationLimits);
-    const encoded = readBoundedBytes(resolved, limits.maxResourceBytes);
+    const source = readBoundedFile(resolved, limits.maxResourceBytes, expected);
+    const encoded = source.data;
     encodedSchemaSize = encoded.byteLength;
+    validatedSource = {
+      path: source.expectation.canonicalPath,
+      sourceMap: SourceMap.empty(),
+    };
     const text = decodeUtf8(encoded);
-    compiledSchema = parseYaml(text, limits, encoded.byteLength);
+    const parsed = parseYamlWithLocations(text, limits, encoded.byteLength);
+    compiledSchema = parsed.value;
+    validatedSource = {
+      path: source.expectation.canonicalPath,
+      sourceMap: parsed.sourceMap,
+    };
   } catch (err) {
     if (err instanceof PortableValueError) {
-      return schemaFailure("value_domain", err.path);
+      return rememberValidatedSchemaSource(
+        schemaFailure("value_domain", err.path),
+        validatedSource,
+      );
     }
     if (err instanceof YamlParseError) {
-      return schemaFailure("syntax", "");
+      return rememberValidatedSchemaSource(schemaFailure("syntax", ""), validatedSource);
     }
     if (err instanceof Error && "code" in err) {
-      return schemaFailure("syntax", "");
+      return rememberValidatedSchemaSource(schemaFailure("syntax", ""), validatedSource);
     }
     throw err;
   }
-  return validateStructuralCore(
+  const result = validateStructuralCore(
     values,
     compiledSchema,
     { strictExtras, validationLimits },
     encodedSchemaSize,
   );
+  return rememberValidatedSchemaSource(result, validatedSource);
 }
 
 /** Is `child` inside `base` after normalization? */
 function isContained(base: string, child: string): boolean {
   const rel = relative(base, child);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+const MAX_PARTIAL_REALPATH_SYMLINKS = 40;
+
+function tooManySymlinks(path: string): NodeJS.ErrnoException {
+  const error = new Error(
+    `too many symbolic links while resolving '${path}'`,
+  ) as NodeJS.ErrnoException;
+  error.code = "ELOOP";
+  error.errno = -1;
+  error.path = path;
+  error.syscall = "realpath";
+  return error;
+}
+
+/** Resolve symlink components left-to-right while permitting the first missing suffix. */
+function realpathAllowMissing(path: string): string {
+  let candidate = resolve(path);
+  let symlinks = 0;
+  while (true) {
+    const root = parse(candidate).root;
+    const suffix = relative(root, candidate);
+    const components = suffix === "" ? [] : suffix.split(sep);
+    let current = root;
+    let followedSymlink = false;
+    for (const [index, component] of components.entries()) {
+      current = join(current, component);
+      let isSymlink: boolean;
+      try {
+        isSymlink = lstatSync(current).isSymbolicLink();
+      } catch (error) {
+        if (isFileSystemError(error) && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+          return candidate;
+        }
+        throw error;
+      }
+      if (!isSymlink) continue;
+      symlinks += 1;
+      if (symlinks > MAX_PARTIAL_REALPATH_SYMLINKS) throw tooManySymlinks(path);
+      const target = readlinkSync(current);
+      candidate = resolve(dirname(current), target, ...components.slice(index + 1));
+      followedSymlink = true;
+      break;
+    }
+    if (!followedSymlink) return candidate;
+  }
 }
 
 /**
@@ -1295,52 +1395,166 @@ function isContained(base: string, child: string): boolean {
  * and the normalized result must stay inside the document directory or the
  * working directory. Mirrors the Python `_resolve_metadata_schema`.
  */
-function resolveMetadataSchema(
+export type MetadataSchemaResolution =
+  | { path: string; expectation: BoundedFileExpectation; error: null }
+  | { path: null; expectation: null; error: string };
+
+/** @internal Resolve a document-controlled schema against an identity-bound source. */
+export function resolveMetadataSchema(
   schemaRef: string,
   docPath: string,
-): { path: string | null; error: string | null } {
-  if (isAbsolute(schemaRef)) {
-    return { path: null, error: `softschema.schema must be a relative path: ${schemaRef}` };
+  sourceFile?: BoundedFileExpectation,
+): MetadataSchemaResolution {
+  if (
+    [...schemaRef].some((character) => {
+      const codePoint = character.codePointAt(0) as number;
+      return codePoint < 0x20 || codePoint === 0x7f;
+    })
+  ) {
+    return {
+      path: null,
+      expectation: null,
+      error: `compiled schema not found: ${schemaRef}`,
+    };
   }
-  const lexicalDocDir = resolve(dirname(docPath));
+  if (isAbsolute(schemaRef)) {
+    return {
+      path: null,
+      expectation: null,
+      error: `softschema.schema must be a relative path: ${schemaRef}`,
+    };
+  }
+  let lexicalDocDir: string;
+  if (sourceFile !== undefined) {
+    let currentDocument: string;
+    let currentStat: BigIntStats;
+    try {
+      currentDocument = realpathSync.native(docPath);
+      currentStat = lstatSync(currentDocument, { bigint: true });
+    } catch (err) {
+      if (isFileSystemError(err)) {
+        return {
+          path: null,
+          expectation: null,
+          error: `compiled schema not found: ${schemaRef}`,
+        };
+      }
+      throw err;
+    }
+    if (
+      currentDocument !== sourceFile.canonicalPath ||
+      currentStat.ino === 0n ||
+      sourceFile.inode === 0n ||
+      currentStat.dev !== sourceFile.device ||
+      currentStat.ino !== sourceFile.inode ||
+      currentStat.size !== sourceFile.size ||
+      currentStat.mtimeNs !== sourceFile.modifiedNs ||
+      currentStat.ctimeNs !== sourceFile.changedNs
+    ) {
+      return {
+        path: null,
+        expectation: null,
+        error: `compiled schema not found: ${schemaRef}`,
+      };
+    }
+    lexicalDocDir = dirname(sourceFile.canonicalPath);
+  } else {
+    lexicalDocDir = resolve(dirname(docPath));
+  }
   const lexicalResolved = resolve(lexicalDocDir, schemaRef);
   const lexicalCwd = resolve(process.cwd());
   let docDir: string;
   let resolved: string;
   let cwd: string;
   try {
-    docDir = realpathSync(lexicalDocDir);
-    cwd = realpathSync(lexicalCwd);
-    resolved = realpathSync(lexicalResolved);
+    docDir = realpathSync.native(lexicalDocDir);
+    cwd = realpathSync.native(lexicalCwd);
+    resolved = realpathSync.native(lexicalResolved);
   } catch (err) {
     if (isFileSystemError(err)) {
+      let partiallyResolved: string;
+      let authorizedDocDir: string;
+      let authorizedCwd: string;
+      try {
+        partiallyResolved = realpathAllowMissing(lexicalResolved);
+        authorizedDocDir = realpathSync.native(lexicalDocDir);
+        authorizedCwd = realpathSync.native(lexicalCwd);
+      } catch (nestedError) {
+        if (!isFileSystemError(nestedError)) throw nestedError;
+        return {
+          path: null,
+          expectation: null,
+          error: `compiled schema not found: ${schemaRef}`,
+        };
+      }
       if (
-        !isContained(lexicalDocDir, lexicalResolved) &&
-        !isContained(lexicalCwd, lexicalResolved)
+        !isContained(authorizedDocDir, partiallyResolved) &&
+        !isContained(authorizedCwd, partiallyResolved)
       ) {
         return {
           path: null,
+          expectation: null,
           error:
             "softschema.schema escapes the document directory and the working " +
             `directory: ${schemaRef}`,
         };
       }
-      return { path: null, error: `compiled schema not found: ${schemaRef}` };
+      return {
+        path: null,
+        expectation: null,
+        error: `compiled schema not found: ${schemaRef}`,
+      };
     }
     throw err;
   }
   if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
     return {
       path: null,
+      expectation: null,
       error:
         "softschema.schema escapes the document directory and the working " +
         `directory: ${schemaRef}`,
     };
   }
-  if (!statSync(resolved).isFile()) {
-    return { path: null, error: `compiled schema not found: ${schemaRef}` };
+  let sourceStat: BigIntStats;
+  try {
+    sourceStat = lstatSync(resolved, { bigint: true });
+    if (realpathSync.native(lexicalResolved) !== resolved) {
+      return {
+        path: null,
+        expectation: null,
+        error: `compiled schema not found: ${schemaRef}`,
+      };
+    }
+  } catch (err) {
+    if (isFileSystemError(err)) {
+      return {
+        path: null,
+        expectation: null,
+        error: `compiled schema not found: ${schemaRef}`,
+      };
+    }
+    throw err;
   }
-  return { path: resolved, error: null };
+  if (!sourceStat.isFile() || sourceStat.ino === 0n) {
+    return {
+      path: null,
+      expectation: null,
+      error: `compiled schema not found: ${schemaRef}`,
+    };
+  }
+  return {
+    path: resolved,
+    expectation: {
+      canonicalPath: resolved,
+      device: sourceStat.dev,
+      inode: sourceStat.ino,
+      size: sourceStat.size,
+      modifiedNs: sourceStat.mtimeNs,
+      changedNs: sourceStat.ctimeNs,
+    },
+    error: null,
+  };
 }
 
 function structuralForValues(
@@ -1349,6 +1563,7 @@ function structuralForValues(
   docPath: string,
   metadata: SchemaMetadata | null,
   validationLimits: ValidationLimitOverrides,
+  sourceFile?: BoundedFileExpectation,
 ): StructuralResult {
   // Schema precedence (host over document): a caller/registry schemaPath, then
   // the document's own softschema.schema binding, then none.
@@ -1375,7 +1590,7 @@ function structuralForValues(
   }
   const metadataSchema = metadata?.schema ?? null;
   if (metadataSchema !== null) {
-    const bound = resolveMetadataSchema(metadataSchema, docPath);
+    const bound = resolveMetadataSchema(metadataSchema, docPath, sourceFile);
     if (bound.path === null) {
       return {
         ok: false,
@@ -1393,6 +1608,7 @@ function structuralForValues(
       values,
       contract.status === "enforced",
       validationLimits,
+      bound.expectation,
     );
   }
   if (contract.model !== null) {
@@ -1409,8 +1625,16 @@ function validateExtracted(
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
   validationLimits: ValidationLimitOverrides,
+  sourceFile?: BoundedFileExpectation,
 ): ArtifactValidationResult {
-  const structural = structuralForValues(contract, values, docPath, metadata, validationLimits);
+  const structural = structuralForValues(
+    contract,
+    values,
+    docPath,
+    metadata,
+    validationLimits,
+    sourceFile,
+  );
   const semantic: SemanticResult =
     semanticModel !== undefined
       ? validateSemantic(values, semanticModel)
@@ -1476,6 +1700,8 @@ interface ArtifactValidationBaseOptions {
   preParsed?: RawFrontmatter;
   /** Already-parsed pure-YAML root; used by the CLI to avoid a second file read. */
   preParsedYaml?: unknown;
+  /** Canonical source identity paired with CLI-preparsed artifact values. */
+  preParsedSource?: BoundedFileExpectation;
 }
 
 /** Options for the preferred `RuntimeContract` validation overload. */
@@ -1527,6 +1753,7 @@ export function validateArtifact(
   const validationLimits = options.validationLimits ?? DEFAULT_VALIDATION_LIMITS;
   const warnings: SchemaWarning[] = [];
   const metadataMode = options.metadataMode ?? "enforced";
+  let sourceFile = options.preParsedSource;
   if (contract.profile === "pure-yaml") {
     let raw: unknown;
     if (options.preParsedYaml !== undefined) {
@@ -1539,7 +1766,9 @@ export function validateArtifact(
       }
     } else {
       try {
-        raw = readPureYamlArtifact(docPath, validationLimits);
+        const located = readPureYamlArtifactWithLocations(docPath, validationLimits);
+        raw = located.value;
+        sourceFile = located.sourceFile;
       } catch (err) {
         const failed = artifactReadFailure(docPath, contract, err);
         if (failed !== null) return failed;
@@ -1599,6 +1828,7 @@ export function validateArtifact(
       warnings,
       semanticModel ?? undefined,
       validationLimits,
+      sourceFile,
     );
   }
 
@@ -1618,7 +1848,9 @@ export function validateArtifact(
     }
   } else {
     try {
-      parsed = readFrontmatter(docPath, validationLimits);
+      const located = readFrontmatterWithLocations(docPath, validationLimits);
+      parsed = { hasFence: located.hasFence, value: located.value };
+      sourceFile = located.sourceFile;
     } catch (err) {
       const failed = artifactReadFailure(docPath, contract, err);
       if (failed !== null) return failed;
@@ -1699,6 +1931,7 @@ export function validateArtifact(
     warnings,
     semanticModel ?? undefined,
     validationLimits,
+    sourceFile,
   );
 }
 

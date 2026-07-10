@@ -59,6 +59,14 @@ Resources are data supplied in the descriptor; a URI never authorizes network,
 filesystem, package, or implicit relative retrieval.
 Missing resources fail closed.
 
+## Release Manifest Limits
+
+The release-manifest contract accepts a declared subject size from 1 through 536,870,912
+bytes (512 MiB). The protected release driver also rejects a manifest when the sum of
+all declared subject sizes exceeds 1,073,741,824 bytes (1 GiB). The schema enforces the
+per-subject limit. The aggregate limit is a cross-subject semantic invariant enforced by
+`devtools/release_state.py` before subject files are read.
+
 ## Publication Gate
 
 Build the version-preserving static candidate in an empty directory:

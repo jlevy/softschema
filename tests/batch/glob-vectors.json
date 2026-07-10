@@ -1,5 +1,14 @@
 {
   "version": 1,
+  "limits": {
+    "max_interior_match_complexity": 256,
+    "max_pattern_codepoints": 262144,
+    "max_total_pattern_codepoints": 1048576,
+    "max_patterns": 64,
+    "max_total_tokens": 4096,
+    "max_total_match_complexity": 8192,
+    "max_invocation_match_work": 8388608
+  },
   "valid": [
     {
       "id": "literal-path",
@@ -86,6 +95,38 @@
       "misses": ["é/a.md"]
     }
   ],
+  "adversarial": [
+    {
+      "id": "long-question-token-chain",
+      "shape": "question_segment",
+      "length": 8192
+    },
+    {
+      "id": "long-leading-star-segment",
+      "shape": "leading_star_segment",
+      "length": 1536
+    },
+    {
+      "id": "long-literal-segment-chain",
+      "shape": "literal_segments",
+      "length": 1536
+    },
+    {
+      "id": "long-leading-globstar-path",
+      "shape": "leading_globstar",
+      "length": 1536
+    },
+    {
+      "id": "long-star-plus-required-suffix-miss",
+      "shape": "star_required_suffix",
+      "length": 100000
+    },
+    {
+      "id": "repeated-globstars-collapse",
+      "shape": "repeated_globstar",
+      "length": 10000
+    }
+  ],
   "invalid": [
     { "id": "empty", "pattern": "", "reason": "empty" },
     { "id": "absolute", "pattern": "/docs/*.md", "reason": "absolute" },
@@ -100,6 +141,11 @@
     { "id": "unicode-partial-globstar", "pattern": "é**.md", "reason": "partial_globstar" },
     { "id": "triple-star", "pattern": "***/*.md", "reason": "partial_globstar" },
     { "id": "globstar-prefix", "pattern": "a/**b/*.md", "reason": "partial_globstar" },
-    { "id": "globstar-suffix", "pattern": "a/b**/*.md", "reason": "partial_globstar" }
+    { "id": "globstar-suffix", "pattern": "a/b**/*.md", "reason": "partial_globstar" },
+    {
+      "id": "interior-match-work-limit",
+      "pattern": "*aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa*",
+      "reason": "match_work_limit"
+    }
   ]
 }

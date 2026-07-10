@@ -13,6 +13,13 @@ import pytest
 from softschema.runtime.discovery import (
     DISCOVERY_MAX_DEPTH,
     DISCOVERY_MAX_ENTRIES,
+    GLOB_MAX_INTERIOR_MATCH_COMPLEXITY,
+    GLOB_MAX_INVOCATION_MATCH_WORK,
+    GLOB_MAX_PATTERN_CODEPOINTS,
+    GLOB_MAX_PATTERNS,
+    GLOB_MAX_TOTAL_MATCH_COMPLEXITY,
+    GLOB_MAX_TOTAL_PATTERN_CODEPOINTS,
+    GLOB_MAX_TOTAL_TOKENS,
     CompiledGlob,
     DiscoveryFileInfo,
     DiscoveryFileKind,
@@ -33,6 +40,38 @@ def _load_json(name: str) -> dict[str, object]:
         "dict[str, object]",
         json.loads((BATCH_VECTORS / name).read_text(encoding="utf-8")),
     )
+
+
+def _expand_adversarial_glob(vector: dict[str, object]) -> tuple[str, str, str]:
+    """Expand one compact shared stress vector into a pattern, match, and miss."""
+    length = cast("int", vector["length"])
+    shape = cast("str", vector["shape"])
+    if shape == "question_segment":
+        return (
+            "?" * length + ".md",
+            "a" * length + ".md",
+            "a" * (length - 1) + ".md",
+        )
+    if shape == "leading_star_segment":
+        return "*.md", "a" * length + ".md", "a" * length + ".txt"
+    if shape == "star_required_suffix":
+        return "*" + "?" * length, "a" * length, "a" * 64
+    if shape == "repeated_globstar":
+        return "/".join([*(["**"] * length), "target.md"]), "target.md", "other.md"
+    repeated = ["x"] * length
+    if shape == "literal_segments":
+        return (
+            "/".join([*repeated, "target.md"]),
+            "/".join([*repeated, "target.md"]),
+            "/".join([*repeated[:64], "other.md"]),
+        )
+    if shape == "leading_globstar":
+        return (
+            "**/target.md",
+            "/".join([*repeated, "target.md"]),
+            "/".join([*repeated, "other.md"]),
+        )
+    raise AssertionError(f"unknown adversarial glob shape: {shape}")
 
 
 class VectorFileSystem:
@@ -218,6 +257,15 @@ def _expected_limit_result(
 
 def test_shared_glob_vectors() -> None:
     vectors = _load_json("glob-vectors.json")
+    assert vectors["limits"] == {
+        "max_interior_match_complexity": GLOB_MAX_INTERIOR_MATCH_COMPLEXITY,
+        "max_pattern_codepoints": GLOB_MAX_PATTERN_CODEPOINTS,
+        "max_total_pattern_codepoints": GLOB_MAX_TOTAL_PATTERN_CODEPOINTS,
+        "max_patterns": GLOB_MAX_PATTERNS,
+        "max_total_tokens": GLOB_MAX_TOTAL_TOKENS,
+        "max_total_match_complexity": GLOB_MAX_TOTAL_MATCH_COMPLEXITY,
+        "max_invocation_match_work": GLOB_MAX_INVOCATION_MATCH_WORK,
+    }
     for vector in cast("list[dict[str, object]]", vectors["valid"]):
         compiled = CompiledGlob.compile(cast("str", vector["pattern"]))
         for candidate in cast("list[str]", vector["matches"]):
@@ -231,6 +279,52 @@ def test_shared_glob_vectors() -> None:
         assert caught.value.reason == vector["reason"]
         quoted = json.dumps(vector["pattern"], ensure_ascii=False)
         assert str(caught.value) == f"invalid glob {quoted}: {vector['reason']}"
+
+
+def test_shared_adversarial_glob_vectors_do_not_recurse() -> None:
+    vectors = _load_json("glob-vectors.json")
+    for vector in cast("list[dict[str, object]]", vectors["adversarial"]):
+        pattern, matching, missing = _expand_adversarial_glob(vector)
+        compiled = CompiledGlob.compile(pattern)
+        assert compiled.matches(matching), vector["id"]
+        assert not compiled.matches(missing), vector["id"]
+
+
+def test_glob_matcher_is_linear_for_unbounded_anchored_chunks() -> None:
+    large_length = 200_000
+    required_suffix = "?" * large_length
+    compiled = CompiledGlob.compile(f"*{required_suffix}")
+
+    assert compiled.matches("a" * large_length)
+    assert compiled.matches("prefix" + "a" * large_length)
+    assert not compiled.matches("a" * (large_length - 1))
+
+
+def test_glob_matcher_bounds_interior_search_and_preserves_exact_matches() -> None:
+    overlap_length = 20_000
+    interior = "a" * (GLOB_MAX_INTERIOR_MATCH_COMPLEXITY - 1) + "b"
+    compiled = CompiledGlob.compile(f"*{interior}*")
+
+    assert compiled.matches("a" * overlap_length + "b")
+    assert not compiled.matches("a" * overlap_length + "c")
+
+    over_limit = "a" * (GLOB_MAX_INTERIOR_MATCH_COMPLEXITY + 1)
+    with pytest.raises(GlobPatternError) as caught:
+        CompiledGlob.compile(f"*{over_limit}*")
+    assert caught.value.reason == "match_work_limit"
+
+    normalized_class = CompiledGlob.compile(f"*[{over_limit}]*")
+    assert normalized_class.matches("a")
+    assert not normalized_class.matches("b")
+
+
+def test_multi_star_glob_uses_earliest_exact_interior_matches() -> None:
+    compiled = CompiledGlob.compile("start*a?c*[x-z]9*end")
+
+    assert compiled.matches("start--abc--y9--end")
+    assert compiled.matches("startaXcx9end")
+    assert not compiled.matches("start--abc--w9--end")
+    assert not compiled.matches("start--ab--y9--end")
 
 
 def test_shared_filesystem_vectors() -> None:
@@ -310,6 +404,22 @@ def test_request_validation_precedes_filesystem_access() -> None:
         )
     assert filesystem.calls == []
 
+    with pytest.raises(GlobPatternError) as raw_limit:
+        discover_artifacts(
+            DiscoveryRequest(
+                operands=("content",),
+                recursive=True,
+                profile="frontmatter-md",
+                includes=("[" + "a" * GLOB_MAX_PATTERN_CODEPOINTS,),
+                excludes=(),
+                invocation_directory="/work",
+                path_flavor="posix",
+            ),
+            filesystem=filesystem,
+        )
+    assert raw_limit.value.reason == "match_work_limit"
+    assert filesystem.calls == []
+
     with pytest.raises(DiscoveryUsageError):
         discover_artifacts(
             DiscoveryRequest(
@@ -339,6 +449,61 @@ def test_request_validation_precedes_filesystem_access() -> None:
             filesystem=filesystem,
         )
     assert filesystem.calls == []
+
+    with pytest.raises(GlobPatternError) as aggregate:
+        discover_artifacts(
+            DiscoveryRequest(
+                operands=("content",),
+                recursive=True,
+                profile="frontmatter-md",
+                includes=("*.md",) * (GLOB_MAX_PATTERNS + 1),
+                excludes=(),
+                invocation_directory="/work",
+                path_flavor="posix",
+            ),
+            filesystem=filesystem,
+        )
+    assert aggregate.value.reason == "match_work_limit"
+    assert filesystem.calls == []
+
+
+def test_long_candidate_aggregate_glob_work_becomes_discovery_limit() -> None:
+    name = "a" * 140_000 + ".md"
+    filesystem = VectorFileSystem(
+        {
+            "nodes": [
+                {
+                    "path": "/work/root",
+                    "kind": "directory",
+                    "device": "1",
+                    "inode": "1",
+                    "entries": [name],
+                },
+                {
+                    "path": f"/work/root/{name}",
+                    "kind": "file",
+                    "device": "1",
+                    "inode": "2",
+                },
+            ],
+            "failures": [],
+        }
+    )
+    result = discover_artifacts(
+        DiscoveryRequest(
+            operands=("root",),
+            recursive=True,
+            profile="frontmatter-md",
+            includes=("*z*",) * GLOB_MAX_PATTERNS,
+            excludes=(),
+            invocation_directory="/work",
+            path_flavor="posix",
+        ),
+        filesystem=filesystem,
+    )
+    assert len(result.entries) == 1
+    assert result.entries[0].kind == "input_error"
+    assert result.entries[0].reason == "discovery_limit"
 
 
 def test_native_filesystem_discovers_hidden_entries(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
   collapseAdditionalProperties,
+  compareStructuralRecords,
   normalizeAjvError,
   renderStructuralMessage,
   structuralErrorRecord,
@@ -357,6 +358,20 @@ describe("errors: every message template", () => {
     });
     // required duplicates are preserved (jsonschema also emits one per missing key).
     expect(collapseAdditionalProperties([req, { ...req }])).toHaveLength(2);
+  });
+
+  test("structural records sort paths by Unicode scalar order", () => {
+    const record = (path: string) =>
+      structuralErrorRecord({
+        path: [path],
+        validator: "type",
+        validatorValue: "string",
+        value: null,
+      });
+    const bmp = record("\uE000");
+    const astral = record("😀");
+
+    expect([astral, bmp].sort(compareStructuralRecords)).toEqual([bmp, astral]);
   });
 });
 

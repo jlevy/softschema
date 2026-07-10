@@ -1,5 +1,7 @@
 /** Portable JSON-compatible values and materialized-value normalization. */
 
+import { compareUnicodeCodePoints } from "./canonical-json.js";
+
 const MIB = 1024 * 1024;
 
 export interface JsonObject {
@@ -114,7 +116,7 @@ export function canonicalPortableJsonSize(value: JsonValue): number {
       value.reduce<number>((size, item) => size + canonicalPortableJsonSize(item), 0)
     );
   }
-  const keys = Object.keys(value).sort();
+  const keys = Object.keys(value).sort(compareUnicodeCodePoints);
   return (
     2 +
     Math.max(0, keys.length - 1) +
@@ -190,9 +192,11 @@ function normalizeMaterialized(
       throw new PortableValueError("value is not JSON-compatible", { path: jsonPointer(path) });
     }
     const result: Record<string, JsonValue> = {};
+    const keys = Object.keys(value);
+    const normalizedValues = new Map<string, JsonValue>();
     // Hidden and symbol metadata is outside the materialized JSON object surface.
     // Enumerable accessors remain forbidden so normalization never invokes user code.
-    for (const key of Object.keys(value)) {
+    for (const key of [...keys].sort(compareUnicodeCodePoints)) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         throw new PortableValueError("value is not JSON-compatible", {
@@ -208,10 +212,16 @@ function normalizeMaterialized(
           path: jsonPointer(path),
         });
       }
+      normalizedValues.set(
+        key,
+        normalizeMaterialized(descriptor.value, [...path, key], depth + 1, budget, active),
+      );
+    }
+    for (const key of keys) {
       Object.defineProperty(result, key, {
         configurable: true,
         enumerable: true,
-        value: normalizeMaterialized(descriptor.value, [...path, key], depth + 1, budget, active),
+        value: normalizedValues.get(key) as JsonValue,
         writable: true,
       });
     }

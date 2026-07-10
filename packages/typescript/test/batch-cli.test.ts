@@ -509,7 +509,7 @@ test("unsafe symlink-to-directory never enters the legacy reader", async () => {
   expect(aggregate.results[0].input.reason).toBe("unreadable");
 });
 
-test("broken symlink and missing path retain safe legacy input records", async () => {
+test("broken symlink and missing path retain legacy not_found compatibility", async () => {
   const directory = mkdtempSync(join(tmpdir(), "softschema-batch-cli-"));
   try {
     symlinkSync(join(directory, "target-missing.md"), join(directory, "broken.md"));

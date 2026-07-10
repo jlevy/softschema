@@ -23,6 +23,58 @@
       }
     },
     {
+      "id": "metaschema-failure-uses-unicode-scalar-order",
+      "input": {
+        "values": {},
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "\ud83d\ude00": { "type": 42 },
+            "\ue000": { "type": 42 }
+          }
+        }
+      },
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "metaschema",
+            "message": "compiled schema does not conform to Draft 2020-12",
+            "schema_path": "/properties/\ue000/type"
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
+      "id": "pattern-failure-uses-global-schema-path-order",
+      "input": {
+        "values": {},
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "definitions": { "z": { "pattern": "(" } },
+          "additionalProperties": { "pattern": "[" }
+        }
+      },
+      "expected": {
+        "ok": false,
+        "errors": [
+          {
+            "kind": "schema_invalid",
+            "reason": "pattern",
+            "message": "compiled schema contains an unsupported or invalid pattern",
+            "schema_path": "/additionalProperties/pattern",
+            "pattern": "["
+          }
+        ],
+        "engine": "json_schema",
+        "skipped_reason": null
+      }
+    },
+    {
       "id": "offline-resource-pass",
       "input": {
         "values": { "name": "Ada" },

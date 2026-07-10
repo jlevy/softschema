@@ -3,10 +3,14 @@
  * Python `SchemaView`. One reader for every downstream consumer (generated sections, QA,
  * agent prompts) so $ref resolution and x-softschema lookup never diverge.
  */
-import { readFileSync } from "node:fs";
+import { readBoundedBytes } from "./bounded-file.js";
 import { isMapping } from "./guards.js";
 import { validateContractId, validateSchemaId } from "./models.js";
-import { parsePortableYaml, type ValidationLimitOverrides } from "./yaml-value-domain.js";
+import {
+  parsePortableYaml,
+  resolveValidationLimits,
+  type ValidationLimitOverrides,
+} from "./yaml-value-domain.js";
 
 const X_SOFTSCHEMA = "x-softschema";
 const ANNOTATION_KEYWORDS = new Set([
@@ -192,9 +196,10 @@ export class SchemaView {
    * Filesystem, UTF-8, portable-YAML, and non-mapping-root failures are thrown.
    */
   static load(schemaPath: string, validationLimits: ValidationLimitOverrides = {}): SchemaView {
-    const encoded = readFileSync(schemaPath);
+    const limits = resolveValidationLimits(validationLimits);
+    const encoded = readBoundedBytes(schemaPath, limits.maxResourceBytes);
     const text = new TextDecoder("utf-8", { fatal: true }).decode(encoded);
-    const data = parsePortableYaml(text, validationLimits, { encodedSize: encoded.byteLength });
+    const data = parsePortableYaml(text, limits, { encodedSize: encoded.byteLength });
     if (!isMapping(data)) {
       throw new Error(`schema at ${schemaPath} is not a mapping at the root`);
     }
