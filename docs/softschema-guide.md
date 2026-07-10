@@ -67,7 +67,8 @@ consumed values at the handoff.
 
 Skip softschema when:
 
-- The artifact is already pure structured data (use JSON Schema directly).
+- The artifact is already pure structured data and does not need softschema’s contract,
+  metadata, or result conventions (use JSON Schema directly).
 - No downstream consumer reads structured values from the document (a convention is
   enough; you don’t need a contract).
 - The values change shape every time the document is written (the shape isn’t stable
@@ -163,6 +164,56 @@ integers (`release_year`, `runtime_minutes`), an enum (`mpaa_rating`), lists of 
 
 The full example, model, and generated JSON Schema live under
 [examples/movie_page/](../examples/movie_page/README.md).
+
+## Use Pure YAML When There Is No Body
+
+The `pure-yaml` profile keeps the same contract identity, metadata, validation layers,
+and deterministic result shape for an artifact that has no Markdown body.
+Select it explicitly; a `.yaml` or `.yml` suffix never changes the default
+`frontmatter-md` profile:
+
+```bash
+softschema validate report.yaml --profile pure-yaml
+```
+
+The root `softschema` block is metadata and is not part of the payload.
+Without an envelope, every other root key belongs to one payload mapping:
+
+```yaml
+softschema:
+  format: "1"
+  contract: example.movies:MoviePage/v1
+  schema: movie-page.schema.yaml
+  status: enforced
+title: Spirited Away
+release_year: 2001
+directors:
+  - Hayao Miyazaki
+```
+
+`softschema.format` selects the metadata grammar; `--profile` selects the storage shape.
+They are independent, so format 1 works with either profile and never selects one.
+
+Declare `softschema.envelope` when the payload is nested under one root key.
+As with the Markdown profile, command-line `--contract`, `--schema`, `--status`, and
+`--envelope` values take precedence over metadata.
+Contract identity validation still rejects a document whose declared contract differs
+from the selected contract.
+A plain mapping with no `softschema` block also works when the caller supplies its
+binding flags or resolves a contract in library code.
+
+Use this profile when a document-oriented workflow reaches a stage where no prose body
+remains but still benefits from softschema’s contract and result conventions.
+For data that needs neither those conventions nor a document transition path, direct
+JSON Schema validation is simpler.
+
+The bundled `example-pure-yaml` and `example-schema` topics are copyable inputs:
+
+```bash
+softschema docs example-pure-yaml > spirited-away.yaml
+softschema docs example-schema > movie-page.schema.yaml
+softschema validate spirited-away.yaml --profile pure-yaml
+```
 
 ## Contract IDs
 
@@ -661,6 +712,7 @@ A few patterns help agents do the right thing:
   softschema docs guide
   softschema docs spec
   softschema docs example-artifact
+  softschema docs example-pure-yaml
   ```
 
   These commands print bundled material from the installed wheel; no source checkout is

@@ -20,6 +20,8 @@ core package.
 
 | Module | Purpose |
 | --- | --- |
+| `softschema.core` | Runtime-neutral values, identities, metadata vocabulary, schema-profile logic, and normalized results |
+| `softschema.runtime` | Explicit Python adapters for YAML, filesystems, Pydantic, and packaged resources |
 | `softschema.models` | Contract, metadata, status, profile, and warning models |
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
@@ -29,6 +31,34 @@ core package.
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
+
+## Architecture Boundaries
+
+The package is separated into three dependency layers:
+
+1. `softschema.core` accepts already materialized JSON-compatible values.
+   It has no YAML parser, filesystem, Pydantic, dynamic-import, packaged-resource, or
+   CLI dependency.
+2. `softschema.runtime` exposes Python-specific YAML, filesystem, Pydantic, schema-view,
+   and compilation adapters.
+   The established modules such as `softschema.validate` and `softschema.value_domain`
+   remain available and delegate portable operations to the core.
+3. `softschema.cli` owns argument parsing, trusted model loading, path expansion,
+   presentation, and exit codes.
+
+Use `softschema.core` when an integration already owns parsing and model execution and
+needs only portable contract behavior.
+Use `softschema.runtime` when it needs the Python adapters explicitly.
+The package root remains the compatibility facade for existing imports:
+
+```python
+from softschema.core import normalize_portable_value, validate_contract_id
+from softschema.runtime import validate_artifact
+```
+
+The architecture-boundary test walks the core’s transitive Python import graph.
+It rejects filesystem, YAML, Pydantic, dynamic-import, and CLI dependencies, and
+verifies that compatibility exports retain object identity instead of forking behavior.
 
 The package root re-exports the common API:
 

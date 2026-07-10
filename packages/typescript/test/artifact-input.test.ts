@@ -124,6 +124,20 @@ test("validate CLI emits input_error and exit two", () => {
   });
 });
 
+test("validate CLI rejects an unknown profile with the portable diagnostic", () => {
+  const source = tempPath("must-not-be-read.yaml");
+
+  const child = Bun.spawnSync({
+    cmd: [process.execPath, CLI, "validate", source, "--profile", "yaml"],
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
+  expect(child.exitCode).toBe(2);
+  expect(child.stdout.toString()).toBe("");
+  expect(child.stderr.toString()).toBe("softschema validate: invalid profile: yaml\n");
+});
+
 test("artifact error normalizer retains locations for diagnostics", () => {
   const source = tempPath("syntax.md");
   writeFileSync(source, "---\nitem: [unclosed\n---\n", "utf8");

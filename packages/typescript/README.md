@@ -1,7 +1,7 @@
 # softschema
 
 The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softschema):
-validate and structure Markdown/YAML artifacts with frontmatter contracts.
+validate and structure Markdown/YAML artifacts with typed YAML contracts.
 It is the idiomatic Zod counterpart to the Python/Pydantic package and is held to exact
 behavioral parity with it: the same CLI inputs/outputs/flags, the same library surface,
 and the same canonical compiled JSON Schema (content-identical, equal `schema_sha256`
@@ -19,6 +19,7 @@ bun add softschema
 
 ```bash
 softschema-ts validate <doc.md> --schema <schema.yaml> [--model mod.ts:Export] [--envelope key]
+softschema-ts validate <doc.yaml> --profile pure-yaml
 softschema-ts compile <mod.ts:ZodSchema> --contract <id> --out <schema.yaml> [--check]
 softschema-ts inspect <doc.md>
 softschema-ts generate <doc.md> [--check]
@@ -26,12 +27,27 @@ softschema-ts docs --list [--json] | softschema-ts docs <topic>
 softschema-ts skill --brief | softschema-ts skill --install
 ```
 
+The default is `frontmatter-md`; `.yaml` and `.yml` never select `pure-yaml` implicitly.
+
 ## Library
 
 ```ts
 import { z } from "zod";
-import { compileSchema, validateArtifact, validateValues, SchemaView, softField } from "softschema";
+import { normalizePortableValue, parseSchemaMetadata } from "softschema/core";
+import {
+  compileSchema,
+  SchemaView,
+  softField,
+  validateArtifact,
+  validateValues,
+} from "softschema/node";
 ```
+
+Use `softschema/core` for JSON-compatible contract behavior without Node.js, YAML, Zod,
+filesystem, or CLI dependencies.
+Use `softschema/node` for the Node.js and Bun runtime adapters.
+The `softschema` root retains the v0.2 Node.js/Bun exports as a compatibility facade;
+new integrations should select the explicit subpath.
 
 Source schemas are Zod (`z.strictObject(...)`); validation uses `safeParse`; per-field
 authoring metadata uses `softField(schema, {...})`. See

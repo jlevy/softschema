@@ -11,64 +11,31 @@ import {
   Parser,
   type Scalar,
 } from "yaml";
+import {
+  type JsonValue,
+  PortableValueError,
+  PortableYamlSyntaxError,
+  resolveValidationLimits,
+  type ValidationLimitOverrides,
+  type ValidationLimits,
+} from "./core/value-domain.js";
+
+export {
+  canonicalPortableJsonSize,
+  DEFAULT_VALIDATION_LIMITS,
+  type JsonValue,
+  type NormalizedValue,
+  normalizePortableValue,
+  PortableValueError,
+  PortableYamlError,
+  PortableYamlSyntaxError,
+  resolveValidationLimits,
+  type ValidationLimitOverrides,
+  type ValidationLimits,
+} from "./core/value-domain.js";
 
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
 const MAX_SAFE_INTEGER_BIGINT = 9_007_199_254_740_991n;
-const MIB = 1024 * 1024;
-
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-/** Resource budgets applied at untrusted artifact and schema boundaries. */
-export interface ValidationLimits {
-  maxResourceBytes: number;
-  maxBundleBytes: number;
-  maxResources: number;
-  maxNodesPerResource: number;
-  maxDepth: number;
-  maxScalarCodePoints: number;
-}
-
-/** Trusted per-call overrides; omitted fields retain the portable defaults. */
-export type ValidationLimitOverrides = Partial<ValidationLimits>;
-
-export const DEFAULT_VALIDATION_LIMITS: Readonly<ValidationLimits> = Object.freeze({
-  maxResourceBytes: 8 * MIB,
-  maxBundleBytes: 64 * MIB,
-  maxResources: 256,
-  maxNodesPerResource: 100_000,
-  maxDepth: 128,
-  maxScalarCodePoints: MIB,
-});
-
-/** Base class for stable portable-YAML boundary failures. */
-export class PortableYamlError extends Error {
-  readonly path: string;
-  readonly line: number | null;
-  readonly column: number | null;
-
-  constructor(
-    message: string,
-    options: { path?: string; line?: number | null; column?: number | null } = {},
-  ) {
-    super(message);
-    this.path = options.path ?? "";
-    this.line = options.line ?? null;
-    this.column = options.column ?? null;
-  }
-}
-
-/** The input is not a single syntactically valid YAML document. */
-export class PortableYamlSyntaxError extends PortableYamlError {}
-
-/** The input is outside the bounded JSON-compatible value domain. */
-export class PortableValueError extends PortableYamlError {}
-
 interface Budget {
   limits: ValidationLimits;
   nodes: number;
@@ -78,11 +45,6 @@ interface PendingCstNode {
   token: CST.Token | null | undefined;
   path: readonly (string | number)[];
   depth: number;
-}
-
-interface NormalizedValue {
-  value: JsonValue;
-  sizeBytes: number;
 }
 
 const nullValues = new Set(["", "~", "null", "Null", "NULL"]);
@@ -101,25 +63,6 @@ const integerTag = "tag:yaml.org,2002:int";
 const floatTag = "tag:yaml.org,2002:float";
 const mapTag = "tag:yaml.org,2002:map";
 const sequenceTag = "tag:yaml.org,2002:seq";
-
-/** Resolve and validate caller-provided limit overrides. */
-export function resolveValidationLimits(
-  overrides: ValidationLimitOverrides = {},
-): ValidationLimits {
-  const limits = { ...DEFAULT_VALIDATION_LIMITS, ...overrides };
-  const nonnegative = ["maxResourceBytes", "maxBundleBytes", "maxScalarCodePoints"] as const;
-  const positive = ["maxResources", "maxNodesPerResource", "maxDepth"] as const;
-  for (const name of [...nonnegative, ...positive]) {
-    if (!Number.isSafeInteger(limits[name])) throw new TypeError(`${name} must be an integer`);
-  }
-  for (const name of nonnegative) {
-    if (limits[name] < 0) throw new RangeError(`${name} must be nonnegative`);
-  }
-  for (const name of positive) {
-    if (limits[name] < 1) throw new RangeError(`${name} must be positive`);
-  }
-  return limits;
-}
 
 /** Parse one YAML document after a CST limit pass and before ordinary object creation. */
 export function parsePortableYaml(
@@ -168,53 +111,6 @@ export function parsePortableYaml(
     throw syntaxErrorAt("invalid YAML syntax", offset, lineCounter, options.lineOffset);
   }
   return materializeNode(composed[0].contents, [], lineCounter, options.lineOffset ?? 0);
-}
-
-/** Normalize an already-materialized value and return its compact canonical JSON size. */
-export function normalizePortableValue(
-  value: unknown,
-  validationLimits: ValidationLimitOverrides = {},
-  encodedSize?: number,
-): NormalizedValue {
-  const limits = resolveValidationLimits(validationLimits);
-  if (encodedSize !== undefined && encodedSize > limits.maxResourceBytes) {
-    throw new PortableValueError("maximum resource size exceeded");
-  }
-  const budget: Budget = { limits, nodes: 0 };
-  const normalized = normalizeMaterialized(value, [], 1, budget, new Set());
-  const sizeBytes = encodedSize ?? canonicalPortableJsonSize(normalized);
-  if (sizeBytes > limits.maxResourceBytes) {
-    throw new PortableValueError("maximum resource size exceeded");
-  }
-  return { value: normalized, sizeBytes };
-}
-
-/** Return the UTF-8 size of compact JSON with recursively sorted object keys. */
-export function canonicalPortableJsonSize(value: JsonValue): number {
-  if (value === null) return 4;
-  if (typeof value === "boolean") return value ? 4 : 5;
-  if (typeof value === "number") return canonicalNumberText(value).length;
-  if (typeof value === "string") return utf8Size(JSON.stringify(value));
-  if (Array.isArray(value)) {
-    return (
-      2 +
-      Math.max(0, value.length - 1) +
-      value.reduce<number>((size, item) => size + canonicalPortableJsonSize(item), 0)
-    );
-  }
-  const keys = Object.keys(value).sort();
-  return (
-    2 +
-    Math.max(0, keys.length - 1) +
-    keys.reduce<number>(
-      (size, key) =>
-        size +
-        utf8Size(JSON.stringify(key)) +
-        1 +
-        canonicalPortableJsonSize(value[key] as JsonValue),
-      0,
-    )
-  );
 }
 
 function preflightCst(
@@ -550,100 +446,6 @@ function clampedExponent(source: string, maximum: number): number {
   const magnitude =
     digits.length > String(maximum).length ? maximum : Math.min(Number(digits), maximum);
   return negative ? -magnitude : magnitude;
-}
-
-function normalizeMaterialized(
-  value: unknown,
-  path: readonly (string | number)[],
-  depth: number,
-  budget: Budget,
-  active: Set<object>,
-): JsonValue {
-  countNode(budget, path, depth);
-  if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    if ([...value].length > budget.limits.maxScalarCodePoints) {
-      throw new PortableValueError("maximum scalar size exceeded", { path: jsonPointer(path) });
-    }
-    if (hasUnpairedSurrogate(value)) {
-      throw new PortableValueError("string contains an invalid Unicode scalar", {
-        path: jsonPointer(path),
-      });
-    }
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new PortableValueError("number must be finite", { path: jsonPointer(path) });
-    }
-    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
-      throw new PortableValueError("integer is outside the safe range", {
-        path: jsonPointer(path),
-      });
-    }
-    return Object.is(value, -0) ? 0 : value;
-  }
-  if (typeof value !== "object" || value === undefined) {
-    throw new PortableValueError("value is not JSON-compatible", { path: jsonPointer(path) });
-  }
-  if (active.has(value)) {
-    throw new PortableValueError("cycles are not portable", { path: jsonPointer(path) });
-  }
-  active.add(value);
-  try {
-    if (Array.isArray(value)) {
-      return value.map((item, index) =>
-        normalizeMaterialized(item, [...path, index], depth + 1, budget, active),
-      );
-    }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new PortableValueError("value is not JSON-compatible", { path: jsonPointer(path) });
-    }
-    const result: Record<string, JsonValue> = {};
-    // Match the materialized JSON object surface: hidden and symbol metadata is
-    // outside the value, just as it is for JSON.stringify and Object.keys. This
-    // matters for Zod-generated schemas, which carry non-enumerable ~standard
-    // metadata. Enumerable accessors remain forbidden so normalization never
-    // invokes user code at this trust boundary.
-    for (const key of Object.keys(value)) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor === undefined || !("value" in descriptor)) {
-        throw new PortableValueError("value is not JSON-compatible", {
-          path: jsonPointer([...path, key]),
-        });
-      }
-      countNode(budget, path, depth + 1);
-      if ([...key].length > budget.limits.maxScalarCodePoints) {
-        throw new PortableValueError("maximum scalar size exceeded", { path: jsonPointer(path) });
-      }
-      if (hasUnpairedSurrogate(key)) {
-        throw new PortableValueError("string contains an invalid Unicode scalar", {
-          path: jsonPointer(path),
-        });
-      }
-      Object.defineProperty(result, key, {
-        configurable: true,
-        enumerable: true,
-        value: normalizeMaterialized(descriptor.value, [...path, key], depth + 1, budget, active),
-        writable: true,
-      });
-    }
-    return result;
-  } finally {
-    active.delete(value);
-  }
-}
-
-function canonicalNumberText(value: number): string {
-  const absolute = Math.abs(value);
-  if (absolute > 0 && absolute < 1e-4 && !Number.isInteger(value)) {
-    const [mantissa, rawExponent] = value.toExponential().split("e") as [string, string];
-    const negative = rawExponent.startsWith("-");
-    const digits = rawExponent.replace(/^[-+]/, "").padStart(2, "0");
-    return `${mantissa}e${negative ? "-" : "+"}${digits}`;
-  }
-  return String(value);
 }
 
 function hasUnpairedSurrogate(value: string): boolean {

@@ -27,11 +27,24 @@ from softschema import validate_artifact
 result = validate_artifact(Path("doc.md"))
 ```
 
+Integrations that already own parsing and model execution can use the runtime-neutral
+contract core. Python-specific adapters are also available from an explicit namespace:
+
+```python
+from softschema.core import normalize_portable_value, validate_contract_id
+from softschema.runtime import validate_artifact
+```
+
+The package root remains compatible with existing imports.
+
 Or from the command line:
 
 ```bash
 softschema validate doc.md
+softschema validate doc.yaml --profile pure-yaml
 ```
+
+The default is `frontmatter-md`; `.yaml` and `.yml` never select `pure-yaml` implicitly.
 
 ## Documentation
 

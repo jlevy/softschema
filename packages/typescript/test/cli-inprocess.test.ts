@@ -86,6 +86,13 @@ describe("cli main() in-process", () => {
     expect(captured().length).toBeGreaterThan(0);
   });
 
+  test("docs example-pure-yaml prints the copyable artifact", async () => {
+    expect(await main(argv("docs", "example-pure-yaml"))).toBe(0);
+    expect(captured()).toContain('format: "1"');
+    expect(captured()).toContain("contract: example.movies:MoviePage/v1");
+    expect(captured()).not.toContain("---");
+  });
+
   test("docs <unknown-topic> exits 2", async () => {
     expect(await main(argv("docs", "no-such-topic"))).toBe(2);
   });
@@ -247,5 +254,12 @@ describe("cli main() in-process", () => {
     expect(captured()).toContain("softschema skill --brief");
     expect(captured()).toContain("uvx --from 'softschema==0.2.2' softschema");
     expect(captured()).toContain("npx --yes softschema@0.2.2");
+  });
+
+  test("validate --help documents the profile and default", async () => {
+    const code = await main(argv("validate", "--help"));
+    expect(code).toBe(0);
+    expect(captured()).toContain("Artifact storage profile: frontmatter-md or pure-yaml");
+    expect(captured()).toContain("default: frontmatter-md");
   });
 });

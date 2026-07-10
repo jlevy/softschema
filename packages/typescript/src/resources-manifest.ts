@@ -19,6 +19,7 @@ export const RESOURCE_PATHS: readonly string[] = [
   "docs/installation.md",
   "examples/movie_page/README.md",
   "examples/movie_page/spirited-away.md",
+  "examples/movie_page/spirited-away.yaml",
   "examples/movie_page/model.py",
   "examples/movie_page/host_integration.py",
   "examples/movie_page/movie-page.schema.yaml",

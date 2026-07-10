@@ -13,6 +13,19 @@ import {
   ENFORCEMENT_UNSUPPORTED_MESSAGE,
   EnforcementUnsupportedError,
 } from "./canonicalize.js";
+import { EnvelopeAmbiguityError, inferEnvelopeKey } from "./core/envelope.js";
+import type {
+  ArtifactInputReason,
+  ArtifactParseReason,
+  ArtifactValidationResult,
+  MetadataMode,
+  RawFrontmatter,
+  SchemaResource,
+  SchemaResources,
+  SemanticResult,
+  StructuralResult,
+  ValidationResult,
+} from "./core/results.js";
 import {
   collapseAdditionalProperties,
   compareStructuralRecords,
@@ -46,43 +59,21 @@ import {
   type ValidationLimitOverrides,
 } from "./yaml-value-domain.js";
 
+export { EnvelopeAmbiguityError, inferEnvelopeKey } from "./core/envelope.js";
+export type {
+  ArtifactInputReason,
+  ArtifactParseReason,
+  ArtifactValidationResult,
+  MetadataMode,
+  RawFrontmatter,
+  SchemaResource,
+  SchemaResources,
+  SemanticResult,
+  StructuralResult,
+  ValidationResult,
+} from "./core/results.js";
+
 const JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
-
-export type SchemaResource = boolean | Record<string, unknown>;
-export type SchemaResources = Readonly<Record<string, SchemaResource>>;
-
-export interface StructuralResult {
-  ok: boolean;
-  errors: (StructuralErrorRecord | SchemaInvalidErrorRecord | Record<string, unknown>)[];
-  engine: string;
-  skipped_reason: string | null;
-}
-
-export interface SemanticResult {
-  ok: boolean;
-  errors: Record<string, unknown>[];
-  skipped_reason: string | null;
-}
-
-export interface ValidationResult {
-  structural: StructuralResult;
-  semantic: SemanticResult;
-}
-
-export interface ArtifactValidationResult {
-  ok: boolean;
-  output: Record<string, unknown>;
-}
-
-export type MetadataMode = "enforced" | "advisory";
-
-export interface RawFrontmatter {
-  hasFence: boolean;
-  value: unknown;
-}
-
-export type ArtifactParseReason = "frontmatter" | "syntax" | "root" | "value_domain";
-export type ArtifactInputReason = "not_found" | "unreadable" | "directory_requires_recursive";
 
 const ARTIFACT_PARSE_MESSAGES: Record<ArtifactParseReason, string> = {
   frontmatter: "artifact frontmatter delimiters are malformed",
@@ -1269,32 +1260,6 @@ function validateExtracted(
       ? validateSemantic(values, semanticModel)
       : { ok: true, errors: [], skipped_reason: "no_semantic_model" };
   return buildResult({ docPath, contract, metadata, values, structural, semantic, warnings });
-}
-
-/** Multiple top-level payload candidates; the envelope must be designated. */
-export class EnvelopeAmbiguityError extends Error {
-  candidates: string[];
-
-  constructor(candidates: string[]) {
-    super(
-      "multiple top-level frontmatter keys; designate the softschema payload " +
-        `(candidates: ${candidates.join(", ")})`,
-    );
-    this.candidates = candidates;
-  }
-}
-
-/**
- * Infer the spec's single envelope key from a frontmatter mapping: the single
- * non-`softschema` top-level key, null when there is no candidate; throws
- * EnvelopeAmbiguityError when several keys are present. Mirrors Python's
- * `infer_envelope_key`.
- */
-export function inferEnvelopeKey(frontmatter: Record<string, unknown>): string | null {
-  const candidates = Object.keys(frontmatter).filter((key) => key !== "softschema");
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0] as string;
-  throw new EnvelopeAmbiguityError(candidates);
 }
 
 /** Run the metadata checks shared by the frontmatter-md and pure-yaml paths. */

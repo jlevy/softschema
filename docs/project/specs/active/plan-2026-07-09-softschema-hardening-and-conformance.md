@@ -157,8 +157,11 @@ Refactor incrementally toward three layers rather than attempting a big-bang rew
    formats, packaged documentation, skill installation, and exit-code translation.
 
 Existing public entrypoints remain available while implementation moves behind these
-boundaries. The TypeScript root library entry must not acquire accidental `node:`
-dependencies; Node-only behavior belongs under runtime or CLI modules.
+boundaries. The TypeScript package exposes a transitively runtime-neutral
+`softschema/core` entry and an explicit `softschema/node` adapter.
+Through the documented one-minor compatibility period, the existing package root remains
+a Node/Bun facade so its synchronous filesystem APIs do not break; an exact export
+allowlist prevents that facade from becoming an accidental dependency boundary.
 
 ### Portable YAML Value Domain
 
@@ -949,11 +952,14 @@ silently inside product docs.
 
 ### Phase 1: Trust and Failure Boundaries
 
-Ship this phase first as a 0.2.x security and correctness patch.
-Draft conformance files land as unreleased test infrastructure; they are not a new
-public format in the patch.
-Independent slices may run in parallel, but each includes regression tests and affected
-safety docs.
+This phase was initially planned as a separate 0.2.x security and correctness patch.
+Implementation reached the later 0.3 semantic changes before that patch was released, so
+the delivery decision is now one consolidated 0.3.0 release rather than a risky
+after-the-fact backport from mixed commits.
+The known 0.2.2 boundary risks remain a release blocker until 0.3.0 is published; no
+text or metadata may imply that 0.2.3 shipped.
+Draft conformance files remain unreleased test infrastructure until Phase 3. Independent
+slices may run in parallel, but each includes regression tests and affected safety docs.
 
 - [ ] **Bootstrap conformance contracts (`ss-pvxi`).** Create draft manifest, case,
   compiled-profile, legacy-result, diagnostic-v1, discriminated parse/access,
@@ -977,8 +983,8 @@ safety docs.
   budgets before and during composition, reject unsafe representation-graph features,
   implement the exact JSON-compatible numeric/value domain and `value_domain` result,
   and add shared edge vectors.
-  These safety limits are required in the 0.2.x patch; JSON Schema `format` behavior
-  changes only in Phase 2.
+  These safety limits are required in the consolidated release; JSON Schema `format`
+  behavior changes only in Phase 2.
 - [ ] **Disable implicit retrieval (`ss-0sgk`).** Install a no-retrieval Python
   registry; keep TypeScript offline; allow internal fragments and explicitly supplied
   in-memory resources only.
@@ -1003,10 +1009,10 @@ safety docs.
   `npm pack`, add clean installed-artifact/resource-shadow tests, define dependency
   policy, introduce and validate root `release-metadata.json`, and add the
   minimum/cross-platform smoke matrix.
-  Deliver the minimum protected, tag-authorized, manifest-verified PyPI/npm publisher
-  and risk-review it before releasing the 0.2.x patch together with `CHANGELOG.md` and a
-  complete 0.2.x safety/migration note; `ss-trn7` owns the full 0.3 GitHub assets,
-  provenance, registry state machines, and post-publish recovery.
+  Deliver the minimum protected, tag-authorized, manifest-verified PyPI/npm publisher,
+  risk-review it, and add a complete disclosure of every 0.2.2 safety boundary and 0.3
+  migration before release; `ss-trn7` owns the full 0.3 GitHub assets, provenance,
+  registry state machines, and post-publish recovery.
 - [ ] **Reconcile stale tracking (`ss-qq77`).** Verify old specs and beads against main,
   explicitly disposition `ss-rm2v`, `ss-l592`, `ss-08np`, and `ss-h8u4`, mark/move
   implemented plans, update historical spec links, validate/regenerate the managed tbd
@@ -1016,9 +1022,9 @@ safety docs.
 **Phase gate:** no validation-triggered network access, no consumer resource shadowing,
 no malformed schema/artifact exception escapes, untrusted input limits fail before
 resource exhaustion, the draft result schemas validate every Phase-1 result, no unpinned
-generated runner or ambiguous skill write remains, the protected 0.2.x publish path has
-passed a dry run/risk review, and all existing suites plus installed-package adversarial
-tests are green.
+generated runner or ambiguous skill write remains, the protected publish path has passed
+a dry run/risk review, the complete safety and migration disclosure is ready, and all
+existing suites plus installed-package adversarial tests are green.
 
 ### Phase 2: Portable Semantics and Identity
 
@@ -1055,14 +1061,16 @@ Do not publish 0.3.0 until Phase 3 is complete.
   mutability and exception documentation.
 - [ ] **Core/adapters separation (`ss-0uj9`).** Extract portable value, identity,
   schema, and result logic behind compatible APIs; isolate filesystem/YAML/model and CLI
-  adapters; add a TypeScript root-entry Node-import guard.
+  adapters; add a Node-import guard for `softschema/core` and an exact compatibility
+  allowlist for the TypeScript package root.
 
 **Phase gate:** every portable-value, regex, format-annotation, and schema-applicator
 vector passes in Python, Node, and Bun; raw-versus-canonical validity invariants hold;
 contract IDs and schema URIs cannot be confused; the one intentional
 compiled-schema/hash rebaseline is reviewed; legacy/format-1 metadata and extension
-vectors pass; `SchemaView` snapshot behavior is identical; the TypeScript root entry
-imports without Node-only adapters; full goldens and direct parity remain green.
+vectors pass; `SchemaView` snapshot behavior is identical; `softschema/core` is
+transitively free of Node/runtime/CLI adapters and the legacy root facade matches its
+exact compatibility allowlist; full goldens and direct parity remain green.
 
 ### Phase 3: Public Conformance, Usability, Documentation, and Release
 
@@ -1091,6 +1099,12 @@ after public APIs/CLI/docs are complete, and then publishes it.
   and claims, agent compatibility matrix/instruction adapters, research-derived
   alternatives section, changelog/migration note, public-claims drift matrix, and
   docs-as-written package tests.
+- [ ] **Verify live release authorization (`ss-0rqn`).** Merge the final candidate
+  through a protected PR with every required context, run the manual preflight, verify
+  the exact PyPI/npm trusted-publisher and protected-environment configuration while
+  authenticated, and record durable repository, environment, ruleset, and workflow
+  evidence. This external-state gate is separate from `ss-o21w` so credentials do not
+  block the code-side conformance dependency graph.
 - [ ] **Publish and recover idempotently (`ss-trn7`).** Publish the immutable preflight
   artifacts through separate protected PyPI, npm, and GitHub-assets jobs; classify
   absent/complete/partial/conflicting artifact sets by filename and digest; guard
@@ -1134,8 +1148,10 @@ independent security work.
 | `ss-xnr6` | `ss-pvu9`, `ss-0uj9`, `ss-6jp1`, `ss-b5l4` | Batch and locations need settled access precedence, core results, profiles, and wire types. |
 | `ss-6i6d` | `ss-pvxi`, `ss-pvu9`, `ss-0sgk`, `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva`, `ss-0uj9`, `ss-6jp1`, `ss-b5l4`, `ss-xnr6`, `ss-o21w` | Fill and package the public foundation only after every represented behavior and artifact boundary settles. |
 | `ss-v6bv` | all user-visible behavior, `ss-slas`, `ss-srtz`, `ss-1aa6`, `ss-bj47`, `ss-6i6d`, `ss-o21w` | Final information architecture describes the settled product and evidence. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d` | Publish only after artifacts, public docs, and conformance metadata are final. |
+| `ss-0rqn` | `ss-o21w`, `ss-v6bv`, `ss-6i6d` | Live authorization and a real preflight require the complete candidate but are external to the code-side artifact boundary. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn` | Publish only after artifacts, public docs, conformance metadata, and live authorization are final. |
 | `ss-1mdr` | `ss-trn7`, `ss-qq77` | Close tracking only after release verification and historical cleanup. |
+| `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
 `ss-pvxi`, `ss-7eoa`, `ss-slas`, `ss-srtz`, and `ss-qq77` may begin in parallel.
 `ss-dbkh` and `ss-o21w` start as soon as the result/release foundation is frozen;
@@ -1223,10 +1239,11 @@ snippet runner, and publish dry-run to this gate as they land.
 
 ## Rollout Plan
 
-- Phase 1 may ship immediately as a 0.2.x patch from one or more small vertical-slice
-  PRs after the protected publisher dry run and risk review.
-  Product behavior changes are limited to unsafe or invalid-input handling; draft
-  conformance infrastructure is not packaged or advertised until 0.3.
+- The separate 0.2.x patch proposed in the first draft was not cut before Phase-2 work
+  landed. Do not reconstruct it from mixed commits or claim that it shipped.
+  Deliver the security fixes in the consolidated 0.3.0 candidate, disclose the affected
+  0.2.2 boundaries, and keep publication blocked until the protected publisher dry run
+  and risk review pass.
 - Phase 2 is the behavioral boundary for 0.3.0. Update the spec and compatibility table
   first, land one compiler/hash rebaseline, and freeze the core semantics.
   It is not yet a release candidate.
@@ -1275,6 +1292,7 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-srtz` | P2 | Related-effort research and strategic positioning |
 | `ss-v6bv` | P2 | Documentation and agent surfaces |
 | `ss-qq77` | P2 | Tracker and completed-spec reconciliation |
+| `ss-0rqn` | P1 | Live publisher authorization, protected PR, and preflight evidence |
 | `ss-trn7` | P1 | Idempotent dual-registry publication and verification |
 | `ss-1mdr` | P2 | Post-release plan and epic closeout |
 

@@ -1,0 +1,35 @@
+softschema:
+  format: "1"
+  contract: example.movies:MoviePage/v1
+  schema: movie-page.schema.yaml
+  status: enforced
+title: Spirited Away
+release_year: 2001
+runtime_minutes: 125
+mpaa_rating: PG
+directors:
+  - Hayao Miyazaki
+genres:
+  - Animation
+  - Adventure
+  - Family
+synopsis: >
+  Ten-year-old Chihiro and her parents stumble into a mysterious abandoned town
+  that turns out to be a spirit world. After her parents are transformed into pigs,
+  Chihiro must take a job in a magical bathhouse run by the witch Yubaba and find a
+  way to break the spell so the family can return home.
+cast:
+  - actor: Rumi Hiiragi
+    character: Chihiro / Sen
+  - actor: Miyu Irino
+    character: Haku
+  - actor: Mari Natsuki
+    character: Yubaba
+ratings:
+  rotten_tomatoes:
+    critics_percent: 96
+    audience_percent: 96
+    critic_review_count: 225
+  imdb:
+    score: 8.6
+    total_votes: 850000

@@ -135,6 +135,11 @@ DOC_TOPICS: dict[str, ResourceTopic] = {
         "examples/movie_page/spirited-away.md",
         "Copyable Markdown/YAML artifact.",
     ),
+    "example-pure-yaml": ResourceTopic(
+        "Movie Page Pure YAML Artifact",
+        "examples/movie_page/spirited-away.yaml",
+        "Copyable pure YAML artifact.",
+    ),
     "example-model": ResourceTopic(
         "Movie Page Model",
         "examples/movie_page/model.py",
@@ -198,9 +203,9 @@ def main(argv: list[str] | None = None) -> int:
     validate_parser.add_argument("path", type=Path)
     validate_parser.add_argument(
         "--profile",
-        choices=[profile.value for profile in SchemaProfile],
         default=SchemaProfile.frontmatter_md.value,
-        help="Artifact storage profile (default: frontmatter-md).",
+        metavar="PROFILE",
+        help=("Artifact storage profile: frontmatter-md or pure-yaml (default: frontmatter-md)."),
     )
     validate_parser.add_argument("--contract", help="Override the document contract ID.")
     validate_parser.add_argument(
@@ -373,12 +378,12 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # the softschema: block is well-formed, and the envelope resolves; structural
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Validate an explicit identity before reading a document or importing local code.
+    profile = _parse_profile(args.profile)
     if args.contract is not None:
         validate_contract_id(args.contract)
     # Read the document once here; both binding inference and validate_artifact reuse
     # the normalized root. Readable parse failures are validation results (exit 1),
     # while access failures remain exit 2.
-    profile = SchemaProfile(args.profile)
     try:
         if profile == SchemaProfile.pure_yaml:
             parsed_root: Any = read_yaml_artifact(args.path)
@@ -403,6 +408,13 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     result = validate_artifact(args.path, contract=contract, frontmatter=parsed_root)
     print(_json(result))
     return 0 if result.ok else 1
+
+
+def _parse_profile(value: str) -> SchemaProfile:
+    try:
+        return SchemaProfile(value)
+    except ValueError as exc:
+        raise UsageError(f"invalid profile: {value}") from exc
 
 
 def _infer_validation_binding(
@@ -754,6 +766,7 @@ def _docs_listing_payload() -> dict[str, Any]:
         "copyable_examples": [
             "example",
             "example-artifact",
+            "example-pure-yaml",
             "example-model",
             "example-host",
             "example-schema",

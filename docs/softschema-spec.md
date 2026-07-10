@@ -91,10 +91,17 @@ A `pure-yaml` artifact follows the same metadata rules:
 ```yaml
 softschema:
   format: "1"
-  contract: mycorp.runs:BacktestReport/v1
-run_id: 2026-04-12T18-03-00Z
-summary: regression vs baseline
+  contract: example.movies:MoviePage/v1
+  schema: movie-page.schema.yaml
+  status: enforced
+title: Spirited Away
+release_year: 2001
+directors:
+  - Hayao Miyazaki
 ```
+
+This copyable shape is `examples/movie_page/spirited-away.yaml`. It validates with
+`softschema validate examples/movie_page/spirited-away.yaml --profile pure-yaml`.
 
 ## Portable YAML Value Domain
 
@@ -153,7 +160,9 @@ provides it, but the legacy single-file JSON serializer omits locations.
 Diagnostic-v1 outputs may include them.
 
 The CLI selects storage shape explicitly with `--profile frontmatter-md|pure-yaml` and
-defaults to `frontmatter-md`. It does not infer a profile from a filename extension.
+defaults to `frontmatter-md`. It does not infer a profile from a filename extension: a
+`.yaml` or `.yml` artifact still uses `frontmatter-md` unless the invocation includes
+`--profile pure-yaml`.
 
 ## Frontmatter Artifact Shape
 

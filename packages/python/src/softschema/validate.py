@@ -32,6 +32,21 @@ from softschema.canonicalize import (
     EnforcementUnsupportedError,
     apply_enforced_extras,
 )
+from softschema.core.envelope import (
+    EnvelopeAmbiguityError as EnvelopeAmbiguityError,
+)
+from softschema.core.envelope import (
+    infer_envelope_key as infer_envelope_key,
+)
+from softschema.core.results import (
+    SemanticResult as SemanticResult,
+)
+from softschema.core.results import (
+    StructuralResult as StructuralResult,
+)
+from softschema.core.results import (
+    ValidationResult as ValidationResult,
+)
 from softschema.errors import (
     SchemaInvalidReason,
     schema_invalid_error,
@@ -84,31 +99,6 @@ class ArtifactFrontmatterError(FmFormatError):
 
 class ArtifactRootError(FmFormatError):
     """A readable artifact parsed successfully but its YAML root is not a mapping."""
-
-
-@dataclass(frozen=True)
-class StructuralResult:
-    ok: bool
-    errors: list[dict[str, Any]] = field(default_factory=list)
-    engine: str = "json_schema"
-    skipped_reason: str | None = None
-
-
-@dataclass(frozen=True)
-class SemanticResult:
-    ok: bool
-    errors: list[dict[str, Any]] = field(default_factory=list)
-    skipped_reason: str | None = None
-
-
-@dataclass(frozen=True)
-class ValidationResult:
-    structural: StructuralResult
-    semantic: SemanticResult
-
-    @property
-    def ok(self) -> bool:
-        return self.structural.ok and self.semantic.ok
 
 
 @dataclass(frozen=True)
@@ -1156,32 +1146,6 @@ def _validate_pure_yaml_artifact(
         warnings=warnings,
         limits=limits,
     )
-
-
-class EnvelopeAmbiguityError(ValueError):
-    """Multiple top-level payload candidates; the envelope must be designated."""
-
-    def __init__(self, candidates: list[str]) -> None:
-        self.candidates = candidates
-        super().__init__(
-            "multiple top-level frontmatter keys; designate the softschema payload "
-            f"(candidates: {', '.join(candidates)})"
-        )
-
-
-def infer_envelope_key(frontmatter: dict[str, Any]) -> str | None:
-    """Infer the spec's single envelope key from a frontmatter mapping.
-
-    Returns the single non-``softschema`` top-level key, ``None`` when there is
-    no candidate, and raises :class:`EnvelopeAmbiguityError` when several keys
-    are present (the caller must designate the envelope explicitly).
-    """
-    candidates = [key for key in frontmatter if key != "softschema"]
-    if not candidates:
-        return None
-    if len(candidates) == 1:
-        return candidates[0]
-    raise EnvelopeAmbiguityError(candidates)
 
 
 def _metadata_from_frontmatter(

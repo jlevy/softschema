@@ -18,6 +18,18 @@ uvx --from 'softschema==0.2.2' softschema validate spirited-away.md
 (Or `npx --yes softschema@0.2.2 ...` for the Node implementation; the two are
 interchangeable.)
 
+When an artifact has no Markdown body, use the explicit `pure-yaml` profile.
+The file extension never selects it:
+
+```bash
+softschema docs example-pure-yaml > spirited-away.yaml
+softschema docs example-schema > movie-page.schema.yaml
+softschema validate spirited-away.yaml --profile pure-yaml
+```
+
+In this profile, the root `softschema` block is metadata and the remaining mapping is
+the payload unless the metadata or command names an envelope.
+
 To set up softschema in a repository with an agent, tell the agent:
 
 > Run `uvx --from 'softschema==0.2.2' softschema --help` (Python) or

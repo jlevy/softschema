@@ -133,6 +133,19 @@ def test_validate_checks_explicit_contract_before_reading_document(
     assert "contract ID" in capsys.readouterr().err
 
 
+def test_validate_rejects_an_unknown_profile_with_portable_diagnostic(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = softschema_main(
+        ["validate", str(tmp_path / "must-not-be-read.yaml"), "--profile", "yaml"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert captured.out == ""
+    assert captured.err == "softschema validate: invalid profile: yaml\n"
+
+
 def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "missing.schema.yaml"
 
@@ -272,6 +285,18 @@ def test_docs_prints_copyable_movie_artifact(capsys: pytest.CaptureFixture[str])
     assert "| Rotten Tomatoes Critics | 96% Tomatometer | 225 reviews |" in output
 
 
+def test_docs_prints_copyable_pure_yaml_artifact(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = softschema_main(["docs", "example-pure-yaml"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "softschema:" in output
+    assert 'format: "1"' in output
+    assert "contract: example.movies:MoviePage/v1" in output
+    assert "title: Spirited Away" in output
+    assert "---" not in output
+
+
 def test_docs_list_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = softschema_main(["docs", "--list", "--json"])
 
@@ -281,6 +306,7 @@ def test_docs_list_supports_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert "guide" in topic_names
     assert "spec" in topic_names
     assert "example-artifact" in output["copyable_examples"]
+    assert "example-pure-yaml" in output["copyable_examples"]
     assert output["scaffolding"] is False
 
 
@@ -306,6 +332,18 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "uvx --from 'softschema==0.2.2' softschema" in output
     assert "npx --yes softschema@0.2.2" in output
     assert "bunx --bun softschema@0.2.2" in output
+
+
+def test_validate_help_documents_the_profile_and_default(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        softschema_main(["validate", "--help"])
+
+    assert exc.value.code == 0
+    output = capsys.readouterr().out
+    assert "Artifact storage profile: frontmatter-md or pure-yaml" in output
+    assert "default: frontmatter-md" in output
 
 
 def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -375,6 +413,8 @@ def test_skill_uses_capability_checked_pinned_runners(
     assert "npx --yes softschema@0.2.2 doctor --json" in output
     assert "bunx --bun softschema@0.2.2 doctor --json" in output
     assert "Select a Capable Command" in output
+    assert "validate --help" in output
+    assert "installed or upgraded to a release" in output
     assert "$SS" not in output
     assert "@latest" not in output
 

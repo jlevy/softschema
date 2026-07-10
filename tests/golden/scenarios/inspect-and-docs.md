@@ -39,6 +39,7 @@ Available softschema docs:
   example-artifact   Copyable Markdown/YAML artifact.
   example-host       Host registry and validation helper.
   example-model      Pydantic model used by the example.
+  example-pure-yaml  Copyable pure YAML artifact.
   example-schema     Compiled JSON Schema for the example.
   guide              Concepts, mental model, and adoption path.
   installation       Installing softschema for Node or Python.
@@ -64,6 +65,7 @@ $ softschema skill --brief
 Derive the required capabilities before running an operation:
 
 - Schema-only validation needs the operation, `json-schema`, and the artifact format.
+- Pure YAML validation also needs the `pure-yaml` storage profile.
 - A `.py` model needs the `python` runtime and `pydantic` model loader.
 - A built `.js` or `.mjs` model needs `node` or `bun` and the `zod` model loader.
 - A direct `.ts` model needs `bun` and the `zod` model loader.
@@ -81,12 +83,17 @@ bunx --bun softschema@0.2.2 doctor --json
 An executable name or version string is not enough.
 Accept a candidate only when its JSON reports protocol `1`, the required operation, a
 supported artifact format, and the required runtime and model loader.
+Protocol `1` does not report storage profiles yet.
+For a pure YAML task, also run that candidate prefix with `validate --help` and accept
+it only when the help advertises both `--profile` and `pure-yaml`; otherwise continue to
+the next fallback. If none qualifies, stop and report that the `pure-yaml` profile is
+unavailable and that softschema must be installed or upgraded to a release whose
+`validate --help` lists it.
 Reuse that candidate’s entire command prefix by replacing the trailing `doctor --json`
 arguments. If none qualifies, stop and report the missing capability plus the exact
 runtime (uv/Python, Node, or Bun) the user can install.
 
-For example, only after the local candidate qualifies, validate a self-describing file
-with:
+After qualification, validate a self-describing file with:
 
 ```bash
 softschema validate doc.md
@@ -96,6 +103,11 @@ softschema validate doc.md
 
 - Treat YAML/frontmatter as authoritative for every consumed value.
   Never parse Markdown body prose or tables for structured fields.
+- Select the storage profile explicitly.
+  `frontmatter-md` is the default; pass `--profile pure-yaml` for a YAML artifact with
+  no Markdown body. Never infer a profile from `.yaml` or `.yml`.
+- In `pure-yaml`, treat the root `softschema` block as metadata.
+  Without a declared or overridden envelope, the remaining root mapping is the payload.
 - Use `softschema.contract` for the payload contract ID. When authoring a new artifact,
   use a mapping and include the exact quoted `softschema.format: "1"` discriminator.
   An absent format is the legacy grammar, not the package or contract version.
@@ -111,11 +123,10 @@ softschema validate doc.md
   Use `--model` only with trusted local Pydantic or Zod code because model loading
   executes code.
 - Read the bundled `guide` for the mental model, `spec` for exact format rules, and
-  `example-artifact` plus `example-schema` for copyable inputs.
+  `example-artifact`, `example-pure-yaml`, and `example-schema` for copyable inputs.
   Run the qualifying prefix with `docs --list` to discover every topic.
-- Keep examples copyable.
-  Do not scaffold, install, or mutate a project unless the user explicitly requests that
-  workflow.
+- Keep examples copyable; do not scaffold, install, or mutate a project unless the user
+  explicitly requests that workflow.
 ? 0
 ````
 
@@ -127,6 +138,7 @@ $ softschema docs --list --json
   "copyable_examples": [
     "example",
     "example-artifact",
+    "example-pure-yaml",
     "example-model",
     "example-host",
     "example-schema"
@@ -162,6 +174,12 @@ $ softschema docs --list --json
       "path": "examples/movie_page/model.py",
       "summary": "Pydantic model used by the example.",
       "title": "Movie Page Model"
+    },
+    {
+      "name": "example-pure-yaml",
+      "path": "examples/movie_page/spirited-away.yaml",
+      "summary": "Copyable pure YAML artifact.",
+      "title": "Movie Page Pure YAML Artifact"
     },
     {
       "name": "example-schema",

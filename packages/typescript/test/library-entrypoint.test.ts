@@ -78,7 +78,8 @@ describe("library entrypoint (issue #16)", () => {
   });
 
   test("type declarations expose the public ESM consumer surface", () => {
-    const dts = readFileSync(join(PACKAGE_ROOT, "dist", "index.d.ts"), "utf8");
+    const rootDts = readFileSync(join(PACKAGE_ROOT, "dist", "index.d.ts"), "utf8");
+    const dts = readFileSync(join(PACKAGE_ROOT, "dist", "node.d.ts"), "utf8");
     for (const sym of [
       "ARTIFACT_FORMAT_VERSION",
       "validateArtifact",
@@ -90,7 +91,18 @@ describe("library entrypoint (issue #16)", () => {
       "Contract",
       "ArtifactValidationResult",
     ]) {
+      expect(rootDts).toContain(sym);
       expect(dts).toContain(sym);
     }
+    const coreDts = readFileSync(join(PACKAGE_ROOT, "dist", "core", "index.d.ts"), "utf8");
+    for (const sym of [
+      "normalizePortableValue",
+      "parseSchemaMetadata",
+      "validateContractId",
+      "StructuralResult",
+    ]) {
+      expect(coreDts).toContain(sym);
+    }
+    expect(coreDts).not.toContain("validateArtifact");
   });
 });

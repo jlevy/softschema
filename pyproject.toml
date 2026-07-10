@@ -89,6 +89,7 @@ packages = ["packages/python/src/softschema"]
 "docs/development.md" = "softschema/resources/docs/development.md"
 "examples/movie_page/README.md" = "softschema/resources/examples/movie_page/README.md"
 "examples/movie_page/spirited-away.md" = "softschema/resources/examples/movie_page/spirited-away.md"
+"examples/movie_page/spirited-away.yaml" = "softschema/resources/examples/movie_page/spirited-away.yaml"
 "examples/movie_page/model.py" = "softschema/resources/examples/movie_page/model.py"
 "examples/movie_page/host_integration.py" = "softschema/resources/examples/movie_page/host_integration.py"
 "examples/movie_page/movie-page.schema.yaml" = "softschema/resources/examples/movie_page/movie-page.schema.yaml"

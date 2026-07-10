@@ -239,12 +239,29 @@ def _smoke_python(wheel: Path, consumer: Path) -> None:
             raise SmokeError(f"installed {executable_name} did not emit a JSON topic list")
     for topic, source_path in (
         ("example-artifact", "examples/movie_page/spirited-away.md"),
+        ("example-pure-yaml", "examples/movie_page/spirited-away.yaml"),
         ("guide", "docs/softschema-guide.md"),
         ("skill", "skills/softschema/SKILL.md"),
     ):
         output = _run([str(python), "-m", "softschema.cli", "docs", topic], cwd=consumer)
         if output.encode() != (ROOT / source_path).read_bytes():
             raise SmokeError(f"installed Python {topic} bytes differ from source")
+    python_cli = scripts / ("softschema.exe" if os.name == "nt" else "softschema")
+    pure_yaml = consumer / "spirited-away.yaml"
+    schema = consumer / "movie-page.schema.yaml"
+    pure_yaml.write_text(
+        _run([str(python_cli), "docs", "example-pure-yaml"], cwd=consumer),
+        encoding="utf-8",
+    )
+    schema.write_text(
+        _run([str(python_cli), "docs", "example-schema"], cwd=consumer),
+        encoding="utf-8",
+    )
+    result = json.loads(
+        _run([str(python_cli), "validate", str(pure_yaml), "--profile", "pure-yaml"], cwd=consumer)
+    )
+    if result.get("profile") != "pure-yaml" or not result.get("structural", {}).get("ok"):
+        raise SmokeError("installed Python CLI did not validate the bundled pure-YAML example")
     for name in METADATA_NAMES:
         code = (
             "from importlib.resources import files; "
@@ -289,12 +306,31 @@ def _smoke_npm(npm: Path, consumer: Path) -> None:
         raise SmokeError("npm import resolved outside the isolated consumer")
     for topic, source_path in (
         ("example-artifact", "examples/movie_page/spirited-away.md"),
+        ("example-pure-yaml", "examples/movie_page/spirited-away.yaml"),
         ("guide", "docs/softschema-guide.md"),
         ("skill", "skills/softschema/SKILL.md"),
     ):
         output = _run(["node", str(cli), "docs", topic], cwd=consumer)
         if output.encode() != (ROOT / source_path).read_bytes():
             raise SmokeError(f"installed npm {topic} bytes differ from source")
+    pure_yaml = consumer / "spirited-away.yaml"
+    schema = consumer / "movie-page.schema.yaml"
+    pure_yaml.write_text(
+        _run(["node", str(cli), "docs", "example-pure-yaml"], cwd=consumer),
+        encoding="utf-8",
+    )
+    schema.write_text(
+        _run(["node", str(cli), "docs", "example-schema"], cwd=consumer),
+        encoding="utf-8",
+    )
+    result = json.loads(
+        _run(
+            ["node", str(cli), "validate", str(pure_yaml), "--profile", "pure-yaml"],
+            cwd=consumer,
+        )
+    )
+    if result.get("profile") != "pure-yaml" or not result.get("structural", {}).get("ok"):
+        raise SmokeError("installed npm CLI did not validate the bundled pure-YAML example")
     if shutil.which("bun") is not None:
         bun_output = _run(["bun", str(cli), "docs", "--list", "--json"], cwd=consumer)
         if not isinstance(json.loads(bun_output).get("topics"), list):

@@ -49,10 +49,13 @@ diff_cmd() {
 }
 
 MOVIE=examples/movie_page/spirited-away.md
+PURE_YAML=examples/movie_page/spirited-away.yaml
 SCHEMA=examples/movie_page/movie-page.schema.yaml
 BAD=tests/golden/fixtures/bad-movie.md
 
 diff_cmd "validate (structural ok)"          validate "$MOVIE" --schema "$SCHEMA" --envelope movie
+diff_cmd "validate (pure-yaml structural ok)" validate "$PURE_YAML" --profile pure-yaml
+diff_cmd "validate (pure-yaml contract mismatch)" validate "$PURE_YAML" --profile pure-yaml --contract wrong:Movie/v1
 diff_cmd "validate (structural fail)"        validate "$BAD" --schema "$SCHEMA" --contract example.movies:MoviePage/v1 --envelope movie
 diff_cmd "validate (status override warn)"   validate "$MOVIE" --schema "$SCHEMA" --envelope movie --status permissive
 diff_cmd "validate (envelope mismatch)"      validate "$MOVIE" --schema "$SCHEMA" --envelope nope

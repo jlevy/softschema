@@ -141,6 +141,12 @@ export const DOC_TOPICS: DocTopic[] = [
     summary: "Pydantic model used by the example.",
   },
   {
+    name: "example-pure-yaml",
+    title: "Movie Page Pure YAML Artifact",
+    path: "examples/movie_page/spirited-away.yaml",
+    summary: "Copyable pure YAML artifact.",
+  },
+  {
     name: "example-schema",
     title: "Movie Page Compiled Schema",
     path: "examples/movie_page/movie-page.schema.yaml",
@@ -188,6 +194,7 @@ export const DOC_TOPICS: DocTopic[] = [
 const COPYABLE_EXAMPLES = [
   "example",
   "example-artifact",
+  "example-pure-yaml",
   "example-model",
   "example-host",
   "example-schema",
@@ -467,6 +474,11 @@ interface ValidateOptions {
   status?: string;
 }
 
+function parseSchemaProfile(value: string): Contract["profile"] {
+  if (value === "frontmatter-md" || value === "pure-yaml") return value;
+  throw new UsageError(`invalid profile: ${value}`);
+}
+
 /** Import `path:export` and confirm the export is a Zod schema before use. */
 async function loadZodModel(spec: string): Promise<z.ZodType> {
   const idx = spec.lastIndexOf(":");
@@ -493,11 +505,8 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
+    const profile = parseSchemaProfile(opts.profile ?? "frontmatter-md");
     if (opts.contract !== undefined) validateContractId(opts.contract);
-    const profile = opts.profile ?? "frontmatter-md";
-    if (profile !== "frontmatter-md" && profile !== "pure-yaml") {
-      throw new UsageError(`invalid profile: ${profile}`);
-    }
     // Read the document once here; both binding inference and validateArtifact reuse
     // this normalized root. Readable parse failures are validation results (exit 1),
     // while access failures remain exit 2.
@@ -756,9 +765,8 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     )
     .argument("<path>")
     .option(
-      "--profile <profile>",
-      "artifact storage profile: frontmatter-md or pure-yaml",
-      "frontmatter-md",
+      "--profile <PROFILE>",
+      "Artifact storage profile: frontmatter-md or pure-yaml (default: frontmatter-md).",
     )
     .option("--contract <id>", "override the document contract ID")
     .option(

@@ -111,13 +111,14 @@ Otherwise no patterns are needed. Note in particular:
 | `scenarios/cli-errors.md` | all | the user-error exit paths: ambiguous envelope and missing implementation (stderr asserted), missing file, malformed frontmatter, malformed metadata, unknown docs topic (exit 2, prefix asserted) |
 | `scenarios/warnings.md` | all | `document-status-mismatch` warning on a status override |
 | `scenarios/inspect-and-docs.md` | all | `inspect` (movie, plain doc, no frontmatter); `docs --list`; `docs --list --json`; `docs <topic>`; `skill --brief`; `skill` |
+| `scenarios/pure-yaml.md` | all | explicit `pure-yaml`: metadata-only, schema-bound and metadata-free payloads, envelope and contract precedence, `.yaml`/`.yml` non-inference, invalid profile, malformed root, and value domain |
 | `scenarios/generate.md` | all | `generate --check` no-drift and drift (exit 1) |
 | `scenarios/version.md` | all | `--version` (`[VERSION]` pattern) |
 | `scenarios/error-normalization.md` | all | every structural error keyword, engine-neutral |
 | `scenarios/frontmatter-edge-cases.md` | all | empty frontmatter (`no_frontmatter`); whitespace-only frontmatter (parse error, exit 2); unterminated fence (parse error, exit 2) |
 | `scenarios-py/compile.md` | py | `compile --check` no-drift (literal digest) and drift; source is a Pydantic class |
-| `scenarios-py/validate-model.md` | py | `validate --model` semantic-ok path (Pydantic) |
-| `scenarios-ts/validate-model.md` | ts, ts-bun | `validate --model` semantic-ok path (Zod `.mjs`) |
+| `scenarios-py/validate-model.md` | py | `validate --model` semantic-ok paths for `frontmatter-md` and `pure-yaml` (Pydantic) |
+| `scenarios-ts/validate-model.md` | ts, ts-bun | `validate --model` semantic-ok paths for `frontmatter-md` and `pure-yaml` (Zod `.mjs`) |
 | `scenarios-ts-bun/compile.md` | ts-bun | same compile output; source is a Zod module (needs a TS runtime) |
 
 Compile parity (content-identical compiled schema, equal digest) across languages is

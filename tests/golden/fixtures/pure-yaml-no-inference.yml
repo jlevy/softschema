@@ -1,0 +1,4 @@
+softschema:
+  format: "1"
+  contract: test.pure:NoInference/v1
+value: example

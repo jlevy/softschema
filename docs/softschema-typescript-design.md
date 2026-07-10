@@ -19,6 +19,8 @@ test; see the parity development process in [development.md](development.md).
 
 | Module | Purpose |
 | --- | --- |
+| `core` | Published runtime-neutral entrypoint for values, identities, metadata, schema-profile logic, and normalized results |
+| `node` | Published Node.js/Bun adapter for YAML, filesystems, Zod, resources, and path-based operations |
 | `models` | `Contract`, status/profile unions, `SchemaMetadata`, `WarningCode`, `parseSchemaMetadata` |
 | `registry` | `Contracts`: resolve contracts by id |
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
@@ -31,6 +33,39 @@ test; see the parity development process in [development.md](development.md).
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
 | `cli` | `commander` program: `validate`, `compile`, `inspect`, `docs`, `generate`, `skill` |
+
+## Architecture Boundaries
+
+The package publishes separate contract and adapter surfaces:
+
+```ts
+import {
+  canonicalizeJsonSchema,
+  normalizePortableValue,
+  parseSchemaMetadata,
+} from "softschema/core";
+import { compileSchema, validateArtifact } from "softschema/node";
+```
+
+`softschema/core` accepts already materialized JSON-compatible values.
+Its transitive module graph contains no `node:` builtin, YAML parser, Zod model,
+filesystem, dynamic-import, packaged-resource, or CLI dependency.
+`softschema/node` owns those Node.js and Bun adapters.
+`softschema/cli` remains a separate executable adapter over the same runtime and core
+behavior.
+
+The package root, `softschema`, remains a compatibility facade for the v0.2 Node.js and
+Bun library surface.
+It exposes exactly the same names as `softschema/node`; no other adapter may leak
+through it. New code should select `softschema/core` or `softschema/node` explicitly.
+Keeping the facade for at least the v0.3 line avoids breaking established imports while
+giving browser, worker, and third-implementation authors a runtime-neutral target.
+
+Architecture tests walk the core source graph, reject forbidden runtime dependencies and
+dynamic imports, import the built core under Node, compare the root and Node export
+sets, and verify the package subpath declarations.
+This makes the compatibility exception explicit without weakening the pure-core
+boundary.
 
 ## Idiomatic Zod Choices
 
@@ -146,9 +181,11 @@ defaults to `frontmatter-md`, and never infers the profile from an extension.
 
 ## Packaging
 
-`bunup` builds two entrypoints from `src/index.ts` (the library barrel) and `src/cli.ts`
-(the executable). Two packaging decisions keep the library importable; both are guarded
-by `test/library-entrypoint.test.ts`:
+`bunup` builds four entrypoints: `src/core/index.ts` (runtime-neutral contract core),
+`src/node.ts` (Node.js/Bun adapters), `src/index.ts` (compatibility facade), and
+`src/cli.ts` (executable).
+The following packaging decisions keep every public entrypoint importable; they are
+guarded by `test/library-entrypoint.test.ts` and `test/architecture-boundary.test.ts`:
 
 - **No `"sideEffects": false`.** On a pure re-export barrel, that hint makes Bun’s
   bundler tree-shake the re-exported implementations out of `dist/index.js` while
