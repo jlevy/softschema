@@ -53,8 +53,14 @@ softschema validate doc.md
 
 - Treat YAML/frontmatter as authoritative for every consumed value.
   Never parse Markdown body prose or tables for structured fields.
-- Use `softschema.contract` for the payload contract ID. The self-description block can
-  also declare `schema`, `envelope`, `status`, and an artifact format.
+- Use `softschema.contract` for the payload contract ID. When authoring a new artifact,
+  use a mapping and include the exact quoted `softschema.format: "1"` discriminator.
+  An absent format is the legacy grammar, not the package or contract version.
+  The block can also declare `schema`, `envelope`, and `status`.
+- Put extension metadata only in the format-1 `softschema.extensions` mapping.
+  Use a canonical lowercase reverse-DNS or HTTPS namespace for each key.
+  Preserve unknown portable values without interpreting them; extensions never authorize
+  loading code or changing core validation.
 - Promote a value into YAML only when a downstream consumer needs it.
   Keep exploratory or judgment-heavy content as prose.
 - Validate self-describing artifacts without override flags.

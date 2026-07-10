@@ -45,7 +45,7 @@ dev = [
     "pytest-sugar>=1.1.1",
     "ruff>=0.15.12",
     "rich>=15.0.0",
-    "skills-ref @ git+https://github.com/agentskills/agentskills.git@38a2ff82958afee88dadf4831509e6f7e9d8ef4e#subdirectory=skills-ref",
+    "skills-ref==0.1.1",
     "uv-dynamic-versioning==0.14.0",
 ]
 

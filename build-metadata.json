@@ -1,6 +1,6 @@
 {
-  "build_id": "sha256:bd60bb24c8437176caa89771b7bbb79422bbe1151f204e2629e8137281841a00",
-  "release_metadata_sha256": "64c44da1485d7d338c1817c26679407fe2df2a9ade9de52a36b6fecb47c7bdd4",
+  "build_id": "sha256:e15ea131bc31f67ce8329fc35342e7b9edd66d23dd4d7791e051dc733bcab54b",
+  "release_metadata_sha256": "bc90096bd29dcfbc57de1d26ec4753cc5408356ffd00aa9278b385c5b532d316",
   "schema_version": "1",
   "source_commit": "0000000000000000000000000000000000000000"
 }

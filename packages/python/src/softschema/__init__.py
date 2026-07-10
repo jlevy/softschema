@@ -6,6 +6,7 @@ from softschema.canonicalize import apply_enforced_extras, canonicalize_json_sch
 from softschema.compile import SOFTSCHEMA_FORMAT_VERSION, CompileResult, compile_model
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
 from softschema.models import (
+    ARTIFACT_FORMAT_VERSION,
     Contract,
     SchemaMetadata,
     SchemaProfile,
@@ -14,6 +15,7 @@ from softschema.models import (
     WarningCode,
     parse_schema_metadata,
     validate_contract_id,
+    validate_extension_namespace,
     validate_schema_id,
 )
 from softschema.registry import Contracts
@@ -51,6 +53,7 @@ from softschema.validate import (
 from softschema.value_domain import DEFAULT_VALIDATION_LIMITS, ValidationLimits
 
 __all__ = [
+    "ARTIFACT_FORMAT_VERSION",
     "DEFAULT_VALIDATION_LIMITS",
     "SOFTSCHEMA_FORMAT_VERSION",
     "ArtifactFrontmatterError",
@@ -95,6 +98,7 @@ __all__ = [
     "regenerate",
     "validate_artifact",
     "validate_contract_id",
+    "validate_extension_namespace",
     "validate_schema_id",
     "validate_semantic",
     "validate_structural",

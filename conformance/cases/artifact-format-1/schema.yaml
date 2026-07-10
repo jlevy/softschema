@@ -1,0 +1,17 @@
+$id: example.conformance:Movie/v1
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  title:
+    type: string
+  year:
+    minimum: 1888
+    type: integer
+required:
+- title
+- year
+type: object
+x-softschema:
+  contract: example.conformance:Movie/v1
+  schema_sha256: b99fc89e9c369f28e00cd3a8d58c6230c6d4c1dcbdddf1598920cbefec62ad45
+  softschema_format_version: 0.1.0

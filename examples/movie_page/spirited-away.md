@@ -1,6 +1,7 @@
 ---
 title: Spirited Away (2001)
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie

@@ -53,7 +53,7 @@ Validate it with zero flags (from a repo checkout):
 softschema validate examples/movie_page/spirited-away.md
 ```
 
-The artifact carries the full self-description quartet (`contract`, `schema`,
+The artifact carries format 1 and the descriptive fields (`contract`, `schema`,
 `envelope`, `status`) in its `softschema:` block, so `softschema validate` resolves the
 compiled schema and envelope automatically with no flags.
 

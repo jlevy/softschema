@@ -98,11 +98,10 @@ For each stable or release-candidate version:
 
 3. **Run the full validation pass and a dry release** from the
    [end-to-end testing runbook](e2e-testing.runbook.md): the local automated sweep
-   (Phase 1, which mirrors CI) plus the manual phases CI cannot cover —
-   clean-environment installs of the wheel and npm tarball, the quickstart as written,
-   and the skill bootstrap (Phases 2–4). Everything must exit 0. Dispatching
-   `publish.yml` manually exercises the infrastructure path with development metadata
-   but makes both registry jobs ineligible.
+   (Phase 1), the clean-environment artifact smoke that CI also runs (Phase 2), and the
+   manual quickstart and skill bootstrap checks CI cannot cover (Phases 3–4). Everything
+   must exit 0. Dispatching `publish.yml` manually exercises the infrastructure path
+   with development metadata but makes both registry jobs ineligible.
    It is not a release-candidate rehearsal: the protected-tag run is the first path that
    requires candidate state and exact ecosystem filenames.
 

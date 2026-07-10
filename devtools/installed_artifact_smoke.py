@@ -206,10 +206,19 @@ def _smoke_python(wheel: Path, consumer: Path) -> None:
             "--python",
             str(python),
             "--no-build",
+            "--no-cache",
             "--exclude-newer",
             "2026-06-02T00:00:00Z",
             "--exclude-newer-package",
             "strif=2026-06-03T00:00:00Z",
+            str(wheel),
+        ],
+        cwd=consumer,
+    )
+    _run(
+        [
+            str(python),
+            str(ROOT / "devtools" / "verify_installed_wheel.py"),
             str(wheel),
         ],
         cwd=consumer,

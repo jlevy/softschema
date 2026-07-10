@@ -3,6 +3,7 @@ status: draft
 schema_dialect: https://json-schema.org/draft/2020-12/schema
 artifact_formats:
 - legacy-0.2
+- "1"
 profiles:
 - frontmatter-md
 - pure-yaml
@@ -32,9 +33,15 @@ schemas:
 - id: urn:softschema:draft:conformance:manifest:v0
   path: schemas/manifest.schema.json
   sha256: 0ff4890635420606f7640e895b8778ae4f6a1f991b963c9c5ea936863dfa4297
+- id: urn:softschema:draft:conformance:metadata-legacy:v0
+  path: schemas/metadata-legacy.schema.json
+  sha256: ae3dc429a8c681fa1fcdea26a7b1d8d4433b4ceeab5730e762aef4261450b0dc
+- id: urn:softschema:draft:conformance:metadata-v1:v0
+  path: schemas/metadata-v1.schema.json
+  sha256: cdb6a684c2d0a51a5fd80b46f03073ed8ec63dca74e2930399338d7dcdbc95bc
 - id: urn:softschema:draft:conformance:metadata:v0
   path: schemas/metadata.schema.json
-  sha256: afde93e94ff76ed472bb34ad9af43039ef826a4f06331685faad27c72a85c98c
+  sha256: c89d035fa6e059eafe191d47f277535c4c9741f4fb726d7c0d6e55708482bfe6
 - id: urn:softschema:draft:conformance:public-claims:v0
   path: schemas/public-claims.schema.json
   sha256: 376ad8b6df04abb2189222d049577cfcd8a2d0bacab0140419971d25372a748a
@@ -52,11 +59,14 @@ schemas:
   sha256: 12afbce83de8f46514b57fa50b389495d0e0a6ca97dae001332470ae7d4c87bc
 - id: urn:softschema:draft:conformance:validation-result-legacy:v0
   path: schemas/validation-result-legacy.schema.json
-  sha256: 845e5f4ce99e674c0c7b3742a1bd72d220f66418994949d2e002dc31b4f9d022
+  sha256: f3bf72bd413d9b1f1b4c63aa174505c4548b619c4662a624f47d286c61745d05
 - id: urn:softschema:draft:conformance:x-softschema:v0
   path: schemas/x-softschema.schema.json
   sha256: 4156fdc7f88fc88adb7243c8344b358169b2dab967a7f6e1485514000d4e1604
 cases:
+- id: artifact-format-1
+  path: cases/artifact-format-1/case.yaml
+  sha256: 41ee577613dd05793549eca809ab30f8d3f3d0459b05900ca4f6fd1362742eea
 - id: artifact-parse-frontmatter
   path: cases/artifact-parse-frontmatter/case.yaml
   sha256: 86dfa97c07ef2a3ae135e1aa6d261e732621c37d53ff42a7bbc1af1ffb47d2c6

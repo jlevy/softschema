@@ -38,7 +38,9 @@ These terms are used throughout; each is defined here before it appears in a rul
 | **artifact** | A single conforming file: Markdown with YAML frontmatter, or pure YAML. |
 | **frontmatter** | The YAML block delimited by `---` at the top of a Markdown file. |
 | **body** | The Markdown after the frontmatter. Reader-facing; never a source of structured values. |
-| **metadata block** | The `softschema:` mapping in the frontmatter (or at the document root for pure YAML). It holds softschema’s own keys, not payload data. |
+| **metadata block** | The `softschema:` value in the frontmatter (or at the document root for pure YAML). Format 1 uses a mapping; the legacy grammar also accepts a compact contract-ID string. It holds softschema’s own metadata, not payload data. |
+| **artifact format** | The versioned grammar of the metadata block. Format 1 is selected by the quoted string `format: "1"`; an absent `format` selects the legacy grammar. |
+| **extension** | Opaque, namespaced metadata under the format-1 `extensions` mapping. Extensions never change core validation. |
 | **payload** | The structured values a consumer reads, validated against a contract. |
 | **envelope** | The single top-level key whose value is the payload; the **envelope key** is its name (for example `movie:`). |
 | **contract** | The named payload contract—*what* the payload is. |
@@ -53,7 +55,8 @@ Annotated, the parts fit together like this:
 
 ```markdown
 ---
-softschema:                          # the metadata block
+softschema:                               # the metadata block
+  format: "1"                            # the artifact-format version
   contract: example.movies:MoviePage/v1   # the contract ID
   schema: movie-page.schema.yaml          # optional pointer to the compiled schema
   envelope: movie                         # optional declared envelope key
@@ -87,6 +90,7 @@ A `pure-yaml` artifact follows the same metadata rules:
 
 ```yaml
 softschema:
+  format: "1"
   contract: mycorp.runs:BacktestReport/v1
 run_id: 2026-04-12T18-03-00Z
 summary: regression vs baseline
@@ -159,6 +163,7 @@ A genuine artifact (a trimmed `examples/movie_page/spirited-away.md`):
 ---
 title: Spirited Away (2001)
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie
@@ -202,28 +207,83 @@ feature, defined below.)
 
 ## Metadata
 
-The `softschema` mapping is the recognized metadata block:
+The format-1 `softschema` mapping is the recognized metadata block:
 
 ```yaml
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie
   status: enforced
+  extensions:
+    com.example.review:
+      audience: public
 ```
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `contract` | yes for self-describing documents | The contract ID (a stable name for the payload contract). |
+| `format` | yes for format 1; absent for legacy | The quoted artifact-format identifier. The only explicit value in this spec is the string `"1"`. |
+| `contract` | yes | The contract ID (a stable name for the payload contract). |
 | `schema` | no (recommended for self-validating documents) | A pointer to the compiled schema. |
 | `envelope` | no (recommended when other top-level keys exist) | The declared envelope key. |
 | `status` | no | Boundary maturity: `soft`, `permissive`, or `enforced`. |
+| `extensions` | no; format 1 only | One mapping from canonical namespaces to opaque portable values. |
 
-A `softschema` block with unknown keys, an unknown `status`, a malformed `contract` (see
+An artifact negotiates its metadata grammar before interpreting any other metadata key:
+
+- An absent `format` selects the legacy grammar.
+  Legacy metadata is either a compact contract-ID string or a mapping containing only
+  `contract`, `schema`, `envelope`, and `status`. `extensions` is not valid in this
+  grammar.
+- A present `format` selects a versioned mapping.
+  Format 1 requires the exact quoted string `"1"`; YAML `format: 1`, package versions
+  such as `"0.2.2"`, and every other value are unsupported.
+  Its recognized keys are `format`, `contract`, `schema`, `envelope`, `status`, and
+  `extensions`.
+- A compact contract-ID string cannot select format 1. Authors of new artifacts must use
+  the mapping form and declare `format: "1"`.
+
+Both grammars require a contract ID when metadata is present.
+A metadata block with an unknown key, an unknown `status`, a malformed `contract` (see
 Contract IDs), or a `schema` or `envelope` that is present but not a non-empty string is
-a validation error.
+a validation error. This closed-key rule applies inside `softschema`; unrelated keys
+beside `softschema` at the artifact root remain host metadata.
 
-The four keys make an artifact fully self-describing: `contract` names *what* the
+The format-1 `extensions` value, when present, must be a mapping.
+Each key must be one of these byte-canonical namespace forms:
+
+- A lowercase reverse-DNS name matching
+  `^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$`.
+- An absolute HTTPS identifier with lowercase scheme and authority, an explicit
+  slash-prefixed path, no credentials, fragment, default or zero-padded port, trailing
+  host dot, or dot path segment, and canonical IPv4, IPv6, and percent-escape spelling.
+  Percent escapes are uppercase and must not encode an unreserved byte.
+
+Every extension value may be any value in the Portable YAML Value Domain.
+Duplicate namespace keys are duplicate YAML mapping keys and must be rejected before
+metadata construction.
+A conforming implementation preserves unknown extension values semantically when parsing
+and serializing metadata, but ignores them during envelope, schema, structural, and
+semantic validation.
+Format 1 defines no extension registry or code-loading mechanism; a CLI must not import
+or execute code named by an extension.
+
+The artifact-format version is independent of the package release, contract-ID version,
+compiled-schema profile, result schema, and conformance-kit version.
+Implementations must advertise supported artifact formats explicitly instead of deriving
+them from any of those versions.
+
+The source repository publishes the machine-readable
+[negotiation schema](../conformance/schemas/metadata.schema.json), separate
+[legacy](../conformance/schemas/metadata-legacy.schema.json) and
+[format-1](../conformance/schemas/metadata-v1.schema.json) schemas, and shared
+[compatibility vectors](../tests/parity/artifact-format.json).
+The schemas describe the JSON-compatible metadata values; the Portable YAML Value Domain
+remains the parser boundary for duplicate keys, YAML-specific types, and resource
+limits.
+
+The four descriptive keys make an artifact self-describing: `contract` names *what* the
 contract is, `schema` says *where* its compiled schema lives, `envelope` says *which*
 top-level key carries the payload, and `status` says *how strictly* to validate.
 `schema` is optional because many hosts resolve the schema out of band (a registry, a
@@ -573,10 +633,10 @@ two do not collide (see Compatibility).
   HTML-comment-tag convention (`key="value"` attributes) under a `softschema:`
   namespace; there is no formal dependency in either direction.
 
-## Out of Scope for v0.2
+## Out of Scope
 
-The following are explicitly not part of v0.2. A conforming implementation must not
-treat any of them as valid artifact-format rules:
+The following are not part of this spec.
+A conforming implementation must not treat any of them as valid artifact-format rules:
 
 - A `softschema.values: {location, pointer}` resolver shape, or any envelope-resolution
   mode beyond the one-envelope rule above.
@@ -585,7 +645,7 @@ treat any of them as valid artifact-format rules:
   body prose or tables.
 - A repair loop, alias resolution, or patch protocol.
 - A `legacy` status value.
-- Provider structured-output adapters (planned, but not part of v0.2).
+- Provider structured-output adapters.
 - Generated-section `view` presets, instance-value mirrors, and URN-based `schema`
   resolution (deferred extensions of the generated-section feature above).
 

@@ -46,6 +46,34 @@ test; see the parity development process in [development.md](development.md).
   and served from there (never read from the working directory), mirroring the Python
   wheel.
 
+## Schema View
+
+`SchemaView.load()` parses YAML or JSON through the bounded portable-value boundary and
+accepts a trusted validation-limit override with the same defaults as validation.
+The constructor accepts an already normalized JSON-compatible mapping and takes a deep
+snapshot without running the boundary again.
+The `raw` getter returns a new deep copy; mutating constructor input, `raw`, root
+metadata, or field metadata never changes later navigation.
+
+Local `$ref` resolution preserves annotation siblings such as `description`,
+`x-softschema`, `format`, `contentEncoding`, and `contentMediaType`. A direct reference
+with an assertion sibling remains unresolved because a shallow merge would misrepresent
+the assertions’ conjunctive semantics.
+The reader unwraps only a two-branch `anyOf` or `oneOf` whose outer siblings are
+annotations and whose branches are one annotation-only local reference and one exact
+null schema, and only when the referenced target provably excludes null.
+Exact nullable type and string-enum shapes remain convenient scalar metadata.
+For every genuine union, `jsonType` and `enum` remain `null`, and the reader does not
+select or traverse an arbitrary first branch.
+
+`field()` throws `Error` when its pointer is absent.
+`load()` preserves filesystem and UTF-8 exceptions, throws the portable YAML exception
+types for syntax or value-domain failures, and throws `Error` for a non-mapping root.
+
+Artifact envelope inference follows the same boundary ownership: the portable parser or
+materialized-value normalizer rejects non-string keys first, and `inferEnvelopeKey()`
+consumes the resulting string keys without coercion or another normalization pass.
+
 ## Library API Parity
 
 Names are idiomatic per language; shapes, semantics, error `kind`s, and warning codes
@@ -62,11 +90,12 @@ are identical.
 | `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation and filters |
 | `SoftField` | `softField` | same emitted `x-softschema` block and omit-empty rules |
 | `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes and errors |
-| `SchemaMetadata` | `SchemaMetadata` | quartet: `contract_id`/`schema_ref`/`envelope`/`status` (Python); `contractId`/`schema`/`envelope`/`status` (TS); serialized as `{contract, envelope, schema, status}` |
+| `SchemaMetadata` | `SchemaMetadata` | legacy serialization stays `{contract, envelope, schema, status}`; format 1 adds the quoted `format` and optional namespaced `extensions` mapping |
 | `_resolve_metadata_schema` | `resolveMetadataSchema` | bounded relative-path resolution from document directory + cwd |
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `SOFTSCHEMA_FORMAT_VERSION` | `SOFTSCHEMA_FORMAT_VERSION` | exported from `index.ts` / `__init__.py` |
+| `ARTIFACT_FORMAT_VERSION` | `ARTIFACT_FORMAT_VERSION` | current metadata grammar (`"1"`), independent of package and compiled-schema versions |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
 | `ValidationLimits` | `ValidationLimits` | same default budgets; Python uses snake case and TypeScript uses camel case |
 

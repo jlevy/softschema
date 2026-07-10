@@ -2,8 +2,8 @@
 
 First-time setup of `uv` and Python is covered in [Installation](installation.md).
 Release workflow and PyPI steps are covered in [Publishing](publishing.md).
-The full validation pass—the automated sweep run locally plus the manual
-clean-environment checks CI cannot run—is codified in the
+The full validation pass—the automated sweep and artifact smoke rerun locally plus the
+manual docs and registry checks CI cannot run—is codified in the
 [end-to-end testing runbook](e2e-testing.runbook.md).
 
 Set up the repo (Python deps, Node tooling for hooks, and the git hooks themselves):
@@ -17,6 +17,32 @@ make hooks-install  # install the lefthook pre-commit hooks
 dependencies without building the project, then installs the editable package with the
 already installed, pinned build backend.
 `make hooks-install` additionally wires up the pre-commit hooks described below.
+
+CI uses a stricter wheel-first boundary.
+The build job first creates the local wheel with hash-locked build dependencies.
+It then runs the following boundary in a fresh package cache:
+
+1. `UV_NO_BUILD=1 uv sync --frozen --no-cache --no-install-project ...` installs only
+   locked third-party wheels and fails if any dependency requires an sdist build.
+2. `UV_NO_BUILD=1 uv pip install --no-build --no-deps <local-wheel>` installs the
+   already built project wheel.
+3. `verify_installed_wheel.py` checks its `direct_url.json`, active-environment import
+   path, and every file digest and size in the wheel’s `RECORD` before tests run with
+   `uv run --no-sync`.
+
+The no-cache requirement matters: uv may reuse a locally cached wheel under
+`--no-build`, which would hide a source-only dependency on a warm runner.
+The release preflight scopes the same no-build/no-cache rule to third-party dependency
+sync, then uses the reviewed checkout for its pre-identity test install; the exact
+release wheel is built only after build metadata exists and is verified again in the
+candidate smoke job.
+
+The skill validator is an exact `skills-ref==0.1.1` wheel dependency.
+Its validator source matches agentskills commit
+`38a2ff82958afee88dadf4831509e6f7e9d8ef4e` (reviewed 2026-07-09); the published wheel
+adds explicit UTF-8 reads and the corrected package version.
+`uv.lock` records its wheel URL, size, upload time, and SHA-256 digest, so CI does not
+execute a Git dependency’s build backend.
 
 Common workflows:
 

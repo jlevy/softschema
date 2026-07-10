@@ -42,7 +42,7 @@ jobs:
       - name: Install pinned uv and Python
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
-          version: "0.11.12"
+          version: "0.11.21"
           enable-cache: false
           python-version: "3.12.13"
 
@@ -57,10 +57,13 @@ jobs:
         with:
           bun-version: "1.3.11"
 
-      - name: Install frozen Python dependencies
-        run: |
-          uv sync --all-extras --frozen --no-install-project
-          uv pip install --no-build-isolation --no-deps --editable .
+      - name: Install frozen Python dependencies without builds
+        env:
+          UV_NO_BUILD: "1"
+        run: uv sync --all-extras --frozen --no-cache --no-install-project
+
+      - name: Install the trusted checkout for preflight
+        run: uv pip install --no-build-isolation --no-deps --editable .
 
       - name: Install frozen TypeScript dependencies
         working-directory: packages/typescript
@@ -134,7 +137,8 @@ jobs:
         run: |
           cp release-metadata.json build-metadata.json release-out/
           mkdir -p release-out/devtools
-          cp devtools/installed_artifact_smoke.py release-out/devtools/
+          cp devtools/installed_artifact_smoke.py devtools/verify_installed_wheel.py \
+            release-out/devtools/
           mkdir -p release-out/examples/movie_page
           cp examples/movie_page/spirited-away.md release-out/examples/movie_page/
           mkdir -p release-out/docs release-out/skills/softschema
@@ -225,7 +229,7 @@ jobs:
       - name: Install pinned uv and Python
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
-          version: "0.11.12"
+          version: "0.11.21"
           enable-cache: false
           python-version: "3.12.13"
 

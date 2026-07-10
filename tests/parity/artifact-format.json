@@ -1,0 +1,217 @@
+[
+  {
+    "id": "legacy-compact",
+    "raw": "example.docs:Record/v1",
+    "output": {
+      "contract": "example.docs:Record/v1",
+      "schema": null,
+      "envelope": null,
+      "status": null
+    }
+  },
+  {
+    "id": "legacy-expanded",
+    "raw": {
+      "contract": "example.docs:Record/v1",
+      "schema": "record.schema.yaml",
+      "envelope": "record",
+      "status": "enforced"
+    },
+    "output": {
+      "contract": "example.docs:Record/v1",
+      "schema": "record.schema.yaml",
+      "envelope": "record",
+      "status": "enforced"
+    }
+  },
+  {
+    "id": "format-1-minimal",
+    "raw": {
+      "format": "1",
+      "contract": "example.docs:Record/v1"
+    },
+    "output": {
+      "contract": "example.docs:Record/v1",
+      "schema": null,
+      "envelope": null,
+      "status": null,
+      "format": "1"
+    }
+  },
+  {
+    "id": "format-1-empty-extensions",
+    "raw": {
+      "format": "1",
+      "contract": "example.docs:Record/v1",
+      "extensions": {}
+    },
+    "output": {
+      "contract": "example.docs:Record/v1",
+      "schema": null,
+      "envelope": null,
+      "status": null,
+      "format": "1",
+      "extensions": {}
+    }
+  },
+  {
+    "id": "format-1-reverse-dns-extension",
+    "raw": {
+      "format": "1",
+      "contract": "example.docs:Record/v1",
+      "extensions": {
+        "com.example.review": {
+          "enabled": true,
+          "labels": ["ready", 2, null]
+        }
+      }
+    },
+    "output": {
+      "contract": "example.docs:Record/v1",
+      "schema": null,
+      "envelope": null,
+      "status": null,
+      "format": "1",
+      "extensions": {
+        "com.example.review": {
+          "enabled": true,
+          "labels": ["ready", 2, null]
+        }
+      }
+    }
+  },
+  {
+    "id": "format-1-https-extension",
+    "raw": {
+      "format": "1",
+      "contract": "example.docs:Record/v1",
+      "extensions": {
+        "https://schemas.example/extensions/review/v1": "opaque"
+      }
+    },
+    "output": {
+      "contract": "example.docs:Record/v1",
+      "schema": null,
+      "envelope": null,
+      "status": null,
+      "format": "1",
+      "extensions": {
+        "https://schemas.example/extensions/review/v1": "opaque"
+      }
+    }
+  },
+  {
+    "id": "numeric-format-is-not-quoted",
+    "raw": { "format": 1, "contract": "example.docs:Record/v1" },
+    "error": true
+  },
+  {
+    "id": "unknown-format",
+    "raw": { "format": "2", "contract": "example.docs:Record/v1" },
+    "error": true
+  },
+  {
+    "id": "package-version-is-not-format",
+    "raw": { "format": "0.2.2", "contract": "example.docs:Record/v1" },
+    "error": true
+  },
+  {
+    "id": "extensions-require-format-1",
+    "raw": { "contract": "example.docs:Record/v1", "extensions": {} },
+    "error": true
+  },
+  {
+    "id": "extensions-must-be-mapping-null",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": null },
+    "error": true
+  },
+  {
+    "id": "extensions-must-be-mapping-list",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": [] },
+    "error": true
+  },
+  {
+    "id": "legacy-unknown-key",
+    "raw": { "contract": "example.docs:Record/v1", "future": true },
+    "error": true
+  },
+  {
+    "id": "format-1-unknown-key",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "future": true },
+    "error": true
+  },
+  {
+    "id": "legacy-python-contract-field-name-is-not-authored-key",
+    "raw": { "contract_id": "example.docs:Record/v1" },
+    "error": true
+  },
+  {
+    "id": "legacy-python-schema-field-name-is-not-authored-key",
+    "raw": { "contract": "example.docs:Record/v1", "schema_ref": "record.schema.yaml" },
+    "error": true
+  },
+  {
+    "id": "format-1-python-format-field-name-is-not-authored-key",
+    "raw": {
+      "format": "1",
+      "contract": "example.docs:Record/v1",
+      "format_version": "1"
+    },
+    "error": true
+  },
+  {
+    "id": "format-1-python-contract-field-name-is-not-authored-key",
+    "raw": { "format": "1", "contract_id": "example.docs:Record/v1" },
+    "error": true
+  },
+  {
+    "id": "reverse-dns-requires-dot",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "example": true } },
+    "error": true
+  },
+  {
+    "id": "reverse-dns-must-be-lowercase",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "Com.Example": true } },
+    "error": true
+  },
+  {
+    "id": "reverse-dns-no-empty-label",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "com..example": true } },
+    "error": true
+  },
+  {
+    "id": "reverse-dns-no-edge-hyphen",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "com.-example": true } },
+    "error": true
+  },
+  {
+    "id": "http-is-not-namespace",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "http://schemas.example/extensions/v1": true } },
+    "error": true
+  },
+  {
+    "id": "https-namespace-needs-path",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "https://schemas.example": true } },
+    "error": true
+  },
+  {
+    "id": "https-namespace-must-be-canonical",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "https://SCHEMAS.example/extensions/v1": true } },
+    "error": true
+  },
+  {
+    "id": "https-namespace-no-default-port",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "https://schemas.example:443/extensions/v1": true } },
+    "error": true
+  },
+  {
+    "id": "https-namespace-no-fragment",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "https://schemas.example/extensions/v1#part": true } },
+    "error": true
+  },
+  {
+    "id": "urn-is-not-extension-namespace",
+    "raw": { "format": "1", "contract": "example.docs:Record/v1", "extensions": { "urn:example:extension:v1": true } },
+    "error": true
+  }
+]

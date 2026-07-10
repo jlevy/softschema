@@ -22,6 +22,7 @@ export {
   regenerate,
 } from "./generate.js";
 export {
+  ARTIFACT_FORMAT_VERSION,
   type Contract,
   defineContract,
   parseSchemaMetadata,
@@ -30,6 +31,7 @@ export {
   type SchemaStatus,
   type SchemaWarning,
   validateContractId,
+  validateExtensionNamespace,
   validateSchemaId,
   type WarningCode,
 } from "./models.js";

@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import tarfile
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from devtools.release import (
     release_coordinates,
     verify_release_manifest,
 )
+from devtools.verify_installed_wheel import WheelVerificationError, _safe_wheel_path
 
 ROOT = Path(__file__).parents[3]
 FULL_SHA = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
@@ -255,3 +257,111 @@ def test_publish_workflow_is_tag_protected_and_manual_runs_are_dry_only() -> Non
     )
     for job_name in ["publish-pypi", "publish-npm"]:
         assert "github.event_name == 'push'" in publish["jobs"][job_name]["if"]
+
+
+def test_ci_installs_and_verifies_local_wheels_while_forbidding_dependency_builds() -> None:
+    ci = _workflow(".github/workflows/ci.yml")
+    for job_name in ["build", "golden", "cross-impl"]:
+        steps = ci["jobs"][job_name]["steps"]
+        build_index, build_step = next(
+            (index, step) for index, step in enumerate(steps) if "uv build" in step.get("run", "")
+        )
+        install_index, install_step = next(
+            (index, step)
+            for index, step in enumerate(steps)
+            if "without builds" in step.get("name", "").lower()
+        )
+        assert build_index < install_index
+        assert "--build-constraint build-constraints.txt" in build_step["run"]
+        assert "--require-hashes" in build_step["run"]
+        assert install_step["env"] == {"UV_NO_BUILD": "1"}
+        install_script = install_step["run"]
+        assert "uv sync --all-extras --frozen --no-cache --no-install-project" in install_script
+        assert "uv pip install --no-build --no-deps" in install_script
+        assert "devtools/verify_installed_wheel.py" in install_script
+        assert "--editable" not in "\n".join(step.get("run", "") for step in steps)
+
+    artifact_install = next(
+        step
+        for step in ci["jobs"]["artifact-smoke"]["steps"]
+        if step.get("name") == "Install frozen dependencies"
+    )
+    assert artifact_install["env"] == {"UV_NO_BUILD": "1"}
+    assert "--no-cache --no-install-project" in artifact_install["run"]
+
+
+def test_publish_forbids_dependency_builds_without_prebuilding_the_candidate() -> None:
+    publish = _workflow(".github/workflows/publish.yml")
+    steps = publish["jobs"]["preflight"]["steps"]
+    dependency_index, dependency_step = next(
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("name") == "Install frozen Python dependencies without builds"
+    )
+    editable_index, editable_step = next(
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("name") == "Install the trusted checkout for preflight"
+    )
+    metadata_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Derive build metadata before either package build"
+    )
+    candidate_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Build Python artifacts once with hash-locked build dependencies"
+    )
+    assert dependency_index < editable_index < metadata_index < candidate_index
+    assert dependency_step["env"] == {"UV_NO_BUILD": "1"}
+    assert dependency_step["run"].endswith("--no-cache --no-install-project")
+    assert "env" not in editable_step
+    assert editable_step["run"] == "uv pip install --no-build-isolation --no-deps --editable ."
+    assert "devtools/verify_installed_wheel.py" in "\n".join(step.get("run", "") for step in steps)
+
+
+def test_all_workflows_pin_the_audited_uv_release() -> None:
+    for workflow_path in [".github/workflows/ci.yml", ".github/workflows/publish.yml"]:
+        workflow = _workflow(workflow_path)
+        uv_steps = [
+            step
+            for job in workflow["jobs"].values()
+            for step in job.get("steps", [])
+            if step.get("uses", "").startswith("astral-sh/setup-uv@")
+        ]
+        assert uv_steps
+        assert all(step["with"]["version"] == "0.11.21" for step in uv_steps)
+
+
+def test_skills_reference_validator_is_a_hash_locked_wheel_dependency() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "skills-ref==0.1.1" in project["dependency-groups"]["dev"]
+
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    assert lock["options"] == {
+        "exclude-newer": "2026-06-02T00:00:00Z",
+        "exclude-newer-package": {"strif": "2026-06-03T00:00:00Z"},
+    }
+    package = next(item for item in lock["package"] if item["name"] == "skills-ref")
+    assert package["version"] == "0.1.1"
+    assert package["source"] == {"registry": "https://pypi.org/simple"}
+    assert package["wheels"] == [
+        {
+            "url": "https://files.pythonhosted.org/packages/af/25/"
+            "36a43c3a61fb6cc3984e6ad5e556929b8ae71c95eba615dae4cf2f427964/"
+            "skills_ref-0.1.1-py3-none-any.whl",
+            "hash": "sha256:d35db5bb8de71ae301daf5ca9cb71f8a555e8c6f83a6d40e46a5bc09f8f461b5",
+            "size": 12918,
+            "upload-time": "2026-01-10T13:23:40.106Z",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["", ".", "../escape", "a/../escape", "a//escape", r"..\escape", "C:/escape"],
+)
+def test_wheel_verifier_rejects_ambiguous_or_traversing_record_paths(path: str) -> None:
+    with pytest.raises(WheelVerificationError, match="unsafe path"):
+        _safe_wheel_path(path)

@@ -83,6 +83,10 @@ def test_doctor_json_matches_shared_v1_golden_and_schema(
         "release_state": release["release_state"],
     }
     assert report["runtime"]["name"] == "python"
+    assert release["artifact_formats"] == {
+        "current": "1",
+        "supported": ["legacy-0.2", "1"],
+    }
     assert report["capabilities"]["artifact_formats"] == sorted(
         release["artifact_formats"]["supported"]
     )

@@ -3,9 +3,11 @@
  * package; the `*Output` helpers emit the snake_case shapes the CLI serializes,
  * so JSON output is byte-identical across implementations.
  */
+import { type JsonValue, normalizePortableValue } from "./yaml-value-domain.js";
 
 export type SchemaStatus = "soft" | "permissive" | "enforced";
 export type SchemaProfile = "frontmatter-md" | "pure-yaml";
+export const ARTIFACT_FORMAT_VERSION = "1" as const;
 
 const SCHEMA_STATUSES: readonly SchemaStatus[] = ["soft", "permissive", "enforced"];
 
@@ -23,6 +25,8 @@ export interface SchemaMetadata {
   schema: string | null;
   envelope: string | null;
   status: SchemaStatus | null;
+  format?: "1";
+  extensions?: Record<string, JsonValue>;
 }
 
 /** Public warning codes (the `document-*` family). */
@@ -162,7 +166,26 @@ export function defineContract(contract: Contract): Contract {
   return Object.freeze({ ...contract, id });
 }
 
-const KNOWN_METADATA_KEYS = new Set(["contract", "schema", "envelope", "status"]);
+const LEGACY_METADATA_KEYS = new Set(["contract", "schema", "envelope", "status"]);
+const FORMAT_1_METADATA_KEYS = new Set([...LEGACY_METADATA_KEYS, "format", "extensions"]);
+const REVERSE_DNS_NAMESPACE_RE =
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+
+/** Validate one canonical format-1 extension namespace. */
+export function validateExtensionNamespace(value: unknown): string {
+  if (typeof value === "string" && REVERSE_DNS_NAMESPACE_RE.test(value)) return value;
+  if (typeof value === "string" && value.startsWith("https://")) {
+    try {
+      return validateSchemaId(value);
+    } catch {
+      // Replace the schema-ID diagnostic with the extension-specific contract below.
+    }
+  }
+  throw new SchemaMetadataError(
+    `invalid softschema extension namespace ${JSON.stringify(value)}: expected canonical ` +
+      "HTTPS or lowercase reverse-DNS",
+  );
+}
 
 /** Require an optional metadata key, when present, to be a non-empty string. */
 function checkOptionalString(obj: Record<string, unknown>, key: string): string | null {
@@ -186,8 +209,13 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
   }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
+    const hasFormat = Object.hasOwn(obj, "format");
+    if (hasFormat && obj.format !== ARTIFACT_FORMAT_VERSION) {
+      throw new SchemaMetadataError('softschema metadata format must be the quoted string "1"');
+    }
+    const knownKeys = hasFormat ? FORMAT_1_METADATA_KEYS : LEGACY_METADATA_KEYS;
     // The spec makes unknown keys in the softschema: block a validation error.
-    const unknown = Object.keys(obj).filter((key) => !KNOWN_METADATA_KEYS.has(key));
+    const unknown = Object.keys(obj).filter((key) => !knownKeys.has(key));
     if (unknown.length > 0) {
       throw new SchemaMetadataError(`softschema metadata has unknown keys: ${unknown.join(", ")}`);
     }
@@ -201,7 +229,32 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
       }
       status = obj.status;
     }
-    return { contractId: contract, schema, envelope, status };
+    if (!hasFormat) return { contractId: contract, schema, envelope, status };
+
+    let extensions: Record<string, JsonValue> | undefined;
+    if (Object.hasOwn(obj, "extensions")) {
+      let normalized: JsonValue;
+      try {
+        normalized = normalizePortableValue(obj.extensions).value;
+      } catch (error) {
+        throw new SchemaMetadataError("softschema metadata extensions are not portable", {
+          cause: error,
+        });
+      }
+      if (normalized === null || typeof normalized !== "object" || Array.isArray(normalized)) {
+        throw new SchemaMetadataError("softschema metadata extensions must be a mapping");
+      }
+      extensions = normalized;
+      for (const namespace of Object.keys(extensions)) validateExtensionNamespace(namespace);
+    }
+    return {
+      contractId: contract,
+      schema,
+      envelope,
+      status,
+      format: ARTIFACT_FORMAT_VERSION,
+      ...(extensions === undefined ? {} : { extensions }),
+    };
   }
   throw new SchemaMetadataError(
     `softschema metadata must be a string or mapping, got ${pyTypeName(raw)}`,
@@ -225,10 +278,15 @@ export function metadataToOutput(metadata: SchemaMetadata | null): Record<string
   if (metadata === null) {
     return null;
   }
-  return {
+  const output: Record<string, unknown> = {
     contract: metadata.contractId,
     envelope: metadata.envelope,
     schema: metadata.schema,
     status: metadata.status,
   };
+  if (metadata.format === ARTIFACT_FORMAT_VERSION) {
+    output.format = ARTIFACT_FORMAT_VERSION;
+    if (metadata.extensions !== undefined) output.extensions = metadata.extensions;
+  }
+  return output;
 }

@@ -126,14 +126,15 @@ can stay as loose prose until a downstream consumer needs it in more formal sche
 ## The Artifact Shape
 
 The default shape is Markdown with YAML frontmatter.
-The `softschema:` block is the self-description quartet: `contract` names the payload
-contract, `schema` points at the compiled JSON Schema (relative to the document),
-`envelope` names the payload key, and `status` sets validation strictness:
+The `softschema:` block declares the quoted artifact format `"1"`: `contract` names the
+payload contract, `schema` points at the compiled JSON Schema (relative to the
+document), `envelope` names the payload key, and `status` sets validation strictness:
 
 ```markdown
 ---
 title: Spirited Away (2001)
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie
@@ -158,6 +159,11 @@ slips into a spirit world and takes a job in a bathhouse for the gods to free he
 parents from the witch Yubaba.
 It won the 2003 Academy Award for Best Animated Feature.
 ```
+
+New artifacts use the exact quoted string `format: "1"`. Existing artifacts without a
+format remain on the legacy grammar; the artifact format is independent of package and
+contract versions. See the [softschema Spec](docs/softschema-spec.md#metadata) for
+extension namespaces and negotiation rules.
 
 The YAML payload is authoritative; a consumer reads it.
 The Markdown body overlaps with it but is for human readers: the prose adds context like

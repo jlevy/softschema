@@ -34,6 +34,8 @@ EXPECTED_SCHEMAS = {
     "compiled-schema-profile.schema.json",
     "doctor-result.schema.json",
     "manifest.schema.json",
+    "metadata-legacy.schema.json",
+    "metadata-v1.schema.json",
     "metadata.schema.json",
     "public-claims.schema.json",
     "release-manifest.schema.json",
@@ -111,6 +113,31 @@ def test_manifest_paths_digests_and_case_contracts_are_valid() -> None:
         expected_schema = schemas[case["expected"]["schema"]]
         validator = Draft202012Validator(expected_schema, registry=registry)
         assert list(validator.iter_errors(expected)) == []
+
+
+def test_artifact_metadata_schemas_negotiate_legacy_and_format_1_exactly() -> None:
+    schemas = _load_schemas()
+    registry = _registry(schemas)
+    validators = {
+        name: Draft202012Validator(schemas[name], registry=registry)
+        for name in (
+            "metadata.schema.json",
+            "metadata-legacy.schema.json",
+            "metadata-v1.schema.json",
+        )
+    }
+    vectors = json.loads((ROOT / "tests/parity/artifact-format.json").read_text())
+
+    for vector in vectors:
+        valid = not vector.get("error", False)
+        raw = vector["raw"]
+        assert validators["metadata.schema.json"].is_valid(raw) is valid, vector["id"]
+        if valid and isinstance(raw, dict) and raw.get("format") == "1":
+            assert validators["metadata-v1.schema.json"].is_valid(raw), vector["id"]
+            assert not validators["metadata-legacy.schema.json"].is_valid(raw), vector["id"]
+        elif valid:
+            assert validators["metadata-legacy.schema.json"].is_valid(raw), vector["id"]
+            assert not validators["metadata-v1.schema.json"].is_valid(raw), vector["id"]
 
 
 def test_phase_one_error_reasons_have_exact_messages_and_required_fields() -> None:
@@ -228,7 +255,7 @@ def test_draft_release_schemas_keep_identity_and_digest_boundaries_separate() ->
             "python": {"name": "softschema", "version": "0.2.2", "pin": "0.2.2"},
             "npm": {"name": "softschema", "version": "0.2.2", "pin": "0.2.2"},
         },
-        "artifact_formats": {"current": "legacy-0.2", "supported": ["legacy-0.2"]},
+        "artifact_formats": {"current": "1", "supported": ["legacy-0.2", "1"]},
         "conformance": {"version": "0.0.0-draft.1", "status": "candidate"},
         "runtimes": {
             "python": {"minimum": "3.11"},

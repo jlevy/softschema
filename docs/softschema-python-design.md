@@ -36,6 +36,34 @@ The package root re-exports the common API:
 from softschema import Contract, Contracts, compile_model, validate_artifact
 ```
 
+### Package-Root Compatibility Policy
+
+`softschema.__all__` is a supported compatibility surface, not an inventory of every
+public submodule name.
+Add a root export only when it is a common operation, a stable input or return type of
+another root export, or an applicable Python counterpart of the TypeScript root API.
+Advanced helpers can remain available from their documented module.
+Every root addition needs a direct import test, documentation, and a Python↔TypeScript
+parity decision.
+
+The v0.3 audit retains all 33 names published at the v0.2.2 package root.
+In particular:
+
+- `FieldInfo` is the public value yielded by `SchemaView.iter_fields()`.
+- `SoftFieldMeta`, `SoftOwner`, `SoftTier`, and `RepairKind` describe the public
+  `SoftField` configuration and compiled metadata.
+- `GeneratedSection` and `RegenerateResult` are the public values returned by generated
+  section APIs.
+
+Moving those names to submodules in v0.3 would break valid v0.2 imports without making
+the implementation more modular, so they remain root exports.
+A future reduction must first ship and document the replacement, mark the old name
+deprecated for at least one minor release, add a migration note, and remove it only in a
+later minor release.
+Patch releases do not remove or repurpose root names.
+The compatibility test keeps the v0.2 set as a required subset while allowing reviewed
+additive exports.
+
 ## Documentation Structure
 
 The docs have two primary entry points:
@@ -90,17 +118,26 @@ A `Contract` carries everything the validator needs to handle one artifact contr
 `Contracts` holds a collection of registered contracts, keyed by `id`. It does not
 expose aliases, compatibility maps, or incremental registration helpers.
 
-`SchemaMetadata` represents the document-level `softschema:` block (the self-description
-quartet). Fields:
+`SchemaMetadata` represents the document-level `softschema:` block.
+Fields:
 
+- `format_version` (alias `format`): the optional quoted artifact-format identifier
+  `"1"`; absence selects the legacy grammar.
 - `contract_id` (alias `contract`): the contract ID (required).
 - `schema_ref` (alias `schema`): optional relative path to the compiled schema.
 - `envelope`: optional declared envelope key.
 - `status`: optional validation strictness (`soft`, `permissive`, `enforced`).
+- `extensions`: optional format-1 mapping from a canonical reverse-DNS or HTTPS
+  namespace to an opaque portable value.
 
-Serialized as `{contract, envelope, schema, status}` (the alias names).
-`parse_schema_metadata` accepts both the compact string form (contract ID only) and the
-expanded mapping.
+Legacy metadata serializes as `{contract, envelope, schema, status}` (the alias names),
+preserving the existing output exactly.
+Format 1 adds `{format, extensions?}`. `parse_schema_metadata` accepts the legacy
+compact string and expanded mapping, or a format-1 mapping.
+Unknown formats, grammar-specific unknown keys, duplicate extension namespaces, and
+non-portable extension values fail at the metadata or portable-value boundary.
+`ARTIFACT_FORMAT_VERSION` exposes the current identifier independently of
+`SOFTSCHEMA_FORMAT_VERSION`, the compiled-schema profile identifier.
 
 ## CLI Resolution
 
@@ -115,7 +152,10 @@ metadata-only (no structural validation).
 **Envelope precedence**: `--envelope` flag > registry `envelope_key` >
 `softschema.envelope` (document metadata) > single-key inference (the single
 non-`softschema` top-level key; zero or several candidates are rejected as
-`envelope_missing` / `envelope_ambiguous`).
+`envelope_missing` / `envelope_ambiguous`). The portable parser or materialized-value
+normalizer rejects non-string keys before this step.
+Envelope inference consumes those normalized keys as-is and never stringifies or
+otherwise re-normalizes them.
 
 Document-declared `schema` paths are relative-only, resolved from the document’s
 directory, bounded to the document directory and the current working directory.
@@ -398,12 +438,32 @@ for field in view.fields_by_group("taxonomy"):
     print(field.name, field.json_type, field.required)
 ```
 
-`iter_fields()` flattens through `$ref`s into `$defs`, yielding one `FieldInfo` per
-leaf-ish field with its JSON Pointer, type, enum (if any), required flag, description,
-and `x-softschema` block.
-The reader handles Pydantic’s `anyOf: [{$ref: ...}, {type: null}]` shape for
-`Foo | None` fields and the `anyOf: [{enum: ...}, {type: null}]` shape for
-`Literal[...] | None` fields.
+`SchemaView.load()` parses YAML or JSON through the bounded portable-value boundary and
+accepts a trusted `limits=` override with the same defaults as validation.
+The constructor accepts an already normalized JSON-compatible mapping and takes a deep
+snapshot without running the boundary again.
+The `raw` property returns a new deep copy; mutating constructor input, `raw`, root
+metadata, or field metadata never changes later navigation.
+
+`iter_fields()` flattens through local `$ref`s into `$defs`, yielding one `FieldInfo`
+per leaf-ish field with its JSON Pointer, type, enum (if any), required flag,
+description, and `x-softschema` block.
+Property-local annotation siblings such as `description`, `x-softschema`, `format`,
+`contentEncoding`, and `contentMediaType` remain safe to resolve; the annotations
+consumed by the view override referenced ones.
+A direct reference with an assertion sibling remains unresolved because a shallow merge
+would misrepresent the assertions’ conjunctive semantics.
+The reader unwraps only a two-branch `anyOf` or `oneOf` whose outer siblings are
+annotations and whose branches are one annotation-only local reference and one exact
+null schema, and only when the referenced target provably excludes null.
+It also reads the exact nullable type and string-enum shapes emitted for `Foo | None`
+and `Literal[...] | None`. For every genuine union, `json_type` and `enum` remain
+`None`, and the reader does not select or traverse an arbitrary first branch.
+
+`field()` raises `ValueError` when its pointer is absent.
+`load()` preserves filesystem and UTF-8 exceptions, raises the portable YAML exception
+types for syntax or value-domain failures, and raises `ValueError` for a non-mapping
+root.
 
 The first release ships the navigator.
 `view(name)` (named query presets) and `load_urn` (repo-level URN resolution) are

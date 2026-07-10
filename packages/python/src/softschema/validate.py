@@ -1058,7 +1058,7 @@ def _envelope_mismatch_result(
     root: dict[str, Any],
     expected_key: str,
 ) -> ArtifactValidationResult:
-    actual_keys = [str(key) for key in root if key != "softschema"]
+    actual_keys = [key for key in root if key != "softschema"]
     return ArtifactValidationResult(
         path=doc_path,
         contract_id=contract.id,
@@ -1176,7 +1176,7 @@ def infer_envelope_key(frontmatter: dict[str, Any]) -> str | None:
     no candidate, and raises :class:`EnvelopeAmbiguityError` when several keys
     are present (the caller must designate the envelope explicitly).
     """
-    candidates = [str(key) for key in frontmatter if key != "softschema"]
+    candidates = [key for key in frontmatter if key != "softschema"]
     if not candidates:
         return None
     if len(candidates) == 1:

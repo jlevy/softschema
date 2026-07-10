@@ -2,14 +2,31 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from softschema import FieldInfo, SchemaView
+from softschema import DEFAULT_VALIDATION_LIMITS, FieldInfo, SchemaView, infer_envelope_key
+from softschema.value_domain import PortableValueError, PortableYamlSyntaxError
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MOVIE_SCHEMA = REPO_ROOT / "examples/movie_page/movie-page.schema.yaml"
+VECTORS = json.loads((REPO_ROOT / "tests/schema-view/vectors.json").read_text(encoding="utf-8"))
+
+
+def _field_output(field: FieldInfo) -> dict[str, Any]:
+    return {
+        "pointer": field.pointer,
+        "name": field.name,
+        "json_type": field.json_type,
+        "enum": field.enum,
+        "required": field.required,
+        "description": field.description,
+        "softmeta": field.softmeta,
+    }
 
 
 @pytest.fixture
@@ -129,3 +146,72 @@ def test_iter_fields_terminates_on_cyclic_ref() -> None:
     ]
     # The cyclic `child` is surfaced as an unresolved leaf (no further recursion).
     assert view.field("/properties/root/properties/child").json_type is None
+
+
+@pytest.mark.parametrize("case", VECTORS["cases"], ids=lambda case: case["id"])
+def test_shared_schema_view_vectors(case: dict[str, Any]) -> None:
+    view = SchemaView(case["schema"])
+
+    assert [_field_output(field) for field in view.iter_fields()] == case["fields"]
+
+
+def test_constructor_and_accessors_are_defensive_deep_snapshots() -> None:
+    schema: dict[str, Any] = {
+        "x-softschema": {"nested": {"labels": ["root"]}},
+        "type": "object",
+        "properties": {
+            "field": {
+                "type": "string",
+                "description": "original",
+                "x-softschema": {"nested": {"labels": ["field"]}},
+            }
+        },
+    }
+    view = SchemaView(schema)
+
+    schema["x-softschema"]["nested"]["labels"].append("constructor mutation")
+    schema["properties"]["field"]["description"] = "mutated"
+    raw = view.raw
+    raw["x-softschema"]["nested"]["labels"].append("raw mutation")
+    raw["properties"]["field"]["description"] = "raw mutation"
+    root_meta = view.root_softmeta
+    root_meta["nested"]["labels"].append("root meta mutation")
+    field = view.field("/properties/field")
+    field.softmeta["nested"]["labels"].append("field mutation")
+
+    assert view.raw["x-softschema"]["nested"]["labels"] == ["root"]
+    assert view.field("/properties/field").description == "original"
+    assert view.softmeta("/properties/field") == {"nested": {"labels": ["field"]}}
+
+
+def test_load_uses_the_portable_mapping_key_and_resource_limit_boundary(tmp_path: Path) -> None:
+    bom = tmp_path / "bom.schema.yaml"
+    bom.write_bytes(b"\xef\xbb\xbftype: object\n")
+    assert SchemaView.load(bom).raw == {"type": "object"}
+
+    non_string_key = tmp_path / "non-string.schema.yaml"
+    non_string_key.write_text("1: value\n", encoding="utf-8")
+    with pytest.raises(PortableValueError, match="mapping keys must be strings"):
+        SchemaView.load(non_string_key)
+
+    invalid_syntax = tmp_path / "invalid-syntax.schema.yaml"
+    invalid_syntax.write_text("properties: [\n", encoding="utf-8")
+    with pytest.raises(PortableYamlSyntaxError):
+        SchemaView.load(invalid_syntax)
+
+    invalid_utf8 = tmp_path / "invalid-utf8.schema.yaml"
+    invalid_utf8.write_bytes(b"\xff")
+    with pytest.raises(UnicodeDecodeError):
+        SchemaView.load(invalid_utf8)
+
+    oversized = tmp_path / "oversized.schema.yaml"
+    oversized.write_text("type: object\n", encoding="utf-8")
+    with pytest.raises(PortableValueError, match="maximum resource size exceeded"):
+        SchemaView.load(
+            oversized,
+            limits=replace(DEFAULT_VALIDATION_LIMITS, max_resource_bytes=1),
+        )
+
+
+def test_envelope_inference_consumes_normalized_string_keys_without_coercion() -> None:
+    assert infer_envelope_key({"softschema": {}, "01": {}}) == "01"

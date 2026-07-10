@@ -12,7 +12,9 @@ match the logical, Python, and npm coordinates in `release-metadata.json`.
 
 The unprivileged preflight job then:
 
-1. installs the frozen Python and TypeScript dependency sets;
+1. installs the frozen Python dependency set from a cold cache with sdist builds
+   disabled, then installs the reviewed checkout, and installs the frozen TypeScript
+   dependency set;
 2. validates and tests the source;
 3. creates a deterministic conformance archive and source-derived build identity;
 4. embeds the same release and build metadata bytes in the sdist, wheel, and npm
@@ -83,6 +85,36 @@ reduces exposure to newly compromised releases but does not make floating packag
 selectors safe for every consumer: a consumer controls its own resolver, cache, and
 policy. Agent bootstrap instructions therefore derive immutable ecosystem-specific pins
 from release metadata; every advertised executable bootstrap command uses those pins.
+
+Python CI pins uv 0.11.21 and separates trusted local construction from third-party
+installation:
+
+1. Build the local wheel with `build-constraints.txt` and `--require-hashes` before
+   enabling the install prohibition.
+2. Run `UV_NO_BUILD=1 uv sync --frozen --no-cache --no-install-project` so every
+   third-party dependency must have a locked wheel.
+   `--no-cache` is mandatory because uv may otherwise reuse a locally built wheel while
+   `--no-build` is set.
+3. Install the exact local wheel with
+   `UV_NO_BUILD=1 uv pip install --no-build --no-deps`.
+4. Before tests import it, verify that `direct_url.json` names that wheel and that every
+   installed file’s size and SHA-256 digest match the wheel’s `RECORD`. Then run all
+   commands with `uv run --no-sync` so uv cannot replace the verified environment.
+
+The release preflight applies the same cold-cache, no-sdist rule to third-party
+dependencies, then installs the reviewed checkout as an explicit local exception.
+This preserves the rule that source-derived build identity exists before either
+publishable package is built.
+The candidate wheel is subsequently built once and its installed bytes pass the same
+verifier in the unprivileged smoke job.
+
+The skill conformance dependency is the hash-locked `skills-ref==0.1.1` wheel rather
+than a Git source dependency.
+Its validator matches agentskills commit `38a2ff82958afee88dadf4831509e6f7e9d8ef4e`
+(reviewed 2026-07-09); the wheel adds explicit UTF-8 reads and the corrected package
+version.
+A compatibility test pins its registry URL, wheel digest, size, upload time, and
+the exact allowed `uv.lock` cool-off exceptions.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

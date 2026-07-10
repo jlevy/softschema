@@ -1,8 +1,9 @@
 {
   "artifact_formats": {
-    "current": "legacy-0.2",
+    "current": "1",
     "supported": [
-      "legacy-0.2"
+      "legacy-0.2",
+      "1"
     ]
   },
   "conformance": {

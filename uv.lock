@@ -678,11 +678,15 @@ wheels = [
 
 [[package]]
 name = "skills-ref"
-version = "0.1.0"
-source = { git = "https://github.com/agentskills/agentskills.git?subdirectory=skills-ref&rev=38a2ff82958afee88dadf4831509e6f7e9d8ef4e#38a2ff82958afee88dadf4831509e6f7e9d8ef4e" }
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "strictyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/23/42/943d3ba8b097af7068b7178563a5062ad8a977982f4a7b4f67facfc575e9/skills_ref-0.1.1.tar.gz", hash = "sha256:6b400ca6e0049be62dca0167ff943ba2745fd67efb37fbba4d0ee341fccd2695", size = 93519, upload-time = "2026-01-10T13:23:41.423Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/25/36a43c3a61fb6cc3984e6ad5e556929b8ae71c95eba615dae4cf2f427964/skills_ref-0.1.1-py3-none-any.whl", hash = "sha256:d35db5bb8de71ae301daf5ca9cb71f8a555e8c6f83a6d40e46a5bc09f8f461b5", size = 12918, upload-time = "2026-01-10T13:23:40.106Z" },
 ]
 
 [[package]]
@@ -729,7 +733,7 @@ dev = [
     { name = "pytest-sugar", specifier = ">=1.1.1" },
     { name = "rich", specifier = ">=15.0.0" },
     { name = "ruff", specifier = ">=0.15.12" },
-    { name = "skills-ref", git = "https://github.com/agentskills/agentskills.git?subdirectory=skills-ref&rev=38a2ff82958afee88dadf4831509e6f7e9d8ef4e" },
+    { name = "skills-ref", specifier = "==0.1.1" },
     { name = "uv-dynamic-versioning", specifier = "==0.14.0" },
 ]
 

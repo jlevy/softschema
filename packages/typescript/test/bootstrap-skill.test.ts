@@ -33,7 +33,7 @@ interface ReleaseMetadata {
   logical_version: string;
   release_state: string;
   packages: { python: { pin: string }; npm: { pin: string } };
-  artifact_formats: { supported: string[] };
+  artifact_formats: { current: string; supported: string[] };
   conformance: { version: string; status: string };
 }
 
@@ -91,6 +91,10 @@ test("doctor --json matches the shared v1 golden and schema under Bun", async ()
     release_state: release.release_state,
   });
   expect(report.runtime.name).toBe("bun");
+  expect(release.artifact_formats).toEqual({
+    current: "1",
+    supported: ["legacy-0.2", "1"],
+  });
   expect(report.capabilities.model_loaders).toEqual(["json-schema", "zod"]);
   expect(report.capabilities.artifact_formats).toEqual(
     [...release.artifact_formats.supported].sort(),

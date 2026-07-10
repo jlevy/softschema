@@ -88,14 +88,16 @@ Many useful artifacts stay in the middle indefinitely.
 
 ## The Basic Artifact Pattern
 
-Markdown with YAML frontmatter containing a `softschema` block (the self-description
-quartet: `contract`, `schema`, `envelope`, `status`) and one payload envelope key.
-Additional frontmatter keys (such as `title`, `description`, or `tags` for a static-site
-generator, indexer, or other host convention) are fine and ignored by softschema:
+Markdown with YAML frontmatter containing a versioned `softschema` block and one payload
+envelope key. The block declares `format: "1"` plus the descriptive fields `contract`,
+`schema`, `envelope`, and `status`. Additional frontmatter keys (such as `title`,
+`description`, or `tags` for a static-site generator, indexer, or other host convention)
+are fine and ignored by softschema:
 
 ```markdown
 ---
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie
@@ -135,11 +137,20 @@ she works in a bathhouse for the gods to free her parents from a witch’s curse
 2003 Academy Award for Best Animated Feature.
 ```
 
-The `softschema:` block carries the self-description quartet: `contract` (the contract
-ID), `schema` (relative path to the compiled schema), `envelope` (which top-level key
-holds the payload), and `status` (validation strictness).
-A fully self-describing artifact like this one validates with no flags:
+The `softschema:` block carries the artifact-format version and the descriptive fields:
+`contract` (the contract ID), `schema` (relative path to the compiled schema),
+`envelope` (which top-level key holds the payload), and `status` (validation
+strictness). A fully self-describing artifact like this one validates with no flags:
 `softschema validate spirited-away.md`.
+
+Use the exact quoted value `format: "1"` in newly authored artifacts.
+An absent `format` keeps existing artifacts on the legacy grammar; it is not an alias
+for the package or contract version.
+Format 1 may also carry one `extensions` mapping whose keys are canonical lowercase
+reverse-DNS or HTTPS namespaces.
+Validators preserve these opaque portable values but ignore them during core validation.
+See [Metadata](softschema-spec.md#metadata) for the exact negotiation and namespace
+rules.
 
 The body overlaps with the YAML without mirroring it field for field: the prose adds the
 film’s Oscar win, which no structured field carries, while a consumer reads only the
@@ -216,6 +227,7 @@ After (status soft; only the consumed values are in YAML):
 ```markdown
 ---
 softschema:
+  format: "1"
   contract: mycorp.docs:IncidentReview/v1
   status: soft
 incident:
@@ -297,6 +309,7 @@ result:
 
 ```yaml
 softschema:
+  format: "1"
   contract: mycorp.runs:BacktestReport/v1
 backtest:
   run_id: 2026-04-12T18-03-00Z
@@ -351,6 +364,7 @@ Wire a Pydantic model to a contract and validate at file boundaries:
 
    ```yaml
    softschema:
+     format: "1"
      contract: mycorp.docs:IncidentReview/v1
      schema: schemas/incident-review.v1.schema.yaml
      envelope: incident
@@ -505,9 +519,9 @@ Two checks belong in CI:
   Use it only with trusted models.
   For untrusted input, use `--schema` with a compiled JSON Schema instead.
 
-- **Artifact validation.** When artifacts carry the full self-description quartet
-  (`contract`, `schema`, `envelope`, `status`), validation needs no per-file flags.
-  A simple glob validates an entire directory:
+- **Artifact validation.** When artifacts carry the format identifier and descriptive
+  metadata (`contract`, `schema`, `envelope`, `status`), validation needs no per-file
+  flags. A simple glob validates an entire directory:
 
   ```bash
   for f in docs/artifacts/*.md; do
@@ -525,10 +539,10 @@ integration” section of [docs/development.md](development.md).
 
 Take an artifact that doesn’t fit the canonical shape and bring it in line.
 
-The canonical v0.2 shape is:
+The current artifact shape is:
 
-- A `softschema:` block (the self-description quartet: `contract`, `schema`, `envelope`,
-  `status`) plus a designated envelope key at the top level.
+- A format-1 `softschema:` block with `contract` and, as needed, `schema`, `envelope`,
+  and `status`, plus a designated envelope key at the top level.
 - All consumed values live under the envelope key.
 - Body prose is reader-facing only.
 
@@ -560,6 +574,7 @@ still sit alongside):
 ```yaml
 ---
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   status: permissive
 movie:
@@ -588,6 +603,7 @@ After:
 ```yaml
 ---
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
   status: enforced
 movie:
@@ -612,6 +628,7 @@ After:
 ```markdown
 ---
 softschema:
+  format: "1"
   contract: example.movies:MoviePage/v1
 movie:
   title: Spirited Away

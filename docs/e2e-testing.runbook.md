@@ -3,19 +3,18 @@ name: e2e-testing
 description: >-
   The codified end-to-end validation path for softschema: the full automated
   sweep run locally (mirroring CI), plus the manual-only checks CI cannot run —
-  clean-environment installs of the built wheel and npm tarball, the
-  docs-as-written quickstart from an empty directory, the agent skill
-  bootstrap, and post-publish registry smoke tests. Use before tagging a
-  release, after toolchain or packaging changes, or whenever the published
-  artifacts must be proven rather than just the repo.
+  the docs-as-written quickstart from an empty directory, the agent skill
+  bootstrap, and post-publish registry smoke tests. Use before tagging a release,
+  after toolchain or packaging changes, or whenever the published artifacts must
+  be proven rather than just the repo.
 ---
 # End-to-End Testing Runbook
 
-CI proves the repository; this runbook proves the **product**: the packaged artifacts a
-user actually installs, the docs they actually follow, and the registries they actually
-fetch from. It is the codified manual path for everything not already covered by
-automated testing, plus the order in which to run the automated sweep locally so the
-whole system is validated in one pass.
+CI proves the repository and clean installs of its packaged artifacts.
+This runbook adds the remaining product checks: the docs users actually follow and the
+registries they actually fetch from.
+It also gives the order for rerunning the automated sweep and artifact smoke locally so
+the whole system is validated in one pass.
 Every command below has been run end to end and works as written.
 
 Run the full runbook before tagging a release.
@@ -30,18 +29,18 @@ The automated half of the story runs on every push and PR
 | Check | Where automated |
 | --- | --- |
 | codespell, ruff, basedpyright, doc footers | `build` job (`devtools/lint.py --check`) |
-| Python unit tests (pytest, 3.11–3.14) | `build` job |
-| Python build (`uv build`) | `build` job |
+| Python unit tests from a verified wheel (pytest, 3.11–3.14) | `build` job |
+| Cold-cache, no-sdist dependency install | `build`, `golden`, `cross-impl`, and `artifact-smoke` jobs |
+| Hash-locked Python build and installed `RECORD` verification | `build` job |
 | TS typecheck, biome, unit tests + coverage gate | `typescript` job |
 | TS build + publint (publishable layout) | `typescript` job |
 | Golden corpus on py, ts (Node), ts-bun | `golden` + `typescript` jobs |
 | Python-vs-TypeScript byte parity | `cross-impl` job |
+| Clean wheel/npm installs, entry points, and bundled resources on Linux/macOS/Windows | `artifact-smoke` job |
 | Tag ↔ `package.json` version match | `publish.yml` guard |
 
 **Not** covered by CI—the reason this runbook exists:
 
-- Installing the built wheel and npm tarball into clean environments and running them
-  (entry points, bin shebang, bundled docs/skill resources).
 - The README quickstart exactly as written, from an empty directory.
 - The agent skill bootstrap (`skill --install`) into a scratch repo.
 - The published registries after a release (PyPI and npm smoke tests).
@@ -81,18 +80,23 @@ The corpus layout and update procedure are in
 
 ## Phase 2: Clean-Environment Install Smoke Tests
 
-Unit tests and goldens exercise the source tree.
-This phase proves the **packaged artifacts** from a real install with no repo on disk:
-the console entry points resolve, the bin shebang runs under plain Node, and the bundled
-docs/skill resources load from inside the installed package.
+The wheel-first Python jobs and the cross-platform artifact job automate this boundary.
+Rerun it locally after packaging or resource changes to prove the **packaged artifacts**
+from a real install with no repo on disk: console entry points resolve, the bin shebang
+runs under plain Node, and bundled docs/skill resources load from inside the installed
+package.
 
 ### Python Wheel in a Fresh Venv
 
 ```bash
-uv build
+uv build --build-constraint build-constraints.txt --require-hashes
 tmp=$(mktemp -d)
 uv venv "$tmp/venv"
-uv pip install --python "$tmp/venv/bin/python" dist/softschema-*.whl
+uv pip install --python "$tmp/venv/bin/python" --no-build --no-cache \
+  --exclude-newer 2026-06-02T00:00:00Z \
+  --exclude-newer-package strif=2026-06-03T00:00:00Z \
+  dist/softschema-*.whl
+"$tmp/venv/bin/python" devtools/verify_installed_wheel.py dist/softschema-*.whl
 "$tmp/venv/bin/softschema" --help
 "$tmp/venv/bin/softschema" docs --list
 "$tmp/venv/bin/softschema" skill --brief
