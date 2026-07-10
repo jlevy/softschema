@@ -21,7 +21,9 @@ test; see the parity development process in [development.md](development.md).
 | --- | --- |
 | `core` | Published runtime-neutral entrypoint for values, identities, metadata, schema-profile logic, and normalized results |
 | `node` | Published Node.js/Bun adapter for YAML, filesystems, Zod, resources, and path-based operations |
-| `models` | `Contract`, status/profile unions, `SchemaMetadata`, `WarningCode`, `parseSchemaMetadata` |
+| `models` | Portable `ContractDescriptor`, deprecated `Contract` alias, status/profile unions, metadata, and wire shapes |
+| `runtime-contract` | `RuntimeContract`/`bindContract`: synchronized Node.js/Bun descriptor and Zod binding |
+| `model-loader` | Trusted local model-module policy, path-to-file-URL resolution, and Zod export loading |
 | `registry` | `Contracts`: resolve contracts by id |
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
@@ -41,10 +43,11 @@ The package publishes separate contract and adapter surfaces:
 ```ts
 import {
   canonicalizeJsonSchema,
+  defineContractDescriptor,
   normalizePortableValue,
   parseSchemaMetadata,
 } from "softschema/core";
-import { compileSchema, validateArtifact } from "softschema/node";
+import { bindContract, compileSchema, validateArtifact } from "softschema/node";
 ```
 
 `softschema/core` accepts already materialized JSON-compatible values.
@@ -66,6 +69,48 @@ dynamic imports, import the built core under Node, compare the root and Node exp
 sets, and verify the package subpath declarations.
 This makes the compatibility exception explicit without weakening the pure-core
 boundary.
+
+## Portable Descriptors and Runtime Bindings
+
+`ContractDescriptor` is the portable contract shape.
+It contains exactly six JSON-serializable fields: `id`, `model`, `envelopeKey`,
+`status`, `profile`, and `schemaPath`. `defineContractDescriptor()` validates those
+fields, removes unknown properties, and returns a frozen descriptor.
+A model value is only a stable label or module specifier; executable Zod state never
+enters `softschema/core`.
+
+`RuntimeContract` belongs to `softschema/node`. Construct it with `bindContract()`:
+
+```ts
+import { defineContractDescriptor } from "softschema/core";
+import { bindContract, validateArtifact } from "softschema/node";
+import { MoviePage } from "./movie-page.model.js";
+
+const descriptor = defineContractDescriptor({
+  id: "example.movies:MoviePage/v1",
+  model: "./movie-page.model.js:MoviePage",
+  envelopeKey: "movie",
+  status: "permissive",
+  profile: "frontmatter-md",
+  schemaPath: "movie-page.schema.yaml",
+});
+
+const contract = bindContract(descriptor, MoviePage);
+const result = validateArtifact("movie.md", contract);
+```
+
+Binding rejects both inconsistent states: a descriptor that names a model without a Zod
+schema and a descriptor with no model name but an unexpected Zod schema.
+This removes the former requirement to synchronize `contract.model` and a separate
+`semanticModel` option.
+
+For v0.2 compatibility, `Contract` remains a deprecated alias of `ContractDescriptor`,
+`defineContract()` remains an alias of `defineContractDescriptor()`, and the legacy
+`validateArtifact(path, contract, { semanticModel })` overload preserves its existing
+behavior and serialized bytes.
+New integrations should bind once and use the `RuntimeContract` overload.
+These names remain available through the v0.3 compatibility line; any later removal
+requires a documented pre-1.0 migration.
 
 ## Idiomatic Zod Choices
 
@@ -145,6 +190,18 @@ softschema-synthesized messages, sorted by `(path, validator)`. CLI JSON uses a
 `json.dumps(..., indent=2, sort_keys=True, ensure_ascii=False)`; exit codes are `0` ok /
 `1` validation failure or drift / `2` usage error.
 
+The public declarations mirror the conformance schemas instead of exposing opaque
+`Record<string, unknown>` results.
+`ValidationResultLegacyWire` names the complete legacy serializer; `StructuralIssue` is
+the discriminated union of schema violations, invalid-schema records, enforcement
+failures, artifact failures, and artifact parse/input records; `SemanticIssue` names the
+Zod issue projection.
+Contract and metadata blocks use `ContractWire` and `SchemaMetadataWire`. The
+artifact-error branch retains JSON-compatible extension fields because its conformance
+schema explicitly allows them.
+These types describe the existing wire bytes; they do not introduce the future
+diagnostic-v1 serializer.
+
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
 the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for
 every keyword; ajv’s per-key `additionalProperties` errors are collapsed to one.
@@ -179,6 +236,32 @@ and exit 1; missing, unreadable, and unexpanded-directory paths are `input_error
 records and exit 2. The CLI accepts an explicit `--profile frontmatter-md|pure-yaml`,
 defaults to `frontmatter-md`, and never infers the profile from an extension.
 
+## Trusted Model Modules
+
+The CLI executes a model module as local code.
+Only load models from a trusted source.
+The supported source forms are deliberate:
+
+| Runtime | Supported model paths | Guidance |
+| --- | --- | --- |
+| Node.js | Built `.js` or `.mjs` | Compile TypeScript first. ESM is the portable published-package path. |
+| Bun | `.js`, `.mjs`, or direct `.ts` | Direct `.ts` is a Bun convenience, not a promise to honor tsconfig aliases or non-erasable TypeScript syntax. |
+
+Other extensions, including `.cjs`, `.mts`, and `.tsx`, are rejected before import.
+When Node receives `.ts`, the diagnostic tells the caller to compile to `.js`/`.mjs` or
+run the supported Bun path.
+The loader splits `path:export` at the final colon so a Windows drive letter is not
+mistaken for the separator.
+It resolves the local path and imports `pathToFileURL(resolve(...)).href`; spaces, `#`,
+`%`, UNC paths, and Windows drive paths therefore use file-URL semantics instead of
+string interpolation.
+
+Commander help and version exits remain 0. Every nonzero Commander parse or usage
+failure is normalized to exit 2, matching Python argparse.
+Exceptions that indicate a programmer fault (`TypeError`, `RangeError`, or
+`ReferenceError`) still propagate with a stack trace; user-originated model and path
+errors remain clean exit-2 diagnostics.
+
 ## Packaging
 
 `bunup` builds four entrypoints: `src/core/index.ts` (runtime-neutral contract core),
@@ -198,6 +281,10 @@ guarded by `test/library-entrypoint.test.ts` and `test/architecture-boundary.tes
   with `import.meta.url`. `import.meta.main` is a Bun-only global that the bundler
   lowers to an always-true CommonJS check, which would run the CLI on a plain `import`.
   `realpathSync` resolves the symlink that npm/npx install for the bin.
+- **Encoded local model imports.** Model paths are converted with `pathToFileURL` after
+  platform-correct resolution.
+  Do not replace this with `import(resolve(path))`: raw absolute paths are not portable
+  module specifiers and mis-handle URL-significant characters and Windows drive letters.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

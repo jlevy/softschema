@@ -65,7 +65,10 @@ describe("portable-regex-v1", () => {
     expect(validateStructural({ a: 1 }, schema).ok).toBe(true);
     const result = validateStructural({ "a\n": 1 }, schema);
     expect(result.ok).toBe(false);
-    expect(result.errors[0]?.validator).toBe("unevaluatedProperties");
+    const error = result.errors[0];
+    expect(error?.kind).toBe("schema_violation");
+    if (error?.kind !== "schema_violation") throw new Error("expected schema violation");
+    expect(error.validator).toBe("unevaluatedProperties");
   });
 
   test("does not interpret pattern-shaped annotation data as schema", () => {
@@ -108,7 +111,10 @@ describe("portable-regex-v1", () => {
         },
       },
     );
-    expect(result.errors[0]?.validator).toBe("pattern");
-    expect(result.errors[0]?.validator_value).toBe("^a$");
+    const error = result.errors[0];
+    expect(error?.kind).toBe("schema_violation");
+    if (error?.kind !== "schema_violation") throw new Error("expected schema violation");
+    expect(error.validator).toBe("pattern");
+    expect(error.validator_value).toBe("^a$");
   });
 });

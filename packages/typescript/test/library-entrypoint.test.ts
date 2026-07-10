@@ -89,7 +89,17 @@ describe("library entrypoint (issue #16)", () => {
       "RawFrontmatter",
       "MetadataMode",
       "Contract",
+      "ContractDescriptor",
+      "RuntimeContract",
+      "bindContract",
       "ArtifactValidationResult",
+      "ArtifactValidationOptions",
+      "LegacyArtifactValidationOptions",
+      "ValidationResultLegacyWire",
+      "ArtifactParseErrorRecord",
+      "ArtifactInputErrorRecord",
+      "ArtifactStructuralErrorRecord",
+      "SemanticIssue",
     ]) {
       expect(rootDts).toContain(sym);
       expect(dts).toContain(sym);
@@ -100,9 +110,18 @@ describe("library entrypoint (issue #16)", () => {
       "parseSchemaMetadata",
       "validateContractId",
       "StructuralResult",
+      "ContractDescriptor",
+      "ValidationResultLegacyWire",
+      "ArtifactParseErrorRecord",
+      "ArtifactInputErrorRecord",
+      "ArtifactStructuralErrorRecord",
+      "SemanticIssue",
     ]) {
       expect(coreDts).toContain(sym);
     }
+    const coreExports = coreDts.match(/export \{([^}]+)\};\s*$/s)?.[1] ?? "";
+    expect(coreExports).not.toContain("RuntimeContract");
+    expect(coreExports).not.toContain("bindContract");
     expect(coreDts).not.toContain("validateArtifact");
   });
 });

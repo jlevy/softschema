@@ -47,7 +47,11 @@ describe("annotation-only-v1 formats", () => {
       minLength: 20,
     });
     expect(result.ok).toBe(false);
-    expect(result.errors.map((error) => error.validator)).toEqual(["minLength"]);
+    expect(
+      result.errors.map((error) =>
+        error.kind === "schema_violation" ? error.validator : error.kind,
+      ),
+    ).toEqual(["minLength"]);
   });
 
   test("trusted semantic models remain independent", () => {

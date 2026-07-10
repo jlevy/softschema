@@ -9,10 +9,12 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, test } from "bun:test";
 
 const PACKAGE_ROOT = resolve(import.meta.dir, "..");
 const CLI = join(PACKAGE_ROOT, "dist", "cli.js");
+const MOVIE_MODEL = join(PACKAGE_ROOT, "test", "fixtures", "movie-model.mjs");
 
 interface RunResult {
   status: number | null;
@@ -188,6 +190,42 @@ describe("CLI error handling (stable exit codes, no stack traces)", () => {
     );
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("is not a Zod schema");
+  });
+
+  test("the built Node CLI imports .mjs models whose paths need URL encoding", () => {
+    const moduleName = "model path #100%.mjs";
+    const r = runFromAdversarialInstall(
+      [
+        "validate",
+        "doc.md",
+        "--model",
+        `${moduleName}:MoviePage`,
+        "--contract",
+        "x:Y/v1",
+        "--envelope",
+        "data",
+      ],
+      {
+        "doc.md": "---\ndata:\n  title: ok\n---\n",
+        [moduleName]:
+          `export { MoviePage } from ${JSON.stringify(pathToFileURL(MOVIE_MODEL).href)};\n`,
+      },
+    );
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe("");
+  });
+
+  test("the built Node CLI rejects direct .ts models with an actionable error", () => {
+    const r = runFromAdversarialInstall(
+      ["validate", "doc.md", "--model", "model.ts:MoviePage", "--contract", "x:Y/v1"],
+      {
+        "doc.md": "---\ndata:\n  title: ok\n---\n",
+        "model.ts": "export const MoviePage = {};\n",
+      },
+    );
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("compile it to .js or .mjs, or run softschema with Bun");
+    expect(r.stderr).not.toMatch(/\n\s+at /);
   });
 
   test("inspect on malformed frontmatter YAML exits 2 without a stack trace", () => {

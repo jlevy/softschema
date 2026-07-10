@@ -15,20 +15,27 @@ import {
 } from "./canonicalize.js";
 import { EnvelopeAmbiguityError, inferEnvelopeKey } from "./core/envelope.js";
 import type {
+  ArtifactInputErrorRecord,
   ArtifactInputReason,
+  ArtifactParseErrorRecord,
   ArtifactParseReason,
+  ArtifactStructuralErrorKind,
   ArtifactValidationResult,
   MetadataMode,
   RawFrontmatter,
   SchemaResource,
   SchemaResources,
   SemanticResult,
+  StructuralIssue,
   StructuralResult,
   ValidationResult,
+  ValidationResultLegacyWire,
 } from "./core/results.js";
+import type { JsonObject, JsonValue } from "./core/value-domain.js";
 import {
   collapseAdditionalProperties,
   compareStructuralRecords,
+  type EnforcementUnsupportedErrorRecord,
   normalizeAjvError,
   type SchemaInvalidErrorRecord,
   type SchemaInvalidReason,
@@ -38,6 +45,7 @@ import {
 import { isMapping } from "./guards.js";
 import {
   type Contract,
+  type ContractDescriptor,
   contractToOutput,
   metadataToOutput,
   parseSchemaMetadata,
@@ -49,6 +57,7 @@ import {
   validateSchemaId,
 } from "./models.js";
 import { firstUnsupportedPattern } from "./portable-pattern.js";
+import { RuntimeContract } from "./runtime-contract.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
   normalizePortableValue,
@@ -61,16 +70,27 @@ import {
 
 export { EnvelopeAmbiguityError, inferEnvelopeKey } from "./core/envelope.js";
 export type {
+  ArtifactInputErrorRecord,
   ArtifactInputReason,
+  ArtifactInputResult,
+  ArtifactInputSuccessResult,
+  ArtifactParseErrorRecord,
   ArtifactParseReason,
+  ArtifactStructuralErrorKind,
+  ArtifactStructuralErrorRecord,
   ArtifactValidationResult,
+  JsonPathSegment,
   MetadataMode,
   RawFrontmatter,
   SchemaResource,
   SchemaResources,
+  SemanticIssue,
   SemanticResult,
+  StructuralErrorWire,
+  StructuralIssue,
   StructuralResult,
   ValidationResult,
+  ValidationResultLegacyWire,
 } from "./core/results.js";
 
 const JSON_SCHEMA_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
@@ -202,9 +222,15 @@ function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
   return null;
 }
 
-function structuralError(kind: string, message: string, extra: Record<string, unknown> = {}) {
-  return { kind, message, ...extra };
+function structuralError(
+  kind: ArtifactFailureKind,
+  message: string,
+  extra: { [key: string]: JsonValue | undefined } = {},
+): StructuralIssue {
+  return { kind, message, ...extra } as StructuralIssue;
 }
+
+type ArtifactFailureKind = ArtifactStructuralErrorKind | "parse_error" | "input_error";
 
 function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
   return { code, message, severity: "warning" };
@@ -844,7 +870,7 @@ function validateStructuralCore(
           kind: "enforcement_unsupported",
           message: ENFORCEMENT_UNSUPPORTED_MESSAGE,
           schema_path: error.schemaPath,
-        },
+        } satisfies EnforcementUnsupportedErrorRecord,
       ],
       engine: "json_schema",
       skipped_reason: null,
@@ -904,7 +930,7 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
   if (result.success) return { ok: true, errors: [], skipped_reason: null };
   const errors = result.error.issues.map((issue) => ({
     code: issue.code,
-    path: issue.path,
+    path: issue.path as (string | number)[],
     message: issue.message,
   }));
   return { ok: false, errors, skipped_reason: null };
@@ -927,14 +953,14 @@ export function validateValues(
   if (options.model === undefined && options.schema === undefined) {
     throw new Error("validateValues() requires at least one of model or schema");
   }
-  const structural =
+  const structural: StructuralResult =
     options.schema !== undefined
       ? validateStructural(values, options.schema, {
           resources: options.resources,
           validationLimits: options.validationLimits,
         })
       : { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
-  const semantic = options.model
+  const semantic: SemanticResult = options.model
     ? validateSemantic(values, options.model)
     : { ok: true, errors: [], skipped_reason: null };
   return { structural, semantic };
@@ -942,9 +968,9 @@ export function validateValues(
 
 function buildResult(args: {
   docPath: string;
-  contract: Contract;
+  contract: ContractDescriptor;
   metadata: SchemaMetadata | null;
-  values: Record<string, unknown> | null;
+  values: JsonObject | null;
   structural: StructuralResult;
   semantic: SemanticResult;
   warnings: SchemaWarning[];
@@ -963,18 +989,18 @@ function buildResult(args: {
       structural,
       values: args.values,
       warnings: args.warnings,
-    },
+    } satisfies ValidationResultLegacyWire,
   };
 }
 
 function failure(
   docPath: string,
-  contract: Contract,
+  contract: ContractDescriptor,
   metadata: SchemaMetadata | null,
-  kind: string,
+  kind: ArtifactFailureKind,
   message: string,
   warnings: SchemaWarning[] = [],
-  extra: Record<string, unknown> = {},
+  extra: { [key: string]: JsonValue | undefined } = {},
 ): ArtifactValidationResult {
   return buildResult({
     docPath,
@@ -994,7 +1020,7 @@ function failure(
 
 function artifactValueDomainFailure(
   docPath: string,
-  contract: Contract,
+  contract: ContractDescriptor,
   error: PortableValueError,
 ): ArtifactValidationResult {
   return failureFromArtifactRecord(
@@ -1014,8 +1040,8 @@ export function artifactParseErrorRecord(
     column?: number | null;
     includeLocation?: boolean;
   } = {},
-): Record<string, unknown> {
-  const record: Record<string, unknown> = {
+): ArtifactParseErrorRecord {
+  const record: ArtifactParseErrorRecord = {
     kind: "parse_error",
     reason,
     message: ARTIFACT_PARSE_MESSAGES[reason],
@@ -1034,7 +1060,7 @@ export function artifactParseErrorRecord(
 export function artifactInputErrorRecord(
   source: string,
   reason: ArtifactInputReason,
-): Record<string, unknown> {
+): ArtifactInputErrorRecord {
   return { kind: "input_error", reason, message: ARTIFACT_INPUT_MESSAGES[reason], source };
 }
 
@@ -1043,7 +1069,7 @@ export function artifactErrorRecord(
   source: string,
   error: unknown,
   options: { includeLocation?: boolean } = {},
-): Record<string, unknown> | null {
+): ArtifactParseErrorRecord | ArtifactInputErrorRecord | null {
   if (error instanceof PortableValueError) {
     return artifactParseErrorRecord(source, "value_domain", {
       path: error.path,
@@ -1086,16 +1112,16 @@ export function artifactErrorRecord(
 
 function failureFromArtifactRecord(
   docPath: string,
-  contract: Contract,
-  record: Record<string, unknown>,
+  contract: ContractDescriptor,
+  record: ArtifactParseErrorRecord | ArtifactInputErrorRecord,
 ): ArtifactValidationResult {
   const { kind, message, ...extra } = record;
-  return failure(docPath, contract, null, String(kind), String(message), [], extra);
+  return failure(docPath, contract, null, kind, message, [], extra);
 }
 
 function artifactReadFailure(
   docPath: string,
-  contract: Contract,
+  contract: ContractDescriptor,
   error: unknown,
 ): ArtifactValidationResult | null {
   const record = artifactErrorRecord(docPath, error);
@@ -1106,14 +1132,14 @@ function artifactReadFailure(
 export function readPureYamlArtifact(
   path: string,
   validationLimits: ValidationLimitOverrides = {},
-): Record<string, unknown> {
+): JsonObject {
   if (statSync(path).isDirectory()) throw new ArtifactDirectoryError();
   const encoded = readFileSync(path);
   const raw = parseYaml(decodeUtf8(encoded), validationLimits, encoded.byteLength);
   if (!isMapping(raw)) {
     throw new ArtifactRootError(`YAML root is ${pyTypeName(raw)}, expected mapping`);
   }
-  return raw;
+  return raw as JsonObject;
 }
 
 /** Load a resolved compiled-schema file and run structural validation against it. */
@@ -1188,7 +1214,7 @@ function resolveMetadataSchema(
 }
 
 function structuralForValues(
-  contract: Contract,
+  contract: ContractDescriptor,
   values: unknown,
   docPath: string,
   metadata: SchemaMetadata | null,
@@ -1247,8 +1273,8 @@ function structuralForValues(
 
 function validateExtracted(
   docPath: string,
-  contract: Contract,
-  values: Record<string, unknown>,
+  contract: ContractDescriptor,
+  values: JsonObject,
   metadata: SchemaMetadata | null,
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
@@ -1266,7 +1292,7 @@ function validateExtracted(
 function checkMetadata(
   docPath: string,
   root: Record<string, unknown>,
-  contract: Contract,
+  contract: ContractDescriptor,
   warnings: SchemaWarning[],
   metadataMode: MetadataMode,
 ): { metadata: SchemaMetadata | null } | { failed: ArtifactValidationResult } {
@@ -1309,24 +1335,64 @@ function checkMetadata(
   return { metadata };
 }
 
-/** Validate an artifact against a contract (frontmatter-md or pure-yaml). */
+interface ArtifactValidationBaseOptions {
+  metadataMode?: MetadataMode;
+  validationLimits?: ValidationLimitOverrides;
+  /**
+   * An already-parsed frontmatter (from `readFrontmatter`); when supplied for a
+   * frontmatter-md contract the document is not re-read. The CLI passes what it
+   * parsed for binding inference so the file is read once.
+   */
+  preParsed?: RawFrontmatter;
+  /** Already-parsed pure-YAML root; used by the CLI to avoid a second file read. */
+  preParsedYaml?: unknown;
+}
+
+/** Options for the preferred `RuntimeContract` validation overload. */
+export type ArtifactValidationOptions = ArtifactValidationBaseOptions & {
+  /** Runtime bindings own their semantic model; a second model is always an error. */
+  semanticModel?: never;
+};
+
+/**
+ * @deprecated Bind the descriptor once with `bindContract` and use
+ * `ArtifactValidationOptions`. Kept for v0.2 source compatibility.
+ */
+export interface LegacyArtifactValidationOptions extends ArtifactValidationBaseOptions {
+  semanticModel?: z.ZodType;
+}
+
+/** Validate an artifact using one synchronized runtime contract binding. */
+export function validateArtifact(
+  docPath: string,
+  contract: RuntimeContract,
+  options?: ArtifactValidationOptions,
+): ArtifactValidationResult;
+
+/**
+ * @deprecated Pass a `RuntimeContract` created by `bindContract`. This v0.2 overload
+ * remains byte- and behavior-compatible during the documented deprecation period.
+ */
 export function validateArtifact(
   docPath: string,
   contract: Contract,
-  options: {
-    semanticModel?: z.ZodType;
-    metadataMode?: MetadataMode;
-    validationLimits?: ValidationLimitOverrides;
-    /**
-     * An already-parsed frontmatter (from `readFrontmatter`); when supplied for a
-     * frontmatter-md contract the document is not re-read. The CLI passes what it
-     * parsed for binding inference so the file is read once.
-     */
-    preParsed?: RawFrontmatter;
-    /** Already-parsed pure-YAML root; used by the CLI to avoid a second file read. */
-    preParsedYaml?: unknown;
-  } = {},
+  options?: LegacyArtifactValidationOptions,
+): ArtifactValidationResult;
+
+export function validateArtifact(
+  docPath: string,
+  contractOrBinding: Contract | RuntimeContract,
+  options: ArtifactValidationOptions | LegacyArtifactValidationOptions = {},
 ): ArtifactValidationResult {
+  const runtimeBinding = contractOrBinding instanceof RuntimeContract ? contractOrBinding : null;
+  if (runtimeBinding !== null && options.semanticModel !== undefined) {
+    throw new TypeError("semanticModel cannot be supplied with a RuntimeContract");
+  }
+  const contract: ContractDescriptor =
+    runtimeBinding === null ? (contractOrBinding as ContractDescriptor) : runtimeBinding.descriptor;
+  const semanticModel =
+    runtimeBinding?.semanticModel ??
+    ("semanticModel" in options ? options.semanticModel : undefined);
   validateContractId(contract.id);
   const validationLimits = options.validationLimits ?? DEFAULT_VALIDATION_LIMITS;
   const warnings: SchemaWarning[] = [];
@@ -1398,10 +1464,10 @@ export function validateArtifact(
     return validateExtracted(
       docPath,
       contract,
-      values,
+      values as JsonObject,
       checked.metadata,
       warnings,
-      options.semanticModel,
+      semanticModel ?? undefined,
       validationLimits,
     );
   }
@@ -1498,10 +1564,10 @@ export function validateArtifact(
   return validateExtracted(
     docPath,
     contract,
-    values,
+    values as JsonObject,
     metadata,
     warnings,
-    options.semanticModel,
+    semanticModel ?? undefined,
     validationLimits,
   );
 }

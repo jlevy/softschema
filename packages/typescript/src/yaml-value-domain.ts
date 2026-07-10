@@ -23,6 +23,7 @@ import {
 export {
   canonicalPortableJsonSize,
   DEFAULT_VALIDATION_LIMITS,
+  type JsonObject,
   type JsonValue,
   type NormalizedValue,
   normalizePortableValue,

@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { metadataToOutput, parseSchemaMetadata } from "./models.js";
+import { metadataToOutput, parseSchemaMetadata, type SchemaMetadataWire } from "./models.js";
 import { validateArtifact } from "./validate.js";
 
 interface Vector {
   id: string;
   raw: unknown;
-  output?: Record<string, unknown>;
+  output?: SchemaMetadataWire;
   error?: boolean;
 }
 
@@ -23,7 +23,7 @@ test.each(VECTORS)("artifact format vector $id", (vector) => {
   }
 
   expect(metadataToOutput(parseSchemaMetadata(vector.raw)), vector.id).toEqual(
-    vector.output as Record<string, unknown>,
+    vector.output as SchemaMetadataWire,
   );
 });
 
@@ -54,7 +54,7 @@ test("format 1 extensions round-trip through artifact validation", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect((result.output.document_metadata as Record<string, unknown>).extensions).toEqual({
+    expect(result.output.document_metadata?.extensions).toEqual({
       "com.example.review": { labels: ["ready", 2, null] },
     });
   } finally {

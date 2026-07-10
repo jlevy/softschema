@@ -5,6 +5,7 @@
  * record shape. Output must be byte-identical across implementations.
  */
 import type { ErrorObject } from "ajv";
+import type { JsonValue } from "./core/value-domain.js";
 
 export const SCHEMA_VIOLATION_KIND = "schema_violation";
 
@@ -23,7 +24,7 @@ export const SCHEMA_INVALID_MESSAGES = {
 
 export type SchemaInvalidReason = keyof typeof SCHEMA_INVALID_MESSAGES;
 
-export interface SchemaInvalidErrorRecord extends Record<string, unknown> {
+export interface SchemaInvalidErrorRecord {
   kind: "schema_invalid";
   reason: SchemaInvalidReason;
   message: (typeof SCHEMA_INVALID_MESSAGES)[SchemaInvalidReason];
@@ -32,6 +33,13 @@ export interface SchemaInvalidErrorRecord extends Record<string, unknown> {
   detail?: string;
   pattern?: string;
   reference?: string;
+}
+
+/** Stable failure when the enforced extra-property overlay cannot be applied safely. */
+export interface EnforcementUnsupportedErrorRecord {
+  kind: "enforcement_unsupported";
+  message: "enforced validation cannot be applied safely to this schema";
+  schema_path?: string;
 }
 
 /** Build a stable compiled-schema failure without Ajv exception prose. */
@@ -52,14 +60,20 @@ export function schemaInvalidError(
   };
 }
 
-export interface StructuralErrorRecord {
-  kind: string;
+/** One engine-neutral JSON Schema violation in the legacy wire format. */
+export interface SchemaViolationErrorRecord {
+  kind: "schema_violation";
   path: (string | number)[];
   validator: string;
-  validator_value: unknown;
-  value: unknown;
+  validator_value: JsonValue;
+  value: JsonValue;
   message: string;
 }
+
+/**
+ * @deprecated Use `SchemaViolationErrorRecord`. Kept as the v0.2 public type name.
+ */
+export type StructuralErrorRecord = SchemaViolationErrorRecord;
 
 /**
  * Format a number in softschema's canonical form (matching Python's `repr()`).
@@ -203,8 +217,8 @@ export function structuralErrorRecord(args: {
     kind: SCHEMA_VIOLATION_KIND,
     path: args.path,
     validator: args.validator,
-    validator_value: args.validatorValue,
-    value: args.value,
+    validator_value: args.validatorValue as JsonValue,
+    value: args.value as JsonValue,
     message: renderStructuralMessage(args.validator, args.validatorValue, args.value),
   };
 }

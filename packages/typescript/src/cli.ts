@@ -8,17 +8,19 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
-import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
+import { loadZodModel } from "./model-loader.js";
 import {
   type Contract,
+  type ContractDescriptor,
   isSchemaStatus,
   metadataToOutput,
   parseSchemaMetadata,
   validateContractId,
   validateSchemaId,
 } from "./models.js";
+import { bindContract } from "./runtime-contract.js";
 import { stableStringify } from "./settings.js";
 import {
   installSkillPayload as buildInstallSkillPayload,
@@ -479,27 +481,6 @@ function parseSchemaProfile(value: string): Contract["profile"] {
   throw new UsageError(`invalid profile: ${value}`);
 }
 
-/** Import `path:export` and confirm the export is a Zod schema before use. */
-async function loadZodModel(spec: string): Promise<z.ZodType> {
-  const idx = spec.lastIndexOf(":");
-  if (idx <= 0) throw new UsageError(`model spec must be path:export, got ${JSON.stringify(spec)}`);
-  const exportName = spec.slice(idx + 1);
-  let mod: Record<string, unknown>;
-  try {
-    mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
-  } catch (err) {
-    throw new UsageError(`cannot import ${JSON.stringify(spec)}: ${errMessage(err)}`);
-  }
-  const schema = mod[exportName];
-  if (schema === undefined) {
-    throw new UsageError(`${JSON.stringify(spec)} has no export ${JSON.stringify(exportName)}`);
-  }
-  if (!(schema instanceof z.ZodType)) {
-    throw new UsageError(`${JSON.stringify(spec)} is not a Zod schema`);
-  }
-  return schema;
-}
-
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
@@ -551,7 +532,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
         ? (opts.envelope ?? metadata?.envelope ?? null)
         : inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null);
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
-    const contract: Contract = {
+    const descriptor: ContractDescriptor = {
       id: contractId,
       model: opts.model ?? null,
       envelopeKey,
@@ -559,8 +540,8 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       profile,
       schemaPath: opts.schema ?? null,
     };
+    const contract = bindContract(descriptor, semanticModel ?? null);
     const result = validateArtifact(path, contract, {
-      semanticModel,
       preParsed: parsed,
       preParsedYaml: pureYaml,
     });
@@ -740,7 +721,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   program
     .command("compile")
     .description("Compile a Zod schema")
-    .argument("<model>", "Zod schema as module:export")
+    .argument("<model>", "trusted Zod module as path:export (.js/.mjs in Node; .ts is Bun-only)")
     .requiredOption("--out <path>", "output path for the compiled schema")
     .option("--contract <id>", "required logical contract ID stored in x-softschema.contract")
     .option(
@@ -775,8 +756,8 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     )
     .option(
       "--model <spec>",
-      "Zod schema as module:export for semantic validation. Optional. Imports and " +
-        "runs local code; use only with trusted models",
+      "Zod schema as path:export for semantic validation. Node loads built .js/.mjs; " +
+        "direct .ts is Bun-only. Imports and runs local code; use only trusted models",
     )
     .option(
       "--schema <path>",
@@ -888,7 +869,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     if (err instanceof CommanderError) {
       // --help and --version throw when exitOverride is active; honour the exit code
       // Commander intended (0 for help/version, non-zero for usage errors).
-      return err.exitCode;
+      return err.exitCode === 0 ? 0 : 2;
     }
     // Surface programmer bugs as a crash instead of masking them as a clean exit 2 (a
     // backstop; each command's catch already rethrows these via reportUserError).

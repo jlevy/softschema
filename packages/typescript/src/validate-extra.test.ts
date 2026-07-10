@@ -40,7 +40,10 @@ describe("validateValues", () => {
   test("reports a structural failure", () => {
     const r = validateValues({ name: "hi", count: -1 }, { schema: SAMPLE_SCHEMA });
     expect(r.structural.ok).toBe(false);
-    expect(r.structural.errors[0]?.validator).toBe("minimum");
+    const error = r.structural.errors[0];
+    expect(error?.kind).toBe("schema_violation");
+    if (error?.kind !== "schema_violation") throw new Error("expected schema violation");
+    expect(error.validator).toBe("minimum");
   });
 });
 

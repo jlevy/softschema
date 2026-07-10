@@ -26,23 +26,36 @@ const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
 /* ---- stdout capture helper ---- */
 let originalWrite: typeof process.stdout.write;
+let originalErrorWrite: typeof process.stderr.write;
 let chunks: string[] = [];
+let errorChunks: string[] = [];
 
 /** Return everything written to stdout since the last beforeEach reset. */
 function captured(): string {
   return chunks.join("");
 }
 
+function capturedErrors(): string {
+  return errorChunks.join("");
+}
+
 beforeEach(() => {
   originalWrite = process.stdout.write.bind(process.stdout);
+  originalErrorWrite = process.stderr.write.bind(process.stderr);
   chunks = [];
+  errorChunks = [];
   process.stdout.write = ((chunk: string | Uint8Array) => {
     chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
     return true;
   }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    errorChunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+    return true;
+  }) as typeof process.stderr.write;
 });
 afterEach(() => {
   process.stdout.write = originalWrite;
+  process.stderr.write = originalErrorWrite;
 });
 
 describe("cli main() in-process", () => {
@@ -261,5 +274,15 @@ describe("cli main() in-process", () => {
     expect(code).toBe(0);
     expect(captured()).toContain("Artifact storage profile: frontmatter-md or pure-yaml");
     expect(captured()).toContain("default: frontmatter-md");
+  });
+
+  test("Commander missing-argument failures match Python's usage exit 2", async () => {
+    expect(await main(argv("validate"))).toBe(2);
+    expect(capturedErrors()).toContain("missing required argument");
+  });
+
+  test("Commander unknown-option failures match Python's usage exit 2", async () => {
+    expect(await main(argv("--not-a-real-option"))).toBe(2);
+    expect(capturedErrors()).toContain("unknown option");
   });
 });

@@ -18,9 +18,9 @@ bun add softschema
 `softschema-ts` exposes the same commands and flags as the Python `softschema`:
 
 ```bash
-softschema-ts validate <doc.md> --schema <schema.yaml> [--model mod.ts:Export] [--envelope key]
+softschema-ts validate <doc.md> --schema <schema.yaml> [--model mod.mjs:Export] [--envelope key]
 softschema-ts validate <doc.yaml> --profile pure-yaml
-softschema-ts compile <mod.ts:ZodSchema> --contract <id> --out <schema.yaml> [--check]
+softschema-ts compile <mod.mjs:ZodSchema> --contract <id> --out <schema.yaml> [--check]
 softschema-ts inspect <doc.md>
 softschema-ts generate <doc.md> [--check]
 softschema-ts docs --list [--json] | softschema-ts docs <topic>
@@ -28,19 +28,39 @@ softschema-ts skill --brief | softschema-ts skill --install
 ```
 
 The default is `frontmatter-md`; `.yaml` and `.yml` never select `pure-yaml` implicitly.
+Model modules execute trusted local code.
+Node.js supports built `.js` and `.mjs` modules.
+Bun additionally supports direct `.ts`; this path does not promise tsconfig aliases or
+non-erasable TypeScript syntax.
 
 ## Library
 
 ```ts
 import { z } from "zod";
-import { normalizePortableValue, parseSchemaMetadata } from "softschema/core";
 import {
+  defineContractDescriptor,
+  normalizePortableValue,
+  parseSchemaMetadata,
+} from "softschema/core";
+import {
+  bindContract,
   compileSchema,
   SchemaView,
   softField,
   validateArtifact,
   validateValues,
 } from "softschema/node";
+
+const descriptor = defineContractDescriptor({
+  id: "example.movies:MoviePage/v1",
+  model: "./movie-page.model.js:MoviePage",
+  envelopeKey: "movie",
+  status: "permissive",
+  profile: "frontmatter-md",
+  schemaPath: "movie-page.schema.yaml",
+});
+const contract = bindContract(descriptor, z.object({ title: z.string() }));
+const result = validateArtifact("movie.md", contract);
 ```
 
 Use `softschema/core` for JSON-compatible contract behavior without Node.js, YAML, Zod,
@@ -48,6 +68,10 @@ filesystem, or CLI dependencies.
 Use `softschema/node` for the Node.js and Bun runtime adapters.
 The `softschema` root retains the v0.2 Node.js/Bun exports as a compatibility facade;
 new integrations should select the explicit subpath.
+`Contract` and the `validateArtifact(..., { semanticModel })` overload remain deprecated
+v0.2 compatibility surfaces.
+New code should keep portable configuration in `ContractDescriptor`, bind Zod once with
+`bindContract`, and validate with the resulting `RuntimeContract`.
 
 Source schemas are Zod (`z.strictObject(...)`); validation uses `safeParse`; per-field
 authoring metadata uses `softField(schema, {...})`. See

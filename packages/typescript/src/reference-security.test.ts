@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { Socket } from "node:net";
+import type { SchemaInvalidErrorRecord } from "./errors.js";
 import { validateStructural } from "./validate.js";
 
 const JSON_SCHEMA_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
-function referenceError(reference: string) {
+function referenceError(reference: string): SchemaInvalidErrorRecord {
   return {
     kind: "schema_invalid",
     reason: "reference",

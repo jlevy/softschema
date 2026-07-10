@@ -121,3 +121,14 @@ $ softschema generate tests/golden/fixtures/does-not-exist.md 2>&1
 softschema generate: [..]
 ? 2
 ```
+
+# Test: parser usage failures exit 2
+
+Both argparse and Commander emit their own usage diagnostic, but the shared contract is
+the non-empty stderr output and exit 2.
+
+```console
+$ softschema --not-a-real-option 2>&1
+...
+? 2
+```

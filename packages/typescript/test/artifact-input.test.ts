@@ -148,8 +148,9 @@ test("artifact error normalizer retains locations for diagnostics", () => {
   } catch (error) {
     const record = artifactErrorRecord(source, error, { includeLocation: true });
     expect(record).toMatchObject({ reason: "syntax" });
-    expect(typeof record?.line).toBe("number");
-    expect(typeof record?.column).toBe("number");
+    if (record?.kind !== "parse_error") throw new Error("expected parse error");
+    expect(typeof record.line).toBe("number");
+    expect(typeof record.column).toBe("number");
   }
 });
 

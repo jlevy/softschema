@@ -2,13 +2,11 @@
 
 const MIB = 1024 * 1024;
 
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
 
 /** Resource budgets applied at untrusted artifact and schema boundaries. */
 export interface ValidationLimits {
