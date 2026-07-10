@@ -5,7 +5,7 @@ title: Add batch validation and source-positioned diagnostics
 kind: feature
 status: closed
 priority: 2
-version: 15
+version: 17
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - cli
@@ -26,9 +26,13 @@ dependencies:
     target: is-01kx64djex6w3yntr7w72ya3zj
   - type: blocks
     target: is-01kx64djwdf2rppmq5gv8qfs1t
+  - type: blocks
+    target: is-01kx67cheqb7vjpmatesbhnfzj
+  - type: blocks
+    target: is-01kx6dmkxknbjdge7z1kg1srpb
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:50:05.181Z
-updated_at: 2026-07-10T13:45:54.952Z
+updated_at: 2026-07-10T16:29:09.281Z
 closed_at: 2026-07-10T11:51:32.905Z
 close_reason: Implemented deterministic batch discovery, diagnostic-v1 JSON/JSONL, source locations, SARIF, and legacy single-file compatibility across Python/Node/Bun.
 ---

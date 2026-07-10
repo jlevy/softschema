@@ -5,7 +5,7 @@ title: Replace recursive portable glob matching with bounded iteration
 kind: bug
 status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
@@ -14,9 +14,11 @@ labels:
 dependencies:
   - type: blocks
     target: is-01kx4scf42fe327rk346dhd0ym
+  - type: blocks
+    target: is-01kx6dmm4pbyaq1t84cf5bswy8
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:45:34.815Z
-updated_at: 2026-07-10T14:15:12.352Z
+updated_at: 2026-07-10T16:29:09.665Z
 closed_at: 2026-07-10T14:15:12.351Z
 close_reason: Portable glob evaluation is stack-safe and parity-tested in both runtimes.
 ---

@@ -5,7 +5,7 @@ title: July 2026 review remediation
 kind: epic
 status: open
 priority: 1
-version: 98
+version: 110
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - review
@@ -100,7 +100,19 @@ child_order_hints:
   - is-01kx64djnhdw2q7x5eg26j66vy
   - is-01kx64djwdf2rppmq5gv8qfs1t
   - is-01kx66enjbc5xzhyd83xhj2v5q
+  - is-01kx670z3q4dppv2xp9s7n38e1
+  - is-01kx67cheqb7vjpmatesbhnfzj
+  - is-01kx6dmkfg4vcq8nfckm2e21zb
+  - is-01kx6dmkpn710wq7wqsyvhxfzq
+  - is-01kx6dmkxknbjdge7z1kg1srpb
+  - is-01kx6dmm4pbyaq1t84cf5bswy8
+  - is-01kx6gpnxc46fqff8gsxm1atx6
+  - is-01kx6h7v99sya112z8xsj3ea20
+  - is-01kx6mak81cn94pjt82awqdjqs
+  - is-01kx6makgta5bvsfx08p80kyv4
+  - is-01kx6makrt79cv7a8kntxjqqqg
+  - is-01kx6mdsmq79qctgr6q2e4cm3m
 created_at: 2026-07-10T01:12:51.448Z
-updated_at: 2026-07-10T14:21:08.554Z
+updated_at: 2026-07-10T18:25:20.022Z
 ---
 Implement the July 2026 senior review remediation on main at 3f31aa8: secure and bound artifact/schema/resource trust boundaries, define portable YAML/regex/JSON Schema and independent artifact-format semantics, align Python/TypeScript APIs and diagnostics, publish a standalone conformance kit, harden skills/installers/releases, and rewrite public/agent documentation.
