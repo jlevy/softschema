@@ -80,6 +80,28 @@ def test_transfer_inventory_does_not_use_cached_directory_entry_identity(
     verify_transfer_checksums(tmp_path)
 
 
+def test_transfer_inventory_compares_descriptor_metadata_across_stat_interfaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows path-stat timestamps can differ from descriptor timestamps."""
+    subject = tmp_path / "artifact.whl"
+    subject.write_bytes(b"wheel")
+    original_lstat = Path.lstat
+
+    def lstat_with_path_timestamp_skew(path: Path) -> os.stat_result:
+        result = original_lstat(path)
+        if path == subject:
+            fields = list(result)
+            fields[8] += 1
+            return os.stat_result(fields)
+        return result
+
+    monkeypatch.setattr(Path, "lstat", lstat_with_path_timestamp_skew)
+    write_transfer_checksums(tmp_path)
+    verify_transfer_checksums(tmp_path)
+
+
 def test_transfer_checksum_rejects_extra_or_traversing_files(tmp_path: Path) -> None:
     (tmp_path / "artifact.whl").write_bytes(b"wheel")
     write_transfer_checksums(tmp_path)

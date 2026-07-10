@@ -383,16 +383,23 @@ def _candidate_files(
                     raise CandidateError(f"candidate contains a non-regular node: {path}")
                 if relative == CHECKSUM_NAME:
                     continue
-                if source_stat.st_size > MAX_CANDIDATE_FILE_BYTES:
+                descriptor_snapshot = _regular_snapshot(
+                    root,
+                    relative,
+                    "candidate checksum subject is not regular",
+                )
+                if descriptor_snapshot.size > MAX_CANDIDATE_FILE_BYTES:
                     raise CandidateError(f"candidate file exceeds the byte limit: {relative}")
-                total_bytes += source_stat.st_size
+                total_bytes += descriptor_snapshot.size
                 if total_bytes > MAX_CANDIDATE_TOTAL_BYTES:
                     raise CandidateError("candidate aggregate exceeds the byte limit")
                 if expected_names is not None and relative not in expected_names:
                     raise CandidateError(
                         f"candidate checksum inventory mismatch: missing=[], extra={[relative]}"
                     )
-                result[relative] = _FileSnapshot.from_stat(source_stat)
+                # Retain descriptor metadata so later comparisons do not mix Windows
+                # path-stat and fstat timestamp representations.
+                result[relative] = descriptor_snapshot
                 directories_with_subjects.add(current_relative)
         try:
             final_current_stat = current.lstat()

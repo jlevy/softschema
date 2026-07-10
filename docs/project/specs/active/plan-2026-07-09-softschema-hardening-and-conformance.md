@@ -1308,8 +1308,10 @@ after public APIs/CLI/docs are complete, and then publishes it.
   redirect verification.
 - [x] **Use fresh Windows candidate identities (`ss-6crf`).** Do not retain
   `DirEntry.stat()` identity fields, which are documented as zero on Python 3.11 for
-  Windows. Use a fresh path `lstat()` before descriptor binding and prove the inventory
-  does not consult the cached directory-entry stat.
+  Windows. Use a fresh path `lstat()` for redirect/type admission, retain authenticated
+  descriptor metadata for stability comparisons, and prove the inventory neither
+  consults cached directory-entry identity nor compares path and descriptor timestamp
+  representations.
 - [x] **Bound every frozen release-driver read and verify before execution
   (`ss-bcdi`).** Route manifests, controls, subjects, and npm fixtures through
   descriptor-bound limit-plus-one reads with explicit per-format budgets.
