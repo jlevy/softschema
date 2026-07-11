@@ -80,8 +80,7 @@ bunx --bun softschema@0.2.2 doctor --json
 ```
 
 Accept a candidate only when protocol `1` reports the needed operation, runtime, and
-model loader.
-For `pure-yaml`, also require `validate --help` to list the profile.
+model loader. For `pure-yaml`, also require `validate --help` to list the profile.
 Reuse the complete qualifying command prefix.
 If none qualifies, report the missing capability and runtime and say that softschema
 must be installed or upgraded to a release that advertises it.
