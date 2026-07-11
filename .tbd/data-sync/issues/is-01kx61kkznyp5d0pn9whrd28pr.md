@@ -5,7 +5,7 @@ title: Validate operation-specific standalone adapter requests
 kind: bug
 status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - conformance
@@ -15,9 +15,11 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
   - type: blocks
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
+  - type: blocks
+    target: is-01kx7s4hfwaw78r56phwekh5qs
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:56:27.892Z
-updated_at: 2026-07-10T13:06:10.537Z
+updated_at: 2026-07-11T05:08:08.026Z
 closed_at: 2026-07-10T13:06:10.537Z
 close_reason: Implemented and independently verified strict operation-specific adapter validation with shared no-traceback regressions and all-runtime conformance.
 ---
