@@ -1316,6 +1316,9 @@ after public APIs/CLI/docs are complete, and then publishes it.
   and `PYTHONUTF8=1` for every smoke subprocess so bundled Unicode docs preserve exact
   bytes under Windows console code pages; prove it with a real child process under a
   hostile inherited ASCII setting.
+- [x] **Resolve the npm launcher portably (`ss-ap9s`).** Resolve `npm` through `PATH`
+  before strict non-shell subprocess execution so Windows selects `npm.cmd`; reject a
+  missing launcher explicitly and cover both paths with focused tests.
 - [x] **Bound every frozen release-driver read and verify before execution
   (`ss-bcdi`).** Route manifests, controls, subjects, and npm fixtures through
   descriptor-bound limit-plus-one reads with explicit per-format budgets.
@@ -1434,6 +1437,7 @@ independent security work.
 | `ss-xsp8` | `ss-bcdi`, `ss-96ih` | Remaining JSON and streaming-hash readers reuse the settled driver and inventory identity boundaries. |
 | `ss-6crf` | `ss-96ih` | Windows 3.11 inventory identity reuses the settled exact regular-file boundary without trusting zero-valued directory-entry fields. |
 | `ss-wepj` | `ss-o21w` | Deterministic Unicode subprocess output closes the cross-platform installed-artifact smoke boundary. |
+| `ss-ap9s` | `ss-wepj` | Portable npm launcher resolution completes the Windows installed-artifact smoke path after deterministic decoding. |
 | `ss-yodf` | `ss-xsp8` | The post-open limit regression follows the settled descriptor reader on every supported Python version. |
 | `ss-ud65` | `ss-bcdi` | Release-review wording follows the exact-checkout trusted-verifier design. |
 | `ss-2upc` | `ss-bj47` | Bounded inspection hardens the settled non-clobbering installer transaction. |
@@ -1466,7 +1470,7 @@ independent security work.
 | `ss-c8ix` | `ss-tge8`, `ss-g8m8` | Release-manifest schema limits must match the standalone boundary and release state machine before publication. |
 | `ss-j2ps` | `ss-v6bv`, `ss-xnr6` | The final compatibility wording follows the settled documentation and diagnostic-output behavior. |
 | `ss-3i41` | `ss-l41u`, `ss-xnr6` | YAML property-token locations build on the portable parser and positioned diagnostic contract. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
 | `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s`, `ss-j2ps`, `ss-66i9` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
@@ -1649,6 +1653,7 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-96ih` | P1 | Descriptor-bound exact frozen-candidate inventory |
 | `ss-6crf` | P1 | Fresh Windows 3.11 candidate inventory identity |
 | `ss-wepj` | P1 | UTF-8 installed-artifact smoke subprocesses |
+| `ss-ap9s` | P1 | Portable Windows npm launcher resolution |
 | `ss-yodf` | P2 | Cross-version post-open byte-limit regression |
 | `ss-3i41` | P2 | YAML property-token diagnostic locations |
 | `ss-qq77` | P2 | Tracker and completed-spec reconciliation |

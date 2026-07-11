@@ -6,6 +6,8 @@ import base64
 import hashlib
 import io
 import json
+import shutil
+import subprocess
 import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -284,3 +286,28 @@ def test_npm_environment_drops_ambient_npm_configuration(monkeypatch: pytest.Mon
     assert "NPM_CONFIG_REGISTRY" not in environment
     assert "npm_config_cache" not in environment
     assert "NODE_AUTH_TOKEN" not in environment
+
+
+def test_run_npm_resolves_the_platform_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(arguments: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(arguments)
+        return subprocess.CompletedProcess(arguments, 0, "11.16.0\n", "")
+
+    monkeypatch.setattr(shutil, "which", lambda _executable: "C:/npm/npm.cmd")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert npm_consumer._run_npm(["npm", "--version"], cwd=tmp_path) == "11.16.0\n"
+    assert calls == [["C:/npm/npm.cmd", "--version"]]
+
+
+def test_run_npm_rejects_a_missing_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _executable: None)
+
+    with pytest.raises(npm_consumer.NpmConsumerError, match="npm executable is unavailable"):
+        npm_consumer._run_npm(["npm", "--version"], cwd=tmp_path)

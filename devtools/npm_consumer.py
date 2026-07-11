@@ -201,6 +201,10 @@ def _npm_environment(*, user_config: Path, global_config: Path) -> dict[str, str
 
 
 def _run_npm(arguments: list[str], *, cwd: Path) -> str:
+    executable = shutil.which(arguments[0])
+    if executable is None:
+        raise NpmConsumerError(f"npm executable is unavailable: {arguments[0]}")
+    launch_arguments = [executable, *arguments[1:]]
     with tempfile.TemporaryDirectory(prefix="softschema-npm-config-") as temporary:
         config_root = Path(temporary)
         user_config = config_root / "user.npmrc"
@@ -208,7 +212,7 @@ def _run_npm(arguments: list[str], *, cwd: Path) -> str:
         user_config.touch()
         global_config.touch()
         process = subprocess.run(
-            arguments,
+            launch_arguments,
             cwd=cwd,
             env=_npm_environment(user_config=user_config, global_config=global_config),
             text=True,
