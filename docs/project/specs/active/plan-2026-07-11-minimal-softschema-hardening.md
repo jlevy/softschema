@@ -9,7 +9,9 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
-**Status:** Draft
+**Status:** Approved
+
+**Tracking:** `ss-gwdt` (minimal hardening implementation epic)
 
 ## Overview
 
