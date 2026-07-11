@@ -15,6 +15,12 @@ const FILE_READ_CHUNK_BYTES = 64 * 1024;
 /** Extra byte that distinguishes the exact limit from oversized input. */
 const LIMIT_SENTINEL_BYTES = 1;
 
+/** Return only file-open flags supported by the target platform. */
+export function fileOpenFlags(platform: NodeJS.Platform = process.platform): number {
+  if (platform === "win32") return constants.O_RDONLY;
+  return constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+}
+
 /** Canonical path and file identity authorized before a bounded read. */
 export interface BoundedFileExpectation {
   readonly canonicalPath: string;
@@ -122,10 +128,7 @@ export function readBoundedFile(
     throw stalePathError(path);
   }
   if (realpathSync.native(path) !== sourcePath) throw stalePathError(path);
-  const handle = openSync(
-    sourcePath,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-  );
+  const handle = openSync(sourcePath, fileOpenFlags());
   const limit = maxBytes + LIMIT_SENTINEL_BYTES;
   const capacity = Math.max(
     1,

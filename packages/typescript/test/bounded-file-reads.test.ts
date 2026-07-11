@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
+  constants,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,7 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { readBoundedBytes } from "../src/bounded-file.js";
+import { fileOpenFlags, readBoundedBytes } from "../src/bounded-file.js";
 import { compileSchema, renderSchemaWithinLimit } from "../src/compile.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
@@ -60,6 +61,11 @@ test("bounded reader returns an exact initialized backing allocation", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("bounded reader uses only Node-supported Windows open flags", () => {
+  expect(fileOpenFlags("win32")).toBe(constants.O_RDONLY);
+  expect(fileOpenFlags("linux")).not.toBe(fileOpenFlags("win32"));
 });
 
 test("compile drift reads reject an oversized committed schema", () => {
