@@ -180,6 +180,9 @@ Do not cherry-pick implementation commits from the prior hardening branch.
 A small test fixture may be adapted after confirming that it exposes a real `main`
 defect and is the minimal expression of that behavior.
 
+The verified starting behavior and one reproduction for each accepted defect are in
+[Minimal Hardening Baseline](../../reviews/review-2026-07-11-minimal-hardening-baseline.md).
+
 ### Previous PR Bug-Fix Disposition
 
 The previous PR mixed defects present on `main`, product additions, and defects in its
@@ -366,10 +369,36 @@ Known changes:
 - Machine-readable results retain stable codes and fields needed by consumers, but
   cross-runtime equality is structural rather than byte equality of pretty JSON.
 
-Before implementation, inventory every public export and CLI flag and write the final
-paired surface into this section.
+The final package-root surface is:
+
+| Capability | Python | TypeScript |
+| --- | --- | --- |
+| contracts and metadata | `Contract`, `Contracts`, `SchemaMetadata`, `SchemaProfile`, `SchemaStatus`, `SchemaWarning`, `WarningCode`, `parse_schema_metadata` | idiomatic type counterparts plus `Contracts`, `parseSchemaMetadata` |
+| validation | result types, `validate_artifact`, `validate_values`, `validate_structural`, `validate_semantic`, `infer_envelope_key`, `EnvelopeAmbiguityError` | idiomatic type and function counterparts |
+| compilation | `CompileResult`, `compile_model` | `CompileOptions`, `CompileResult`, `compileSchema` |
+| schema navigation | `FieldInfo`, `SchemaView` | `FieldInfo`, `SchemaView` |
+| authoring annotations | `SoftField`, `SoftOwner`, `SoftTier`, `RepairKind` | `softField`, `SoftFieldOptions`, `SoftOwner`, `SoftTier`, `RepairKind` |
+| generated sections | `GeneratedSection`, `RegenerateResult`, `regenerate` | idiomatic type counterparts plus `regenerate` |
+
+Canonicalization, enforcement transforms, JSON presentation helpers, schema hashing, raw
+frontmatter parsing, engine-error normalization, `SoftFieldMeta`/`softFieldMeta`, and
+generated-section parsing are internal implementation details and are not exported from
+the package root.
+
+The final CLI keeps `validate`, `compile`, `inspect`, `docs`, `generate`, `prime`,
+`doctor`, and `skill`. `compile` requires `--contract` and accepts optional
+`--schema-id`. `skill --install` requires `--scope project|personal`, accepts repeatable
+`--agent portable|claude`, and supports `--dry-run`. No batch operands, discovery,
+JSONL, SARIF, format negotiation, or legacy output switch is added.
+
+Artifact results retain the existing contract, metadata, values, warning, structural,
+and semantic fields and add one top-level `outcome` discriminator: `valid`, `invalid`,
+or `input_error`. CLI exit classes derive only from that outcome (`0`, `1`, or `2`).
+Presentation JSON is deterministic within a runtime but cross-runtime tests compare its
+parsed structure. Compiled-schema digests use the shared canonical digest encoding.
+
 Remove deprecated aliases, v0.2 compatibility exports, and alternate result projections
-that are not part of that chosen surface.
+that are not part of this surface.
 Internal helpers remain private unless there is a demonstrated host-library use case.
 
 ## Compatibility Policy
@@ -402,18 +431,18 @@ Do not implement migration behavior in the runtime.
 
 ### Phase 1: Characterize and Simplify
 
-- [ ] Record the `main` baseline: public exports, CLI surface, documented artifact
+- [x] Record the `main` baseline: public exports, CLI surface, documented artifact
   forms, test counts, source lines, and current validation commands.
 - [ ] Build a behavior inventory that maps each public guarantee to one primary test
   owner.
-- [ ] Run the existing Python, TypeScript, Node, Bun, golden, build, and package-smoke
+- [x] Run the existing Python, TypeScript, Node, Bun, golden, build, and package-smoke
   checks before changing behavior.
-- [ ] Reproduce each candidate hardening defect independently against `main`; reject or
+- [x] Reproduce each candidate hardening defect independently against `main`; reject or
   downgrade candidates that do not cross the stated trust model.
-- [ ] Complete the previous-PR disposition table: attach one minimal reproduction to
+- [x] Complete the previous-PR disposition table: attach one minimal reproduction to
   every applicable row and confirm that every excluded row belongs only to discarded
   functionality or an out-of-scope threat.
-- [ ] Inventory the Python exports, TypeScript exports, CLI flags, and result fields;
+- [x] Inventory the Python exports, TypeScript exports, CLI flags, and result fields;
   specify one final hard-cut surface and delete the need for deprecation shims.
 - [ ] Consolidate portable cases into shared YAML vectors without introducing a general
   conformance framework.
