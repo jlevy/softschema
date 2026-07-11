@@ -26,12 +26,13 @@ from softschema.validate import (
     structural_error_offending_property,
     validate_values,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
-VECTORS_PATH = Path(__file__).resolve().parents[3] / "tests/parity/portable-patterns.json"
+VECTORS_PATH = Path(__file__).resolve().parents[3] / "tests/parity/portable-patterns.yaml"
 
 
 def _vectors() -> dict[str, Any]:
-    return json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
+    return load_yaml_fixture(VECTORS_PATH)
 
 
 def _validate(

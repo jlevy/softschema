@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { loadYamlFixture } from "../test/yaml-fixture.js";
 import { validateStructural, validateValues } from "./validate.js";
 
 interface FormatVector {
@@ -10,9 +10,9 @@ interface FormatVector {
   value: string;
 }
 
-const vectors = JSON.parse(
-  readFileSync(resolve(import.meta.dir, "../../../tests/parity/format-annotations.json"), "utf8"),
-) as { cases: FormatVector[] };
+const vectors = loadYamlFixture<{ cases: FormatVector[] }>(
+  resolve(import.meta.dir, "../../../tests/parity/format-annotations.yaml"),
+);
 
 describe("annotation-only-v1 formats", () => {
   test("known and unknown formats are warning-free annotations", () => {

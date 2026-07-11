@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
+from ruamel.yaml import YAML
 from skills_ref import read_properties
 from skills_ref import validate as validate_skill
 
@@ -44,6 +45,10 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _load_yaml(path: Path) -> dict[str, Any]:
+    return YAML(typ="safe").load(path)
+
+
 def _doctor_report(capsys: pytest.CaptureFixture[str]) -> dict[str, Any]:
     assert softschema_main(["doctor", "--json"]) == 0
     return json.loads(capsys.readouterr().out)
@@ -73,7 +78,7 @@ def test_doctor_json_matches_shared_v1_golden_and_schema(
     report = _doctor_report(capsys)
     release = _load_json(RELEASE_METADATA)
     build = _load_json(BUILD_METADATA)
-    expected = _load_json(CONFORMANCE / "doctor/doctor-v1-common.golden.json")
+    expected = _load_yaml(CONFORMANCE / "doctor/doctor-v1-common.golden.yaml")
 
     assert _normalized_doctor(report) == expected
     assert report["protocol_version"] == release["discovery_protocol"]
@@ -98,7 +103,7 @@ def test_doctor_json_matches_shared_v1_golden_and_schema(
 def test_bootstrap_commands_are_release_pinned_ordered_and_executable(
     tmp_path: Path,
 ) -> None:
-    fixture = _load_json(CONFORMANCE / "agent-skills/bootstrap-commands-v1.json")
+    fixture = _load_yaml(CONFORMANCE / "agent-skills/bootstrap-commands-v1.yaml")
     release = _load_json(RELEASE_METADATA)
     commands = fixture["commands"]
     assert [item["kind"] for item in commands] == [
@@ -173,7 +178,7 @@ def test_skill_is_officially_valid_concise_and_self_contained() -> None:
 
 
 def test_activation_matrix_covers_major_agents_and_positive_negative_prompts() -> None:
-    matrix = _load_json(CONFORMANCE / "agent-skills/activation-matrix-v1.json")
+    matrix = _load_yaml(CONFORMANCE / "agent-skills/activation-matrix-v1.yaml")
     assert matrix["version"] == "activation-matrix-v1"
     assert {item["agent"] for item in matrix["observations"]} == {
         "codex",

@@ -1,0 +1,30 @@
+format: "extra-property-location-v1"
+contract: "test.locations:Record/v1"
+envelope: "movie"
+artifact: |
+  movie:
+    title: ok
+    "z~later": second
+    "a/b~": first
+expected:
+  path: "/movie/a~1b~0"
+  line: 4
+  column: 3
+  message: "object has properties that are not allowed"
+cases:
+  - id: "additional-properties-multiple-escaped"
+    validator: "additionalProperties"
+    schema: |
+      type: object
+      properties:
+        title: {type: string}
+      additionalProperties: false
+  - id: "unevaluated-properties-multiple-escaped"
+    validator: "unevaluatedProperties"
+    schema: |
+      type: object
+      allOf:
+        - type: object
+          properties:
+            title: {type: string}
+      unevaluatedProperties: false

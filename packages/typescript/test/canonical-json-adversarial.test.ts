@@ -9,6 +9,7 @@ import {
 } from "../src/core/canonical-json.js";
 import { normalizePortableValue } from "../src/core/value-domain.js";
 import { schemaSha256 } from "../src/settings.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 interface SerializationVector {
   id: string;
@@ -18,12 +19,10 @@ interface SerializationVector {
   sha256: string;
 }
 
-const vectors = JSON.parse(
-  readFileSync(
-    resolve(import.meta.dir, "../../../tests/parity/canonical-json-adversarial-vectors.json"),
-    "utf8",
-  ),
-) as { format: "canonical-json-adversarial-v1"; cases: SerializationVector[] };
+const vectors = loadYamlFixture<{
+  format: "canonical-json-adversarial-v1";
+  cases: SerializationVector[];
+}>(resolve(import.meta.dir, "../../../tests/parity/canonical-json-adversarial-vectors.yaml"));
 
 describe("canonical JSON adversarial parity", () => {
   test("implements a Unicode scalar comparator including equality and prefixes", () => {

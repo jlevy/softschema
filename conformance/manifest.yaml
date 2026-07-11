@@ -127,26 +127,26 @@ schemas:
   sha256: a6162a977dc77506860fa3f56176307849bc7cdddc53ad2a412b45c428e0c5a7
 vector_suites:
 - id: canonicalization-v1
-  path: vectors/canonicalization-v1.json
-  sha256: 1ae5e1cf7457b30e50d9ff5c1605118e04193aae943bf4f1332eda72258e4c52
+  path: vectors/canonicalization-v1.yaml
+  sha256: 2a74fcf6625c9aae3199da247ba8906eb383b1809c6f48df51f64c334dc20b40
 - id: diagnostic-projection-v1
-  path: vectors/diagnostic-projection-v1.json
-  sha256: c52a045caeed99553e36ab3aed1d2491e587dffb247276ce2aa16ad7336de37a
+  path: vectors/diagnostic-projection-v1.yaml
+  sha256: 99dbc6f1525f33609c4ba37aefb412a2d8ab69cf6fcfd8d029c7eba7691e8770
 - id: identity-v1
-  path: vectors/identity-v1.json
-  sha256: 7f0d291f5e02e65ad495ace47ffcc0592fe779332f0431273712ae0fa78269cb
+  path: vectors/identity-v1.yaml
+  sha256: 4b4362cf49f929b854fe8adae510da1aee309a6d75029d2ba5eff19790127dfd
 - id: metadata-v1
-  path: vectors/metadata-v1.json
-  sha256: c9c714b00849b79a0f757674f18f5da2bf422b2f94e543d4b2be08bc6d3af429
+  path: vectors/metadata-v1.yaml
+  sha256: 62de6862ad18dfc9894b448e2f070d2792bc8502702ac970e09715a26e718a2d
 - id: portable-pattern-v1
-  path: vectors/portable-pattern-v1.json
-  sha256: d5a6e0cbb1b8082bcdfe45c8df3a5e65e8ac586aee1d9b2f05d956a3296d2942
+  path: vectors/portable-pattern-v1.yaml
+  sha256: 628e2bace2701eddb5f109092a7908b1da490cf7028a7356468a3bbf3d6445d3
 - id: portable-yaml-v1
-  path: vectors/portable-yaml-v1.json
-  sha256: de31875fd7e046db4c25cc0cb3e40f529af8bce41a196963b4384c4ba792812f
+  path: vectors/portable-yaml-v1.yaml
+  sha256: 01f9305b019b50bc0adcf4c8e5960a48e533f18a954856a9bd73fe51e93085bb
 - id: structural-resources-v1
-  path: vectors/structural-resources-v1.json
-  sha256: 02bc4bad6a110d32bdcf13fcc552e56051e84928ae9a59e2f4bfe84592f3c87a
+  path: vectors/structural-resources-v1.yaml
+  sha256: ca849daf6f822908a8b083650dc81ce54d1e8d08de87a29e3e80fa7bbc951e8d
 artifacts:
 - id: evolution
   role: evolution
@@ -165,8 +165,8 @@ artifacts:
   schema: publication-candidate.schema.json
 - id: doctor-claims
   role: doctor-claims
-  path: doctor/doctor-v1-common.golden.json
-  sha256: 420b5a126da6ee03cb7c3cc2a9b995b5a7fa051edd582d097469eecce4fd127a
+  path: doctor/doctor-v1-common.golden.yaml
+  sha256: 2c22713a2652f7a19f2d5351fa7d1a0084e0d564368b2e054712f6431db62414
 - id: python-adapter
   role: adapter
   path: adapters/python_adapter.py
@@ -198,79 +198,79 @@ artifacts:
 cases:
 - id: artifact-extensions
   path: cases/artifact-extensions/case.yaml
-  sha256: a70953d92c8cf15ced1a9494829fd51b33e16ae62e7feda833a8079754d79c6f
+  sha256: 27fe267b6e04043394d13b2fd3ec2a3e5d823226842b38a0486494cd816f0795
 - id: artifact-parse-frontmatter
   path: cases/artifact-parse-frontmatter/case.yaml
-  sha256: 86dfa97c07ef2a3ae135e1aa6d261e732621c37d53ff42a7bbc1af1ffb47d2c6
+  sha256: 619eb3a5b3ea64b08017cb10089f6fd065b9baddcb4283242561563c0b9d6622
 - id: diagnostic-jsonl
   path: cases/diagnostic-jsonl/case.yaml
-  sha256: 73f6a385ba099a1bd95a88721ac1ed5abc52c805455f46786813249f9377594b
+  sha256: 8d214834ec6c4ce38d6415438eab04788e4322797414380963f9c80203b62b20
 - id: enforced-composition-extra
   path: cases/enforced-composition-extra/case.yaml
-  sha256: df6bacb0432e5d1d53e307eec8a0f8ca19123040f393f5b5893c6df1157ed18b
+  sha256: d1bf51398b867ab820f6fe4d5dec39a401ff0facf6affcb036dcc80aefbd264b
 - id: enforced-composition-ok
   path: cases/enforced-composition-ok/case.yaml
-  sha256: 23ebac7743a02dbb923063b17d63d8bcd7d3bcb001a0178305943f71e7b4a3db
+  sha256: fdc5fb02a07022534f59ebb35ac5eeefd7791caf030b7e4c706df92135a037f2
 - id: enforcement-unsupported
   path: cases/enforcement-unsupported/case.yaml
-  sha256: 09c098389cf2bb7403f5c7dfffc58cd1c5dc16cd8bee36da4cac0046333683b2
+  sha256: e726ba47d24ba36278e0cde03c341e1861d73ea2cabd7a5a56ae4c82b4954ceb
 - id: format-annotations
   path: cases/format-annotations/case.yaml
-  sha256: 7349ebd9335118a6b7b35b385ed7c016c6027a664496b5b45a3c8a2a4bcbb1b6
+  sha256: 40cab01deca2a70846dbc2c96889ab6067ca92d341a85dbe4611cf6551525831
 - id: legacy-external-reference
   path: cases/legacy-external-reference/case.yaml
-  sha256: 61af30b7b33058e675bd4cea626abbe1503e3c51c71ca82cb756b05a0070dc8f
+  sha256: c2fe066b67346cff009009d554c67002e71f13efd9369412c58349b9496fd9ad
 - id: legacy-validate-ok
   path: cases/legacy-validate-ok/case.yaml
-  sha256: 6475e6bd5de76e403e55473fbc11d3bf7aa4f1976f921e32ce8c6ca3f627a83f
+  sha256: 3db75f146b333f9b5e2bcd371afe053beb625916598e2e71102b29f74fc73e3b
 - id: nested-resource-collision
   path: cases/nested-resource-collision/case.yaml
-  sha256: eb6493d8a6f2c1a60386f03b9f4cb4a2f5eaaa81260e3570d8e6b5bbc89a9c59
+  sha256: d24849ca772f20387675d82eebf2599155d34187bb16e5cfcbeab3b8df8912fc
 - id: nested-resource-reference
   path: cases/nested-resource-reference/case.yaml
-  sha256: 95324a33ba7f5bc13ebbd0b02dcf2d057b669b1a87ea504f22430c4424201b49
+  sha256: b3ffbfe5f1a6a9a161a8ba22d998dd61f00de12189079a105bbd416e709adc34
 - id: portable-pattern-match
   path: cases/portable-pattern-match/case.yaml
-  sha256: d95008569a00325e4c90a0ed53718d8e37cf549a550f0935b6750f208ce3d716
+  sha256: 6e9e602707fec56c6e057f17ae46bac9473d10f7c9707800db7169902cc341e7
 - id: portable-pattern-newline
   path: cases/portable-pattern-newline/case.yaml
-  sha256: 12098b04adbe58f2ff45e04ca63f2cd2e0723dd6d101ec459472a68df0a7fbb7
+  sha256: fd35f44fc061d5e92a2e7b8c20a99a0954139e39f8723b99d496b3280db4b911
 - id: pure-yaml-metadata
   path: cases/pure-yaml-metadata/case.yaml
-  sha256: fe5b686ef51e62cadc3e13029af472f1e5fa46b8c4b1076fe40de1a9de9b6a41
+  sha256: 87637bb48f346d0a4263775b56b0cd13e7ba7211cf9248b230cc2a5031c43b11
 - id: schema-invalid-pattern-syntax
   path: cases/schema-invalid/case-compile.yaml
-  sha256: c2b4302872a5ee6a4a8b2b478da8951e9004a633955c4a3c2ba62a57cc48cb6e
+  sha256: 61cc2a5c4fb4c8b8153d8c66a4fa8e9163d45a8b96bc9d023d908f06842c3338
 - id: schema-invalid-pattern-unsupported
   path: cases/schema-invalid-pattern-unsupported/case.yaml
-  sha256: 0c21e84476a057b9cb3ffcced01f1b59e0f6efac46b5e66332e9d7b03cfbd382
+  sha256: 3643a6ef252fa59f74ff230376e995a8fbd1b7942ffce7f5b7d4761bc916effc
 - id: schema-invalid-dialect
   path: cases/schema-invalid/case-dialect.yaml
-  sha256: 3ce2bb21f483fd9771b7e8c732c1c4559a30927e53d14b8b200ad7988627bf61
+  sha256: 4cd4f2c70920545faf5977e47de64649f04ca5e17acd9aa7120ef7f07630fc1d
 - id: schema-invalid-metaschema
   path: cases/schema-invalid/case-metaschema.yaml
-  sha256: 2f92e7da935405a0d88cafb61e6686f66b07620dc25a5d01d06d54be799fc6eb
+  sha256: ecec338b4bae7918627155b532deca81180015d80ead239fd7f6aaa90f71ed71
 - id: schema-invalid-reference
   path: cases/schema-invalid/case-reference.yaml
-  sha256: 0655a1ee59046f020c5d28397479f781f910d3bb48d1efcb71d510970404b827
+  sha256: c26307616c0477a487428796800fff82f095072760d067649bdc94203906674c
 - id: schema-invalid-reference-file
   path: cases/schema-invalid/case-reference-file.yaml
-  sha256: 2a9fd3ac8d89929b4af2db1b510091181ed6d0ac1f8d756968cbe0bc01cc7b30
+  sha256: 78c19378a1fb227c3e2a476754b58dd6561c06f1e903e51b2a4688c9e53aeaef
 - id: schema-invalid-root
   path: cases/schema-invalid-root/case.yaml
-  sha256: b8d6fb1cabfb4537bbec507150e79903561178b7bc77f8169fb375d646a56c40
+  sha256: d16de5bc99e341ac01ce482d633539e86be36108672cbff3b26bce738f5eee41
 - id: schema-invalid-root-null
   path: cases/schema-invalid/case-root-null.yaml
-  sha256: 8debd94c0f602f38de96a03339d6a7af71f13a984371742baec98dd4c3b60657
+  sha256: 8c3cfa8a6524b407ecf878ff649fca66537108923be1fb7d089ae5956db2921c
 - id: schema-invalid-root-scalar
   path: cases/schema-invalid/case-root-scalar.yaml
-  sha256: e9099692ddd975d5272bf5d117daa5681dda8537eeb3e4f2d105e7082f0569e5
+  sha256: 297879a5ceb988e1e5e4010609e6611c56b089029d2dd9fc20faf9f2f6313ec9
 - id: schema-invalid-syntax
   path: cases/schema-invalid/case-syntax.yaml
-  sha256: aac17df14684a21bc3a2977158c35bc77450fedb7908c61c330c555a7221db76
+  sha256: 3ef21cb11d1645352b026bdf8e9aad50313168e71e85b621aa9de9b6135cb910
 - id: schema-invalid-value-domain
   path: cases/schema-invalid/case-value-domain.yaml
-  sha256: f043a7ccb0f7a2713fa86272be6bd2c2b4759aecb0cadfd873345a3367cdc3a7
+  sha256: 8444b5be9e06abf587a2be527bafce20e6467c47102e3e67d7aedd061626f284
 coverage:
   artifact_metadata:
   - case:artifact-extensions

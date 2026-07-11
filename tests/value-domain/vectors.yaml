@@ -1,0 +1,136 @@
+- id: "core-scalars-and-timestamps"
+  yaml: |
+    date: 2026-07-09
+    timestamp: 2026-07-09T12:34:56Z
+    truth: true
+    nothing: null
+  value:
+    date: "2026-07-09"
+    timestamp: "2026-07-09T12:34:56Z"
+    truth: true
+    nothing: null
+- id: "safe-number-boundaries"
+  yaml: |
+    low: -9007199254740991
+    high: 9007199254740991
+    hex: 0x1f
+    octal: 0o17
+    fraction: 1.5
+    subnormal: 5e-324
+    underflow: 1e-4000
+  value:
+    low: -9007199254740991
+    high: 9007199254740991
+    hex: 31
+    octal: 15
+    fraction: 1.5
+    subnormal: 5e-324
+    underflow: 0
+- id: "negative-zero-spellings"
+  yaml: |
+    integer: -0
+    decimal: -0.0
+    exponent: -0e10
+    positive: +0.000e-4
+  value:
+    integer: 0
+    decimal: 0
+    exponent: 0
+    positive: 0
+- id: "quoted-yaml-looking-values"
+  yaml: |
+    binary: '!!binary SGk='
+    set: '!!set {a}'
+    number: '1e20'
+  value:
+    binary: "!!binary SGk="
+    set: "!!set {a}"
+    number: "1e20"
+- id: "unicode-bom-and-crlf"
+  yaml: "\uFEFFname: Lévy 😀\r\nline: second\r\n"
+  value:
+    name: "Lévy 😀"
+    line: "second"
+- id: "duplicate-key"
+  yaml: |
+    value: 1
+    value: 2
+  error_path: "/value"
+  line: 2
+  column: 1
+- id: "non-string-key"
+  yaml: |
+    1: value
+  error_path: ""
+- id: "custom-tag"
+  yaml: |
+    value: !example tagged
+  error_path: "/value"
+- id: "alias"
+  yaml: |
+    value: &shared one
+    copy: *shared
+  error_path: "/copy"
+- id: "merge-key"
+  yaml: |
+    value:
+      <<: {name: Ada}
+  error_path: "/value"
+- id: "nan"
+  yaml: |
+    value: .nan
+  error_path: "/value"
+- id: "infinity"
+  yaml: |
+    value: -.Inf
+  error_path: "/value"
+- id: "unsafe-integer"
+  yaml: |
+    value: 9007199254740992
+  error_path: "/value"
+- id: "integral-decimal-outside-safe-range"
+  yaml: |
+    value: 100000000000000000000.0
+  error_path: "/value"
+- id: "integral-exponent-outside-safe-range"
+  yaml: |
+    value: 1e20
+  error_path: "/value"
+- id: "rounded-integral-outside-safe-range"
+  yaml: |
+    value: 9007199254740991.5
+  error_path: "/value"
+- id: "binary64-overflow"
+  yaml: |
+    value: 1e400
+  error_path: "/value"
+- id: "invalid-explicit-boolean"
+  yaml: |
+    value: !!bool maybe
+  error_path: "/value"
+  line: 1
+  column: 8
+- id: "invalid-explicit-integer"
+  yaml: |
+    value: !!int nope
+  error_path: "/value"
+  line: 1
+  column: 8
+- id: "invalid-explicit-float"
+  yaml: |
+    value: !!float nope
+  error_path: "/value"
+  line: 1
+  column: 8
+- id: "binary-tag"
+  yaml: |
+    value: !!binary SGk=
+  error_path: "/value"
+- id: "timestamp-tag"
+  yaml: |
+    value: !!timestamp 2026-07-09
+  error_path: "/value"
+- id: "set-tag"
+  yaml: |
+    value: !!set {Ada, Grace}
+  error_path: "/value"

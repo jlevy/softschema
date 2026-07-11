@@ -13,13 +13,14 @@ from pydantic import BaseModel
 import softschema.cli as cli
 from softschema.cli import main as softschema_main
 from softschema.runtime.discovery import DISCOVERY_MAX_DEPTH
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
-SOURCE_SEPARATOR_VECTORS: dict[str, Any] = json.loads(
-    (ROOT / "tests/value-domain/source-separator-vectors.json").read_text(encoding="utf-8")
+SOURCE_SEPARATOR_VECTORS: dict[str, Any] = load_yaml_fixture(
+    ROOT / "tests/value-domain/source-separator-vectors.yaml"
 )
-EXTRA_PROPERTY_VECTORS: dict[str, Any] = json.loads(
-    (ROOT / "tests/diagnostics/extra-property-location-vectors.json").read_text(encoding="utf-8")
+EXTRA_PROPERTY_VECTORS: dict[str, Any] = load_yaml_fixture(
+    ROOT / "tests/diagnostics/extra-property-location-vectors.yaml"
 )
 
 

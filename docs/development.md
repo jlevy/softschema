@@ -208,6 +208,24 @@ your repository.
 
 ## Keeping Python and TypeScript in Parity
 
+Use the smallest test layer that proves a behavior:
+
+- **Unit and integration tests** cover edge cases, failure boundaries, and internal
+  invariants that cannot be observed through the CLI.
+- **Golden tests** cover a small set of complete CLI flows.
+  Do not repeat every vector combination or snapshot whole bundled documents when a
+  resource-integrity test already protects those bytes.
+- **Conformance cases and vectors** define portable behavior for Python, Node, Bun, and
+  third-party implementations.
+- **Artifact smokes** prove installed wheels and npm packages, not source behavior that
+  lower layers already cover.
+
+Give each behavior one primary home.
+Repeat it at another layer only when that layer proves a distinct boundary, such as
+installed-resource lookup or byte-exact CLI output.
+Human-reviewed expectations and vectors use YAML. Keep JSON for JSON Schemas, literal
+JSON wire behavior, vendored JSON standards, and generated integrity metadata.
+
 softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
 (`softschema`, `softschema-ts`), held to **shared contract parity**: equivalent CLI
 inputs, outputs, and flags; the same canonical compiled JSON Schema (content-identical,
@@ -218,9 +236,11 @@ runtime-specific adapters).
 
 When you change any behavior, follow this loop so the two never drift:
 
-1. **Golden first.** Write or update the shared scenario in `tests/golden/scenarios/`
-   (neutral, runs on both) or `tests/golden/scenarios-{py,ts}/` (per-language
-   invocation, identical output) **before** touching code.
+1. **Shared contract first.** Update an existing golden scenario when a complete CLI
+   flow changes. Use a conformance case or shared YAML vector for combinatorial portable
+   semantics, and a focused unit test for behavior that is not externally observable.
+   Add a new golden scenario only when no existing end-to-end flow can expose the
+   behavior clearly.
 2. **Implement in Python**, then `uv run pytest` and
    `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and

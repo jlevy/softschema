@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
+import { loadYamlFixture } from "../test/yaml-fixture.js";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
 import { renderStructuralMessage, structuralErrorRecord } from "./errors.js";
 import { canonicalJson, stableStringify } from "./settings.js";
@@ -12,14 +12,9 @@ interface CanonicalizationVector {
   expected: Record<string, unknown>;
 }
 
-const sharedVectors = JSON.parse(
-  readFileSync(
-    resolve(import.meta.dir, "../../../tests/parity/canonicalization-enforcement.json"),
-    {
-      encoding: "utf8",
-    },
-  ),
-) as { canonicalization: CanonicalizationVector[] };
+const sharedVectors = loadYamlFixture<{ canonicalization: CanonicalizationVector[] }>(
+  resolve(import.meta.dir, "../../../tests/parity/canonicalization-enforcement.yaml"),
+);
 
 describe("stableStringify", () => {
   test("sorts keys recursively with 2-space indent (matches Python json.dumps)", () => {

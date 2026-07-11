@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Composer, CST, Parser } from "yaml";
+import { loadYamlFixture } from "../test/yaml-fixture.js";
 import { validateArtifact, validateStructural } from "./validate.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
@@ -22,9 +23,9 @@ interface ValueDomainVector {
 }
 
 const ROOT = resolve(import.meta.dir, "../../..");
-const VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/value-domain/vectors.json"), "utf8"),
-) as ValueDomainVector[];
+const VECTORS = loadYamlFixture<ValueDomainVector[]>(
+  resolve(ROOT, "tests/value-domain/vectors.yaml"),
+);
 const JSON_SCHEMA_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
 function firstReason(result: ReturnType<typeof validateStructural>): unknown {

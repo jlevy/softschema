@@ -23,5 +23,5 @@ expected:
   exit_code: 0
   schema: validation-result-diagnostic-v1.schema.json#/$defs/jsonlRecord
   result:
-    path: expected.json
-    sha256: 2c911b8ab9595649115debe262fe8bbe1499d2c924719376ef8074618deb5952
+    path: expected.yaml
+    sha256: 25ec1f409d38e23724fde504432c24da4915acd733ce363edd0fb6190a3f3ec2

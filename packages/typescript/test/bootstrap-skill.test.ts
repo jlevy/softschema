@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AnySchema } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
+import { parse as parseYaml } from "yaml";
 import { main } from "../src/cli.js";
 
 const ROOT = resolve(import.meta.dir, "../../..");
@@ -77,9 +78,9 @@ test("doctor --json matches the shared v1 golden and schema under Bun", async ()
   const report = JSON.parse(stdout) as DoctorReport;
   const release = loadJson<ReleaseMetadata>(join(ROOT, "release-metadata.json"));
   const build = loadJson<unknown>(join(ROOT, "build-metadata.json"));
-  const golden = loadJson<DoctorReport>(
-    join(CONFORMANCE, "doctor/doctor-v1-common.golden.json"),
-  );
+  const golden = parseYaml(
+    readFileSync(join(CONFORMANCE, "doctor/doctor-v1-common.golden.yaml"), "utf8"),
+  ) as DoctorReport;
   expect(normalizedDoctor(report)).toEqual(golden);
   expect(report.protocol_version).toBe(release.discovery_protocol);
   expect(report.package).toEqual({
@@ -104,11 +105,9 @@ test("doctor --json matches the shared v1 golden and schema under Bun", async ()
 });
 
 test("skill embeds release-pinned bootstrap candidates in fixed order", () => {
-  const fixture = loadJson<{
-    commands: Array<{ kind: string; command: string; argv: string[] }>;
-  }>(
-    join(CONFORMANCE, "agent-skills/bootstrap-commands-v1.json"),
-  );
+  const fixture = parseYaml(
+    readFileSync(join(CONFORMANCE, "agent-skills/bootstrap-commands-v1.yaml"), "utf8"),
+  ) as { commands: Array<{ kind: string; command: string; argv: string[] }> };
   const release = loadJson<ReleaseMetadata>(join(ROOT, "release-metadata.json"));
   const commands = fixture.commands;
   expect(commands.map((item) => item.kind)).toEqual([
@@ -127,9 +126,9 @@ test("skill embeds release-pinned bootstrap candidates in fixed order", () => {
 });
 
 test("activation fixture covers positive and negative cases without false live claims", () => {
-  const matrix = loadJson<ActivationMatrix>(
-    join(CONFORMANCE, "agent-skills/activation-matrix-v1.json"),
-  );
+  const matrix = parseYaml(
+    readFileSync(join(CONFORMANCE, "agent-skills/activation-matrix-v1.yaml"), "utf8"),
+  ) as ActivationMatrix;
   expect(new Set(matrix.observations.map((item) => item.agent))).toEqual(
     new Set([
       "codex",

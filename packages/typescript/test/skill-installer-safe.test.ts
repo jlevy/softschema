@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { SKILL_DO_NOT_EDIT_MARKER } from "../src/cli.js";
 import {
   acquireLock,
@@ -86,8 +87,8 @@ function runInstall(
 
 describe("agent-targets-v1 parity", () => {
   test("matches the shared target table", () => {
-    const fixture = JSON.parse(
-      readFileSync(join(CONFORMANCE, "agent-targets-v1.json"), "utf8"),
+    const fixture = parseYaml(
+      readFileSync(join(CONFORMANCE, "agent-targets-v1.yaml"), "utf8"),
     ) as {
       version: string;
       implicit_project_agents: string[];
@@ -112,23 +113,13 @@ describe("agent-targets-v1 parity", () => {
   });
 
   test("matches the shared known-prior digest allowlist", () => {
-    const fixture = JSON.parse(
-      readFileSync(join(CONFORMANCE, "known-prior-emissions-v1.json"), "utf8"),
+    const fixture = parseYaml(
+      readFileSync(join(CONFORMANCE, "known-prior-emissions-v1.yaml"), "utf8"),
     ) as { version: string; emissions: Array<{ release: string; sha256: string }> };
     expect(fixture.version).toBe("known-prior-emissions-v1");
     expect(new Set(fixture.emissions.map((item) => item.sha256))).toEqual(
       KNOWN_PRIOR_EMISSION_SHA256,
     );
-  });
-
-  test("uses the shared practical managed-skill ceiling", () => {
-    expect(MAX_MANAGED_SKILL_BYTES).toBe(1024 * 1024);
-    expect(MAX_SKILL_LOCK_BYTES).toBe(4096);
-    const desired = Buffer.from(
-      installSkillPayload(renderedSkill(), SKILL_DO_NOT_EDIT_MARKER),
-      "utf8",
-    );
-    expect(desired.byteLength).toBeLessThan(MAX_MANAGED_SKILL_BYTES);
   });
 
   test("implicit project dry-run matches the shared golden without mutation", () => {
@@ -146,8 +137,8 @@ describe("agent-targets-v1 parity", () => {
         env: {},
       },
     );
-    const expected = JSON.parse(
-      readFileSync(join(CONFORMANCE, "project-dry-run.golden.json"), "utf8")
+    const expected = parseYaml(
+      readFileSync(join(CONFORMANCE, "project-dry-run.golden.yaml"), "utf8")
         .replace("<version>", VERSION)
         .replaceAll("<repo>", repo.replaceAll("\\", "/")),
     ) as InstallReport;

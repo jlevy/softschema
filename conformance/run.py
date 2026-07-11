@@ -366,7 +366,7 @@ def load_corpus(*, check_lock: bool = True) -> Corpus:
         expected_schema = _select_schema(schemas, expected_schema_name)
         expected_path = _confined_file(case_directory, case["expected"]["result"]["path"])
         _assert_valid(
-            _load_json(expected_path),
+            _load_yaml(expected_path),
             expected_schema,
             registry,
             f"{case['id']} expected result",
@@ -379,7 +379,7 @@ def load_corpus(*, check_lock: bool = True) -> Corpus:
     for entry in manifest["vector_suites"]:
         path = _confined_file(ROOT, entry["path"])
         _check_digest(path, entry["sha256"], entry["path"])
-        suite = _load_json(path)
+        suite = _load_yaml(path)
         _assert_valid(suite, vector_schema, registry, entry["path"])
         if suite["id"] != entry["id"]:
             raise ConformanceError(f"{entry['path']} id does not match manifest")
@@ -580,7 +580,7 @@ def run_implementation(corpus: Corpus, implementation: str) -> None:
             ) from exc
 
         expected_path = _confined_file(case_directory, case["expected"]["result"]["path"])
-        expected = _load_json(expected_path)
+        expected = _load_yaml(expected_path)
         expected_schema = _select_schema(corpus.schemas, case["expected"]["schema"])
         _assert_valid(
             actual,

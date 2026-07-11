@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
 
 from softschema.canonicalize import canonicalize_json_schema
+from tests.yaml_fixtures import load_yaml_fixture
 
 VECTORS_PATH = (
-    Path(__file__).resolve().parents[3] / "tests/parity/canonicalization-enforcement.json"
+    Path(__file__).resolve().parents[3] / "tests/parity/canonicalization-enforcement.yaml"
 )
 
 
 def _vectors(section: str) -> list[dict[str, Any]]:
-    value = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
+    value = load_yaml_fixture(VECTORS_PATH)
     return value[section]
 
 

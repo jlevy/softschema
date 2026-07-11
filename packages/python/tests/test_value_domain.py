@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -22,9 +21,10 @@ from softschema.value_domain import (
     normalize_portable_value,
     parse_portable_yaml,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
-VECTORS = json.loads((ROOT / "tests/value-domain/vectors.json").read_text(encoding="utf-8"))
+VECTORS = load_yaml_fixture(ROOT / "tests/value-domain/vectors.yaml")
 JSON_SCHEMA_2020_12 = "https://json-schema.org/draft/2020-12/schema"
 
 

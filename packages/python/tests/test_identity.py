@@ -22,6 +22,7 @@ from softschema import (
     validate_schema_id,
     validate_structural,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
 
 class _Sample(BaseModel):
@@ -39,12 +40,8 @@ class _GenerationMustNotRun(BaseModel):
 
 
 _ROOT = Path(__file__).resolve().parents[3]
-_SCHEMA_ID_VECTORS = json.loads(
-    (_ROOT / "tests/identity/schema-id-vectors.json").read_text(encoding="utf-8")
-)
-_NESTED_RESOURCE_VECTORS = json.loads(
-    (_ROOT / "tests/identity/nested-resource-vectors.json").read_text(encoding="utf-8")
-)
+_SCHEMA_ID_VECTORS = load_yaml_fixture(_ROOT / "tests/identity/schema-id-vectors.yaml")
+_NESTED_RESOURCE_VECTORS = load_yaml_fixture(_ROOT / "tests/identity/nested-resource-vectors.yaml")
 
 
 def _structural_output(result: Any) -> dict[str, Any]:

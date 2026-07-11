@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { loadYamlFixture } from "../test/yaml-fixture.js";
 import {
   firstUnsupportedPattern,
   isPortablePattern,
@@ -30,9 +30,9 @@ interface MatchingVector {
   cases: { value: string; matches: boolean }[];
 }
 
-const vectors = JSON.parse(
-  readFileSync(resolve(import.meta.dir, "../../../tests/parity/portable-patterns.json"), "utf8"),
-) as { syntax: SyntaxVector[]; matching: MatchingVector[] };
+const vectors = loadYamlFixture<{ syntax: SyntaxVector[]; matching: MatchingVector[] }>(
+  resolve(import.meta.dir, "../../../tests/parity/portable-patterns.yaml"),
+);
 
 describe("portable-regex-v1", () => {
   test("accepts exactly the shared syntax profile", () => {

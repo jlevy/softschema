@@ -1,0 +1,88 @@
+format: "softschema-vector-suite-v1"
+id: "portable-pattern-v1"
+description: "Portable ECMA-262-derived Unicode-search regular expression syntax and matching."
+operation: "pattern"
+cases:
+  - id: "ascii-postal-code"
+    input:
+      pattern: "^[0-9]{5}$"
+      value: "94107"
+    expected:
+      ok: true
+      supported: true
+      matches: true
+  - id: "strict-end-anchor"
+    input:
+      pattern: "^a$"
+      value: |
+        a
+    expected:
+      ok: true
+      supported: true
+      matches: false
+  - id: "unicode-range"
+    input:
+      pattern: "^(é|[😀-🙏])$"
+      value: "😀"
+    expected:
+      ok: true
+      supported: true
+      matches: true
+  - id: "ascii-digit-shorthand"
+    input:
+      pattern: "^\\d+$"
+      value: "١٢٣"
+    expected:
+      ok: true
+      supported: true
+      matches: false
+  - id: "unanchored-search"
+    input:
+      pattern: "cat"
+      value: "concatenate"
+    expected:
+      ok: true
+      supported: true
+      matches: true
+  - id: "nested-repetition-is-linear"
+    input:
+      pattern: "^(a+)+$"
+      value: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
+    expected:
+      ok: true
+      supported: true
+      matches: false
+  - id: "unsupported-lookaround"
+    input:
+      pattern: "(?=a)a"
+      value: "a"
+    expected:
+      ok: true
+      supported: false
+      matches: null
+  - id: "unsupported-backreference"
+    input:
+      pattern: "^(a)\\1$"
+    expected:
+      ok: true
+      supported: false
+  - id: "invalid-class"
+    input:
+      pattern: "["
+    expected:
+      ok: true
+      supported: false
+  - id: "maximum-quantifier"
+    input:
+      pattern: "^a{0,1000}$"
+      value: "aaa"
+    expected:
+      ok: true
+      supported: true
+      matches: true
+  - id: "oversized-quantifier"
+    input:
+      pattern: "a{1001}"
+    expected:
+      ok: true
+      supported: false

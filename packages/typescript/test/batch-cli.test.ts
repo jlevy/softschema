@@ -11,24 +11,21 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { main } from "../src/cli.js";
 import { DISCOVERY_MAX_DEPTH } from "../src/artifact-discovery.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 const argv = (...args: string[]) => ["node", "cli.js", ...args];
 const ROOT = resolve(import.meta.dir, "../../..");
-const SOURCE_SEPARATOR_VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/value-domain/source-separator-vectors.json"), "utf8"),
-) as {
+const SOURCE_SEPARATOR_VECTORS = loadYamlFixture<{
   artifact_error: { reason: string; message: string; path: string };
   literal_cases: { yaml: string; line: number; column: number }[];
-};
-const EXTRA_PROPERTY_VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/diagnostics/extra-property-location-vectors.json"), "utf8"),
-) as {
+}>(resolve(ROOT, "tests/value-domain/source-separator-vectors.yaml"));
+const EXTRA_PROPERTY_VECTORS = loadYamlFixture<{
   contract: string;
   envelope: string;
   artifact: string;
   expected: { path: string; line: number; column: number; message: string };
   cases: { id: string; validator: string; schema: string }[];
-};
+}>(resolve(ROOT, "tests/diagnostics/extra-property-location-vectors.yaml"));
 
 interface CapturedBatchResult {
   readonly input: unknown;

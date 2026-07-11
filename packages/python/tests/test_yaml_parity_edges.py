@@ -15,10 +15,11 @@ from softschema.value_domain import (
     PortableYamlSyntaxError,
     parse_portable_yaml_with_locations,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
-VECTORS: dict[str, Any] = json.loads(
-    (ROOT / "tests/value-domain/yaml-parity-edge-vectors.json").read_text(encoding="utf-8")
+VECTORS: dict[str, Any] = load_yaml_fixture(
+    ROOT / "tests/value-domain/yaml-parity-edge-vectors.yaml"
 )
 
 

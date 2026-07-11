@@ -47,9 +47,11 @@ internal lock.
   schemas, cases, vector suites, and support artifacts
 - `schemas/` contains Draft 2020-12 contracts, including the optional `x-softschema`
   annotation-vocabulary metaschema and the explicit offline bundle shape
-- `cases/` exercises artifact parsing, both storage profiles, metadata, validation,
-  legacy JSON, diagnostic-v1 JSONL, schema errors, formats, regexes, and identities
-- `vectors/` exercises runtime-neutral core operations through a strict JSON adapter
+- `cases/` uses YAML descriptors and expected results to exercise artifact parsing, both
+  storage profiles, metadata, validation, legacy JSON, diagnostic-v1 JSONL, schema
+  errors, formats, regexes, and identities
+- `vectors/` uses YAML suites to exercise runtime-neutral core operations through a
+  strict JSON adapter protocol
 - `implementations.json` declares the official Python, Node, and Bun execution matrix
 - `evolution.json` defines independent kit versioning and immutable-path rules
 - `WALKTHROUGH.md` is the third-implementation protocol

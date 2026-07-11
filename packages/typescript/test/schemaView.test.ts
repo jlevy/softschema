@@ -5,17 +5,16 @@ import { describe, expect, test } from "bun:test";
 import { SchemaView } from "../src/schemaView.js";
 import { inferEnvelopeKey } from "../src/validate.js";
 import { PortableValueError, PortableYamlSyntaxError } from "../src/yaml-value-domain.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 const MOVIE_SCHEMA = join(import.meta.dir, "../../../examples/movie_page/movie-page.schema.yaml");
-const vectors = JSON.parse(
-  readFileSync(join(import.meta.dir, "../../../tests/schema-view/vectors.json"), "utf8"),
-) as {
+const vectors = loadYamlFixture<{
   cases: Array<{
     id: string;
     schema: Record<string, unknown>;
     fields: Array<Record<string, unknown>>;
   }>;
-};
+}>(join(import.meta.dir, "../../../tests/schema-view/vectors.yaml"));
 
 function fieldOutput(field: ReturnType<SchemaView["iterFields"]>[number]): Record<string, unknown> {
   return {

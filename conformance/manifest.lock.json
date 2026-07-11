@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "conformance/README.md",
-      "sha256": "36b21c18379fa364ff4372556f227259726eb1e8baf11a7663767596c916a405",
-      "size": 4890
+      "sha256": "f9e171df77e463f8a8aa07b6a51459914e3480d8df1ab492f977155a1b963a42",
+      "size": 4967
     },
     {
       "path": "conformance/WALKTHROUGH.md",
@@ -27,13 +27,13 @@
     },
     {
       "path": "conformance/cases/artifact-extensions/case.yaml",
-      "sha256": "a70953d92c8cf15ced1a9494829fd51b33e16ae62e7feda833a8079754d79c6f",
+      "sha256": "27fe267b6e04043394d13b2fd3ec2a3e5d823226842b38a0486494cd816f0795",
       "size": 698
     },
     {
-      "path": "conformance/cases/artifact-extensions/expected.json",
-      "sha256": "63b94e1667509b279be72b4f6100cdb074a2fd28e92d3863bc5147ac8fc1cf8b",
-      "size": 990
+      "path": "conformance/cases/artifact-extensions/expected.yaml",
+      "sha256": "7b03e08f136fc2752c83c3eaf6d1879fbedcc77b3b1793c71a0f24a41b3c35c6",
+      "size": 768
     },
     {
       "path": "conformance/cases/artifact-extensions/schema.yaml",
@@ -47,13 +47,13 @@
     },
     {
       "path": "conformance/cases/artifact-parse-frontmatter/case.yaml",
-      "sha256": "86dfa97c07ef2a3ae135e1aa6d261e732621c37d53ff42a7bbc1af1ffb47d2c6",
+      "sha256": "619eb3a5b3ea64b08017cb10089f6fd065b9baddcb4283242561563c0b9d6622",
       "size": 721
     },
     {
-      "path": "conformance/cases/artifact-parse-frontmatter/expected.json",
-      "sha256": "c787348adcf2aebc8b6d2e4f60ef815c6900ae3aacca393a8b6fdf919b85ad67",
-      "size": 144
+      "path": "conformance/cases/artifact-parse-frontmatter/expected.yaml",
+      "sha256": "d4e16a80d10c697395819b9250d77bbb9a51d83b92619b0c5f3e921d2f34ea91",
+      "size": 121
     },
     {
       "path": "conformance/cases/artifact-parse-frontmatter/schema.yaml",
@@ -67,13 +67,13 @@
     },
     {
       "path": "conformance/cases/diagnostic-jsonl/case.yaml",
-      "sha256": "73f6a385ba099a1bd95a88721ac1ed5abc52c805455f46786813249f9377594b",
+      "sha256": "8d214834ec6c4ce38d6415438eab04788e4322797414380963f9c80203b62b20",
       "size": 761
     },
     {
-      "path": "conformance/cases/diagnostic-jsonl/expected.json",
-      "sha256": "2c911b8ab9595649115debe262fe8bbe1499d2c924719376ef8074618deb5952",
-      "size": 1356
+      "path": "conformance/cases/diagnostic-jsonl/expected.yaml",
+      "sha256": "25ec1f409d38e23724fde504432c24da4915acd733ce363edd0fb6190a3f3ec2",
+      "size": 1066
     },
     {
       "path": "conformance/cases/diagnostic-jsonl/schema.yaml",
@@ -87,13 +87,13 @@
     },
     {
       "path": "conformance/cases/enforced-composition-extra/case.yaml",
-      "sha256": "df6bacb0432e5d1d53e307eec8a0f8ca19123040f393f5b5893c6df1157ed18b",
+      "sha256": "d1bf51398b867ab820f6fe4d5dec39a401ff0facf6affcb036dcc80aefbd264b",
       "size": 709
     },
     {
-      "path": "conformance/cases/enforced-composition-extra/expected.json",
-      "sha256": "f6f9250c2cbb228dd889f22385f940a79e4386d8a546270932795ead3eba5abe",
-      "size": 1128
+      "path": "conformance/cases/enforced-composition-extra/expected.yaml",
+      "sha256": "599516eb0737eb71a9fce18d44424d30501d891304f702b1cd73033157dbd3ae",
+      "size": 871
     },
     {
       "path": "conformance/cases/enforced-composition-extra/schema.yaml",
@@ -107,13 +107,13 @@
     },
     {
       "path": "conformance/cases/enforced-composition-ok/case.yaml",
-      "sha256": "23ebac7743a02dbb923063b17d63d8bcd7d3bcb001a0178305943f71e7b4a3db",
+      "sha256": "fdc5fb02a07022534f59ebb35ac5eeefd7791caf030b7e4c706df92135a037f2",
       "size": 706
     },
     {
-      "path": "conformance/cases/enforced-composition-ok/expected.json",
-      "sha256": "0c245424e2b726ac5eb01998f38b0df2023b1c1f0af8a84b62c952fcadf076f8",
-      "size": 779
+      "path": "conformance/cases/enforced-composition-ok/expected.yaml",
+      "sha256": "4526524cacb335928ccd33019a2485c70615cd96171e744c11d817e874d1dd00",
+      "size": 606
     },
     {
       "path": "conformance/cases/enforced-composition-ok/schema.yaml",
@@ -127,13 +127,13 @@
     },
     {
       "path": "conformance/cases/enforcement-unsupported/case.yaml",
-      "sha256": "09c098389cf2bb7403f5c7dfffc58cd1c5dc16cd8bee36da4cac0046333683b2",
+      "sha256": "e726ba47d24ba36278e0cde03c341e1861d73ea2cabd7a5a56ae4c82b4954ceb",
       "size": 712
     },
     {
-      "path": "conformance/cases/enforcement-unsupported/expected.json",
-      "sha256": "10097a5640e4f8b822f40eefc819c4fdbc6cfaaee186712b023e84ea373b1517",
-      "size": 974
+      "path": "conformance/cases/enforcement-unsupported/expected.yaml",
+      "sha256": "c968d891af5aa809fd24213f2abbe9b18f753d45b8241dc69afa5b04cf5a43bb",
+      "size": 768
     },
     {
       "path": "conformance/cases/enforcement-unsupported/schema.yaml",
@@ -147,13 +147,13 @@
     },
     {
       "path": "conformance/cases/format-annotations/case.yaml",
-      "sha256": "7349ebd9335118a6b7b35b385ed7c016c6027a664496b5b45a3c8a2a4bcbb1b6",
+      "sha256": "40cab01deca2a70846dbc2c96889ab6067ca92d341a85dbe4611cf6551525831",
       "size": 720
     },
     {
-      "path": "conformance/cases/format-annotations/expected.json",
-      "sha256": "ceb51f8f50c4d3e4c926b667ad2f588988ae62563d4aee8161c3033892afd94f",
-      "size": 881
+      "path": "conformance/cases/format-annotations/expected.yaml",
+      "sha256": "8c373f480ac25297ef98354bcd6ec67e68ee5fb0ac7ce01bd185f7ed18c0db4d",
+      "size": 698
     },
     {
       "path": "conformance/cases/format-annotations/schema.yaml",
@@ -167,13 +167,13 @@
     },
     {
       "path": "conformance/cases/legacy-external-reference/case.yaml",
-      "sha256": "61af30b7b33058e675bd4cea626abbe1503e3c51c71ca82cb756b05a0070dc8f",
+      "sha256": "c2fe066b67346cff009009d554c67002e71f13efd9369412c58349b9496fd9ad",
       "size": 734
     },
     {
-      "path": "conformance/cases/legacy-external-reference/expected.json",
-      "sha256": "b60daf67333ad360d784de4734ffc5f4b8bb779779e1efeb3b552e05c095f96b",
-      "size": 991
+      "path": "conformance/cases/legacy-external-reference/expected.yaml",
+      "sha256": "ec51f005bcd6465ce649db48bf5de010c4e32f5562915753b7b427dbd179a98a",
+      "size": 785
     },
     {
       "path": "conformance/cases/legacy-external-reference/schema.yaml",
@@ -187,13 +187,13 @@
     },
     {
       "path": "conformance/cases/legacy-validate-ok/case.yaml",
-      "sha256": "6475e6bd5de76e403e55473fbc11d3bf7aa4f1976f921e32ce8c6ca3f627a83f",
+      "sha256": "3db75f146b333f9b5e2bcd371afe053beb625916598e2e71102b29f74fc73e3b",
       "size": 707
     },
     {
-      "path": "conformance/cases/legacy-validate-ok/expected.json",
-      "sha256": "9d95d7d1867c5b6ace564b7cef57dbcc008939b2a4d038cb94ed9bfc31a761f5",
-      "size": 786
+      "path": "conformance/cases/legacy-validate-ok/expected.yaml",
+      "sha256": "b19cc5b7cb07635e63930ba2223aafc83c70fc4fe62c5270bd53aa153c68e66c",
+      "size": 613
     },
     {
       "path": "conformance/cases/legacy-validate-ok/schema.yaml",
@@ -207,13 +207,13 @@
     },
     {
       "path": "conformance/cases/nested-resource-collision/case.yaml",
-      "sha256": "eb6493d8a6f2c1a60386f03b9f4cb4a2f5eaaa81260e3570d8e6b5bbc89a9c59",
+      "sha256": "d24849ca772f20387675d82eebf2599155d34187bb16e5cfcbeab3b8df8912fc",
       "size": 719
     },
     {
-      "path": "conformance/cases/nested-resource-collision/expected.json",
-      "sha256": "7a37064ab9e42ce78023bd32fd88d3016a298c3378077e1249c5441bc6e9a2aa",
-      "size": 997
+      "path": "conformance/cases/nested-resource-collision/expected.yaml",
+      "sha256": "f7efad3ce29eeef82a17d057425195d5f2c22e3009bdca43eeb1070451dd9e39",
+      "size": 791
     },
     {
       "path": "conformance/cases/nested-resource-collision/schema.yaml",
@@ -227,13 +227,13 @@
     },
     {
       "path": "conformance/cases/nested-resource-reference/case.yaml",
-      "sha256": "95324a33ba7f5bc13ebbd0b02dcf2d057b669b1a87ea504f22430c4424201b49",
+      "sha256": "b3ffbfe5f1a6a9a161a8ba22d998dd61f00de12189079a105bbd416e709adc34",
       "size": 714
     },
     {
-      "path": "conformance/cases/nested-resource-reference/expected.json",
-      "sha256": "ae3d05f512c4fee604012ab266fd4e01ba44e049d705f07bc1b0aeb0ca5adb18",
-      "size": 760
+      "path": "conformance/cases/nested-resource-reference/expected.yaml",
+      "sha256": "e972081bcf2da55ab3c2cf30dce53a2f44224e4a8749c7e902941ab12d0e433f",
+      "size": 592
     },
     {
       "path": "conformance/cases/nested-resource-reference/schema.yaml",
@@ -247,13 +247,13 @@
     },
     {
       "path": "conformance/cases/portable-pattern-match/case.yaml",
-      "sha256": "d95008569a00325e4c90a0ed53718d8e37cf549a550f0935b6750f208ce3d716",
+      "sha256": "6e9e602707fec56c6e057f17ae46bac9473d10f7c9707800db7169902cc341e7",
       "size": 713
     },
     {
-      "path": "conformance/cases/portable-pattern-match/expected.json",
-      "sha256": "4c84c4b4c5318259871a72a72f1fb8e45007e8bfe88487b40b5c36b32b4fde01",
-      "size": 880
+      "path": "conformance/cases/portable-pattern-match/expected.yaml",
+      "sha256": "b539f5f06b48c030e3d9dda4124a04e2ba1d7e4dcdc6293b869200ce81127a2e",
+      "size": 692
     },
     {
       "path": "conformance/cases/portable-pattern-match/schema.yaml",
@@ -267,13 +267,13 @@
     },
     {
       "path": "conformance/cases/portable-pattern-newline/case.yaml",
-      "sha256": "12098b04adbe58f2ff45e04ca63f2cd2e0723dd6d101ec459472a68df0a7fbb7",
+      "sha256": "fd35f44fc061d5e92a2e7b8c20a99a0954139e39f8723b99d496b3280db4b911",
       "size": 721
     },
     {
-      "path": "conformance/cases/portable-pattern-newline/expected.json",
-      "sha256": "4da2f7e5df8233697b7900a9d94d7fac203362722e96d06624bae034af1ad4d8",
-      "size": 1054
+      "path": "conformance/cases/portable-pattern-newline/expected.yaml",
+      "sha256": "de69cbaaa3dbdf8abd303b5b611e860a6deb54e311b662662d9765566b9d9319",
+      "size": 829
     },
     {
       "path": "conformance/cases/portable-pattern-newline/schema.yaml",
@@ -287,13 +287,13 @@
     },
     {
       "path": "conformance/cases/pure-yaml-metadata/case.yaml",
-      "sha256": "fe5b686ef51e62cadc3e13029af472f1e5fa46b8c4b1076fe40de1a9de9b6a41",
+      "sha256": "87637bb48f346d0a4263775b56b0cd13e7ba7211cf9248b230cc2a5031c43b11",
       "size": 720
     },
     {
-      "path": "conformance/cases/pure-yaml-metadata/expected.json",
-      "sha256": "6de3240c06958db53ee618dec47a7c0610984015a31839fb8ade263c3549a01b",
-      "size": 786
+      "path": "conformance/cases/pure-yaml-metadata/expected.yaml",
+      "sha256": "7b1f954e6a16a756ed5f82b869a9dd3c1b26c34380d11079b2685a3faad759b1",
+      "size": 613
     },
     {
       "path": "conformance/cases/pure-yaml-metadata/schema.yaml",
@@ -307,13 +307,13 @@
     },
     {
       "path": "conformance/cases/schema-invalid-pattern-unsupported/case.yaml",
-      "sha256": "0c21e84476a057b9cb3ffcced01f1b59e0f6efac46b5e66332e9d7b03cfbd382",
+      "sha256": "3643a6ef252fa59f74ff230376e995a8fbd1b7942ffce7f5b7d4761bc916effc",
       "size": 739
     },
     {
-      "path": "conformance/cases/schema-invalid-pattern-unsupported/expected.json",
-      "sha256": "6c7ac31e1425e60fed04a4625f5ce4cac350153880a9e2abc7eee639df887b08",
-      "size": 1040
+      "path": "conformance/cases/schema-invalid-pattern-unsupported/expected.yaml",
+      "sha256": "9191ea92600a9b0612d47707afbbf7c35b01ab95b0c78e07e82c4b2dac806a7d",
+      "size": 824
     },
     {
       "path": "conformance/cases/schema-invalid-pattern-unsupported/schema.yaml",
@@ -327,13 +327,13 @@
     },
     {
       "path": "conformance/cases/schema-invalid-root/case.yaml",
-      "sha256": "b8d6fb1cabfb4537bbec507150e79903561178b7bc77f8169fb375d646a56c40",
+      "sha256": "d16de5bc99e341ac01ce482d633539e86be36108672cbff3b26bce738f5eee41",
       "size": 729
     },
     {
-      "path": "conformance/cases/schema-invalid-root/expected.json",
-      "sha256": "32d0a226889c899fff96d406b67daec898df5ad72dc33fd2316b68e7c8e72cf7",
-      "size": 937
+      "path": "conformance/cases/schema-invalid-root/expected.yaml",
+      "sha256": "c4e19ae19ec3d8182e828303f63365d6e819e31ab178ab7eb7a0820e40ae5bdb",
+      "size": 726
     },
     {
       "path": "conformance/cases/schema-invalid-root/schema.yaml",
@@ -347,53 +347,53 @@
     },
     {
       "path": "conformance/cases/schema-invalid/case-compile.yaml",
-      "sha256": "c2b4302872a5ee6a4a8b2b478da8951e9004a633955c4a3c2ba62a57cc48cb6e",
+      "sha256": "61cc2a5c4fb4c8b8153d8c66a4fa8e9163d45a8b96bc9d023d908f06842c3338",
       "size": 743
     },
     {
       "path": "conformance/cases/schema-invalid/case-dialect.yaml",
-      "sha256": "3ce2bb21f483fd9771b7e8c732c1c4559a30927e53d14b8b200ad7988627bf61",
+      "sha256": "4cd4f2c70920545faf5977e47de64649f04ca5e17acd9aa7120ef7f07630fc1d",
       "size": 730
     },
     {
       "path": "conformance/cases/schema-invalid/case-metaschema.yaml",
-      "sha256": "2f92e7da935405a0d88cafb61e6686f66b07620dc25a5d01d06d54be799fc6eb",
+      "sha256": "ecec338b4bae7918627155b532deca81180015d80ead239fd7f6aaa90f71ed71",
       "size": 728
     },
     {
       "path": "conformance/cases/schema-invalid/case-reference-file.yaml",
-      "sha256": "2a9fd3ac8d89929b4af2db1b510091181ed6d0ac1f8d756968cbe0bc01cc7b30",
+      "sha256": "78c19378a1fb227c3e2a476754b58dd6561c06f1e903e51b2a4688c9e53aeaef",
       "size": 752
     },
     {
       "path": "conformance/cases/schema-invalid/case-reference.yaml",
-      "sha256": "0655a1ee59046f020c5d28397479f781f910d3bb48d1efcb71d510970404b827",
+      "sha256": "c26307616c0477a487428796800fff82f095072760d067649bdc94203906674c",
       "size": 732
     },
     {
       "path": "conformance/cases/schema-invalid/case-root-null.yaml",
-      "sha256": "8debd94c0f602f38de96a03339d6a7af71f13a984371742baec98dd4c3b60657",
+      "sha256": "8c3cfa8a6524b407ecf878ff649fca66537108923be1fb7d089ae5956db2921c",
       "size": 722
     },
     {
       "path": "conformance/cases/schema-invalid/case-root-scalar.yaml",
-      "sha256": "e9099692ddd975d5272bf5d117daa5681dda8537eeb3e4f2d105e7082f0569e5",
+      "sha256": "297879a5ceb988e1e5e4010609e6611c56b089029d2dd9fc20faf9f2f6313ec9",
       "size": 730
     },
     {
       "path": "conformance/cases/schema-invalid/case-syntax.yaml",
-      "sha256": "aac17df14684a21bc3a2977158c35bc77450fedb7908c61c330c555a7221db76",
+      "sha256": "3ef21cb11d1645352b026bdf8e9aad50313168e71e85b621aa9de9b6135cb910",
       "size": 718
     },
     {
       "path": "conformance/cases/schema-invalid/case-value-domain.yaml",
-      "sha256": "f043a7ccb0f7a2713fa86272be6bd2c2b4759aecb0cadfd873345a3367cdc3a7",
+      "sha256": "8444b5be9e06abf587a2be527bafce20e6467c47102e3e67d7aedd061626f284",
       "size": 749
     },
     {
-      "path": "conformance/cases/schema-invalid/compile.expected.json",
-      "sha256": "df1623cffb332a74bbff2631cb697f50dd0501108a853e7816e8c8e495b13b5d",
-      "size": 991
+      "path": "conformance/cases/schema-invalid/compile.expected.yaml",
+      "sha256": "bc28178cd47d17b84d3ecd9f682488e05ddbb7e8e98b13d4b01c6d390512b0ed",
+      "size": 775
     },
     {
       "path": "conformance/cases/schema-invalid/compile.schema.yaml",
@@ -401,9 +401,9 @@
       "size": 80
     },
     {
-      "path": "conformance/cases/schema-invalid/dialect.expected.json",
-      "sha256": "b06069c62a4de29e9ddd719d58630183f17476d9ba5ed0f4d18fe484ba4d600c",
-      "size": 1026
+      "path": "conformance/cases/schema-invalid/dialect.expected.yaml",
+      "sha256": "fffe8bad52413d1c5847857e33f9029d4f67f4fe81830e3bef5c7eac1f2e7a1d",
+      "size": 810
     },
     {
       "path": "conformance/cases/schema-invalid/dialect.schema.yaml",
@@ -411,9 +411,9 @@
       "size": 62
     },
     {
-      "path": "conformance/cases/schema-invalid/file-reference.expected.json",
-      "sha256": "ab6d0a83aae4594cec62c00609c6351d91fd51db682434225007ac14693b25fe",
-      "size": 1036
+      "path": "conformance/cases/schema-invalid/file-reference.expected.yaml",
+      "sha256": "d607bd697c3107f1e75a56769738b4058e6b33b988957c055f443bdfc6d38f09",
+      "size": 820
     },
     {
       "path": "conformance/cases/schema-invalid/file-reference.schema.yaml",
@@ -421,9 +421,9 @@
       "size": 109
     },
     {
-      "path": "conformance/cases/schema-invalid/metaschema.expected.json",
-      "sha256": "f49b864905a794eea50f246dbb91ccd4c23b4901186724db63d530b843ab4d05",
-      "size": 961
+      "path": "conformance/cases/schema-invalid/metaschema.expected.yaml",
+      "sha256": "f00016f1dc5cbe4eb73dae678cdb92b0e21b23baf19b115946efea17b2bb6dfc",
+      "size": 750
     },
     {
       "path": "conformance/cases/schema-invalid/metaschema.schema.yaml",
@@ -431,9 +431,9 @@
       "size": 63
     },
     {
-      "path": "conformance/cases/schema-invalid/reference.expected.json",
-      "sha256": "500255025a3b1bfe04568db412cb57727122f3ec51d57fdf91d61dfacc051dc1",
-      "size": 1014
+      "path": "conformance/cases/schema-invalid/reference.expected.yaml",
+      "sha256": "a5e81b565e3afc7e1b2cccd769dae09c38c2d49dfddcedad4e05fd51d12bfd94",
+      "size": 798
     },
     {
       "path": "conformance/cases/schema-invalid/reference.schema.yaml",
@@ -441,9 +441,9 @@
       "size": 92
     },
     {
-      "path": "conformance/cases/schema-invalid/root-null.expected.json",
-      "sha256": "260e0e1bde28ff2c0629b235f271430d5225a07ca8b5cbd80ae3bffcc816516b",
-      "size": 938
+      "path": "conformance/cases/schema-invalid/root-null.expected.yaml",
+      "sha256": "cbee1ebede9597a8e4c866ecce355d69352eac0d541480a7c1dc42c8033266c5",
+      "size": 727
     },
     {
       "path": "conformance/cases/schema-invalid/root-null.schema.yaml",
@@ -451,9 +451,9 @@
       "size": 5
     },
     {
-      "path": "conformance/cases/schema-invalid/root-scalar.expected.json",
-      "sha256": "4164b754fd74c12a363b63da66639b05d2a658d6bc895ba3e4c81e75da83bfc8",
-      "size": 940
+      "path": "conformance/cases/schema-invalid/root-scalar.expected.yaml",
+      "sha256": "0afec55d84cc628dfb46fbeb8d1ce20e2d2fce8fb7d0750e740d643c7dcbd182",
+      "size": 729
     },
     {
       "path": "conformance/cases/schema-invalid/root-scalar.schema.yaml",
@@ -461,9 +461,9 @@
       "size": 7
     },
     {
-      "path": "conformance/cases/schema-invalid/syntax.expected.json",
-      "sha256": "4d5b3d721a8ea23edd2da6c1f11b5708364c27f59d94d5120c2964edb6e2fc48",
-      "size": 940
+      "path": "conformance/cases/schema-invalid/syntax.expected.yaml",
+      "sha256": "f33e30f752ac0110161119ec6a67c1cb13a94762a73afa7092578e48082671f8",
+      "size": 729
     },
     {
       "path": "conformance/cases/schema-invalid/syntax.schema.yaml",
@@ -471,9 +471,9 @@
       "size": 14
     },
     {
-      "path": "conformance/cases/schema-invalid/value-domain.expected.json",
-      "sha256": "5af82645980bd3257e634ebebd6c3b88e166855eef6d906bf9f1fc5373d53870",
-      "size": 969
+      "path": "conformance/cases/schema-invalid/value-domain.expected.yaml",
+      "sha256": "5e0dd711057f3c0cf62130b4378c452ecb258579d18d8a97446bb72b0a445f0b",
+      "size": 758
     },
     {
       "path": "conformance/cases/schema-invalid/value-domain.schema.yaml",
@@ -486,9 +486,9 @@
       "size": 11280
     },
     {
-      "path": "conformance/doctor/doctor-v1-common.golden.json",
-      "sha256": "420b5a126da6ee03cb7c3cc2a9b995b5a7fa051edd582d097469eecce4fd127a",
-      "size": 717
+      "path": "conformance/doctor/doctor-v1-common.golden.yaml",
+      "sha256": "2c22713a2652f7a19f2d5351fa7d1a0084e0d564368b2e054712f6431db62414",
+      "size": 578
     },
     {
       "path": "conformance/evolution.json",
@@ -502,7 +502,7 @@
     },
     {
       "path": "conformance/manifest.yaml",
-      "sha256": "efeb79653380f7aeb74db8f337d871daa100af61923229a37deae0fe57fee885",
+      "sha256": "01ad18fa2e9e27e129ae60d64336a720e0d743963cee761a5d58a231f6f7db1c",
       "size": 13441
     },
     {
@@ -517,7 +517,7 @@
     },
     {
       "path": "conformance/run.py",
-      "sha256": "f854280eccb9c6f0ad96321198e10b3f708d44fc5833dbb4ff1536bc783012cf",
+      "sha256": "34e3913f4c4cfb9a072b1d37b5a7ef6c0e03a2e71149f95fc53b6384707aa71e",
       "size": 30968
     },
     {
@@ -621,39 +621,39 @@
       "size": 2484
     },
     {
-      "path": "conformance/vectors/canonicalization-v1.json",
-      "sha256": "1ae5e1cf7457b30e50d9ff5c1605118e04193aae943bf4f1332eda72258e4c52",
-      "size": 5923
+      "path": "conformance/vectors/canonicalization-v1.yaml",
+      "sha256": "2a74fcf6625c9aae3199da247ba8906eb383b1809c6f48df51f64c334dc20b40",
+      "size": 5254
     },
     {
-      "path": "conformance/vectors/diagnostic-projection-v1.json",
-      "sha256": "c52a045caeed99553e36ab3aed1d2491e587dffb247276ce2aa16ad7336de37a",
-      "size": 5457
+      "path": "conformance/vectors/diagnostic-projection-v1.yaml",
+      "sha256": "99dbc6f1525f33609c4ba37aefb412a2d8ab69cf6fcfd8d029c7eba7691e8770",
+      "size": 4343
     },
     {
-      "path": "conformance/vectors/identity-v1.json",
-      "sha256": "7f0d291f5e02e65ad495ace47ffcc0592fe779332f0431273712ae0fa78269cb",
-      "size": 1897
+      "path": "conformance/vectors/identity-v1.yaml",
+      "sha256": "4b4362cf49f929b854fe8adae510da1aee309a6d75029d2ba5eff19790127dfd",
+      "size": 1619
     },
     {
-      "path": "conformance/vectors/metadata-v1.json",
-      "sha256": "c9c714b00849b79a0f757674f18f5da2bf422b2f94e543d4b2be08bc6d3af429",
-      "size": 2639
+      "path": "conformance/vectors/metadata-v1.yaml",
+      "sha256": "62de6862ad18dfc9894b448e2f070d2792bc8502702ac970e09715a26e718a2d",
+      "size": 2147
     },
     {
-      "path": "conformance/vectors/portable-pattern-v1.json",
-      "sha256": "d5a6e0cbb1b8082bcdfe45c8df3a5e65e8ac586aee1d9b2f05d956a3296d2942",
-      "size": 2142
+      "path": "conformance/vectors/portable-pattern-v1.yaml",
+      "sha256": "628e2bace2701eddb5f109092a7908b1da490cf7028a7356468a3bbf3d6445d3",
+      "size": 1877
     },
     {
-      "path": "conformance/vectors/portable-yaml-v1.json",
-      "sha256": "de31875fd7e046db4c25cc0cb3e40f529af8bce41a196963b4384c4ba792812f",
-      "size": 7016
+      "path": "conformance/vectors/portable-yaml-v1.yaml",
+      "sha256": "01f9305b019b50bc0adcf4c8e5960a48e533f18a954856a9bd73fe51e93085bb",
+      "size": 6154
     },
     {
-      "path": "conformance/vectors/structural-resources-v1.json",
-      "sha256": "02bc4bad6a110d32bdcf13fcc552e56051e84928ae9a59e2f4bfe84592f3c87a",
-      "size": 7421
+      "path": "conformance/vectors/structural-resources-v1.yaml",
+      "sha256": "ca849daf6f822908a8b083650dc81ce54d1e8d08de87a29e3e80fa7bbc951e8d",
+      "size": 5918
     },
     {
       "path": "conformance/vendor/SARIF-SCHEMA-NOTICE.md",

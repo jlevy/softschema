@@ -1,0 +1,24 @@
+version: "<version>"
+target_table: "agent-targets-v1"
+scope: "project"
+base_dir: "<repo>"
+dry_run: true
+files:
+  - agent: "codex"
+    base_dir: "<repo>"
+    path: ".agents/skills/softschema/SKILL.md"
+    resolved_path: "<repo>/.agents/skills/softschema/SKILL.md"
+    ownership: "absent"
+    managed_format: null
+    prior_digest: null
+    action: "create"
+    status: "created"
+  - agent: "claude"
+    base_dir: "<repo>"
+    path: ".claude/skills/softschema/SKILL.md"
+    resolved_path: "<repo>/.claude/skills/softschema/SKILL.md"
+    ownership: "absent"
+    managed_format: null
+    prior_digest: null
+    action: "create"
+    status: "created"

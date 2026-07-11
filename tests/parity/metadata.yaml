@@ -1,0 +1,159 @@
+- id: "compact"
+  raw: "example.docs:Record/v1"
+  output:
+    contract: "example.docs:Record/v1"
+    schema: null
+    envelope: null
+    status: null
+- id: "expanded"
+  raw:
+    contract: "example.docs:Record/v1"
+    schema: "record.schema.yaml"
+    envelope: "record"
+    status: "enforced"
+  output:
+    contract: "example.docs:Record/v1"
+    schema: "record.schema.yaml"
+    envelope: "record"
+    status: "enforced"
+- id: "minimal-mapping"
+  raw:
+    contract: "example.docs:Record/v1"
+  output:
+    contract: "example.docs:Record/v1"
+    schema: null
+    envelope: null
+    status: null
+- id: "empty-extensions"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions: {}
+  output:
+    contract: "example.docs:Record/v1"
+    schema: null
+    envelope: null
+    status: null
+    extensions: {}
+- id: "reverse-dns-extension"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      com.example.review:
+        enabled: true
+        labels:
+          - "ready"
+          - 2
+          - null
+  output:
+    contract: "example.docs:Record/v1"
+    schema: null
+    envelope: null
+    status: null
+    extensions:
+      com.example.review:
+        enabled: true
+        labels:
+          - "ready"
+          - 2
+          - null
+- id: "https-extension"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      https://schemas.example/extensions/review/v1: "opaque"
+  output:
+    contract: "example.docs:Record/v1"
+    schema: null
+    envelope: null
+    status: null
+    extensions:
+      https://schemas.example/extensions/review/v1: "opaque"
+- id: "format-is-not-a-metadata-key"
+  raw:
+    format: "1"
+    contract: "example.docs:Record/v1"
+  error: true
+- id: "extensions-must-be-mapping-null"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions: null
+  error: true
+- id: "extensions-must-be-mapping-list"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions: []
+  error: true
+- id: "unknown-key"
+  raw:
+    contract: "example.docs:Record/v1"
+    future: true
+  error: true
+- id: "python-contract-field-name-is-not-authored-key"
+  raw:
+    contract_id: "example.docs:Record/v1"
+  error: true
+- id: "python-schema-field-name-is-not-authored-key"
+  raw:
+    contract: "example.docs:Record/v1"
+    schema_ref: "record.schema.yaml"
+  error: true
+- id: "reverse-dns-requires-dot"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      example: true
+  error: true
+- id: "reverse-dns-must-be-lowercase"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      Com.Example: true
+  error: true
+- id: "reverse-dns-no-empty-label"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      com..example: true
+  error: true
+- id: "reverse-dns-no-edge-hyphen"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      com.-example: true
+  error: true
+- id: "http-is-not-namespace"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      http://schemas.example/extensions/v1: true
+  error: true
+- id: "https-namespace-needs-path"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      https://schemas.example: true
+  error: true
+- id: "https-namespace-must-be-canonical"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      https://SCHEMAS.example/extensions/v1: true
+  error: true
+- id: "https-namespace-no-default-port"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      https://schemas.example:443/extensions/v1: true
+  error: true
+- id: "https-namespace-no-fragment"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      https://schemas.example/extensions/v1#part: true
+  error: true
+- id: "urn-is-not-extension-namespace"
+  raw:
+    contract: "example.docs:Record/v1"
+    extensions:
+      urn:example:extension:v1: true
+  error: true

@@ -21,6 +21,7 @@ import {
 import type { JsonObject, JsonValue, ValidationLimits } from "../src/core/value-domain.js";
 import type { SchemaProfile } from "../src/models.js";
 import type { ValidationResultLegacyWire } from "../src/core/results.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 const ROOT = resolve(import.meta.dir, "../../..");
 const DIAGNOSTICS = join(ROOT, "tests", "diagnostics");
@@ -50,12 +51,8 @@ interface SarifVectors {
   vectors: SarifVector[];
 }
 
-const wire = JSON.parse(
-  readFileSync(join(DIAGNOSTICS, "wire-vectors.json"), "utf8"),
-) as WireVectors;
-const sarifVectors = JSON.parse(
-  readFileSync(join(DIAGNOSTICS, "sarif-vectors.json"), "utf8"),
-) as SarifVectors;
+const wire = loadYamlFixture<WireVectors>(join(DIAGNOSTICS, "wire-vectors.yaml"));
+const sarifVectors = loadYamlFixture<SarifVectors>(join(DIAGNOSTICS, "sarif-vectors.yaml"));
 
 function runtimeLimits(limits: DiagnosticLimitsWire): ValidationLimits {
   return {

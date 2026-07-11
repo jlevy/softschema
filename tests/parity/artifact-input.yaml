@@ -1,0 +1,67 @@
+- id: "frontmatter-delimiter"
+  profile: "frontmatter-md"
+  content: |
+    ---
+    item:
+      value: one
+  reason: "frontmatter"
+  message: "artifact frontmatter delimiters are malformed"
+- id: "frontmatter-syntax"
+  profile: "frontmatter-md"
+  content: |
+    ---
+    item: [unclosed
+    ---
+  reason: "syntax"
+  message: "artifact is not valid YAML"
+- id: "frontmatter-null-root"
+  profile: "frontmatter-md"
+  content: "---\n \n---\n"
+  reason: "root"
+  message: "artifact YAML root must be a mapping"
+- id: "frontmatter-list-root"
+  profile: "frontmatter-md"
+  content: |
+    ---
+    - one
+    - two
+    ---
+  reason: "root"
+  message: "artifact YAML root must be a mapping"
+- id: "frontmatter-value-domain"
+  profile: "frontmatter-md"
+  content: |
+    ---
+    item:
+      value: .nan
+    ---
+  reason: "value_domain"
+  message: "artifact contains a non-portable YAML value"
+  path: "/item/value"
+- id: "pure-yaml-syntax"
+  profile: "pure-yaml"
+  content: |
+    item: [unclosed
+  reason: "syntax"
+  message: "artifact is not valid YAML"
+- id: "pure-yaml-null-root"
+  profile: "pure-yaml"
+  content: |
+    null
+  reason: "root"
+  message: "artifact YAML root must be a mapping"
+- id: "pure-yaml-list-root"
+  profile: "pure-yaml"
+  content: |
+    - one
+    - two
+  reason: "root"
+  message: "artifact YAML root must be a mapping"
+- id: "pure-yaml-value-domain"
+  profile: "pure-yaml"
+  content: |
+    item:
+      value: .inf
+  reason: "value_domain"
+  message: "artifact contains a non-portable YAML value"
+  path: "/item/value"

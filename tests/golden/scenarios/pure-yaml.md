@@ -243,14 +243,6 @@ softschema validate: missing --contract because the document has no YAML frontma
 ? 2
 ```
 
-The `.yml` suffix has the same behavior:
-
-```console
-$ softschema validate tests/golden/fixtures/pure-yaml-no-inference.yml 2>&1
-softschema validate: missing --contract because the document has no YAML frontmatter
-? 2
-```
-
 # Test: an unknown profile is a stable usage error
 
 The diagnostic and exit code are identical across Python, Node, and Bun.

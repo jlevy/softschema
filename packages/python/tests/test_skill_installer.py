@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from ruamel.yaml import YAML
 
 from softschema.cli import SKILL_DO_NOT_EDIT_MARKER
 from softschema.skill_installer import (
@@ -32,6 +33,7 @@ from softschema.skill_installer import (
     plan_skill_install,
     resolve_targets,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFORMANCE = REPO_ROOT / "conformance/skill-installer"
@@ -71,7 +73,7 @@ def run_install(
 
 
 def test_agent_targets_match_shared_target_table() -> None:
-    fixture = json.loads((CONFORMANCE / "agent-targets-v1.json").read_text())
+    fixture = load_yaml_fixture(CONFORMANCE / "agent-targets-v1.yaml")
     actual = [
         {
             "selector": target.selector,
@@ -90,18 +92,9 @@ def test_agent_targets_match_shared_target_table() -> None:
 
 
 def test_known_prior_digest_allowlist_matches_shared_fixture() -> None:
-    fixture = json.loads(
-        (CONFORMANCE / "known-prior-emissions-v1.json").read_text(encoding="utf-8")
-    )
+    fixture = load_yaml_fixture(CONFORMANCE / "known-prior-emissions-v1.yaml")
     assert fixture["version"] == "known-prior-emissions-v1"
     assert {item["sha256"] for item in fixture["emissions"]} == set(KNOWN_PRIOR_EMISSION_SHA256)
-
-
-def test_managed_skill_limit_is_the_shared_practical_ceiling() -> None:
-    assert MAX_MANAGED_SKILL_BYTES == 1024 * 1024
-    assert MAX_SKILL_LOCK_BYTES == 4096
-    desired = install_skill_payload(rendered_skill(), SKILL_DO_NOT_EDIT_MARKER).encode("utf-8")
-    assert len(desired) < MAX_MANAGED_SKILL_BYTES
 
 
 def test_implicit_project_dry_run_matches_shared_golden(tmp_path: Path) -> None:
@@ -119,8 +112,8 @@ def test_implicit_project_dry_run_matches_shared_golden(tmp_path: Path) -> None:
         env={},
     )
 
-    expected_text = (CONFORMANCE / "project-dry-run.golden.json").read_text()
-    expected = json.loads(
+    expected_text = (CONFORMANCE / "project-dry-run.golden.yaml").read_text()
+    expected = YAML(typ="safe").load(
         expected_text.replace("<version>", VERSION).replace("<repo>", repo.as_posix())
     )
     normalized_report = json.loads(json.dumps(report))

@@ -24,15 +24,18 @@ from softschema.core.diagnostics import (
 )
 from softschema.core.results import ArtifactInputResultWire
 from softschema.core.value_domain import ValidationLimits
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
 DIAGNOSTICS = ROOT / "tests/diagnostics"
 SCHEMAS = ROOT / "conformance/schemas"
-WIRE_VECTORS = DIAGNOSTICS / "wire-vectors.json"
-SARIF_VECTORS = DIAGNOSTICS / "sarif-vectors.json"
+WIRE_VECTORS = DIAGNOSTICS / "wire-vectors.yaml"
+SARIF_VECTORS = DIAGNOSTICS / "sarif-vectors.yaml"
 
 
 def _load(path: Path) -> dict[str, Any]:
+    if path.suffix == ".yaml":
+        return load_yaml_fixture(path)
     return json.loads(path.read_text(encoding="utf-8"))
 
 

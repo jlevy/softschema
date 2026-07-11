@@ -1,0 +1,29 @@
+build: "<build-metadata>"
+capabilities:
+  conformance:
+    status: "<conformance-status>"
+    version: "<conformance-version>"
+  model_loaders:
+    - "<model-loaders>"
+  operations:
+    - "compile"
+    - "docs"
+    - "doctor"
+    - "generate"
+    - "inspect"
+    - "prime"
+    - "skill"
+    - "validate"
+  output_formats:
+    - "json"
+    - "jsonl"
+    - "sarif"
+    - "text"
+package:
+  name: "softschema"
+  release_state: "<release-state>"
+  version: "<logical-version>"
+protocol_version: "<discovery-protocol>"
+runtime:
+  name: "<runtime-name>"
+  version: "<runtime-version>"

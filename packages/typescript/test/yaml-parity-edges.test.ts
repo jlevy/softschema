@@ -9,6 +9,7 @@ import {
   PortableValueError,
   PortableYamlSyntaxError,
 } from "../src/yaml-value-domain.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 interface PlainPoint {
   line: number;
@@ -120,9 +121,9 @@ interface YamlParityEdgeVectors {
 
 const ROOT = resolve(import.meta.dir, "../../..");
 const CLI = resolve(ROOT, "packages/typescript/src/cli.ts");
-const VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/value-domain/yaml-parity-edge-vectors.json"), "utf8"),
-) as YamlParityEdgeVectors;
+const VECTORS = loadYamlFixture<YamlParityEdgeVectors>(
+  resolve(ROOT, "tests/value-domain/yaml-parity-edge-vectors.yaml"),
+);
 
 function span(value: SourceSpan): PlainSpan {
   return {

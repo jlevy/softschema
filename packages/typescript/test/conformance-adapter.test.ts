@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 const ROOT = resolve(import.meta.dir, "../../..");
 const ADAPTER = resolve(ROOT, "conformance/adapters/javascript-adapter.mjs");
@@ -9,9 +10,9 @@ const NODE_ENTRY = resolve(ROOT, "packages/typescript/src/node.ts");
 const CORE_ENTRY = resolve(ROOT, "packages/typescript/src/core/index.ts");
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 const CHILD_OUTPUT_HEADROOM_BYTES = 1024 * 1024;
-const INVALID_REQUESTS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/parity/conformance-adapter-invalid-requests.json"), "utf8"),
-) as { id: string; request: unknown; message: string }[];
+const INVALID_REQUESTS = loadYamlFixture<{ id: string; request: unknown; message: string }[]>(
+  resolve(ROOT, "tests/parity/conformance-adapter-invalid-requests.yaml"),
+);
 
 function runAdapter(input: string | Uint8Array) {
   return spawnSync(process.execPath, [ADAPTER, NODE_ENTRY, CORE_ENTRY, NODE_ENTRY], {

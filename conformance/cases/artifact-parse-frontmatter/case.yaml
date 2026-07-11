@@ -21,5 +21,5 @@ expected:
   exit_code: 1
   schema: artifact-input-result-v1.schema.json
   result:
-    path: expected.json
-    sha256: c787348adcf2aebc8b6d2e4f60ef815c6900ae3aacca393a8b6fdf919b85ad67
+    path: expected.yaml
+    sha256: d4e16a80d10c697395819b9250d77bbb9a51d83b92619b0c5f3e921d2f34ea91

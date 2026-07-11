@@ -8,12 +8,13 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 from softschema import validate_structural, validate_values
+from tests.yaml_fixtures import load_yaml_fixture
 
-VECTORS_PATH = Path(__file__).resolve().parents[3] / "tests/parity/format-annotations.json"
+VECTORS_PATH = Path(__file__).resolve().parents[3] / "tests/parity/format-annotations.yaml"
 
 
 def _vectors() -> dict[str, Any]:
-    return json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
+    return load_yaml_fixture(VECTORS_PATH)
 
 
 def _schema_file(tmp_path: Path, schema: dict[str, Any]) -> Path:

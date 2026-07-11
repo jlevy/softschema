@@ -1,0 +1,194 @@
+- id: "canonicalize-schema-must-be-object"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "canonicalize"
+    cases:
+      - id: "case"
+        input:
+          schema: []
+        expected: {}
+  message: "request case 0 input for canonicalize schema must be an object"
+- id: "diagnostic-results-must-not-be-empty"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "diagnostic-summary"
+    cases:
+      - id: "case"
+        input:
+          profile: "pure-yaml"
+          results: []
+        expected: {}
+  message: "request case 0 input for diagnostic-summary results must be a non-empty array"
+- id: "identity-requires-value"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "identity"
+    cases:
+      - id: "case"
+        input:
+          kind: "contract"
+        expected: {}
+  message: "request case 0 input for identity has missing or unexpected fields"
+- id: "metadata-requires-raw"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "metadata"
+    cases:
+      - id: "case"
+        input: {}
+        expected: {}
+  message: "request case 0 input for metadata has missing or unexpected fields"
+- id: "pattern-value-must-be-string"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "pattern"
+    cases:
+      - id: "case"
+        input:
+          pattern: "a"
+          value: 1
+        expected: {}
+  message: "request case 0 input for pattern value must be a string"
+- id: "portable-yaml-requires-text"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "portable-yaml"
+    cases:
+      - id: "case"
+        input: {}
+        expected: {}
+  message: "request case 0 input for portable-yaml has missing or unexpected fields"
+- id: "portable-yaml-limit-fields-are-closed"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "portable-yaml"
+    cases:
+      - id: "case"
+        input:
+          text: "null"
+          limits:
+            max_unknown: 1
+        expected: {}
+  message: "request case 0 input for portable-yaml limits has invalid fields"
+- id: "portable-yaml-positive-limit"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "portable-yaml"
+    cases:
+      - id: "case"
+        input:
+          text: "null"
+          limits:
+            max_depth: 0
+        expected: {}
+  message: "request case 0 input for portable-yaml limit max_depth must be a positive safe integer"
+- id: "portable-yaml-limit-must-not-be-boolean"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "portable-yaml"
+    cases:
+      - id: "case"
+        input:
+          text: "null"
+          limits:
+            max_depth: true
+        expected: {}
+  message: "request case 0 input for portable-yaml limit max_depth must be a positive safe integer"
+- id: "portable-yaml-source-pointers-are-unique"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "portable-yaml"
+    cases:
+      - id: "case"
+        input:
+          text: "null"
+          source_pointers:
+            - ""
+            - ""
+        expected: {}
+  message: "request case 0 input for portable-yaml source_pointers must be a non-empty array of unique strings"
+- id: "portable-yaml-source-pointer-must-resolve"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "portable-yaml"
+    cases:
+      - id: "case"
+        input:
+          text: "{}"
+          source_pointers:
+            - "/missing"
+        expected: {}
+  message: "portable-yaml source pointer is unmapped: /missing"
+- id: "structural-resources-must-be-object"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "validate-structural"
+    cases:
+      - id: "case"
+        input:
+          schema: {}
+          values: {}
+          resources: []
+        expected: {}
+  message: "request case 0 input for validate-structural resources must be an object"
+- id: "case-expected-must-be-object"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "identity"
+    cases:
+      - id: "case"
+        input:
+          kind: "contract"
+          value: "example:Record/v1"
+        expected: []
+  message: "request case 0 expected must be an object"
+- id: "request-id-must-match-entire-string"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: |
+      invalid-request
+    operation: "metadata"
+    cases:
+      - id: "case"
+        input:
+          raw: null
+        expected: {}
+  message: "request id must be a lowercase kebab identifier"
+- id: "case-id-must-match-entire-string"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "metadata"
+    cases:
+      - id: |
+          case
+        input:
+          raw: null
+        expected: {}
+  message: "request case 0 has an invalid id"
+- id: "execution-errors-are-bounded"
+  request:
+    format: "softschema-vector-suite-v1"
+    id: "invalid-request"
+    operation: "diagnostic-summary"
+    cases:
+      - id: "case"
+        input:
+          profile: "pure-yaml"
+          results:
+            - {}
+        expected: {}
+  message: "request execution failed"

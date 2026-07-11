@@ -17,11 +17,10 @@ from softschema import (
 )
 from softschema.cli import main as softschema_main
 from softschema.value_domain import PortableValueError, PortableYamlSyntaxError
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
-VECTORS: list[dict[str, Any]] = json.loads(
-    (ROOT / "tests/parity/artifact-input.json").read_text(encoding="utf-8")
-)
+VECTORS: list[dict[str, Any]] = load_yaml_fixture(ROOT / "tests/parity/artifact-input.yaml")
 MESSAGES = {
     "not_found": "artifact path does not exist",
     "unreadable": "artifact path cannot be read",

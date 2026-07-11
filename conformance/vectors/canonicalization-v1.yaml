@@ -1,0 +1,217 @@
+format: "softschema-vector-suite-v1"
+id: "canonicalization-v1"
+description: "Compiler-boundary, semantics-preserving canonical JSON Schema transformations."
+operation: "canonicalize"
+cases:
+  - id: "drop-generator-annotations"
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        title: "Generated"
+        type: "object"
+        properties:
+          name:
+            title: "Name"
+            type: "string"
+            default: null
+        required:
+          - "name"
+      instances:
+        - name: "Ada"
+        - {}
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        properties:
+          name:
+            type: "string"
+        required:
+          - "name"
+      validity:
+        - raw: true
+          canonical: true
+        - raw: false
+          canonical: false
+  - id: "normalize-exact-nullable-union"
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        oneOf:
+          - type: "string"
+          - type: "null"
+      instances:
+        - "text"
+        - null
+        - 1
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        anyOf:
+          - type: "string"
+          - type: "null"
+      validity:
+        - raw: true
+          canonical: true
+        - raw: true
+          canonical: true
+        - raw: false
+          canonical: false
+  - id: "preserve-overlapping-one-of"
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        oneOf:
+          - type:
+              - "string"
+              - "null"
+          - type: "null"
+      instances:
+        - "text"
+        - null
+        - 1
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        oneOf:
+          - type:
+              - "string"
+              - "null"
+          - type: "null"
+      validity:
+        - raw: true
+          canonical: true
+        - raw: false
+          canonical: false
+        - raw: false
+          canonical: false
+  - id: "preserve-boolean-subschemas"
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        allOf:
+          - true
+          - properties:
+              allowed: false
+        additionalProperties: false
+      instances:
+        - {}
+        - allowed: 1
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        allOf:
+          - true
+          - properties:
+              allowed: false
+        additionalProperties: false
+      validity:
+        - raw: true
+          canonical: true
+        - raw: false
+          canonical: false
+  - id: "sort-required-and-drop-runtime-bounds"
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        required:
+          - "z"
+          - "a"
+        properties:
+          count:
+            type: "integer"
+            minimum: -9007199254740991
+            maximum: 9007199254740991
+      instances:
+        - count: 1
+        - a: 1
+          z: 2
+          count: 3
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        required:
+          - "a"
+          - "z"
+        properties:
+          count:
+            type: "integer"
+      validity:
+        - raw: false
+          canonical: false
+        - raw: true
+          canonical: true
+  - id: "sort-required-by-unicode-scalar-value"
+    description: "Astral field names sort by code point rather than UTF-16 code unit."
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        required:
+          - "😀"
+          - ""
+        properties:
+          😀:
+            type: "integer"
+          :
+            type: "integer"
+      instances:
+        - 😀: 1
+          : 2
+        - 😀: 1
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        required:
+          - ""
+          - "😀"
+        properties:
+          😀:
+            type: "integer"
+          :
+            type: "integer"
+      validity:
+        - raw: true
+          canonical: true
+        - raw: false
+          canonical: false
+  - id: "normalize-integral-number-spelling"
+    description: "Equivalent Python 10.0 and JavaScript 10 inputs have one canonical wire value."
+    input:
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "number"
+        minimum: -0.0
+        maximum: 10.0
+        multipleOf: 1.0
+      instances:
+        - 0
+        - 10
+        - 10.5
+        - 11
+    expected:
+      ok: true
+      value:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "number"
+        minimum: 0
+        maximum: 10
+        multipleOf: 1
+      validity:
+        - raw: true
+          canonical: true
+        - raw: true
+          canonical: true
+        - raw: false
+          canonical: false
+        - raw: false
+          canonical: false

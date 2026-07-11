@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any, cast
@@ -19,13 +18,12 @@ from softschema.value_domain import (
     parse_portable_yaml,
     parse_portable_yaml_with_locations,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
-VECTORS: dict[str, Any] = json.loads(
-    (ROOT / "tests/diagnostics/source-location-vectors.json").read_text(encoding="utf-8")
-)
-SOURCE_SEPARATOR_VECTORS: dict[str, Any] = json.loads(
-    (ROOT / "tests/value-domain/source-separator-vectors.json").read_text(encoding="utf-8")
+VECTORS: dict[str, Any] = load_yaml_fixture(ROOT / "tests/diagnostics/source-location-vectors.yaml")
+SOURCE_SEPARATOR_VECTORS: dict[str, Any] = load_yaml_fixture(
+    ROOT / "tests/value-domain/source-separator-vectors.yaml"
 )
 
 

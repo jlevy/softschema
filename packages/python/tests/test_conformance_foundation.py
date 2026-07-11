@@ -45,8 +45,8 @@ ROOT = Path(__file__).parents[3]
 CONFORMANCE = ROOT / "conformance"
 SCHEMAS = CONFORMANCE / "schemas"
 MANIFEST = CONFORMANCE / "manifest.yaml"
-INVALID_ADAPTER_REQUESTS: list[dict[str, Any]] = json.loads(
-    (ROOT / "tests/parity/conformance-adapter-invalid-requests.json").read_text(encoding="utf-8")
+INVALID_ADAPTER_REQUESTS: list[dict[str, Any]] = YAML(typ="safe").load(
+    ROOT / "tests/parity/conformance-adapter-invalid-requests.yaml"
 )
 
 EXPECTED_SCHEMAS = {
@@ -152,7 +152,7 @@ def test_manifest_paths_digests_and_case_contracts_are_valid() -> None:
             assert referenced.is_file(), file_ref["path"]
             assert hashlib.sha256(referenced.read_bytes()).hexdigest() == file_ref["sha256"]
 
-        expected = json.loads((case_dir / case["expected"]["result"]["path"]).read_text())
+        expected = _load_yaml(case_dir / case["expected"]["result"]["path"])
         expected_schema = _select_schema(schemas, case["expected"]["schema"])
         validator = Draft202012Validator(expected_schema, registry=registry)
         assert list(validator.iter_errors(expected)) == []
@@ -190,7 +190,7 @@ def test_support_schemas_reject_ambiguous_matrix_resource_and_vector_shapes() ->
         assert validate_schema_id(resource_id) == resource_id
         assert bundle_validator.is_valid({"root": True, "resources": {resource_id: True}})
 
-    suite = json.loads((CONFORMANCE / "vectors/identity-v1.json").read_text(encoding="utf-8"))
+    suite = _load_yaml(CONFORMANCE / "vectors/identity-v1.yaml")
     vector_validator = Draft202012Validator(schemas["vector-suite.schema.json"])
     assert vector_validator.is_valid(suite)
     duplicate_cases = {**suite, "cases": [suite["cases"][0], suite["cases"][0]]}
@@ -234,9 +234,7 @@ def test_completed_kit_declares_every_settled_family_and_support_artifact() -> N
     }
     assert all(case[1]["execution"]["status"] == "ready" for case in corpus.cases)
 
-    targets = json.loads(
-        (CONFORMANCE / "skill-installer/agent-targets-v1.json").read_text(encoding="utf-8")
-    )
+    targets = _load_yaml(CONFORMANCE / "skill-installer/agent-targets-v1.yaml")
     assert (
         manifest["agent_install_destinations"]["implicit_project_agents"]
         == targets["implicit_project_agents"]
@@ -878,7 +876,7 @@ def test_deterministic_archive_has_external_digest_and_kit_only_consumer(
         names = bundle.getnames()
     assert names == sorted(names)
     assert "conformance/manifest.lock.json" in names
-    assert "conformance/vectors/portable-yaml-v1.json" in names
+    assert "conformance/vectors/portable-yaml-v1.yaml" in names
     assert "conformance/adapters/javascript-adapter.mjs" in names
 
     consumer = extracted / "conformance/consumer.py"
@@ -895,7 +893,7 @@ def test_deterministic_archive_has_external_digest_and_kit_only_consumer(
     assert verified.returncode == 0, verified.stderr
     assert json.loads(verified.stdout)["ok"] is True
 
-    target = extracted / "conformance/vectors/identity-v1.json"
+    target = extracted / "conformance/vectors/identity-v1.yaml"
     target.write_bytes(target.read_bytes() + b"\n")
     tampered = subprocess.run(
         [sys.executable, "-I", str(consumer), "--root", str(extracted), "--json"],
@@ -1250,11 +1248,11 @@ def test_python_adapter_normalizes_json_integer_limit_spelling() -> None:
     ]
 
 
-def test_artifact_metadata_schemas_negotiate_legacy_and_format_1_exactly() -> None:
+def test_artifact_metadata_schema_accepts_compact_and_mapping_forms_exactly() -> None:
     schemas = _load_schemas()
     registry = _registry(schemas)
     validator = Draft202012Validator(schemas["metadata.schema.json"], registry=registry)
-    vectors = json.loads((ROOT / "tests/parity/artifact-format.json").read_text())
+    vectors = _load_yaml(ROOT / "tests/parity/metadata.yaml")
 
     for vector in vectors:
         valid = not vector.get("error", False)
@@ -1592,7 +1590,7 @@ def test_shared_runner_checks_foundation_and_executes_python_case() -> None:
         "schemas": len(EXPECTED_SCHEMAS),
         "status": "draft",
         "vector_cases": sum(
-            len(json.loads((CONFORMANCE / entry["path"]).read_text(encoding="utf-8"))["cases"])
+            len(_load_yaml(CONFORMANCE / entry["path"])["cases"])
             for entry in manifest["vector_suites"]
         ),
         "vector_suites": len(manifest["vector_suites"]),

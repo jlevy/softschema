@@ -1,0 +1,208 @@
+format: "softschema-vector-suite-v1"
+id: "structural-resources-v1"
+description: "Portable core validation uses only explicit closed resource bundles."
+operation: "validate-structural"
+cases:
+  - id: "core-validation-pass"
+    input:
+      values:
+        name: "Ada"
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        required:
+          - "name"
+        properties:
+          name:
+            type: "string"
+    expected:
+      ok: true
+      errors: []
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "metaschema-failure-uses-unicode-scalar-order"
+    input:
+      values: {}
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        type: "object"
+        properties:
+          😀:
+            type: 42
+          :
+            type: 42
+    expected:
+      ok: false
+      errors:
+        - kind: "schema_invalid"
+          reason: "metaschema"
+          message: "compiled schema does not conform to Draft 2020-12"
+          schema_path: "/properties//type"
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "pattern-failure-uses-global-schema-path-order"
+    input:
+      values: {}
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        definitions:
+          z:
+            pattern: "("
+        additionalProperties:
+          pattern: "["
+    expected:
+      ok: false
+      errors:
+        - kind: "schema_invalid"
+          reason: "pattern"
+          message: "compiled schema contains an unsupported or invalid pattern"
+          schema_path: "/additionalProperties/pattern"
+          pattern: "["
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "offline-resource-pass"
+    input:
+      values:
+        name: "Ada"
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $ref: "https://schemas.example/name"
+      resources:
+        https://schemas.example/name:
+          $schema: "https://json-schema.org/draft/2020-12/schema"
+          type: "object"
+          required:
+            - "name"
+          properties:
+            name:
+              type: "string"
+    expected:
+      ok: true
+      errors: []
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "missing-resource-stays-offline"
+    input:
+      values: {}
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $ref: "https://schemas.example/missing"
+    expected:
+      ok: false
+      errors:
+        - kind: "schema_invalid"
+          reason: "reference"
+          message: "compiled schema reference is unavailable offline"
+          schema_path: "/$ref"
+          reference: "https://schemas.example/missing"
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "resource-id-mismatch"
+    input:
+      values: {}
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $ref: "https://schemas.example/name"
+      resources:
+        https://schemas.example/name:
+          $schema: "https://json-schema.org/draft/2020-12/schema"
+          $id: "https://schemas.example/other"
+          type: "object"
+    expected:
+      ok: false
+      errors:
+        - kind: "schema_invalid"
+          reason: "identity"
+          message: "compiled schema resource identity is invalid"
+          schema_path: "/$id"
+          detail: "resource_id_mismatch"
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "compound-bundle-chain"
+    input:
+      values:
+        name: "Ada"
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $ref: "https://schemas.example/person"
+      resources:
+        https://schemas.example/person:
+          $schema: "https://json-schema.org/draft/2020-12/schema"
+          $id: "https://schemas.example/person"
+          type: "object"
+          required:
+            - "name"
+          properties:
+            name:
+              $ref: "https://schemas.example/name"
+        https://schemas.example/name:
+          $schema: "https://json-schema.org/draft/2020-12/schema"
+          $id: "https://schemas.example/name"
+          type: "string"
+          minLength: 1
+    expected:
+      ok: true
+      errors: []
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "nested-relative-resource"
+    input:
+      values:
+        name: "Ada"
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $id: "https://schemas.example/root/"
+        $ref: "child/#/$defs/payload"
+        $defs:
+          child:
+            $id: "child/"
+            $defs:
+              payload:
+                type: "object"
+                required:
+                  - "name"
+                properties:
+                  name:
+                    const: "Ada"
+    expected:
+      ok: true
+      errors: []
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "nested-resource-collision"
+    input:
+      values: {}
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $id: "https://schemas.example/root/"
+        $defs:
+          a:
+            $id: "child"
+            type: "string"
+          b:
+            $id: "./child"
+            type: "number"
+    expected:
+      ok: false
+      errors:
+        - kind: "schema_invalid"
+          reason: "identity"
+          message: "compiled schema resource identity is invalid"
+          schema_path: "/$defs/b/$id"
+          detail: "nested_resource_collision"
+      engine: "json_schema"
+      skipped_reason: null
+  - id: "boolean-supplied-resource"
+    input:
+      values:
+        anything: true
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $ref: "https://schemas.example/always"
+      resources:
+        https://schemas.example/always: true
+    expected:
+      ok: true
+      errors: []
+      engine: "json_schema"
+      skipped_reason: null

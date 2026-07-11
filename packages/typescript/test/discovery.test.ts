@@ -29,6 +29,7 @@ import {
   type GlobPatternReason,
   discoverArtifacts,
 } from "../src/artifact-discovery.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 const BATCH_VECTORS = resolve(import.meta.dir, "../../..", "tests", "batch");
 
@@ -109,8 +110,8 @@ type LimitVector =
       expected: "artifact" | "discovery_limit";
     };
 
-function loadJson<T>(name: string): T {
-  return JSON.parse(readFileSync(join(BATCH_VECTORS, name), "utf8")) as T;
+function loadVectors<T>(name: string): T {
+  return loadYamlFixture<T>(join(BATCH_VECTORS, name));
 }
 
 function expandAdversarialGlob(vector: AdversarialGlobVector): {
@@ -341,12 +342,12 @@ function expectedLimitResult(vector: LimitVector): ExpectedDiscoveryEntry[] {
 }
 
 describe("portable discovery globs", () => {
-  const vectors = loadJson<{
+  const vectors = loadVectors<{
     limits: Record<string, number>;
     valid: GlobVector[];
     adversarial: AdversarialGlobVector[];
     invalid: InvalidGlobVector[];
-  }>("glob-vectors.json");
+  }>("glob-vectors.yaml");
 
   test("matches every shared valid vector", () => {
     expect(vectors.limits).toEqual({
@@ -436,7 +437,7 @@ describe("portable discovery globs", () => {
 });
 
 describe("artifact discovery", () => {
-  const vectors = loadJson<{ cases: FilesystemVector[] }>("filesystem-vectors.json");
+  const vectors = loadVectors<{ cases: FilesystemVector[] }>("filesystem-vectors.yaml");
 
   test("matches every shared virtual-filesystem vector", () => {
     for (const vector of vectors.cases) {
@@ -461,10 +462,10 @@ describe("artifact discovery", () => {
   });
 
   test("enforces every shared discovery limit vector", () => {
-    const vectors = loadJson<{
+    const vectors = loadVectors<{
       limits: { max_depth: number; max_entries: number };
       cases: LimitVector[];
-    }>("discovery-limit-vectors.json");
+    }>("discovery-limit-vectors.yaml");
     expect(vectors.limits).toEqual({
       max_depth: DISCOVERY_MAX_DEPTH,
       max_entries: DISCOVERY_MAX_ENTRIES,

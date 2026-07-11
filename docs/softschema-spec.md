@@ -425,7 +425,7 @@ import or execute code named by an extension.
 
 The source repository publishes the machine-readable
 [metadata schema](../conformance/schemas/metadata.schema.json) and shared
-[compatibility vectors](../tests/parity/artifact-format.json).
+[compatibility vectors](../tests/parity/metadata.yaml).
 The schema describes the JSON-compatible metadata values; the Portable YAML Value Domain
 remains the parser boundary for duplicate keys, YAML-specific types, and resource
 limits.
@@ -587,7 +587,7 @@ normalized result escapes both the document directory and the working directory.
 They also reject C0 control characters and DEL in the metadata path before filesystem
 resolution, returning `schema_missing` rather than passing ambiguous path bytes to a
 host API. The exact rejected code-point set is fixed by
-`tests/parity/metadata-schema-paths.json`.)
+`tests/parity/metadata-schema-paths.yaml`.)
 
 A compiled schema is not a per-document companion data file.
 The two are unrelated: one schema validates many artifacts, while companion data would
@@ -743,7 +743,7 @@ Python may still lower divergent tokens when checking host-engine syntax, but lo
 never changes the authored file, canonical compiled schema, or `schema_sha256`, and
 structural errors always report the original expression.
 The shared machine-readable syntax and matching vectors are
-`tests/parity/portable-patterns.json` in the source repository.
+`tests/parity/portable-patterns.yaml` in the source repository.
 
 Nested ambiguous repetition such as `^(a+)+$` is regular and remains supported; the
 bounded automaton evaluates it without catastrophic backtracking.
@@ -769,7 +769,7 @@ The reference Python validator does not supply a format checker for instance val
 The TypeScript validator configures Ajv with `validateFormats: false`. Both choices are
 explicit so installing a format plug-in or upgrading an engine cannot silently turn
 annotations into assertions.
-The shared machine-readable vectors are `tests/parity/format-annotations.json` in the
+The shared machine-readable vectors are `tests/parity/format-annotations.yaml` in the
 source repository.
 
 A future format-assertion mode, if added, must use a separately versioned, explicit

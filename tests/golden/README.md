@@ -1,9 +1,8 @@
 # Golden Corpus (Cross-Language CLI Parity)
 
-One [tryscript](https://github.com/jlevy/tryscript) corpus, run against **both** the
-Python and the TypeScript softschema CLIs, proving they behave identically.
-It covers single-file and batch validation, JSON/JSONL/SARIF diagnostics, model loading,
-resource commands, and user-error exits against a shared behavioral contract.
+One [tryscript](https://github.com/jlevy/tryscript) corpus runs against the Python CLI
+and the TypeScript CLI under Node and Bun. It keeps a small set of end-to-end user flows
+visible while unit and conformance tests cover boundary combinations.
 
 ## How It Works
 
@@ -30,16 +29,18 @@ expected-output block validates every implementation.
 SARIF is projected from the same diagnostic-v1 records.
 Parity is a test pass, not a manual audit.
 
-## Direct Cross-Implementation Diff
+Running the same scenarios against one committed expectation already proves
+cross-implementation equality. There is no second parity runner with a duplicate command
+inventory.
 
-`cross-impl-diff.sh` runs the same neutral commands through the Python CLI and the
-TypeScript CLI under Node and byte-compares stdout and exit codes directly, so a parity
-break is reported as a py-vs-ts difference rather than as one side drifting from the
-committed goldens:
+## File Formats
 
-```bash
-./tests/golden/cross-impl-diff.sh
-```
+Scenario files are Markdown because tryscript records commands, output, and exit codes
+together. Their output blocks preserve the CLI's literal format: JSON remains JSON when
+the command's public output contract is JSON. Human-authored structured expectations
+and shared vectors use YAML. Compiled JSON Schemas, strict JSON wire inputs, vendored
+JSON standards, and generated integrity locks remain JSON because their encoding is
+part of the contract.
 
 ## Stable vs Unstable
 
@@ -88,7 +89,7 @@ Note in particular:
 
 ## Layout
 
-- `scenarios/`: **neutral** scenarios that run on **every** runtime (py, ts, ts-bun).
+- `scenarios/`: neutral end-to-end scenarios that run on every runtime (py, ts, ts-bun).
   They use only language-neutral inputs (the compiled JSON Schema via `--schema`, batch
   discovery, `inspect`, `docs`, `skill`, `generate`, `--version`).
 - `scenarios-py/`: Python per-impl scenarios (`compile` from a Pydantic class;
@@ -107,15 +108,14 @@ Note in particular:
 | File | Scope | Covers |
 | --- | --- | --- |
 | `scenarios/validate.md` | all | schema-only validate: structural ok; structural failure (engine-neutral, sorted records); absent designated envelope (`envelope_mismatch`, exit 1) |
-| `scenarios/cli-errors.md` | all | usage/input exits for ambiguous envelope, missing implementation/file, malformed metadata, and unknown docs topic (exit 2); exact malformed-frontmatter parse record (exit 1) |
+| `scenarios/cli-errors.md` | all | representative usage, input, and parse failures with exact exit behavior |
 | `scenarios/warnings.md` | all | `document-status-mismatch` warning on a status override |
-| `scenarios/inspect-and-docs.md` | all | `inspect` (movie, plain doc, no frontmatter); `docs --list`; `docs --list --json`; `docs <topic>`; `skill --brief`; `skill` |
-| `scenarios/pure-yaml.md` | all | explicit `pure-yaml`: metadata-only, schema-bound and metadata-free payloads, envelope and contract precedence, `.yaml`/`.yml` non-inference, invalid profile, malformed root, and value domain |
+| `scenarios/inspect-and-docs.md` | all | complete `inspect` output, docs discovery, and bundled-topic resolution |
+| `scenarios/pure-yaml.md` | all | explicit `pure-yaml` success, binding precedence, profile selection, malformed roots, and value-domain failures |
 | `scenarios/batch-diagnostics.md` | all | recursive no-match as an exact diagnostic-v1 aggregate; byte-stable legacy JSON serialization |
 | `scenarios/generate.md` | all | `generate --check` no-drift and drift (exit 1) |
 | `scenarios/version.md` | all | `--version` (`[VERSION]` pattern) |
 | `scenarios/error-normalization.md` | all | every structural error keyword, engine-neutral |
-| `scenarios/frontmatter-edge-cases.md` | all | empty frontmatter (`no_frontmatter`); whitespace-only frontmatter (parse error, exit 1); unterminated fence (parse error, exit 1) |
 | `scenarios-py/compile.md` | py | `compile --check` no-drift (literal digest) and drift; source is a Pydantic class |
 | `scenarios-py/validate-model.md` | py | `validate --model` semantic-ok paths for `frontmatter-md` and `pure-yaml` (Pydantic) |
 | `scenarios-ts/validate-model.md` | ts, ts-bun | `validate --model` semantic-ok paths for `frontmatter-md` and `pure-yaml` (Zod `.mjs`) |
@@ -124,8 +124,7 @@ Note in particular:
 Compile parity (content-identical compiled schema, equal digest) across languages is
 additionally asserted by the cross-implementation conformance test.
 Batch JSON/JSONL/SARIF, include/exclude filters, mixed-result precedence, and Unicode
-source positions are covered by the shared Python and TypeScript batch unit tests and
-the direct cross-implementation diff.
+source positions are covered by the shared Python and TypeScript batch tests.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

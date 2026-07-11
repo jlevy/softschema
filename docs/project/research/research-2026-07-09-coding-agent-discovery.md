@@ -365,7 +365,7 @@ silently break byte-exact managed copies.
 ### Make Compatibility Data-Driven
 
 Keep the target table in the small versioned
-`conformance/skill-installer/agent-targets-v1.json` artifact checked by both runtimes
+`conformance/skill-installer/agent-targets-v1.yaml` artifact checked by both runtimes
 and documentation. Each row records selector, project root, personal-root template, and
 override semantics; the research records status, evidence URL, and verification date.
 Python and TypeScript execute the same golden cases for expansion and errors.

@@ -20,6 +20,7 @@ import {
   parsePortableYamlWithLocations,
   PortableValueError,
 } from "../src/yaml-value-domain.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 interface SourceVector {
   id: string;
@@ -65,12 +66,12 @@ interface SourceSeparatorVectors {
 }
 
 const ROOT = resolve(import.meta.dir, "../../..");
-const VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/diagnostics/source-location-vectors.json"), "utf8"),
-) as { cases: SourceVector[] };
-const SOURCE_SEPARATOR_VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/value-domain/source-separator-vectors.json"), "utf8"),
-) as SourceSeparatorVectors;
+const VECTORS = loadYamlFixture<{ cases: SourceVector[] }>(
+  resolve(ROOT, "tests/diagnostics/source-location-vectors.yaml"),
+);
+const SOURCE_SEPARATOR_VECTORS = loadYamlFixture<SourceSeparatorVectors>(
+  resolve(ROOT, "tests/value-domain/source-separator-vectors.yaml"),
+);
 
 function point(value: SourcePoint): PlainPoint {
   return { line: value.line, column: value.column };

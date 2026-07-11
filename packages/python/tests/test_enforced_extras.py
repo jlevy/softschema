@@ -16,9 +16,10 @@ from softschema.canonicalize import (
     EnforcementUnsupportedError,
 )
 from softschema.validate import validate_structural
+from tests.yaml_fixtures import load_yaml_fixture
 
 VECTORS_PATH = (
-    Path(__file__).resolve().parents[3] / "tests/parity/canonicalization-enforcement.json"
+    Path(__file__).resolve().parents[3] / "tests/parity/canonicalization-enforcement.yaml"
 )
 
 
@@ -115,13 +116,13 @@ def test_input_schema_is_not_mutated() -> None:
 
 
 def test_shared_enforcement_vectors() -> None:
-    vectors = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))["enforcement"]
+    vectors = load_yaml_fixture(VECTORS_PATH)["enforcement"]
     for case in vectors:
         assert apply_enforced_extras(case["input"]) == case["expected"], case["id"]
 
 
 def test_shared_unsupported_enforcement_vectors() -> None:
-    vectors = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))["enforcement_unsupported"]
+    vectors = load_yaml_fixture(VECTORS_PATH)["enforcement_unsupported"]
     for case in vectors:
         with pytest.raises(EnforcementUnsupportedError) as raised:
             apply_enforced_extras(case["input"])
@@ -130,7 +131,7 @@ def test_shared_unsupported_enforcement_vectors() -> None:
 
 
 def test_shared_enforcement_validation_vectors() -> None:
-    vectors = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
+    vectors = load_yaml_fixture(VECTORS_PATH)
     schemas = {case["id"]: case["input"] for case in vectors["enforcement"]}
     for case in vectors["enforcement_validation"]:
         validator = Draft202012Validator(apply_enforced_extras(schemas[case["enforcement_id"]]))

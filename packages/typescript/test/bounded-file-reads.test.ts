@@ -36,6 +36,7 @@ import {
   takeValidatedSchemaSource,
   validateArtifact,
 } from "../src/validate.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 test("file-backed YAML readers stop at one byte beyond the configured limit", () => {
   const directory = mkdtempSync(join(tmpdir(), "softschema-bounded-read-"));
@@ -581,14 +582,9 @@ test("failed schema reads retain an explicit empty exact source", () => {
 });
 
 test("document-controlled control-character schema paths use the shared failure", () => {
-  const vectors = JSON.parse(
-    readFileSync(
-      resolve(import.meta.dir, "../../../tests/parity/metadata-schema-paths.json"),
-      "utf8",
-    ),
-  ) as {
+  const vectors = loadYamlFixture<{
     document_schema_path: { rejected_code_points: number[]; expected_kind: "schema_missing" };
-  };
+  }>(resolve(import.meta.dir, "../../../tests/parity/metadata-schema-paths.yaml"));
   const directory = mkdtempSync(join(tmpdir(), "softschema-schema-control-path-"));
   const artifact = join(directory, "record.md");
   try {

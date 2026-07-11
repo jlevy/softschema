@@ -55,7 +55,7 @@ cd ../..
 ```
 
 Validate the machine-readable public claims, generated agent shims, conformance closure,
-every implementation adapter, goldens, and the direct parity invariant:
+every implementation adapter, and the shared goldens:
 
 ```bash
 uv run python devtools/public_claims.py --check --json
@@ -66,7 +66,6 @@ uv run python conformance/run.py --implementation all --json
 SOFTSCHEMA_IMPL=py bash tests/golden/run.sh
 SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
 SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
-bash tests/golden/cross-impl-diff.sh
 ```
 
 Success means every command exits zero.

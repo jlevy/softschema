@@ -8,13 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from softschema.core import normalize_portable_value
+from tests.yaml_fixtures import load_yaml_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-VECTORS = REPO_ROOT / "tests/parity/canonical-json-adversarial-vectors.json"
+VECTORS = REPO_ROOT / "tests/parity/canonical-json-adversarial-vectors.yaml"
 
 
 def test_adversarial_serialization_vectors_match_python_oracle() -> None:
-    fixture: dict[str, Any] = json.loads(VECTORS.read_text(encoding="utf-8"))
+    fixture: dict[str, Any] = load_yaml_fixture(VECTORS)
     assert fixture["format"] == "canonical-json-adversarial-v1"
     for vector in fixture["cases"]:
         normalized, _ = normalize_portable_value(vector["value"])
@@ -41,7 +42,7 @@ def test_adversarial_serialization_vectors_match_python_oracle() -> None:
 
 
 def test_python_oracle_normalizes_signed_zero_and_integral_floats() -> None:
-    fixture: dict[str, Any] = json.loads(VECTORS.read_text(encoding="utf-8"))
+    fixture: dict[str, Any] = load_yaml_fixture(VECTORS)
     vector = next(
         item
         for item in fixture["cases"]

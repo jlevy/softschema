@@ -251,9 +251,6 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
-      - name: Cross-implementation parity diff
-        run: bash tests/golden/cross-impl-diff.sh
-
       - name: Run draft conformance cases under Python, Node, and Bun
         run: uv run --no-sync python conformance/run.py --implementation all
 

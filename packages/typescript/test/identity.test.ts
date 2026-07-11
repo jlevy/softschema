@@ -15,17 +15,13 @@ import {
   validateSchemaId,
   validateStructural,
 } from "../src/index.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 const Sample = z.strictObject({ name: z.string() });
-const schemaIdVectors = JSON.parse(
-  readFileSync(join(import.meta.dir, "../../../tests/identity/schema-id-vectors.json"), "utf8"),
-) as { valid: string[]; invalid: string[] };
-const nestedResourceVectors = JSON.parse(
-  readFileSync(
-    join(import.meta.dir, "../../../tests/identity/nested-resource-vectors.json"),
-    "utf8",
-  ),
-) as {
+const schemaIdVectors = loadYamlFixture<{ valid: string[]; invalid: string[] }>(
+  join(import.meta.dir, "../../../tests/identity/schema-id-vectors.yaml"),
+);
+const nestedResourceVectors = loadYamlFixture<{
   schema_locations: string[];
   cases: Array<{
     id: string;
@@ -34,7 +30,7 @@ const nestedResourceVectors = JSON.parse(
     resources: Record<string, boolean | Record<string, unknown>>;
     expected: ReturnType<typeof validateStructural>;
   }>;
-};
+}>(join(import.meta.dir, "../../../tests/identity/nested-resource-vectors.yaml"));
 
 function schemaAtLocation(pointer: string): Record<string, unknown> {
   const root: Record<string, unknown> = {};

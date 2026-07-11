@@ -21,5 +21,5 @@ expected:
   exit_code: 0
   schema: validation-result-legacy.schema.json
   result:
-    path: expected.json
-    sha256: 0c245424e2b726ac5eb01998f38b0df2023b1c1f0af8a84b62c952fcadf076f8
+    path: expected.yaml
+    sha256: 4526524cacb335928ccd33019a2485c70615cd96171e744c11d817e874d1dd00

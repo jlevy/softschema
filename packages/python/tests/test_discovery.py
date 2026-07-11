@@ -30,15 +30,16 @@ from softschema.runtime.discovery import (
     GlobPatternError,
     discover_artifacts,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
 ROOT = Path(__file__).parents[3]
 BATCH_VECTORS = ROOT / "tests" / "batch"
 
 
-def _load_json(name: str) -> dict[str, object]:
+def _load_vectors(name: str) -> dict[str, object]:
     return cast(
         "dict[str, object]",
-        json.loads((BATCH_VECTORS / name).read_text(encoding="utf-8")),
+        load_yaml_fixture(BATCH_VECTORS / name),
     )
 
 
@@ -256,7 +257,7 @@ def _expected_limit_result(
 
 
 def test_shared_glob_vectors() -> None:
-    vectors = _load_json("glob-vectors.json")
+    vectors = _load_vectors("glob-vectors.yaml")
     assert vectors["limits"] == {
         "max_interior_match_complexity": GLOB_MAX_INTERIOR_MATCH_COMPLEXITY,
         "max_pattern_codepoints": GLOB_MAX_PATTERN_CODEPOINTS,
@@ -282,7 +283,7 @@ def test_shared_glob_vectors() -> None:
 
 
 def test_shared_adversarial_glob_vectors_do_not_recurse() -> None:
-    vectors = _load_json("glob-vectors.json")
+    vectors = _load_vectors("glob-vectors.yaml")
     for vector in cast("list[dict[str, object]]", vectors["adversarial"]):
         pattern, matching, missing = _expand_adversarial_glob(vector)
         compiled = CompiledGlob.compile(pattern)
@@ -328,7 +329,7 @@ def test_multi_star_glob_uses_earliest_exact_interior_matches() -> None:
 
 
 def test_shared_filesystem_vectors() -> None:
-    vectors = _load_json("filesystem-vectors.json")
+    vectors = _load_vectors("filesystem-vectors.yaml")
     for case in cast("list[dict[str, object]]", vectors["cases"]):
         filesystem = VectorFileSystem(case)
         request = DiscoveryRequest(
@@ -345,7 +346,7 @@ def test_shared_filesystem_vectors() -> None:
 
 
 def test_shared_discovery_limit_vectors() -> None:
-    vectors = _load_json("discovery-limit-vectors.json")
+    vectors = _load_vectors("discovery-limit-vectors.yaml")
     limits = cast("dict[str, int]", vectors["limits"])
     assert limits == {
         "max_depth": DISCOVERY_MAX_DEPTH,

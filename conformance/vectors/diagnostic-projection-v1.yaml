@@ -1,0 +1,146 @@
+format: "softschema-vector-suite-v1"
+id: "diagnostic-projection-v1"
+description: "Diagnostic aggregation, JSONL records, SARIF claims, and exit precedence."
+operation: "diagnostic-summary"
+cases:
+  - id: "success-with-warning"
+    input:
+      profile: "frontmatter-md"
+      results:
+        - outcome: "passed"
+          input:
+            kind: "artifact_input"
+            ok: true
+            source: "artifacts/valid.md"
+            profile: "frontmatter-md"
+            values: {}
+          validation:
+            contract: null
+            contract_id: "example.docs:Record/v1"
+            document_metadata: null
+            semantic:
+              errors: []
+              ok: true
+              skipped_reason: null
+            status: "soft"
+            structural:
+              engine: "json_schema"
+              errors: []
+              ok: true
+              skipped_reason: null
+            warnings: []
+          diagnostics: []
+        - outcome: "passed"
+          input:
+            kind: "artifact_input"
+            ok: true
+            source: "artifacts/legacy.md"
+            profile: "frontmatter-md"
+            values: {}
+          validation:
+            contract: null
+            contract_id: "example.docs:Record/v1"
+            document_metadata: null
+            semantic:
+              errors: []
+              ok: true
+              skipped_reason: null
+            status: "soft"
+            structural:
+              engine: "json_schema"
+              errors: []
+              ok: true
+              skipped_reason: null
+            warnings:
+              - code: "legacy_metadata"
+                message: "artifact metadata uses the legacy format"
+                severity: "warning"
+          diagnostics:
+            - category: "warning"
+              rule_id: "softschema.warning.legacy_metadata"
+              severity: "warning"
+              message: "artifact metadata uses the legacy format"
+              source: "artifacts/legacy.md"
+              path: "/softschema"
+              line: 2
+              column: 1
+    expected:
+      ok: true
+      summary:
+        total: 2
+        passed: 2
+        validation_failed: 0
+        input_failed: 0
+        exit_code: 0
+      outcomes:
+        - "passed"
+        - "passed"
+      rule_ids:
+        - "softschema.warning.legacy_metadata"
+      jsonl_records: 2
+      sarif:
+        artifacts: 2
+        column_kind: "unicodeCodePoints"
+        execution_successful: true
+        exit_code: 0
+        results: 1
+        rules:
+          - "softschema.warning.legacy_metadata"
+  - id: "input-failure-precedence"
+    input:
+      profile: "frontmatter-md"
+      results:
+        - outcome: "validation_failed"
+          input:
+            kind: "parse_error"
+            reason: "syntax"
+            message: "artifact is not valid YAML"
+            source: "artifacts/bad.md"
+            line: 1
+            column: 4
+          validation: null
+          diagnostics:
+            - category: "parse"
+              rule_id: "softschema.parse_error.syntax"
+              severity: "error"
+              message: "artifact is not valid YAML"
+              source: "artifacts/bad.md"
+              line: 1
+              column: 4
+        - outcome: "input_failed"
+          input:
+            kind: "input_error"
+            reason: "no_matches"
+            message: "artifact directory contains no matching files"
+            source: "artifacts/empty"
+          validation: null
+          diagnostics:
+            - category: "input"
+              rule_id: "softschema.input_error.no_matches"
+              severity: "error"
+              message: "artifact directory contains no matching files"
+              source: "artifacts/empty"
+    expected:
+      ok: false
+      summary:
+        total: 2
+        passed: 0
+        validation_failed: 1
+        input_failed: 1
+        exit_code: 2
+      outcomes:
+        - "validation_failed"
+        - "input_failed"
+      rule_ids:
+        - "softschema.parse_error.syntax"
+        - "softschema.input_error.no_matches"
+      jsonl_records: 2
+      sarif:
+        artifacts: 2
+        column_kind: "unicodeCodePoints"
+        execution_successful: false
+        exit_code: 2
+        results: 2
+        rules:
+          - "softschema.input_error.no_matches"
+          - "softschema.parse_error.syntax"

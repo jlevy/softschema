@@ -25,11 +25,10 @@ from softschema.value_domain import (
     PortableValueError,
     normalize_portable_value,
 )
+from tests.yaml_fixtures import load_yaml_fixture
 
-_METADATA_PATH_VECTORS = json.loads(
-    (Path(__file__).parents[3] / "tests/parity/metadata-schema-paths.json").read_text(
-        encoding="utf-8"
-    )
+_METADATA_PATH_VECTORS = load_yaml_fixture(
+    Path(__file__).parents[3] / "tests/parity/metadata-schema-paths.yaml"
 )["document_schema_path"]
 
 

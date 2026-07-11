@@ -1,0 +1,347 @@
+profile:
+  id: "portable-regex-v1"
+  match_mode: "unicode-search"
+  max_quantifier: 1000
+  max_pattern_codepoints: 1024
+  max_group_depth: 64
+  max_nfa_states: 4096
+  max_dfa_states: 4096
+  max_dfa_transitions: 4096
+  max_schema_patterns: 256
+  max_schema_codepoints: 16384
+  max_validation_work: 8388608
+  semantics: "ECMA-262-derived Unicode regular-expression semantics without flags and with strict true-end $"
+  grammar:
+    pattern: "alternative *( '|' alternative )"
+    alternative: "*piece"
+    piece: "atom [ quantifier ]"
+    atom: "literal / '.' / '^' / '$' / escape / class / group"
+    group: "'(' pattern ')' / '(?:' pattern ')'"
+    class: "'[' [ '^' ] 1*class-item ']'"
+    class_item: "class-atom / class-atom '-' class-atom"
+    quantifier: "( '*' / '+' / '?' / bounded ) [ '?' ]"
+    bounded: "'{' bound '}' / '{' bound ',' [ bound ] '}'"
+  supported:
+    - "unicode literals"
+    - "dot"
+    - "start and end anchors"
+    - "capturing and noncapturing groups"
+    - "alternation"
+    - "positive and negated character classes"
+    - "simple, lazy, and bounded quantifiers"
+    - "ASCII digit and word shorthands"
+    - "ECMA-262 whitespace shorthands"
+    - "control, hexadecimal, Unicode, and escaped-syntax literals"
+  unsupported:
+    - "lookaround"
+    - "backreferences"
+    - "word-boundary assertions"
+    - "named and atomic groups"
+    - "inline flags"
+    - "Unicode property escapes"
+    - "possessive quantifiers"
+syntax:
+  - id: "empty"
+    pattern: ""
+    supported: true
+  - id: "existing-postal-code"
+    pattern: "^[0-9]{5}$"
+    supported: true
+  - id: "existing-uppercase-code"
+    pattern: "^[A-Z]+$"
+    supported: true
+  - id: "dot-and-anchors"
+    pattern: "^.$"
+    supported: true
+  - id: "unicode-literal-and-range"
+    pattern: "^(é|[😀-🙏])$"
+    supported: true
+  - id: "noncapturing-alternation"
+    pattern: "^(?:ab|cd){1,2}$"
+    supported: true
+  - id: "lazy-quantifiers"
+    pattern: "^a+?b*?c??$"
+    supported: true
+  - id: "open-upper-bound"
+    pattern: "^a{2,}$"
+    supported: true
+  - id: "maximum-bound"
+    pattern: "^a{0,1000}$"
+    supported: true
+  - id: "nested-quantifiers-are-linear"
+    pattern: "^(a+)+$"
+    supported: true
+  - id: "maximum-group-depth"
+    pattern: "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
+    supported: true
+  - id: "unsupported-group-depth"
+    pattern: "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
+    supported: false
+  - id: "maximum-pattern-size"
+    pattern: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    supported: true
+  - id: "unsupported-pattern-size"
+    pattern: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    supported: false
+  - id: "within-nfa-state-budget"
+    pattern: "(?:abcd){1000}"
+    supported: true
+  - id: "unsupported-nfa-state-budget"
+    pattern: "(?:abcde){1000}"
+    supported: false
+  - id: "ascii-shorthands"
+    pattern: "^\\d+[\\-_]\\w+$"
+    supported: true
+  - id: "whitespace-shorthands"
+    pattern: "^\\s+\\S+$"
+    supported: true
+  - id: "shorthands-in-class"
+    pattern: "^[\\d\\w]+$"
+    supported: true
+  - id: "hex-and-unicode-escapes"
+    pattern: "^\\x41\\u00e9$"
+    supported: true
+  - id: "escaped-syntax"
+    pattern: "^\\.\\$\\[\\]\\{\\}\\(\\)\\|\\*\\+\\?\\\\$"
+    supported: true
+  - id: "invalid-unclosed-class"
+    pattern: "["
+    supported: false
+  - id: "invalid-unclosed-group"
+    pattern: "(abc"
+    supported: false
+  - id: "invalid-reversed-range"
+    pattern: "[z-a]"
+    supported: false
+  - id: "literal-trailing-hyphen"
+    pattern: "[a-]"
+    supported: true
+  - id: "invalid-empty-class"
+    pattern: "[]"
+    supported: false
+  - id: "invalid-reversed-quantifier"
+    pattern: "a{3,2}"
+    supported: false
+  - id: "invalid-leading-zero-bound"
+    pattern: "a{01}"
+    supported: false
+  - id: "unsupported-large-bound"
+    pattern: "a{1001}"
+    supported: false
+  - id: "invalid-lone-brace"
+    pattern: "a{"
+    supported: false
+  - id: "invalid-unknown-escape"
+    pattern: "\\q"
+    supported: false
+  - id: "unsupported-surrogate-escape"
+    pattern: "\\uD800"
+    supported: false
+  - id: "unsupported-backreference"
+    pattern: "^(a)\\1$"
+    supported: false
+  - id: "unsupported-word-boundary"
+    pattern: "\\bword\\b"
+    supported: false
+  - id: "unsupported-unicode-property"
+    pattern: "\\p{Letter}+"
+    supported: false
+  - id: "unsupported-positive-lookahead"
+    pattern: "(?=a)a"
+    supported: false
+  - id: "unsupported-negative-lookahead"
+    pattern: "(?!a)b"
+    supported: false
+  - id: "unsupported-lookbehind"
+    pattern: "(?<=a)b"
+    supported: false
+  - id: "unsupported-javascript-named-group"
+    pattern: "(?<name>a)"
+    supported: false
+  - id: "unsupported-python-named-group"
+    pattern: "(?P<name>a)"
+    supported: false
+  - id: "unsupported-inline-flag"
+    pattern: "(?i:a)"
+    supported: false
+  - id: "unsupported-atomic-group"
+    pattern: "(?>a)"
+    supported: false
+  - id: "unsupported-possessive-quantifier"
+    pattern: "a++"
+    supported: false
+  - id: "unsupported-future-class-intersection"
+    pattern: "[a&&b]"
+    supported: false
+  - id: "unsupported-future-class-union"
+    pattern: "[a||b]"
+    supported: false
+  - id: "unsupported-future-class-symmetric-difference"
+    pattern: "[a~~b]"
+    supported: false
+  - id: "unsupported-whitespace-in-class"
+    pattern: "[\\s]"
+    supported: false
+  - id: "unsupported-complement-in-class"
+    pattern: "[\\S]"
+    supported: false
+matching:
+  - id: "nested-quantifier"
+    pattern: "^(a+)+$"
+    cases:
+      - value: "a"
+        matches: true
+      - value: "aaaa"
+        matches: true
+      - value: "aaaa!"
+        matches: false
+      - value: ""
+        matches: false
+  - id: "strict-end-anchor"
+    pattern: "^a$"
+    cases:
+      - value: "a"
+        matches: true
+      - value: |
+          a
+        matches: false
+      - value: "a\r"
+        matches: false
+      - value: "a\r\n"
+        matches: false
+      - value: "ba"
+        matches: false
+  - id: "ecmascript-dot"
+    pattern: "^.$"
+    cases:
+      - value: "a"
+        matches: true
+      - value: "😀"
+        matches: true
+      - value: |2+
+
+        matches: false
+      - value: "\r"
+        matches: false
+      - value: "\L"
+        matches: false
+      - value: "\P"
+        matches: false
+      - value: "ab"
+        matches: false
+  - id: "unicode-literals-and-ranges"
+    pattern: "^(é|[😀-🙏])$"
+    cases:
+      - value: "é"
+        matches: true
+      - value: "😀"
+        matches: true
+      - value: "🙏"
+        matches: true
+      - value: "A"
+        matches: false
+  - id: "ascii-digit-shorthand"
+    pattern: "^\\d+$"
+    cases:
+      - value: "0129"
+        matches: true
+      - value: "١٢٣"
+        matches: false
+      - value: "１２３"
+        matches: false
+  - id: "ascii-nondigit-shorthand"
+    pattern: "^\\D+$"
+    cases:
+      - value: "é😀"
+        matches: true
+      - value: "abc"
+        matches: true
+      - value: "1"
+        matches: false
+  - id: "ascii-word-shorthand"
+    pattern: "^\\w+$"
+    cases:
+      - value: "Az_09"
+        matches: true
+      - value: "café"
+        matches: false
+      - value: "東京"
+        matches: false
+  - id: "ascii-nonword-shorthand"
+    pattern: "^\\W+$"
+    cases:
+      - value: "é😀!"
+        matches: true
+      - value: "abc"
+        matches: false
+      - value: "1_"
+        matches: false
+  - id: "ascii-complement-in-negated-class"
+    pattern: "^[^\\W]+$"
+    cases:
+      - value: "Az_09"
+        matches: true
+      - value: "é"
+        matches: false
+      - value: "!"
+        matches: false
+  - id: "ecmascript-whitespace-shorthand"
+    pattern: "^\\s+$"
+    cases:
+      - value: " \t\n"
+        matches: true
+      - value: " "
+        matches: true
+      - value: "\uFEFF"
+        matches: true
+      - value: "\x1C"
+        matches: false
+  - id: "ecmascript-nonwhitespace-shorthand"
+    pattern: "^\\S+$"
+    cases:
+      - value: "abc"
+        matches: true
+      - value: "\x1C"
+        matches: true
+      - value: " "
+        matches: false
+      - value: |2+
+
+        matches: false
+  - id: "unanchored-search"
+    pattern: "cat"
+    cases:
+      - value: "concatenate"
+        matches: true
+      - value: "dog"
+        matches: false
+  - id: "group-alternation-quantifier"
+    pattern: "^(?:ab|cd){1,2}$"
+    cases:
+      - value: "ab"
+        matches: true
+      - value: "abcd"
+        matches: true
+      - value: "cdcd"
+        matches: true
+      - value: ""
+        matches: false
+      - value: "ababab"
+        matches: false
+  - id: "explicit-line-class"
+    pattern: "^[^\\n\\r]+$"
+    cases:
+      - value: "line"
+        matches: true
+      - value: "\L"
+        matches: true
+      - value: |
+          line
+        matches: false
+  - id: "hex-and-unicode-escapes"
+    pattern: "^\\x41\\u00e9$"
+    cases:
+      - value: "Aé"
+        matches: true
+      - value: "Ae"
+        matches: false

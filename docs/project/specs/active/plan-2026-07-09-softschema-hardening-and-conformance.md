@@ -268,7 +268,7 @@ available; it never echoes an unserializable runtime value.
 - Draft 2020-12 `format` is annotation-only in the default portable profile.
   This is the `annotation-only-v1` policy specified in
   [softschema Spec](../../../softschema-spec.md#format-annotations) and encoded in
-  `tests/parity/format-annotations.json`. Python supplies no format checker for instance
+  `tests/parity/format-annotations.yaml`. Python supplies no format checker for instance
   validation; Ajv sets `validateFormats: false` and does not install `ajv-formats`.
   Known and unknown names produce neither violations nor logger/stderr output, while
   other structural assertions and the trusted semantic model continue independently.
@@ -277,7 +277,7 @@ available; it never echoes an unserializable runtime value.
   parser-safety patch.
 - JSON Schema regexes use `portable-regex-v1`, the grammar specified in
   [softschema Spec](../../../softschema-spec.md#portable-regular-expressions) and
-  encoded with its differential vectors in `tests/parity/portable-patterns.json`. Its
+  encoded with its differential vectors in `tests/parity/portable-patterns.yaml`. Its
   contract is ECMA-262-derived Unicode, no-flag, unanchored-search semantics; bounds are
   at most 1000. It supports literals, dot, both anchors, capturing/noncapturing groups,
   alternation, classes/ranges, simple/lazy/bounded quantifiers, ASCII digit/word
@@ -363,8 +363,8 @@ portable value domain and every source shape supported by the model compilers:
 - Preserve boolean subschemas.
 - Keep current deterministic key ordering, required-field ordering, canonical JSON bytes
   used for hashing, and byte-identical UTF-8 YAML sidecars from both official compilers.
-  `compile --check`, committed examples, package smokes, and direct parity compare the
-  sidecar bytes as well as parsed values and `schema_sha256`.
+  `compile --check`, committed examples, package smokes, and the shared cross-runtime
+  goldens compare the sidecar bytes as well as parsed values and `schema_sha256`.
 
 This equivalence claim deliberately excludes inputs outside the portable domain, such as
 integers beyond the shared safe range, and excludes arbitrary external schemas.
@@ -414,13 +414,10 @@ This intentionally changes compiled schema bytes and `schema_sha256` once.
 Both model compilers and every committed example are regenerated in one reviewed
 rebaseline.
 
-### Format and Extension Versioning
+### Metadata and Extensions
 
 This runtime behavior is tracked separately as `ss-wuva`; the conformance kit records it
 but does not define it after the fact.
-
-The artifact-format version is independent of package releases.
-Newly authored artifacts use the explicit quoted format identifier `"1"`:
 
 The metadata block may be a compact contract ID or one closed mapping with `contract`,
 `schema`, `envelope`, `status`, and `extensions` fields.
@@ -817,12 +814,14 @@ conformance/
       case.yaml
       artifact.*
       schema.*
-      expected.json
+      expected.yaml
 ```
 
-The manifest records the kit version, artifact-format version, schema dialect, profiles,
-YAML value domain, format policy, reference policy, serialization and hashing rules,
-case paths, and digests.
+The manifest records the kit version, schema dialect, profiles, YAML value domain,
+format policy, reference policy, serialization and hashing rules, case paths, and
+digests.
+Human-reviewed expectations and vectors use YAML. JSON remains reserved for JSON
+Schemas, literal wire-format cases, vendored JSON standards, and generated locks.
 `case.yaml` selects an operation, inputs, resources, and expected result schema.
 Canonicalization cases start from raw language-neutral JSON Schema that itself validates
 against the machine-readable compiler-input profile, never arbitrary external schema or
@@ -937,7 +936,7 @@ silently inside product docs.
 | Python CLI/resources | `packages/python/src/softschema/cli.py`, wheel resource manifest |
 | TypeScript core and adapters | `packages/typescript/src/{models,validate,canonicalize,compile,schemaView}.ts` |
 | TypeScript CLI/resources | `packages/typescript/src/cli.ts`, `packages/typescript/resources/` |
-| Shared behavior | `tests/golden/`, `tests/golden/cross-impl-diff.sh`, `conformance/` |
+| Shared behavior | `tests/golden/`, `conformance/` |
 | Skills and project agents | `skills/softschema/`, `.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` |
 | Public docs/examples | `README.md`, `docs/`, `examples/movie_page/` |
 | Packaging/release | `release-metadata.json`, `pyproject.toml`, `packages/typescript/package.json`, `.github/workflows/` |
@@ -1098,6 +1097,9 @@ Do not publish 0.3.0 until Phase 3 is complete.
   `softschema.format` discriminator so only the contract ID carries an authored version;
   collapse metadata schemas, capabilities, examples, docs, and skills onto the single
   grammar.
+- [x] **Keep tests minimal and reviewable (`ss-flo5`).** Give each behavior one primary
+  layer, remove duplicate golden/parity execution and trivial constant tests, keep a
+  small end-to-end CLI corpus, and use YAML for human-reviewed expectations and vectors.
 - [x] **Artifact and schema-view boundaries (`ss-3n2k`).** Preserve ref siblings,
   represent genuine unions, consume only values normalized by `ss-l41u`, and align
   mutability and exception documentation.
@@ -1112,7 +1114,7 @@ contract IDs and schema URIs cannot be confused; the one intentional
 compiled-schema/hash rebaseline is reviewed; compact/mapping metadata and extension
 vectors pass; `SchemaView` snapshot behavior is identical; `softschema/core` is
 transitively free of Node/runtime/CLI adapters and the legacy root facade matches its
-exact compatibility allowlist; full goldens and direct parity remain green.
+exact compatibility allowlist; the shared Python, Node, and Bun goldens remain green.
 
 ### Phase 3: Public Conformance, Usability, Documentation, and Release
 
@@ -1379,8 +1381,8 @@ after public APIs/CLI/docs are complete, and then publishes it.
 - [ ] **Publish and recover idempotently (`ss-trn7`).** Publish the immutable preflight
   artifacts through separate protected PyPI, npm, and GitHub-assets jobs; classify
   absent/complete/partial/conflicting artifact sets by filename and digest; guard
-  discovery, artifact-format, and conformance versions; preserve dry-run behavior; roll
-  forward after a partial release; and run post-publish verification.
+  discovery, package, and conformance versions; preserve dry-run behavior; roll forward
+  after a partial release; and run post-publish verification.
 - [ ] **Close the plan (`ss-1mdr`).** After release verification, update this plan to
   Implemented, move it to the completed-spec convention, update linked spec paths, and
   close `ss-22fi`.
@@ -1415,6 +1417,7 @@ independent security work.
 | `ss-3n2k` | `ss-l41u`, `ss-sbvh` | Schema views and envelope inference consume settled values and schema traversal. |
 | `ss-wuva` | `ss-pvxi`, `ss-l41u`, `ss-yxfm` | Metadata and extensions extend the conformance foundation after value and identity rules settle. |
 | `ss-rpq0` | `ss-wuva`, `ss-j81s` | The single metadata grammar replaces the settled unmerged discriminator across public and standalone boundaries. |
+| `ss-flo5` | `ss-rpq0` | Test cleanup follows the final metadata grammar and keeps its shared fixtures readable without duplicating coverage. |
 | `ss-0uj9` | `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva`, `ss-1yt7` | Extract the core after its boundaries, identities, semantics, formats, and nested-resource ownership are defined. |
 | `ss-6jp1` | `ss-l41u`, `ss-yxfm`, `ss-wuva` | Do not expose more YAML until values, binding IDs, and metadata versions are portable. |
 | `ss-b5l4` | `ss-pvxi`, `ss-0uj9`, `ss-yxfm` | Runtime contracts and wire types implement the frozen public result schemas on the portable core. |
@@ -1490,7 +1493,7 @@ independent security work.
 | `ss-c8ix` | `ss-tge8`, `ss-g8m8` | Release-manifest schema limits must match the standalone boundary and release state machine before publication. |
 | `ss-j2ps` | `ss-v6bv`, `ss-xnr6` | The final compatibility wording follows the settled documentation and diagnostic-output behavior. |
 | `ss-3i41` | `ss-l41u`, `ss-xnr6` | YAML property-token locations build on the portable parser and positioned diagnostic contract. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s`, `ss-07xe`, `ss-zlhf`, `ss-j64g`, `ss-b8lx`, `ss-rpq0` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s`, `ss-07xe`, `ss-zlhf`, `ss-j64g`, `ss-b8lx`, `ss-rpq0`, `ss-flo5` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, the complete TypeScript gate, and the maintainable test architecture are ready. |
 | `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s`, `ss-j2ps`, `ss-66i9` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
@@ -1512,7 +1515,7 @@ For every specified cross-runtime behavior:
    observe, such as zero network calls or resource lookup precedence.
 3. Implement Python, run its focused test and corpus.
 4. Port the same semantics to TypeScript, run Node and Bun.
-5. Run the direct cross-implementation comparison.
+5. Run the same shared goldens under Python, Node, and Bun.
 6. Refactor only after all paths are green.
 
 Do not update a golden merely to make a failure disappear.
@@ -1572,7 +1575,6 @@ cd ../..
 SOFTSCHEMA_IMPL=py bash tests/golden/run.sh
 SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
 SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
-bash tests/golden/cross-impl-diff.sh
 ```
 
 Add the conformance-kit runner, package-install smoke runner, skill validator, docs
@@ -1625,6 +1627,7 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-yxfm` | P2 | Contract-ID and schema-ID boundaries |
 | `ss-wuva` | P2 | Closed artifact metadata and extension namespaces |
 | `ss-rpq0` | P1 | Single authored version string and one metadata grammar |
+| `ss-flo5` | P1 | Minimal test layers and readable YAML expectations |
 | `ss-3n2k` | P2 | SchemaView and artifact edge cases |
 | `ss-0uj9` | P2 | Portable core/runtime/CLI separation |
 | `ss-6jp1` | P2 | Pure-YAML CLI profile |

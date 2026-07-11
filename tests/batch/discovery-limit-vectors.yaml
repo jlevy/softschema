@@ -1,0 +1,25 @@
+version: 1
+limits:
+  max_depth: 64
+  max_entries: 100000
+cases:
+  - id: "maximum-directory-depth-is-readable"
+    shape: "depth"
+    directory_depth: 64
+    expected: "artifact"
+  - id: "directory-depth-over-limit-is-an-input-error"
+    shape: "depth"
+    directory_depth: 65
+    early_match: true
+    expected: "discovery_limit"
+  - id: "maximum-entry-count-is-readable"
+    shape: "entries"
+    entry_count: 100000
+    matching_index: 99999
+    expected: "artifact"
+  - id: "entry-count-over-limit-is-an-input-error"
+    shape: "entries"
+    entry_count: 100001
+    matching_index: 0
+    following_operand: true
+    expected: "discovery_limit"

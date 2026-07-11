@@ -22,8 +22,8 @@ For implementer reference (only when changing a package itself):
   validation layers, and ADR-style decisions.
 - [TypeScript Package Design](docs/softschema-typescript-design.md): the Zod port and
   the Python↔TypeScript API parity table.
-- When changing behavior, follow the parity development process (golden-first, then port
-  to both) in [docs/development.md](docs/development.md).
+- When changing behavior, follow the parity development process (shared-contract-first,
+  then port to both) in [docs/development.md](docs/development.md).
   Skip all of this when only authoring or validating artifacts.
 
 Key rules:

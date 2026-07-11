@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -11,10 +10,11 @@ import pytest
 
 from softschema import DEFAULT_VALIDATION_LIMITS, FieldInfo, SchemaView, infer_envelope_key
 from softschema.value_domain import PortableValueError, PortableYamlSyntaxError
+from tests.yaml_fixtures import load_yaml_fixture
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MOVIE_SCHEMA = REPO_ROOT / "examples/movie_page/movie-page.schema.yaml"
-VECTORS = json.loads((REPO_ROOT / "tests/schema-view/vectors.json").read_text(encoding="utf-8"))
+VECTORS = load_yaml_fixture(REPO_ROOT / "tests/schema-view/vectors.yaml")
 
 
 def _field_output(field: FieldInfo) -> dict[str, Any]:

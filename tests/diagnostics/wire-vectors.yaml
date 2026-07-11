@@ -1,0 +1,400 @@
+format: "diagnostic-v1"
+profile: "frontmatter-md"
+limits:
+  max_resource_bytes: 8388608
+  max_bundle_bytes: 67108864
+  max_resources: 256
+  max_nodes_per_resource: 100000
+  max_depth: 128
+  max_scalar_codepoints: 1048576
+results:
+  passed:
+    outcome: "passed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/valid movie.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          title: "Arrival"
+          year: 2016
+        note: "before\Lafter"
+    validation:
+      contract:
+        envelope_key: "movie"
+        id: "example.movie:Movie/v1"
+        model: null
+        profile: "frontmatter-md"
+        schema_path: "schemas/movie.schema.yaml"
+        status: "enforced"
+      contract_id: "example.movie:Movie/v1"
+      document_metadata:
+        contract: "example.movie:Movie/v1"
+        envelope: "movie"
+        schema: null
+        status: "enforced"
+      semantic:
+        errors: []
+        ok: true
+        skipped_reason: null
+      status: "enforced"
+      structural:
+        engine: "json_schema"
+        errors: []
+        ok: true
+        skipped_reason: null
+      warnings: []
+    diagnostics: []
+  warning:
+    outcome: "passed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/legacy.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          title: "Moonlight"
+          year: 2016
+    validation:
+      contract:
+        envelope_key: "movie"
+        id: "example.movie:Movie/v1"
+        model: null
+        profile: "frontmatter-md"
+        schema_path: "schemas/movie.schema.yaml"
+        status: "enforced"
+      contract_id: "example.movie:Movie/v1"
+      document_metadata:
+        contract: "example.movie:Movie/v1"
+        envelope: "movie"
+        schema: null
+        status: "enforced"
+      semantic:
+        errors: []
+        ok: true
+        skipped_reason: null
+      status: "enforced"
+      structural:
+        engine: "json_schema"
+        errors: []
+        ok: true
+        skipped_reason: null
+      warnings:
+        - code: "legacy_metadata"
+          message: "artifact metadata uses the legacy format"
+          severity: "warning"
+    diagnostics:
+      - category: "warning"
+        rule_id: "softschema.warning.legacy_metadata"
+        severity: "warning"
+        message: "artifact metadata uses the legacy format"
+        source: "artifacts/legacy.md"
+        path: "/softschema"
+        line: 2
+        column: 1
+  binding:
+    outcome: "validation_failed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/unbound.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          title: "Unknown"
+    validation: null
+    diagnostics:
+      - category: "binding"
+        rule_id: "softschema.artifact.contract_unknown"
+        severity: "error"
+        message: "artifact contract is not registered"
+        source: "artifacts/unbound.md"
+        path: "/softschema/contract"
+        line: 3
+        column: 13
+  parse:
+    outcome: "validation_failed"
+    input:
+      kind: "parse_error"
+      reason: "syntax"
+      message: "artifact is not valid YAML"
+      source: "artifacts/bad syntax.md"
+      line: 4
+      column: 7
+    validation: null
+    diagnostics:
+      - category: "parse"
+        rule_id: "softschema.parse_error.syntax"
+        severity: "error"
+        message: "artifact is not valid YAML"
+        source: "artifacts/bad syntax.md"
+        line: 4
+        column: 7
+  schema:
+    outcome: "validation_failed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/schema failure.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          title: "Primer"
+    validation:
+      contract:
+        envelope_key: "movie"
+        id: "example.movie:Movie/v1"
+        model: null
+        profile: "frontmatter-md"
+        schema_path: "schemas/movie schema.yaml"
+        status: "enforced"
+      contract_id: "example.movie:Movie/v1"
+      document_metadata:
+        contract: "example.movie:Movie/v1"
+        envelope: "movie"
+        schema: null
+        status: "enforced"
+      semantic:
+        errors: []
+        ok: true
+        skipped_reason: null
+      status: "enforced"
+      structural:
+        engine: "json_schema"
+        errors:
+          - kind: "schema_invalid"
+            reason: "reference"
+            message: "compiled schema reference is unavailable offline"
+            schema_path: "/properties/director"
+            reference: "https://schemas.example/director"
+        ok: false
+        skipped_reason: null
+      warnings: []
+    diagnostics:
+      - category: "schema"
+        rule_id: "softschema.schema_invalid.reference"
+        severity: "error"
+        message: "compiled schema reference is unavailable offline"
+        source: "artifacts/schema failure.md"
+        schema_source: "https://schemas.example/movie%20schema.yaml"
+        schema_path: "/properties/director"
+        line: 8
+        column: 7
+  structural:
+    outcome: "validation_failed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/structural.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          year: 2016
+    validation:
+      contract:
+        envelope_key: "movie"
+        id: "example.movie:Movie/v1"
+        model: null
+        profile: "frontmatter-md"
+        schema_path: "schemas/movie.schema.yaml"
+        status: "enforced"
+      contract_id: "example.movie:Movie/v1"
+      document_metadata:
+        contract: "example.movie:Movie/v1"
+        envelope: "movie"
+        schema: null
+        status: "enforced"
+      semantic:
+        errors: []
+        ok: true
+        skipped_reason: null
+      status: "enforced"
+      structural:
+        engine: "json_schema"
+        errors:
+          - kind: "schema_violation"
+            path:
+              - "movie"
+            validator: "required"
+            validator_value:
+              - "title"
+            value:
+              year: 2016
+            message: "required property is missing"
+        ok: false
+        skipped_reason: null
+      warnings: []
+    diagnostics:
+      - category: "structural"
+        rule_id: "softschema.schema_violation.required"
+        severity: "error"
+        message: "required property is missing"
+        source: "artifacts/structural.md"
+        path: "/movie"
+        line: 6
+        column: 1
+  semantic:
+    outcome: "validation_failed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/semantic ünicode.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          title: "Old"
+          year: 1800
+    validation:
+      contract:
+        envelope_key: "movie"
+        id: "example.movie:Movie/v1"
+        model: "Movie"
+        profile: "frontmatter-md"
+        schema_path: "schemas/movie.schema.yaml"
+        status: "enforced"
+      contract_id: "example.movie:Movie/v1"
+      document_metadata:
+        contract: "example.movie:Movie/v1"
+        envelope: "movie"
+        schema: null
+        status: "enforced"
+      semantic:
+        errors:
+          - code: "value_error"
+            path:
+              - "movie"
+              - "year"
+            message: "year must be after 1888"
+        ok: false
+        skipped_reason: null
+      status: "enforced"
+      structural:
+        engine: "json_schema"
+        errors: []
+        ok: true
+        skipped_reason: null
+      warnings: []
+    diagnostics:
+      - category: "semantic"
+        rule_id: "softschema.semantic.value_error"
+        severity: "error"
+        message: "year must be after 1888"
+        source: "artifacts/semantic ünicode.md"
+        path: "/movie/year"
+        line: 7
+        column: 9
+  unicode_ordering:
+    outcome: "validation_failed"
+    input:
+      kind: "artifact_input"
+      ok: true
+      source: "artifacts/order.md"
+      profile: "frontmatter-md"
+      values:
+        movie:
+          title: "Order"
+    validation: null
+    diagnostics:
+      - category: "binding"
+        rule_id: "softschema.artifact.contract_unknown"
+        severity: "error"
+        message: "artifact contract is not registered"
+        source: "artifacts/order.md"
+        path: "/"
+      - category: "binding"
+        rule_id: "softschema.artifact.contract_unknown"
+        severity: "error"
+        message: "artifact contract is not registered"
+        source: "artifacts/order.md"
+        path: "/𐀀"
+  no_matches:
+    outcome: "input_failed"
+    input:
+      kind: "input_error"
+      reason: "no_matches"
+      message: "artifact directory contains no matching files"
+      source: "artifacts/empty directory"
+    validation: null
+    diagnostics:
+      - category: "input"
+        rule_id: "softschema.input_error.no_matches"
+        severity: "error"
+        message: "artifact directory contains no matching files"
+        source: "artifacts/empty directory"
+  input:
+    outcome: "input_failed"
+    input:
+      kind: "input_error"
+      reason: "not_found"
+      message: "artifact path does not exist"
+      source: "artifacts/abc:def #1.md"
+    validation: null
+    diagnostics:
+      - category: "input"
+        rule_id: "softschema.input_error.not_found"
+        severity: "error"
+        message: "artifact path does not exist"
+        source: "artifacts/abc:def #1.md"
+  input_unc:
+    outcome: "input_failed"
+    input:
+      kind: "input_error"
+      reason: "unreadable"
+      message: "artifact path cannot be read"
+      source: "//server/share/missing file.md"
+    validation: null
+    diagnostics:
+      - category: "input"
+        rule_id: "softschema.input_error.unreadable"
+        severity: "error"
+        message: "artifact path cannot be read"
+        source: "//server/share/missing file.md"
+aggregates:
+  - id: "success"
+    result_ids:
+      - "passed"
+      - "warning"
+    summary:
+      total: 2
+      passed: 2
+      validation_failed: 0
+      input_failed: 0
+      exit_code: 0
+  - id: "validation-exit-1"
+    result_ids:
+      - "binding"
+      - "parse"
+      - "schema"
+      - "structural"
+      - "semantic"
+      - "warning"
+    summary:
+      total: 6
+      passed: 1
+      validation_failed: 5
+      input_failed: 0
+      exit_code: 1
+  - id: "input-precedence-exit-2"
+    result_ids:
+      - "passed"
+      - "semantic"
+      - "no_matches"
+      - "input"
+      - "input_unc"
+    summary:
+      total: 5
+      passed: 1
+      validation_failed: 1
+      input_failed: 3
+      exit_code: 2
+  - id: "unicode-code-point-order"
+    result_ids:
+      - "unicode_ordering"
+    summary:
+      total: 1
+      passed: 0
+      validation_failed: 1
+      input_failed: 0
+      exit_code: 1

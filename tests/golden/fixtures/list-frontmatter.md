@@ -1,6 +1,0 @@
----
-- just
-- a
-- list
----
-body

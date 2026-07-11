@@ -4,10 +4,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync as wf } from "node:fs";
+import { mkdtempSync, writeFileSync as wf } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
+import { loadYamlFixture } from "../test/yaml-fixture.js";
 import {
   applyEnforcedExtras,
   ENFORCEMENT_UNSUPPORTED_MESSAGE,
@@ -36,16 +37,11 @@ interface EnforcementValidationVector {
   invalid: unknown[];
 }
 
-const sharedEnforcementVectors = JSON.parse(
-  readFileSync(
-    resolve(import.meta.dir, "../../../tests/parity/canonicalization-enforcement.json"),
-    "utf8",
-  ),
-) as {
+const sharedEnforcementVectors = loadYamlFixture<{
   enforcement: EnforcementVector[];
   enforcement_unsupported: UnsupportedEnforcementVector[];
   enforcement_validation: EnforcementValidationVector[];
-};
+}>(resolve(import.meta.dir, "../../../tests/parity/canonicalization-enforcement.yaml"));
 
 const enforcementVectors = (sharedEnforcementVectors as { enforcement: EnforcementVector[] })
   .enforcement;

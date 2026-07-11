@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Contract } from "../src/models.js";
 import { artifactErrorRecord, readFrontmatter, validateArtifact } from "../src/validate.js";
+import { loadYamlFixture } from "./yaml-fixture.js";
 
 interface Vector {
   id: string;
@@ -16,9 +17,7 @@ interface Vector {
 
 const ROOT = resolve(import.meta.dir, "../../..");
 const CLI = resolve(ROOT, "packages/typescript/src/cli.ts");
-const VECTORS = JSON.parse(
-  readFileSync(resolve(ROOT, "tests/parity/artifact-input.json"), "utf8"),
-) as Vector[];
+const VECTORS = loadYamlFixture<Vector[]>(resolve(ROOT, "tests/parity/artifact-input.yaml"));
 
 function contract(profile: Contract["profile"]): Contract {
   return {
