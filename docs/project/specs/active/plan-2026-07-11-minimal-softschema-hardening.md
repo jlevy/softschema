@@ -34,8 +34,9 @@ The intended result remains a small paired library:
 
 ## Goals
 
-- Preserve all documented public APIs, commands, artifact formats, exit behavior, and
-  package surfaces currently shipped from `main`.
+- Preserve the useful capabilities and user workflows currently shipped from `main`.
+  APIs, flags, result shapes, and format details may change where one clean replacement
+  is simpler or more correct.
 - Define the actual trust model before changing security-sensitive behavior.
 - Correct confirmed validation, packaging, installation, and release-boundary defects
   with the smallest design that closes each defect.
@@ -70,6 +71,8 @@ The intended result remains a small paired library:
 - Increasing coverage percentages by testing implementation details or obvious object
   construction.
 - Adding dependencies without a concrete need, release-age review, and lockfile review.
+- Carrying deprecated aliases, compatibility wrappers, dual result shapes, or parallel
+  old and new implementations into the new minor release.
 
 ## Background
 
@@ -125,13 +128,18 @@ boundary is documented as a non-goal rather than implemented.
 | --- | --- | --- |
 | Artifact Markdown and YAML | Untrusted data | Parse without code execution; validate shape and bounded size; return stable errors |
 | Document-declared schema path | Untrusted reference | Relative, bounded local resolution; no network retrieval |
-| Explicit local schema file | Trusted file, possibly malformed data | Stable parse and validation errors; no implicit remote references |
+| Explicit local schema file | Trusted project configuration, possibly malformed | Stable parse and validation errors; no implicit remote references |
 | Registered Pydantic or Zod model | Trusted local code | Normal language-runtime behavior; no sandbox or custom regex engine |
 | Packaged docs and skills | Trusted package resources | Resolve from the installed package, not the consumer working tree |
 | Skill installation target | User-authorized local write | Dry run, target containment, unmanaged-file protection, atomic replacement |
 | CI pull-request code | Untrusted until reviewed | No registry credentials or publish authority |
 | Protected release job | Trusted workflow and reviewed source | OIDC, least privilege, build once, checksum, install smoke |
 | Same-user concurrent local process | Out of scope | No descriptor race framework or transaction journal |
+
+A document may select a schema only within the trusted project boundary.
+The schema is trusted configuration even when the artifact is untrusted data.
+Protect against invalid schema syntax, unavailable references, and accidental resource
+exhaustion; do not build a sandbox for computationally malicious schemas or models.
 
 ### Keep Complexity Proportional
 
@@ -147,10 +155,12 @@ The implementation must satisfy all of these constraints:
   removes.
 - A Python and TypeScript implementation may differ internally when idiomatic library
   behavior can satisfy the same public contract.
-- Exact byte parity is required only for documented machine-readable outputs, compiled
-  schema identity, and explicit parity fixtures.
-  Human diagnostics may be semantically equivalent unless the public spec promises exact
-  text.
+- Cross-runtime parity means the same structured meaning, error codes, paths, and exit
+  classes. Do not require byte-identical pretty JSON where JSON object order and number
+  spelling are semantically irrelevant.
+- Use a standards-based canonical JSON representation only where bytes are identity,
+  such as the compiled-schema digest.
+  Do not maintain a general-purpose custom JSON serializer for CLI presentation.
 
 Line counts are review triggers, not quality targets.
 Compact code that hides complexity does not satisfy the plan.
@@ -168,10 +178,68 @@ Do not cherry-pick implementation commits from the prior hardening branch.
 A small test fixture may be adapted after confirming that it exposes a real `main`
 defect and is the minimal expression of that behavior.
 
-### Candidate Hardening Set
+### Previous PR Bug-Fix Disposition
 
-These are bounded candidates, not permission to reproduce the prior architecture.
-Each must pass the evidence gate before implementation.
+The previous PR mixed defects present on `main`, product additions, and defects in its
+own new infrastructure.
+Only the first group is presumptively in scope.
+Each accepted item still requires a minimal failing regression against `main` before
+implementation.
+
+#### Applicable Defects From `main`
+
+| Defect | Required correction | Primary test owner |
+| --- | --- | --- |
+| Missing, unreadable, malformed, and invalid-UTF-8 artifacts crossed inconsistent library and CLI boundaries | Distinguish access/input failures from readable-content parse failures in both runtimes. Return stable structured reasons and preserve the `2` versus `1` exit distinction. | Shared artifact-input YAML vectors |
+| Python could retrieve unresolved remote JSON Schema references | Use an offline validator registry. Allow only the root schema and explicitly supplied, already-loaded resources. | Shared reference YAML vectors |
+| Root, embedded, and explicitly supplied JSON Schema resources were identified and resolved differently by the two validators | Index local `$id`, `$anchor`, and JSON Pointer targets consistently, reject duplicate resource identities, and resolve only within the closed in-memory registry. | Shared local-resource YAML vectors |
+| Readable malformed schemas escaped through different exceptions and exit classes | Return one structured `schema_invalid` family with stable reasons for syntax, dialect, reference, regex, and compilation failures. Keep file access and invocation failures as input errors. | Shared schema-failure YAML vectors |
+| Python and JavaScript YAML parsers materialized different values | Define one JSON-compatible value domain: string keys, exact safe integers, finite numbers, no timestamps, duplicate keys, merge keys, aliases, custom tags, negative zero, lone surrogates, or unsupported scalar forms. Configure and inspect the existing parsers; do not replace them. | Shared portable-value YAML vectors |
+| Artifact and schema reads were unbounded | Check a modest byte limit before reading and enforce depth, node, and scalar limits after parsing. The byte limit bounds parser allocation; incremental parser construction and descriptor race defenses remain out of scope. | One boundary unit per runtime plus shared limit vectors |
+| TypeScript `format` assertions differed from Python’s annotation-only behavior | Treat `format` as an annotation in both validators unless a later contract explicitly opts into a named assertion vocabulary. | Shared structural vectors |
+| Python and JavaScript regular-expression dialects can disagree | Define and validate a small common pattern syntax before using the native validators. Reject unsupported constructs and bound pattern length. Schemas are trusted, so do not implement a regex VM, DFA cache, or adversarial execution fuel. | Shared pattern YAML vectors |
+| Pretty JSON and schema hashes relied on incompatible host ordering and number spelling | Compare CLI JSON structurally. Use an RFC 8785-compatible canonical JSON implementation only for digest preimages, after portable-value validation. | Shared digest vectors and semantic CLI goldens |
+| Canonicalization could rewrite annotation data or miss schema-bearing keywords | Traverse only recognized JSON Schema subschema positions, preserve unknown and annotation values verbatim, normalize only documented semantic no-ops, and use one specified ordering for set-like arrays. | Shared canonicalization vectors with before/after validation assertions |
+| The `enforced` overlay could reject valid composed schemas | Apply closure only where it is semantics-preserving. Return `enforcement_unsupported` for composition or evaluation shapes that cannot be closed safely without changing meaning. | Shared enforcement vectors |
+| Contract IDs were validated inconsistently and were copied into JSON Schema `$id` | Validate contract IDs at every public construction/registry/compiler boundary. Store the logical contract only in `x-softschema.contract`; accept a separate optional absolute schema resource ID for `$id`. | Shared identity vectors plus one compiler parity test |
+| Compiler-owned root metadata could be silently merged, replaced, or crash by type | Reserve root `x-softschema` for the compiler and reject model-supplied collisions before writing. Require a contract ID for compilation. | Shared compiler vectors |
+| Python and TypeScript field-annotation helpers accepted different invalid `x-softschema` metadata | Validate the retained annotation fields at authoring time with the same nonempty-string, integer, enum, alias, and portable-value rules. Remove annotation fields that have no real consumer instead of preserving unused surface. | Shared annotation compiler vectors |
+| Compiler drift checks could equate Python `true` and `1`, accept invalid UTF-8, or compare nonportable values | Parse committed sidecars as strict UTF-8, validate the portable domain, and compare their canonical structured representation. Write exact UTF-8 bytes atomically. | Compiler unit test per runtime and one parity case |
+| `SchemaView` discarded `$ref` sibling annotations and oversimplified genuine unions as nullable single values | Preserve allowed `$ref` sibling annotations, report a single type or enum only for an exact nullable-single-value shape, leave genuine unions unresolved, and snapshot mutable input. | Shared SchemaView vectors run by both adapters |
+| `SchemaView.contract_id` treated JSON Schema `$id` as a logical contract | Read contract identity only from validated `x-softschema.contract`; expose schema resource identity separately. Do not retain the `$id` fallback in the hard cut. | Shared identity and SchemaView vectors |
+| TypeScript document-declared schema containment was lexical and could follow an in-tree symlink outside the project boundary | Resolve the real target before the containment check in both runtimes. Keep same-user path replacement races out of scope. | One filesystem boundary test per runtime |
+| The existing TypeScript model loader imported raw path strings, so spaces, URL metacharacters, and Windows paths could resolve incorrectly | Parse `path:export` on the final colon, convert the resolved local path with `pathToFileURL`, and give a clear Node-built-JavaScript versus Bun-TypeScript error. Keep model loading trusted and local. | Focused TypeScript adapter tests |
+| Installed CLI resources could be shadowed by a consumer repository | Resolve installed docs, examples, and skills from package resources. Permit live source resources only when the module has the exact source-checkout layout. | Built-package collision smoke per ecosystem |
+| `skill --install` overwrote unmanaged or locally modified files and inferred scope too freely | Require explicit project or personal scope, support dry run, constrain targets, refuse unmanaged or modified files, and replace managed files atomically. | One shared behavioral matrix exercised through each CLI |
+| Agent bootstrap examples used unpinned zero-install commands while claiming a release-age policy that consumers may not have | Prefer an installed qualifying CLI. Make any zero-install fallback use one centrally generated, exact last-verified package version and a noninteractive invocation. | Skill content assertion and installed-package smoke |
+| CI and publication rebuilt or trusted artifacts across an incompletely closed boundary | Pin reviewed actions, install from frozen locks, build wheel/sdist/npm tarball once without publish authority, checksum them, smoke the exact transferred artifacts on supported operating systems, then publish those bytes through protected OIDC jobs. | Workflow dry run plus built-artifact matrix smoke |
+| Public docs and agent guidance overstated byte parity, schema trust, bootstrap safety, and agent-target support | Rewrite claims to match the hard-cut semantic parity and trust model; keep exact rules in the spec, APIs in one reference, and agent-specific claims tied to primary documentation or tested discovery. | Link/claim audit plus installed docs smoke |
+
+#### Changes That Do Not Carry Forward
+
+| Previous PR work | Disposition |
+| --- | --- |
+| Authored `format: "1"`, legacy metadata schemas, and format negotiation | Excluded. The contract is the authored identity; there is no second artifact version. |
+| Portable-core package split and compatibility re-exports | Not a bug fix. Refactor only where the accepted fixes make a smaller module boundary; add no compatibility layer. |
+| Batch discovery, recursive globbing, JSONL, SARIF, positioned diagnostics, and source maps | Excluded product additions. |
+| Standalone conformance runner, publication site, Pages promotion, archive consumer, and evolution registry | Excluded platform additions. Shared YAML vectors are the conformance source. |
+| Transactional installer journals, locks, rollback, repair, and bounded inspection of those files | Excluded. They fixed complexity introduced by the transactional installer. |
+| Custom regex NFA/DFA, cache limits, aggregate fuel, and later automata fixes | Excluded. Use a restricted common syntax with trusted schemas and native validators. |
+| Recursive discovery limits, iterative glob fixes, symlink deduplication, and candidate work budgets | Excluded because discovery and glob systems are excluded. |
+| Frozen release driver, registry state machine, recovery bundles, immutable-release retries, checksum parser, and associated descriptor/Windows race fixes | Excluded. Use standard build-once artifacts and rerunnable protected publishing jobs. |
+| Conformance-adapter request validation and the boolean-limit review comment | Excluded. The adapter was new, and the reported boolean acceptance was a false positive. |
+| Pure-YAML CLI exposure, serializable TypeScript contract descriptors, runtime binding registry, and a larger model-loading product surface | Not bug fixes. Existing pure-YAML and trusted local model-loading capabilities remain; only the concrete TypeScript path-resolution defect above carries forward. Other additions require separate product justification. |
+| Test-only fixes for the discarded artifact verifier, npm consumer, Pages publisher, and release recovery tooling | Excluded with their owning systems. |
+| Conversion of human-reviewed fixtures from JSON to YAML and removal of duplicate tests | Retain as test-design requirements, not runtime features. |
+
+This table is the coverage checklist for the earlier PR. A newly discovered candidate
+must be added here with a disposition before implementation; it must not enter through a
+new bead without a spec update.
+
+### Accepted Hardening Set
+
+The applicable defects above define the bounded hardening set.
+They do not authorize the previous PR’s architecture.
 
 #### Validation Boundaries
 
@@ -179,14 +247,15 @@ Each must pass the evidence gate before implementation.
   validators with an explicit local resource policy.
 - Normalize malformed compiled-schema input into the existing structured result and CLI
   exit boundaries.
-- Validate the portable YAML value subset after parsing with the existing YAML
-  libraries. Reject unsupported values; do not replace either parser.
+- Validate the portable YAML value subset using the existing YAML libraries and their
+  representation or event APIs where materialization would erase evidence.
+  Reject unsupported values; do not replace either parser.
 - Apply simple byte and nesting limits at artifact and schema entry points.
   Use one small helper per language and ordinary iterative traversal where needed.
-- Make deterministic serialization explicit only for outputs covered by the public
-  parity contract.
-- Correct canonicalization or `enforced` overlay behavior only where a minimal schema
-  proves a semantic change.
+- Compare presentation JSON structurally and use standards-based canonical JSON only for
+  compiled-schema identity.
+- Correct canonicalization, format, pattern, `SchemaView`, identity, compiler, and
+  `enforced` behavior through the shared vectors named in the disposition table.
 
 #### Installed Resources and Skill Writes
 
@@ -279,34 +348,53 @@ Tests that merely repeat the same input and output at another layer must be remo
 
 ### API Changes
 
-No public API addition is planned.
+This minor release is a hard cut.
+Define the final API once and remove replaced shapes instead of carrying aliases.
 
-If a confirmed fix requires a public change, stop implementation and amend this spec
-with the exact Python and TypeScript signatures, compatibility behavior, and reason the
-existing API cannot express the fix.
+Known changes:
 
+- Python `compile_model` requires `contract_id` and accepts optional `schema_id`.
+- TypeScript `compileSchema` requires `contractId` and accepts optional `schemaId`.
+- Structural validation accepts an optional explicit mapping of already-loaded schema
+  resources; neither runtime retrieves a resource.
+- `SchemaView.contract_id` no longer falls back to `$id`; both implementations expose a
+  separate optional schema ID.
+- Skill installation gains explicit scope, target selection, and dry-run options.
+  An ambiguous invocation fails without writing.
+- Machine-readable results retain stable codes and fields needed by consumers, but
+  cross-runtime equality is structural rather than byte equality of pretty JSON.
+
+Before implementation, inventory every public export and CLI flag and write the final
+paired surface into this section.
+Remove deprecated aliases, v0.2 compatibility exports, and alternate result projections
+that are not part of that chosen surface.
 Internal helpers remain private unless there is a demonstrated host-library use case.
 
-## Backward Compatibility
+## Compatibility Policy
 
-**Code types, methods, and function signatures:** KEEP DEPRECATED for already published
-public symbols; DO NOT MAINTAIN compatibility for private helpers changed during focused
-refactoring.
+**Code types, methods, and function signatures:** DO NOT MAINTAIN. Ship one clean public
+surface with no deprecated aliases or wrappers.
 
-**Library APIs:** KEEP DEPRECATED. Existing Python and TypeScript public APIs on `main`
-must continue to work.
+**Library APIs:** DO NOT MAINTAIN the old signatures when an accepted design correction
+requires a better one.
+Preserve capabilities, not historical call shapes.
 
 **Server APIs:** N/A.
 
-**File formats:** SUPPORT BOTH only where `main` already accepts multiple documented
-forms. Preserve current Markdown/frontmatter and pure-YAML behavior.
-Do not add a second version field.
+**File formats:** DO NOT MAINTAIN rejected or ambiguous forms.
+Ship one documented Markdown/frontmatter profile and one pure-YAML profile.
+The contract ID identifies the payload contract; do not add or accept a second artifact
+version field.
 
 **Database schemas:** N/A.
 
-**CLI:** Preserve current commands, flags, machine-readable result shapes, and exit-code
-semantics. A diagnostic wording change is compatible when the wording is not documented
-as a machine contract and the structured error remains stable.
+**CLI:** Preserve useful workflows, stable error codes, and the exit classes `0`
+success, `1` validation/drift failure, and `2` invocation/input failure.
+Flags and result fields may change when the final paired surface is simpler.
+Do not retain hidden legacy flags or dual output modes.
+
+Document all intentional breaks in one concise migration section and the release notes.
+Do not implement migration behavior in the runtime.
 
 ## Implementation Plan
 
@@ -320,6 +408,11 @@ as a machine contract and the structured error remains stable.
   checks before changing behavior.
 - [ ] Reproduce each candidate hardening defect independently against `main`; reject or
   downgrade candidates that do not cross the stated trust model.
+- [ ] Complete the previous-PR disposition table: attach one minimal reproduction to
+  every applicable row and confirm that every excluded row belongs only to discarded
+  functionality or an out-of-scope threat.
+- [ ] Inventory the Python exports, TypeScript exports, CLI flags, and result fields;
+  specify one final hard-cut surface and delete the need for deprecation shims.
 - [ ] Consolidate portable cases into shared YAML vectors without introducing a general
   conformance framework.
 - [ ] Reduce CLI goldens to the smallest broad scenarios that retain command, output,
@@ -329,9 +422,11 @@ as a machine contract and the structured error remains stable.
 - [ ] Record the accepted fix list, rejected findings, and measured complexity budget in
   this spec before Phase 2 implementation.
 
-**Phase gate:** every accepted fix has a reproduction, trust-boundary statement, failing
-test, proposed primary owner, and minimal implementation sketch.
-The complete unchanged `main` behavior remains covered.
+**Phase gate:** every applicable row has a reproduction, trust-boundary statement,
+failing test, proposed primary owner, and minimal implementation sketch.
+Every prior-PR runtime change has a recorded disposition.
+Existing user capabilities remain covered, and the final hard-cut public surface is
+explicit.
 
 ### Phase 2: Apply Focused Fixes and Validate the Release Boundary
 
@@ -349,12 +444,13 @@ The complete unchanged `main` behavior remains covered.
   longer have a unique behavioral responsibility.
 - [ ] Produce a validation plan that lists each behavior once, its primary test owner,
   and any justified secondary check.
-- [ ] Require a final senior review focused on public compatibility, threat-model fit,
-  test ownership, and total design complexity.
+- [ ] Require a final senior review focused on the hard-cut API, threat-model fit, test
+  ownership, and total design complexity.
 
-**Phase gate:** all documented `main` behavior passes; every accepted defect is fixed;
-both packages build and install; the exact artifacts pass smoke tests; no prohibited
-subsystem exists; and the complexity limits are satisfied.
+**Phase gate:** every retained capability and the final documented hard-cut behavior
+passes; every accepted defect is fixed; both packages build and install; the exact
+artifacts pass smoke tests; no prohibited subsystem exists; and the complexity limits
+are satisfied.
 
 ## Testing Strategy
 
@@ -370,7 +466,7 @@ The required full matrix is:
 - shared YAML vectors through both implementations
 - concise CLI goldens under Python and the published Node runtime
 - Bun validation only for Bun-supported source/runtime behavior not exercised by Node
-- direct compiled-schema identity comparison
+- direct compiled-schema semantic and canonical-digest comparison
 - Python wheel build and isolated install smoke
 - npm package build, `publint`, pack, and isolated Node import/CLI smoke
 - release workflow dry run that cannot publish
@@ -393,9 +489,9 @@ Develop from the clean branch created from current `main`. Do not merge or rebas
 prior hardening implementation into it.
 
 Land the implementation only after both phases’ gates pass.
-Release Python and TypeScript together under their existing shared package version
-policy. Use a patch release when behavior only closes unintended failures; use a minor
-release if an accepted fix changes documented accepted input or a public result shape.
+Release Python and TypeScript together as a new minor version under their existing
+shared package version policy.
+This is a deliberate hard cut, not a patch-compatible migration.
 
 Keep the prior hardening PR open only as an evidence source until the replacement work
 has captured every accepted finding.
@@ -403,7 +499,8 @@ Then close it without merging.
 
 ## Success Criteria
 
-- Existing public functionality from `main` is preserved.
+- Useful capabilities and workflows from `main` are preserved through one clean public
+  surface; no deprecated compatibility code remains.
 - Every behavior has one named primary test owner.
 - Shared portable cases are human-readable YAML.
 - CLI goldens are small enough to review in full and cover complete user journeys.
@@ -419,20 +516,20 @@ Then close it without merging.
 ## Open Questions
 
 None at plan creation.
-The compatibility requirement is to preserve the documented public behavior on `main`.
-Any finding that would require changing that decision must pause implementation and
-return to the maintainer with a minimal reproduction and alternatives.
+The release is a hard-cut minor version.
+If implementation finds two materially different clean public designs, pause with
+minimal examples and the tradeoff; do not solve the ambiguity by shipping both.
 
 ## References
 
 - [Softschema Guide](../../../softschema-guide.md)
 - [Softschema Spec](../../../softschema-spec.md)
-- [Library API](../../../api.md)
 - [Development](../../../development.md)
 - [Python Package Design](../../../softschema-python-design.md)
 - [TypeScript Package Design](../../../softschema-typescript-design.md)
 - [Prior Full Engineering Review](../../reviews/review-2026-06-10-softschema-full-eng-review.md)
 - [Prior Review Remediation Plan](plan-2026-06-10-softschema-review-remediation.md)
+- [Previous hardening PR #20](https://github.com/jlevy/softschema/pull/20)
 - tbd `general-testing-rules`
 - tbd `golden-testing-guidelines`
 - tbd `common-doc-guidelines`
