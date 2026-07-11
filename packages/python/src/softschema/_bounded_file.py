@@ -103,7 +103,7 @@ def _open_canonical_regular_file(
     requested_path: Path,
     source_path: Path,
     source_stat: os.stat_result,
-) -> int:
+) -> tuple[int, os.stat_result]:
     supports_openat = (
         os.name != "nt"
         and os.open in os.supports_dir_fd
@@ -149,7 +149,7 @@ def _open_canonical_regular_file(
             except BaseException:
                 os.close(descriptor)
                 raise
-            return descriptor
+            return descriptor, opened_stat
         finally:
             if directory_descriptor is not None:
                 os.close(directory_descriptor)
@@ -172,7 +172,7 @@ def _open_canonical_regular_file(
     except BaseException:
         os.close(descriptor)
         raise
-    return descriptor
+    return descriptor, opened_stat
 
 
 def read_bounded_file(
@@ -210,10 +210,21 @@ def read_bounded_file(
     # the descriptor is opened below.
     if resolve_file_path(path) != source_path:
         raise _stale_path_error(path)
-    descriptor = _open_canonical_regular_file(path, source_path, source_stat)
+    source_expectation = BoundedFileExpectation.from_stat(source_path, source_stat)
+    descriptor, opened_stat = _open_canonical_regular_file(path, source_path, source_stat)
     try:
+        # Windows can expose timestamps with different representations through path
+        # and descriptor stat calls. Compare each interface only with itself: path
+        # snapshots authorize the name, while descriptor snapshots stabilize bytes.
+        if opened_stat.st_size != source_stat.st_size:
+            raise _stale_path_error(path)
+        fresh_source_stat = source_path.lstat()
+        if not source_expectation.matches(fresh_source_stat):
+            raise _stale_path_error(path)
+        if resolve_file_path(path) != source_path:
+            raise _stale_path_error(path)
         limit = max_bytes + _LIMIT_SENTINEL_BYTES
-        capacity = max(1, min(limit, source_stat.st_size + _LIMIT_SENTINEL_BYTES))
+        capacity = max(1, min(limit, opened_stat.st_size + _LIMIT_SENTINEL_BYTES))
         buffer = bytearray(capacity)
         total = 0
         while total < capacity:
@@ -229,7 +240,7 @@ def read_bounded_file(
         # field available here. Re-read the same descriptor and compare bytes to reject
         # torn ordinary races. This is still not an atomic snapshot against a hostile
         # writer deliberately coordinating both passes (documented below).
-        if os.name == "nt" and total == source_stat.st_size:
+        if os.name == "nt" and total == opened_stat.st_size:
             os.lseek(descriptor, 0, os.SEEK_SET)
             verified = 0
             while verified < total:
@@ -241,18 +252,21 @@ def read_bounded_file(
     finally:
         os.close(descriptor)
     if (
-        _identity(final_stat) != _identity(source_stat)
-        or final_stat.st_size != source_stat.st_size
-        or final_stat.st_mtime_ns != source_stat.st_mtime_ns
-        or final_stat.st_ctime_ns != source_stat.st_ctime_ns
-        or total != source_stat.st_size
+        _identity(final_stat) != _identity(opened_stat)
+        or final_stat.st_size != opened_stat.st_size
+        or final_stat.st_mtime_ns != opened_stat.st_mtime_ns
+        or final_stat.st_ctime_ns != opened_stat.st_ctime_ns
+        or total != opened_stat.st_size
     ):
+        raise _stale_path_error(path)
+    final_source_stat = source_path.lstat()
+    if not source_expectation.matches(final_source_stat) or resolve_file_path(path) != source_path:
         raise _stale_path_error(path)
     if len(encoded) > max_bytes:
         raise PortableValueError("maximum resource size exceeded")
     return BoundedFileRead(
         data=encoded,
-        expectation=BoundedFileExpectation.from_stat(source_path, source_stat),
+        expectation=source_expectation,
     )
 
 

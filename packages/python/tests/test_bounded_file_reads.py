@@ -390,6 +390,27 @@ def test_bounded_reader_rejects_identity_change(
         read_bounded_bytes(source, 1024)
 
 
+def test_bounded_reader_compares_path_and_descriptor_timestamps_separately(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows path-stat timestamps can differ from descriptor timestamps."""
+    source = tmp_path / "schema.yaml"
+    expected = b"type: object\n"
+    source.write_bytes(expected)
+    original_lstat = Path.lstat
+
+    def lstat_with_path_timestamp_skew(path: Path) -> os.stat_result:
+        result = original_lstat(path)
+        fields = list(result)
+        fields[8] += 1
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(Path, "lstat", lstat_with_path_timestamp_skew)
+
+    assert read_bounded_bytes(source, 1024) == expected
+
+
 def test_bounded_reader_rejects_parent_substitution_during_resolution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

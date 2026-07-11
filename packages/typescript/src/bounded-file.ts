@@ -72,6 +72,33 @@ function matchesExpected(
   );
 }
 
+function sameSnapshot(
+  left: {
+    readonly dev: bigint;
+    readonly ino: bigint;
+    readonly size: bigint;
+    readonly mtimeNs: bigint;
+    readonly ctimeNs: bigint;
+  },
+  right: {
+    readonly dev: bigint;
+    readonly ino: bigint;
+    readonly size: bigint;
+    readonly mtimeNs: bigint;
+    readonly ctimeNs: bigint;
+  },
+): boolean {
+  return (
+    left.ino !== 0n &&
+    right.ino !== 0n &&
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
 /** Read one identity-stable regular file without blocking on special nodes. */
 export function readBoundedFile(
   path: string,
@@ -109,10 +136,16 @@ export function readBoundedFile(
   try {
     const openedStat = fstatSync(handle, { bigint: true });
     if (!openedStat.isFile()) throw nonRegularFileError(path);
-    if (openedStat.dev !== sourceStat.dev || openedStat.ino !== sourceStat.ino) {
+    if (
+      openedStat.dev !== sourceStat.dev ||
+      openedStat.ino !== sourceStat.ino ||
+      openedStat.size !== sourceStat.size
+    ) {
       throw stalePathError(path);
     }
-    if (expected !== undefined && !matchesExpected(openedStat, expected)) {
+    // Windows can expose timestamps with different representations through path
+    // and descriptor stat calls. Compare each interface only with itself.
+    if (!sameSnapshot(sourceStat, lstatSync(sourcePath, { bigint: true }))) {
       throw stalePathError(path);
     }
     if (realpathSync.native(path) !== sourcePath) throw stalePathError(path);
@@ -133,7 +166,7 @@ export function readBoundedFile(
     // that cannot expose a dependable change timestamp for a same-size rewrite. This
     // does not claim an atomic snapshot against a hostile writer that deliberately
     // coordinates both passes.
-    if (process.platform === "win32" && BigInt(total) === sourceStat.size) {
+    if (process.platform === "win32" && BigInt(total) === openedStat.size) {
       const verification = Buffer.allocUnsafe(Math.min(FILE_READ_CHUNK_BYTES, capacity));
       let verified = 0;
       while (verified < total) {
@@ -157,13 +190,12 @@ export function readBoundedFile(
       }
       finalStat = fstatSync(handle, { bigint: true });
     }
+    if (!sameSnapshot(finalStat, openedStat) || BigInt(total) !== openedStat.size) {
+      throw stalePathError(path);
+    }
     if (
-      finalStat.dev !== sourceStat.dev ||
-      finalStat.ino !== sourceStat.ino ||
-      finalStat.size !== sourceStat.size ||
-      finalStat.mtimeNs !== sourceStat.mtimeNs ||
-      finalStat.ctimeNs !== sourceStat.ctimeNs ||
-      BigInt(total) !== sourceStat.size
+      !sameSnapshot(sourceStat, lstatSync(sourcePath, { bigint: true })) ||
+      realpathSync.native(path) !== sourcePath
     ) {
       throw stalePathError(path);
     }
