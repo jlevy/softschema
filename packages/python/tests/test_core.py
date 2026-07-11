@@ -353,6 +353,18 @@ def test_shared_artifact_input_vectors(tmp_path: Path) -> None:
         assert result.structural.errors[0]["kind"] == case["code"], case["id"]
 
 
+def test_shared_structural_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    yaml = YAML()
+    for case in vectors["structural"]:
+        path = tmp_path / f"{case['id']}.schema.yaml"
+        yaml.dump(case["schema"], path)
+        result = validate_structural(case["value"], path, resources=case.get("resources"))
+        assert result.ok is case["valid"], case["id"]
+        if not case["valid"]:
+            assert result.errors[0]["kind"] == case["code"], case["id"]
+
+
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:
     path.write_text(f"---\n{frontmatter_yaml}\n---\n{body}")
 

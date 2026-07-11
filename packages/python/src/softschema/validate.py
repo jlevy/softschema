@@ -14,13 +14,18 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from frontmatter_format import FmFormatError
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
+from referencing import Registry, Resource
+from referencing.exceptions import Unresolvable
+from referencing.jsonschema import DRAFT202012
 from ruamel.yaml import YAMLError
 
 from softschema._portable import PortableInputError, parse_yaml, read_utf8
@@ -100,6 +105,7 @@ def validate_structural(
     schema_yaml_path: Path,
     *,
     strict_extras: bool = False,
+    resources: Mapping[str, dict[str, Any]] | None = None,
 ) -> StructuralResult:
     """Validate values against a compiled JSON Schema (YAML or JSON).
 
@@ -108,23 +114,129 @@ def validate_structural(
     validated as ``additionalProperties: false``; see
     :func:`softschema.canonicalize.apply_enforced_extras`.
     """
-    schema = _read_yaml(schema_yaml_path)
-    if strict_extras and isinstance(schema, dict):
-        schema = apply_enforced_extras(schema)
-    validator = Draft202012Validator(schema)
-    errors = [
-        structural_error_record(
-            path=list(error.absolute_path),
-            validator=str(error.validator),
-            validator_value=error.validator_value,
-            value=error.instance,
-        )
-        for error in validator.iter_errors(values)
-    ]
+    try:
+        schema = _read_yaml(schema_yaml_path)
+        if not isinstance(schema, dict):
+            return _schema_invalid("syntax", "compiled schema root must be a mapping")
+        Draft202012Validator.check_schema(schema)
+        _check_schema_identities(schema, resources or {})
+        _check_patterns(schema)
+        if strict_extras:
+            schema = apply_enforced_extras(schema)
+        registry: Registry[Any] = Registry()
+        for key, resource_schema in (resources or {}).items():
+            resource_id = str(resource_schema.get("$id", key))
+            registry = registry.with_resource(
+                resource_id,
+                Resource.from_contents(resource_schema, default_specification=DRAFT202012),
+            )
+        registry = registry.crawl()
+        validator = Draft202012Validator(schema, registry=registry)
+        errors = [
+            structural_error_record(
+                path=list(error.absolute_path),
+                validator=str(error.validator),
+                validator_value=error.validator_value,
+                value=error.instance,
+            )
+            for error in validator.iter_errors(values)
+        ]
+    except PortableInputError as exc:
+        return _schema_invalid("syntax", str(exc))
+    except SchemaError as exc:
+        return _schema_invalid("dialect", exc.message)
+    except Unresolvable as exc:
+        return _schema_invalid("reference", str(exc))
+    except re.error as exc:
+        return _schema_invalid("pattern", str(exc))
+    except Exception as exc:
+        return _schema_invalid(_schema_failure_reason(exc), str(exc))
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
     return StructuralResult(ok=not errors, errors=errors)
+
+
+_SCHEMA_MAPS = frozenset(
+    {"$defs", "definitions", "properties", "patternProperties", "dependentSchemas"}
+)
+_SCHEMA_LISTS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+_SCHEMA_SINGLES = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "contentSchema",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
+_MAX_PATTERN_LENGTH = 1_024
+_UNSUPPORTED_PATTERN_PARTS = ("(?<", "(?P", "\\A", "\\Z", "\\z", "\\p", "\\P")
+
+
+def _iter_schemas(root: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    stack = [root]
+    while stack:
+        schema = stack.pop()
+        yield schema
+        for key, value in schema.items():
+            if key in _SCHEMA_MAPS and isinstance(value, dict):
+                stack.extend(item for item in value.values() if isinstance(item, dict))
+            elif key in _SCHEMA_LISTS and isinstance(value, list):
+                stack.extend(item for item in value if isinstance(item, dict))
+            elif key in _SCHEMA_SINGLES and isinstance(value, dict):
+                stack.append(value)
+
+
+def _check_patterns(schema: dict[str, Any]) -> None:
+    for node in _iter_schemas(schema):
+        pattern = node.get("pattern")
+        if pattern is None:
+            continue
+        if not isinstance(pattern, str) or len(pattern) > _MAX_PATTERN_LENGTH:
+            raise ValueError("pattern must be a string of at most 1024 characters")
+        if any(part in pattern for part in _UNSUPPORTED_PATTERN_PARTS) or re.search(
+            r"\\[1-9]|\(\?[aiLmsux-]", pattern
+        ):
+            raise ValueError("pattern uses syntax outside the portable subset")
+
+
+def _check_schema_identities(
+    schema: dict[str, Any], resources: Mapping[str, dict[str, Any]]
+) -> None:
+    seen: set[str] = set()
+    for document in (schema, *resources.values()):
+        for node in _iter_schemas(document):
+            resource_id = node.get("$id")
+            if not isinstance(resource_id, str):
+                continue
+            if resource_id in seen:
+                raise ValueError(f"duplicate schema resource identity: {resource_id}")
+            seen.add(resource_id)
+
+
+def _schema_failure_reason(error: Exception) -> str:
+    message = str(error).lower()
+    if "reference" in message or "unresolvable" in message:
+        return "reference"
+    if "pattern" in message:
+        return "pattern"
+    if "duplicate schema resource" in message:
+        return "resource_identity"
+    return "compilation"
+
+
+def _schema_invalid(reason: str, message: str) -> StructuralResult:
+    return StructuralResult(
+        ok=False,
+        errors=[{"kind": "schema_invalid", "reason": reason, "message": message}],
+    )
 
 
 def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult:

@@ -5,9 +5,7 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
 import type { z } from "zod";
 import { applyEnforcedExtras } from "./canonicalize.js";
 import {
@@ -28,27 +26,6 @@ import {
   type SchemaWarning,
 } from "./models.js";
 import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
-
-/** Module-level Ajv2020 instance, initialized once and reused for all validations. */
-const sharedAjv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
-addFormats(sharedAjv);
-
-/** Cache of compiled validators keyed by the stable JSON serialization of the final schema. */
-const validatorCache = new Map<string, ValidateFunction>();
-
-/** Deterministic JSON key for a schema object (sorts keys recursively). */
-function stableCacheKey(obj: unknown): string {
-  return JSON.stringify(obj, (_key, value) => {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(value).sort()) {
-        sorted[k] = value[k];
-      }
-      return sorted;
-    }
-    return value;
-  });
-}
 
 export interface StructuralResult {
   ok: boolean;
@@ -155,30 +132,122 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
 export function validateStructural(
   values: unknown,
   schemaObject: Record<string, unknown>,
-  options: { strictExtras?: boolean } = {},
+  options: { strictExtras?: boolean; resources?: Record<string, Record<string, unknown>> } = {},
 ): StructuralResult {
-  let schema = { ...schemaObject };
-  // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
-  delete schema.$id;
-  if (options.strictExtras) {
-    // The `status: enforced` overlay: object schemas that declare `properties` but
-    // omit `additionalProperties` are validated as closed. See applyEnforcedExtras.
-    schema = applyEnforcedExtras(schema) as Record<string, unknown>;
+  try {
+    checkSchemaIdentities(schemaObject, options.resources ?? {});
+    checkPatterns(schemaObject);
+    const schema = options.strictExtras
+      ? (applyEnforcedExtras(schemaObject) as Record<string, unknown>)
+      : schemaObject;
+    const ajv = new Ajv2020({
+      allErrors: true,
+      strict: false,
+      verbose: true,
+      validateFormats: false,
+    });
+    for (const [key, resource] of Object.entries(options.resources ?? {})) {
+      ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
+    }
+    const validateFn = ajv.compile(schema);
+    const ok = validateFn(values);
+    const errors: StructuralErrorRecord[] = ok
+      ? []
+      : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
+    errors.sort(compareStructuralRecords);
+    return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return schemaInvalid(schemaFailureReason(message), message);
   }
-  // Cache key is computed from the FINAL schema (post-$id deletion and post-overlay),
-  // so two calls with the same base schema but different strictExtras won't collide.
-  const cacheKey = stableCacheKey(schema);
-  let validateFn = validatorCache.get(cacheKey);
-  if (validateFn === undefined) {
-    validateFn = sharedAjv.compile(schema);
-    validatorCache.set(cacheKey, validateFn);
+}
+
+const SCHEMA_MAPS = new Set([
+  "$defs",
+  "definitions",
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+]);
+const SCHEMA_LISTS = new Set(["allOf", "anyOf", "oneOf", "prefixItems"]);
+const SCHEMA_SINGLES = new Set([
+  "additionalProperties",
+  "contains",
+  "contentSchema",
+  "else",
+  "if",
+  "items",
+  "not",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+]);
+const MAX_PATTERN_LENGTH = 1_024;
+const UNSUPPORTED_PATTERN_PARTS = ["(?<", "(?P", "\\A", "\\Z", "\\z", "\\p", "\\P"];
+
+function* iterSchemas(root: Record<string, unknown>): Iterable<Record<string, unknown>> {
+  const stack = [root];
+  while (stack.length > 0) {
+    const schema = stack.pop() as Record<string, unknown>;
+    yield schema;
+    for (const [key, value] of Object.entries(schema)) {
+      if (SCHEMA_MAPS.has(key) && isMapping(value)) {
+        stack.push(...Object.values(value).filter(isMapping));
+      } else if (SCHEMA_LISTS.has(key) && Array.isArray(value)) {
+        stack.push(...value.filter(isMapping));
+      } else if (SCHEMA_SINGLES.has(key) && isMapping(value)) {
+        stack.push(value);
+      }
+    }
   }
-  const ok = validateFn(values);
-  const errors: StructuralErrorRecord[] = ok
-    ? []
-    : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
-  errors.sort(compareStructuralRecords);
-  return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
+}
+
+function checkPatterns(schema: Record<string, unknown>): void {
+  for (const node of iterSchemas(schema)) {
+    const pattern = node.pattern;
+    if (pattern === undefined) continue;
+    if (typeof pattern !== "string" || pattern.length > MAX_PATTERN_LENGTH) {
+      throw new Error("pattern must be a string of at most 1024 characters");
+    }
+    if (
+      UNSUPPORTED_PATTERN_PARTS.some((part) => pattern.includes(part)) ||
+      /\\[1-9]|\(\?[aiLmsux-]/u.test(pattern)
+    ) {
+      throw new Error("pattern uses syntax outside the portable subset");
+    }
+  }
+}
+
+function checkSchemaIdentities(
+  schema: Record<string, unknown>,
+  resources: Record<string, Record<string, unknown>>,
+): void {
+  const seen = new Set<string>();
+  for (const document of [schema, ...Object.values(resources)]) {
+    for (const node of iterSchemas(document)) {
+      if (typeof node.$id !== "string") continue;
+      if (seen.has(node.$id)) throw new Error(`duplicate schema resource identity: ${node.$id}`);
+      seen.add(node.$id);
+    }
+  }
+}
+
+function schemaFailureReason(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("reference") || lower.includes("resolve")) return "reference";
+  if (lower.includes("pattern")) return "pattern";
+  if (lower.includes("duplicate schema resource")) return "resource_identity";
+  return "compilation";
+}
+
+function schemaInvalid(reason: string, message: string): StructuralResult {
+  return {
+    ok: false,
+    errors: [{ kind: "schema_invalid", reason, message }],
+    engine: "json_schema",
+    skipped_reason: null,
+  };
 }
 
 /**

@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { Contract } from "./models.js";
-import { readFrontmatter, validateArtifact, validateValues, YamlParseError } from "./validate.js";
+import {
+  readFrontmatter,
+  validateArtifact,
+  validateStructural,
+  validateValues,
+  YamlParseError,
+} from "./validate.js";
 
 const Sample = z.strictObject({ name: z.string(), count: z.int().min(0) });
 const SAMPLE_SCHEMA = z.toJSONSchema(Sample) as Record<string, unknown>;
@@ -190,5 +196,19 @@ test("shared portable YAML and artifact-input vectors", () => {
         : "invalid";
     expect(outcome).toBe(item.outcome as string);
     expect(structural.errors[0]?.kind).toBe(item.code as string);
+  }
+});
+
+test("shared structural vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.structural ?? []) {
+    const result = validateStructural(item.value, item.schema as Record<string, unknown>, {
+      resources: item.resources as Record<string, Record<string, unknown>> | undefined,
+    });
+    expect(result.ok).toBe(item.valid as boolean);
+    if (!item.valid) expect(result.errors[0]?.kind).toBe(item.code as string);
   }
 });

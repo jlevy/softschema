@@ -60,6 +60,13 @@ structural:
       urn:example:name: { $id: "urn:example:name", type: string, minLength: 1 }
     value: Ada
     valid: true
+  - id: embedded_anchor
+    schema:
+      $defs:
+        name: { $anchor: Name, type: string, minLength: 1 }
+      $ref: "#Name"
+    value: Ada
+    valid: true
   - id: duplicate_resource_id
     schema: { $ref: "urn:example:name" }
     resources:
