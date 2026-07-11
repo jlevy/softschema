@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -105,12 +107,51 @@ def _augment_schema(
 
 
 def _schema_sha256(schema: dict[str, Any]) -> str:
-    # ensure_ascii=False so the hash is over literal UTF-8 (matching the TypeScript
-    # JSON.stringify); otherwise non-ASCII in descriptions would hash differently.
-    canonical = json.dumps(
-        schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
-    )
+    canonical = _canonical_json(schema)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _canonical_json(value: Any) -> str:
+    """Encode the portable value domain with RFC 8785 key and number rules."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return _canonical_float(value)
+    if isinstance(value, list | tuple):
+        return "[" + ",".join(_canonical_json(item) for item in value) + "]"
+    if isinstance(value, dict):
+        keys = sorted(value, key=lambda key: str(key).encode("utf-16be"))
+        return (
+            "{"
+            + ",".join(f"{_canonical_json(str(key))}:{_canonical_json(value[key])}" for key in keys)
+            + "}"
+        )
+    raise TypeError(f"canonical JSON does not support {type(value).__name__}")
+
+
+def _canonical_float(value: float) -> str:
+    if not math.isfinite(value):
+        raise TypeError("canonical JSON requires finite numbers")
+    if value == 0:
+        return "0"
+    magnitude = abs(value)
+    text = repr(value).lower()
+    if value.is_integer() and magnitude < 1e21:
+        return str(int(value))
+    if 1e-6 <= magnitude < 1e21 and "e" in text:
+        return format(Decimal(text), "f")
+    if "e" not in text:
+        return text
+    mantissa, exponent = text.split("e")
+    sign = "+" if not exponent.startswith("-") else "-"
+    digits = exponent.lstrip("+-0") or "0"
+    return f"{mantissa}e{sign}{digits}"
 
 
 def _yaml_dump(schema: dict[str, Any]) -> str:

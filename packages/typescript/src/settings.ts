@@ -32,7 +32,25 @@ export function stableStringify(value: unknown, indent = 2): string {
  * `json.dumps(value, sort_keys=True, separators=(",", ":"))`.
  */
 export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortKeysDeep(value));
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("canonical JSON requires finite numbers");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map(
+        (key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  }
+  throw new TypeError(`canonical JSON does not support ${typeof value}`);
 }
 
 /** Deterministic SHA-256 over the canonical JSON form, hex-encoded. */

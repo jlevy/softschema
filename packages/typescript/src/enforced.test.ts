@@ -4,14 +4,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync as wf } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync as wf } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyEnforcedExtras } from "./canonicalize.js";
+import { parse as yamlParse } from "yaml";
+import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
 import type { Contract } from "./models.js";
-import { validateArtifact } from "./validate.js";
+import { validateArtifact, validateStructural } from "./validate.js";
 
 type Schema = Record<string, unknown>;
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 function baseSchema(): Schema {
   return {
@@ -176,4 +178,32 @@ describe("validateArtifact preParsed (single read)", () => {
     expect(result.ok).toBe(true);
     expect(result.output.values).toEqual({ name: "hi" });
   });
+});
+
+test("shared enforcement vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.enforcement ?? []) {
+    if (item.supported) {
+      expect(applyEnforcedExtras(item.schema as Schema).additionalProperties).toBe(false);
+    } else {
+      expect(() => applyEnforcedExtras(item.schema as Schema)).toThrow(EnforcementUnsupportedError);
+    }
+  }
+});
+
+test("structural validation reports unsupported enforcement", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  const item = (vectors.enforcement ?? []).find((candidate) => !candidate.supported);
+  const result = validateStructural(
+    { first: "Ada", last: "Lovelace" },
+    item?.schema as Record<string, unknown>,
+    { strictExtras: true },
+  );
+  expect(result.errors[0]?.kind).toBe("enforcement_unsupported");
 });

@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+from ruamel.yaml import YAML
+
 from softschema.canonicalize import canonicalize_json_schema
+from softschema.compile import _canonical_json
+
+HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 
 
-def test_drops_title_keyword_but_keeps_title_named_property() -> None:
+def test_preserves_title_annotations_and_title_named_property() -> None:
     schema = {
         "type": "object",
         "title": "Movie",
@@ -15,13 +23,13 @@ def test_drops_title_keyword_but_keeps_title_named_property() -> None:
 
     out = canonicalize_json_schema(schema)
 
-    assert "title" not in out  # the object-level title keyword is gone
-    assert set(out["properties"]) == {"title", "year"}  # the named property survives
-    assert "title" not in out["properties"]["title"]  # its own title keyword is gone
+    assert out["title"] == "Movie"
+    assert set(out["properties"]) == {"title", "year"}
+    assert out["properties"]["title"]["title"] == "Title"
     assert out["properties"]["title"]["type"] == "string"
 
 
-def test_strips_implicit_null_default_only() -> None:
+def test_preserves_default_annotations() -> None:
     schema = {
         "type": "object",
         "properties": {
@@ -33,7 +41,7 @@ def test_strips_implicit_null_default_only() -> None:
 
     out = canonicalize_json_schema(schema)
 
-    assert "default" not in out["properties"]["a"]
+    assert out["properties"]["a"]["default"] is None
     assert out["properties"]["b"]["default"] == 0
     assert "default" in out["properties"]  # the property named "default" survives
 
@@ -51,3 +59,17 @@ def test_rewrites_oneof_nullable_union_to_anyof() -> None:
 
     assert out["properties"]["x"] == {"anyOf": [{"type": "string"}, {"type": "null"}]}
     assert "oneOf" in out["properties"]["y"]  # genuine unions are left alone
+
+
+def test_shared_canonicalization_and_digest_vectors() -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["canonicalization"]:
+        before = case["before"]
+        after = canonicalize_json_schema(before)
+        assert after == case["after"], case["id"]
+        for value in ({}, {"items": []}, {"credit_card": "set"}):
+            before_ok = not list(Draft202012Validator(before).iter_errors(value))
+            after_ok = not list(Draft202012Validator(after).iter_errors(value))
+            assert before_ok is after_ok, case["id"]
+    for case in vectors["digests"]:
+        assert _canonical_json(case["value"]) == case["canonical"], case["id"]

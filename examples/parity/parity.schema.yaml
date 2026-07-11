@@ -4,26 +4,32 @@ $defs:
     description: A nested object, extracted to $defs and referenced by $ref.
     properties:
       street:
+        title: Street
         type: string
       zip_code:
         pattern: ^[0-9]{5}$
+        title: Zip Code
         type: string
     required:
     - street
     - zip_code
+    title: Address
     type: object
   Event:
     additionalProperties: false
     description: A nested object referenced from more than one field (reuse → single $defs entry).
     properties:
       name:
+        title: Name
         type: string
       timestamp:
         minimum: 0
+        title: Timestamp
         type: integer
     required:
     - name
     - timestamp
+    title: Event
     type: object
 $id: example.parity:KitchenSink/v1
 $schema: https://json-schema.org/draft/2020-12/schema
@@ -31,12 +37,14 @@ additionalProperties: false
 description: Every portable field shape softschema supports across Pydantic and Zod.
 properties:
   active:
+    title: Active
     type: boolean
   channels:
     description: Delivery channels.
     items:
       type: string
     minItems: 1
+    title: Channels
     type: array
     x-softschema:
       aliases:
@@ -56,48 +64,60 @@ properties:
     maxLength: 8
     minLength: 2
     pattern: ^[A-Z]+$
+    title: Code
     type: string
   count:
     maximum: 100
     minimum: 0
+    title: Count
     type: integer
   enabled:
     default: true
+    title: Enabled
     type: boolean
   history:
     items:
       $ref: '#/$defs/Event'
+    title: History
     type: array
   kind:
     enum:
     - alpha
     - beta
     - gamma
+    title: Kind
     type: string
   label:
     default: none
+    title: Label
     type: string
   last_event:
     anyOf:
     - $ref: '#/$defs/Event'
     - type: 'null'
+    default: null
   mixed:
     anyOf:
     - type: integer
     - type: string
+    title: Mixed
   nickname:
     anyOf:
     - type: string
     - type: 'null'
     default: n/a
+    title: Nickname
   notes:
     anyOf:
     - type: string
     - type: 'null'
+    default: null
+    title: Notes
   primary:
     $ref: '#/$defs/Address'
   priority:
     default: 1
+    title: Priority
     type: integer
   rank:
     anyOf:
@@ -106,27 +126,35 @@ properties:
       - high
       type: string
     - type: 'null'
+    default: null
+    title: Rank
   ratio:
     exclusiveMaximum: 1
     exclusiveMinimum: 0
+    title: Ratio
     type: number
   scores:
     additionalProperties:
       type: integer
+    title: Scores
     type: object
   secondary:
     anyOf:
     - $ref: '#/$defs/Address'
     - type: 'null'
+    default: null
   step:
     multipleOf: 5
+    title: Step
     type: integer
   tags:
     items:
       type: string
     minItems: 1
+    title: Tags
     type: array
   title:
+    title: Title
     type: string
 required:
 - active
@@ -140,8 +168,9 @@ required:
 - step
 - tags
 - title
+title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 04b43f93b81acbc068fa91f9c6b6c11c1c73a70bffdcd3efe7065b7a26e7cfad
+  schema_sha256: 48ae00cb32db4bc89771113f8b014c5283b154a801aeff33dc138a43ba7415d5
   softschema_format_version: 0.1.0

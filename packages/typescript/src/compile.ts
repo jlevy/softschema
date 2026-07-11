@@ -55,6 +55,46 @@ function augmentSchema(
   return out;
 }
 
+function addGeneratedTitles(schema: Record<string, unknown>, contractId: string | null): void {
+  if (schema.title === undefined && contractId !== null) {
+    const qualified = contractId.split(":").at(-1) ?? contractId;
+    schema.title = qualified.split("/")[0];
+  }
+  const stack = [schema];
+  while (stack.length > 0) {
+    const node = stack.pop() as Record<string, unknown>;
+    for (const keyword of ["properties", "$defs", "definitions"] as const) {
+      const named = node[keyword];
+      if (!isMapping(named)) continue;
+      for (const [name, child] of Object.entries(named)) {
+        if (!isMapping(child)) continue;
+        const referencesDefinition =
+          typeof child.$ref === "string" ||
+          (Array.isArray(child.anyOf) &&
+            child.anyOf.some((branch) => isMapping(branch) && "$ref" in branch));
+        if (!referencesDefinition)
+          child.title ??= keyword === "properties" ? fieldTitle(name) : name;
+        stack.push(child);
+      }
+    }
+    for (const keyword of ["allOf", "anyOf", "oneOf", "prefixItems"] as const) {
+      const children = node[keyword];
+      if (Array.isArray(children)) stack.push(...children.filter(isMapping));
+    }
+    for (const keyword of ["items", "additionalProperties", "contains"] as const) {
+      const child = node[keyword];
+      if (isMapping(child)) stack.push(child);
+    }
+  }
+}
+
+function fieldTitle(name: string): string {
+  return name
+    .replaceAll("_", " ")
+    .replace(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .replace(/\b\w/gu, (letter) => letter.toUpperCase());
+}
+
 function renderYaml(schema: Record<string, unknown>): string {
   return yamlStringify(schema, { sortMapEntries: true, lineWidth: 0 });
 }
@@ -76,6 +116,7 @@ export function buildCanonicalSchema(
     reused: "inline",
     unrepresentable: "throw",
   }) as Record<string, unknown>;
+  addGeneratedTitles(raw, contractId);
   const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId));
   const sha = schemaSha256(schema);
   (schema["x-softschema"] as Record<string, unknown>).schema_sha256 = sha;

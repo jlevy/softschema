@@ -3,37 +3,39 @@
  * run their raw output through this so a Pydantic-compiled and a Zod-compiled schema
  * converge to the same canonical schema content with an equal schema_sha256.
  *
- * Transforms (schema-aware): drop auto-generated `title` keywords (never property
- * names), strip implicit `default: null`, rewrite `oneOf` nullable unions to `anyOf`.
- * Key ordering is handled at serialization time.
+ * Transforms are schema-aware: preserve annotations and unknown data, rewrite only an
+ * exact nullable `oneOf` to `anyOf`, and sort set-like arrays. Key ordering is handled
+ * at serialization time.
  */
 
 import { isMapping } from "./guards.js";
 
 type Json = unknown;
 
-const NAME_MAP_KEYWORDS = new Set(["properties", "$defs", "definitions", "patternProperties"]);
+const NAME_MAP_KEYWORDS = new Set([
+  "properties",
+  "$defs",
+  "definitions",
+  "patternProperties",
+  "dependentSchemas",
+]);
 const SCHEMA_LIST_KEYWORDS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
 const SCHEMA_KEYWORDS = new Set([
   "items",
   "additionalProperties",
+  "unevaluatedProperties",
+  "unevaluatedItems",
   "not",
   "if",
   "then",
   "else",
   "contains",
   "propertyNames",
+  "contentSchema",
 ]);
 
 export function canonicalizeJsonSchema(schema: Record<string, Json>): Record<string, Json> {
   return canonicalizeSchema(schema) as Record<string, Json>;
-}
-
-function isEmptyDefault(value: Json): boolean {
-  if (value === null) return true;
-  if (Array.isArray(value)) return value.length === 0;
-  if (isMapping(value)) return Object.keys(value).length === 0;
-  return false;
 }
 
 function isStringKeyConstraint(value: Json): boolean {
@@ -47,9 +49,6 @@ function canonicalizeSchema(node: Json): Json {
   const normalized = normalizeNullableUnion(node);
   const out: Record<string, Json> = {};
   for (const [key, value] of Object.entries(normalized)) {
-    if (key === "title") continue;
-    // Drop implicit/empty defaults (null, [], {}); Pydantic omits these, Zod emits them.
-    if (key === "default" && isEmptyDefault(value)) continue;
     // Drop Zod's JS safe-integer sentinel bounds (z.int() adds these for unbounded sides).
     if (key === "minimum" && value === Number.MIN_SAFE_INTEGER) continue;
     if (key === "maximum" && value === Number.MAX_SAFE_INTEGER) continue;
@@ -108,9 +107,29 @@ export function applyEnforcedExtras(schema: Record<string, Json>): Record<string
   return applyEnforced(schema) as Record<string, Json>;
 }
 
+export class EnforcementUnsupportedError extends Error {}
+
 function applyEnforced(node: Json): Json {
   if (!isMapping(node)) {
     return node;
+  }
+  if (Array.isArray(node.allOf) && node.allOf.some(containsOpenProperties)) {
+    throw new EnforcementUnsupportedError(
+      "enforced closure is unsupported for allOf object composition",
+    );
+  }
+  if (
+    isMapping(node.dependentSchemas) &&
+    Object.values(node.dependentSchemas).some(containsOpenProperties)
+  ) {
+    throw new EnforcementUnsupportedError(
+      "enforced closure is unsupported for dependent object composition",
+    );
+  }
+  if ([node.if, node.then, node.else, node.not].some(containsOpenProperties)) {
+    throw new EnforcementUnsupportedError(
+      "enforced closure is unsupported for conditional object composition",
+    );
   }
   const out: Record<string, Json> = {};
   for (const [key, value] of Object.entries(node)) {
@@ -132,4 +151,23 @@ function applyEnforced(node: Json): Json {
     out.additionalProperties = false;
   }
   return out;
+}
+
+function containsOpenProperties(node: Json): boolean {
+  if (!isMapping(node)) return false;
+  if (isMapping(node.properties) && !("additionalProperties" in node)) return true;
+  for (const [key, value] of Object.entries(node)) {
+    if (SCHEMA_KEYWORDS.has(key) && containsOpenProperties(value)) return true;
+    if (
+      SCHEMA_LIST_KEYWORDS.has(key) &&
+      Array.isArray(value) &&
+      value.some(containsOpenProperties)
+    ) {
+      return true;
+    }
+    if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
+      if (Object.values(value).some(containsOpenProperties)) return true;
+    }
+  }
+  return false;
 }

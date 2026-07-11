@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
 import { renderStructuralMessage, structuralErrorRecord } from "./errors.js";
 import { canonicalJson, stableStringify } from "./settings.js";
+
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 describe("stableStringify", () => {
   test("sorts keys recursively with 2-space indent (matches Python json.dumps)", () => {
@@ -55,18 +60,18 @@ describe("renderStructuralMessage", () => {
 });
 
 describe("canonicalizeJsonSchema", () => {
-  test("drops title keyword but keeps a title-named property", () => {
+  test("preserves title annotations and a title-named property", () => {
     const out = canonicalizeJsonSchema({
       type: "object",
       title: "Movie",
       properties: { title: { type: "string", title: "Title" }, year: { type: "integer" } },
     });
-    expect("title" in out).toBe(false);
+    expect(out.title).toBe("Movie");
     const props = out.properties as Record<string, Record<string, unknown>>;
     expect(Object.keys(props).sort()).toEqual(["title", "year"]);
-    expect("title" in (props.title as object)).toBe(false);
+    expect(props.title?.title).toBe("Title");
   });
-  test("strips implicit null default and rewrites oneOf nullable to anyOf", () => {
+  test("preserves defaults and rewrites oneOf nullable to anyOf", () => {
     const out = canonicalizeJsonSchema({
       properties: {
         a: { oneOf: [{ type: "string" }, { type: "null" }], default: null },
@@ -74,7 +79,22 @@ describe("canonicalizeJsonSchema", () => {
       },
     });
     const props = out.properties as Record<string, Record<string, unknown>>;
-    expect(props.a).toEqual({ anyOf: [{ type: "string" }, { type: "null" }] });
+    expect(props.a).toEqual({ anyOf: [{ type: "string" }, { type: "null" }], default: null });
     expect((props.b as Record<string, unknown>).default).toBe(0);
   });
+});
+
+test("shared canonicalization and digest vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.canonicalization ?? []) {
+    expect(canonicalizeJsonSchema(item.before as Record<string, unknown>)).toEqual(
+      item.after as Record<string, unknown>,
+    );
+  }
+  for (const item of vectors.digests ?? []) {
+    expect(canonicalJson(item.value)).toBe(item.canonical as string);
+  }
 });

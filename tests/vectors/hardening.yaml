@@ -82,7 +82,7 @@ canonicalization:
     after: { type: object, properties: { items: { type: array, default: [] } } }
   - id: nested_dependent_schema
     before: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
-    after: { type: object, dependentSchemas: { credit_card: { type: object } } }
+    after: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
 
 enforcement:
   - id: simple_object

@@ -7,7 +7,7 @@ import { existsSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
-import { applyEnforcedExtras } from "./canonicalize.js";
+import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
 import {
   collapseAdditionalProperties,
   compareStructuralRecords,
@@ -158,6 +158,14 @@ export function validateStructural(
     return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof EnforcementUnsupportedError) {
+      return {
+        ok: false,
+        errors: [{ kind: "enforcement_unsupported", message }],
+        engine: "json_schema",
+        skipped_reason: null,
+      };
+    }
     return schemaInvalid(schemaFailureReason(message), message);
   }
 }
