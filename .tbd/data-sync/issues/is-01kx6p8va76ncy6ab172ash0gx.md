@@ -5,7 +5,7 @@ title: Force UTF-8 in installed-artifact smoke subprocesses
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
@@ -14,9 +14,11 @@ labels:
 dependencies:
   - type: blocks
     target: is-01kx4w3nh1qz49ffey0dgewxp7
+  - type: blocks
+    target: is-01kx7czj64w9bqs7kyd4yng4px
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T18:57:35.046Z
-updated_at: 2026-07-10T19:01:49.299Z
+updated_at: 2026-07-11T01:35:34.170Z
 closed_at: 2026-07-10T19:01:49.298Z
 close_reason: Forced UTF-8 Python subprocess streams and added a real Unicode child-process regression; frozen cold smoke passes.
 ---

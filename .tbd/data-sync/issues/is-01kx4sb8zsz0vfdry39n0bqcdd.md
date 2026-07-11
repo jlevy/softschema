@@ -5,7 +5,7 @@ title: July 2026 review remediation
 kind: epic
 status: open
 priority: 1
-version: 113
+version: 114
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - review
@@ -115,7 +115,8 @@ child_order_hints:
   - is-01kx6ngnzq2wvb4j39evqcrjs0
   - is-01kx6p8va76ncy6ab172ash0gx
   - is-01kx6p8vjpyjv6kvjb3r6zqc1s
+  - is-01kx7czj64w9bqs7kyd4yng4px
 created_at: 2026-07-10T01:12:51.448Z
-updated_at: 2026-07-10T18:57:35.317Z
+updated_at: 2026-07-11T01:34:28.035Z
 ---
 Implement the July 2026 senior review remediation on main at 3f31aa8: secure and bound artifact/schema/resource trust boundaries, define portable YAML/regex/JSON Schema and independent artifact-format semantics, align Python/TypeScript APIs and diagnostics, publish a standalone conformance kit, harden skills/installers/releases, and rewrite public/agent documentation.
