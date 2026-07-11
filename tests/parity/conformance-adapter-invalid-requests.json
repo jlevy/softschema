@@ -100,6 +100,22 @@
     "message": "request case 0 input for portable-yaml limit max_depth must be a positive safe integer"
   },
   {
+    "id": "portable-yaml-limit-must-not-be-boolean",
+    "request": {
+      "format": "softschema-vector-suite-v1",
+      "id": "invalid-request",
+      "operation": "portable-yaml",
+      "cases": [
+        {
+          "id": "case",
+          "input": { "text": "null", "limits": { "max_depth": true } },
+          "expected": {}
+        }
+      ]
+    },
+    "message": "request case 0 input for portable-yaml limit max_depth must be a positive safe integer"
+  },
+  {
     "id": "portable-yaml-source-pointers-are-unique",
     "request": {
       "format": "softschema-vector-suite-v1",

@@ -1198,6 +1198,9 @@ after public APIs/CLI/docs are complete, and then publishes it.
   required fields, optional fields, primitive types, validation limits, and source
   pointers for every portable-core operation before dispatch; malformed requests must
   exit 2 with one stable error line in both standalone adapters.
+- [x] **Make numeric limit typing explicit (`ss-gr29`).** Reject JSON booleans before
+  integer range validation in the JavaScript adapter and preserve the rule in the shared
+  invalid-request corpus for Python, Node, and Bun.
 - [x] **Close final runtime parity (`ss-jfat`, `ss-ycm4`, `ss-ihzl`).** Count compact
   flow mapping pairs identically, preserve portable plain-scalar spellings, normalize
   the remaining flow error class, sort schema set arrays by Unicode scalar value, and
@@ -1438,6 +1441,7 @@ independent security work.
 | `ss-tge8` | `ss-pvxi`, `ss-o21w` | Standalone publication and consumer boundaries build on the conformance and frozen-artifact foundations. |
 | `ss-o04h` | `ss-tge8`, `ss-g8m8` | Every standalone JSON boundary must exist before its Unicode/depth/node failures can be closed consistently. |
 | `ss-j81s` | `ss-tge8`, `ss-o04h` | Operation-specific adapter validation closes the strict standalone boundary after its generic JSON defenses exist. |
+| `ss-gr29` | `ss-j81s` | Explicit boolean rejection documents and locks down the settled operation-specific limit contract. |
 | `ss-oyr4` | `ss-tge8` | Immutable Pages publication consumes the hostile-input-tested publication boundary. |
 | `ss-6i6d` | `ss-0sgk`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-o21w`, `ss-b5l4`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-k381`, `ss-1yt7`, `ss-u30p`, `ss-hwws`, `ss-2d33`, `ss-fbtq`, `ss-tge8`, `ss-oyr4`, `ss-o04h`, `ss-zknx`, `ss-3o3w`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg`, `ss-stbo`, `ss-4uki`, `ss-ej3x`, `ss-jfat`, `ss-ycm4`, `ss-6okz`, `ss-j81s`, `ss-tpr2`, `ss-dku3`, `ss-i32z`, `ss-kfnc`, `ss-n7m1`, `ss-1v5i`, `ss-3i41`, `ss-7ykr`, `ss-84vm`, `ss-clz0`, `ss-v2h3`, `ss-bcdi`, `ss-2upc`, `ss-9zsj` | Fill and package the public foundation only after every represented behavior and artifact boundary settles. |
 | `ss-v6bv` | `ss-0sgk`, `ss-7eoa`, `ss-dbkh`, `ss-l41u`, `ss-yxfm`, `ss-sbvh`, `ss-6jp1`, `ss-1aa6`, `ss-bj47`, `ss-o21w`, `ss-b5l4`, `ss-3n2k`, `ss-xnr6`, `ss-0uj9`, `ss-wuva`, `ss-pvu9`, `ss-pvxi`, `ss-vn04`, `ss-slas`, `ss-srtz`, `ss-k381`, `ss-1yt7`, `ss-hwws`, `ss-2d33`, `ss-zknx`, `ss-qu2u`, `ss-dz2o`, `ss-yn4e`, `ss-23yg` | Final information architecture describes the exact settled candidate and labels unavailable live state explicitly. |
@@ -1648,6 +1652,7 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-tge8` | P2 | Hostile conformance publication and consumer boundaries |
 | `ss-o04h` | P1 | Strict Unicode-safe standalone JSON boundaries |
 | `ss-j81s` | P1 | Operation-specific standalone adapter request validation |
+| `ss-gr29` | P1 | Explicit cross-runtime rejection of boolean conformance limits |
 | `ss-oyr4` | P1 | Immutable, release-capable Pages namespace |
 | `ss-6i6d` | P2 | Versioned conformance kit, vocabulary, bundles, evolution |
 | `ss-srtz` | P2 | Related-effort research and strategic positioning |

@@ -184,7 +184,7 @@ artifacts:
 - id: javascript-adapter
   role: adapter
   path: adapters/javascript-adapter.mjs
-  sha256: 79ce24c735db7d11a8d82bac4e064a125161abf01d23bc6bf67c523d36d23702
+  sha256: 894e0f1ba86317aca114463d35aec3dbb8d9311f7e2abb6955c48d6974299a39
 - id: consumer
   role: consumer
   path: consumer.py

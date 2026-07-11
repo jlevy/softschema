@@ -12,8 +12,8 @@
     },
     {
       "path": "conformance/adapters/javascript-adapter.mjs",
-      "sha256": "79ce24c735db7d11a8d82bac4e064a125161abf01d23bc6bf67c523d36d23702",
-      "size": 20186
+      "sha256": "894e0f1ba86317aca114463d35aec3dbb8d9311f7e2abb6955c48d6974299a39",
+      "size": 20215
     },
     {
       "path": "conformance/adapters/python_adapter.py",
@@ -502,7 +502,7 @@
     },
     {
       "path": "conformance/manifest.yaml",
-      "sha256": "74882eea61227ee251f973225d6ce267dc099572510e014881e252c87f6f6528",
+      "sha256": "f8bd18f4599e69412623f8223293a1be63475f3330e3faafc4cbf965e263d6e4",
       "size": 13918
     },
     {

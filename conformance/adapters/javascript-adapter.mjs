@@ -232,7 +232,7 @@ function validateLimitFields(value, index, operation) {
   }
   for (const [field, limit] of Object.entries(value)) {
     const minimum = POSITIVE_LIMIT_FIELDS.has(field) ? 1 : 0;
-    if (!Number.isSafeInteger(limit) || limit < minimum) {
+    if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < minimum) {
       const qualifier = minimum === 1 ? "positive" : "nonnegative";
       invalidCaseInput(
         index,
