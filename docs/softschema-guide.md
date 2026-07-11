@@ -87,7 +87,6 @@ prose for structured fields.
 ```markdown
 ---
 softschema:
-  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie
@@ -113,16 +112,14 @@ document.
 
 The `softschema` block describes the artifact:
 
-- `format` selects the metadata grammar.
-  New artifacts use the exact quoted string `"1"`; absence selects the legacy grammar.
 - `contract` names the payload contract.
 - `schema` binds a compiled JSON Schema relative to the artifact.
 - `envelope` identifies the top-level payload key.
 - `status` selects `soft`, `permissive`, or `enforced` validation.
-- `extensions` may hold namespaced portable data in format 1. It never loads code or
-  changes core validation.
+- `extensions` may hold namespaced portable data.
+  It never loads code or changes core validation.
 
-Only `contract` is required in a format-1 block.
+Only `contract` is required in a metadata mapping.
 A host registry or explicit CLI flags may supply the other bindings.
 Additional top-level keys such as a site generator’s `title` or `tags` remain outside
 the selected envelope and are not interpreted by softschema.
@@ -148,7 +145,6 @@ A filename suffix never selects it:
 
 ```yaml
 softschema:
-  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   status: enforced
@@ -165,9 +161,6 @@ softschema validate report.yaml --profile pure-yaml
 The root `softschema` mapping is metadata.
 Without an explicit envelope, every other root key is the payload.
 With `softschema.envelope`, the named key is the payload just as in frontmatter.
-
-`softschema.format` and `--profile` are independent.
-Format 1 works with both profiles; the format never implies a storage shape.
 
 ## Portable Values
 
@@ -243,7 +236,6 @@ After:
 ```markdown
 ---
 softschema:
-  format: "1"
   contract: example.operations:IncidentReview/v1
   envelope: incident
   status: permissive

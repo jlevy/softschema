@@ -1,9 +1,6 @@
 {
   "build": "<build-metadata>",
   "capabilities": {
-    "artifact_formats": [
-      "<artifact-formats>"
-    ],
     "conformance": {
       "status": "<conformance-status>",
       "version": "<conformance-version>"

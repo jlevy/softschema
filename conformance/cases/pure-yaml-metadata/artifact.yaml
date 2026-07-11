@@ -1,5 +1,4 @@
 softschema:
-  format: "1"
   contract: example.conformance:PureRecord/v1
   schema: schema.yaml
   envelope: record

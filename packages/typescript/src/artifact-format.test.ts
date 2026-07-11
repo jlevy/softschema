@@ -27,13 +27,12 @@ test.each(VECTORS)("artifact format vector $id", (vector) => {
   );
 });
 
-test("format 1 extensions round-trip through artifact validation", () => {
-  const artifact = resolve(import.meta.dir, ".tmp-format-1-artifact.md");
+test("extensions round-trip through artifact validation", () => {
+  const artifact = resolve(import.meta.dir, ".tmp-extensions-artifact.md");
   writeFileSync(
     artifact,
     "---\n" +
       "softschema:\n" +
-      '  format: "1"\n' +
       "  contract: example.docs:Record/v1\n" +
       "  extensions:\n" +
       "    com.example.review:\n" +
@@ -68,7 +67,6 @@ test("duplicate extension namespaces fail at the portable YAML boundary", () => 
     artifact,
     "---\n" +
       "softschema:\n" +
-      '  format: "1"\n' +
       "  contract: example.docs:Record/v1\n" +
       "  extensions:\n" +
       "    com.example.review: first\n" +
@@ -108,7 +106,6 @@ test("materialized extension values must be portable", () => {
 
   expect(() =>
     parseSchemaMetadata({
-      format: "1",
       contract: "example.docs:Record/v1",
       extensions: { "com.example.review": cyclic },
     }),

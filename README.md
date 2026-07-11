@@ -45,7 +45,6 @@ at version
 ```markdown
 ---
 softschema:
-  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
   envelope: movie
@@ -66,10 +65,8 @@ The body remains inert, reader-facing Markdown; softschema never scrapes its pro
 tables for values. `contract` names the payload contract, not a Python class, TypeScript
 export, schema path, or JSON Schema `$id`.
 
-New artifacts use the exact quoted `format: "1"`. Existing artifacts without `format`
-use the legacy metadata grammar.
 See the [Spec](docs/softschema-spec.md) for exact profiles, limits, identity, reference,
-regex, format, extension, and result rules.
+regex, extension, and result rules.
 
 ## Pick a Runtime
 

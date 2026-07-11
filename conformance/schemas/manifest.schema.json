@@ -9,7 +9,6 @@
     "identifier_status",
     "target_namespace",
     "schema_dialect",
-    "artifact_formats",
     "profiles",
     "defaults",
     "exit_codes",
@@ -36,12 +35,6 @@
       "const": "https://jlevy.github.io/softschema/schema/v1/"
     },
     "schema_dialect": { "const": "https://json-schema.org/draft/2020-12/schema" },
-    "artifact_formats": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 }
-    },
     "profiles": {
       "type": "array",
       "minItems": 1,
@@ -50,11 +43,10 @@
     },
     "defaults": {
       "type": "object",
-      "required": ["artifact_profile", "validation_status", "authored_artifact_format"],
+      "required": ["artifact_profile", "validation_status"],
       "properties": {
         "artifact_profile": { "const": "frontmatter-md" },
-        "validation_status": { "const": "soft" },
-        "authored_artifact_format": { "const": "1" }
+        "validation_status": { "const": "soft" }
       },
       "additionalProperties": false
     },
@@ -175,7 +167,7 @@
     "coverage": {
       "type": "object",
       "required": [
-        "artifact_format",
+        "artifact_metadata",
         "artifact_profiles",
         "core_api",
         "diagnostic_v1",
@@ -188,8 +180,7 @@
         "portable_values",
         "raw_canonicalization",
         "resource_bundles",
-        "schema_errors",
-        "version_negotiation"
+        "schema_errors"
       ],
       "additionalProperties": { "$ref": "#/$defs/coverageTargets" }
     }

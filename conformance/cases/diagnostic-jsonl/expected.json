@@ -34,7 +34,6 @@
       "document_metadata": {
         "contract": "example.conformance:Diagnostic/v1",
         "envelope": "record",
-        "format": "1",
         "schema": "schema.yaml",
         "status": "enforced"
       },

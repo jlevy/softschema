@@ -160,23 +160,17 @@ expose aliases, compatibility maps, or incremental registration helpers.
 `SchemaMetadata` represents the document-level `softschema:` block.
 Fields:
 
-- `format_version` (alias `format`): the optional quoted artifact-format identifier
-  `"1"`; absence selects the legacy grammar.
 - `contract_id` (alias `contract`): the contract ID (required).
 - `schema_ref` (alias `schema`): optional relative path to the compiled schema.
 - `envelope`: optional declared envelope key.
 - `status`: optional validation strictness (`soft`, `permissive`, `enforced`).
-- `extensions`: optional format-1 mapping from a canonical reverse-DNS or HTTPS
-  namespace to an opaque portable value.
+- `extensions`: optional mapping from a canonical reverse-DNS or HTTPS namespace to an
+  opaque portable value.
 
-Legacy metadata serializes as `{contract, envelope, schema, status}` (the alias names),
-preserving the existing output exactly.
-Format 1 adds `{format, extensions?}`. `parse_schema_metadata` accepts the legacy
-compact string and expanded mapping, or a format-1 mapping.
-Unknown formats, grammar-specific unknown keys, duplicate extension namespaces, and
-non-portable extension values fail at the metadata or portable-value boundary.
-`ARTIFACT_FORMAT_VERSION` exposes the current identifier independently of
-`SOFTSCHEMA_FORMAT_VERSION`, the compiled-schema profile identifier.
+Metadata serializes as `{contract, envelope, schema, status, extensions?}` using the
+authored aliases. `parse_schema_metadata` accepts a compact contract string or the
+expanded mapping. Unknown keys, duplicate extension namespaces, and non-portable
+extension values fail at the metadata or portable-value boundary.
 
 ## CLI Resolution
 

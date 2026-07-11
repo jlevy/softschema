@@ -292,7 +292,7 @@ def test_docs_prints_copyable_pure_yaml_artifact(capsys: pytest.CaptureFixture[s
     assert exit_code == 0
     output = capsys.readouterr().out
     assert "softschema:" in output
-    assert 'format: "1"' in output
+    assert "format:" not in output
     assert "contract: example.movies:MoviePage/v1" in output
     assert "title: Spirited Away" in output
     assert "---" not in output

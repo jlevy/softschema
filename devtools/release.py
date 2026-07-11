@@ -231,9 +231,6 @@ def load_and_validate_metadata(root: Path) -> dict[str, Any]:
     if pyproject.get("project", {}).get("name") != packages["python"]["name"]:
         raise ReleaseError("Python package name differs from release metadata")
 
-    formats = metadata["artifact_formats"]
-    if formats["current"] not in formats["supported"]:
-        raise ReleaseError("current artifact format must be included in supported formats")
     if metadata["release_state"] != "development":
         if metadata["conformance"]["status"] == "unavailable":
             raise ReleaseError("candidate and released metadata must include the conformance kit")

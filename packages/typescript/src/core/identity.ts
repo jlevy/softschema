@@ -96,7 +96,7 @@ export function validateSchemaId(value: unknown): string {
   return value;
 }
 
-/** Validate one canonical format-1 extension namespace. */
+/** Validate one canonical extension namespace. */
 export function validateExtensionNamespace(value: unknown): string {
   if (typeof value === "string" && REVERSE_DNS_NAMESPACE_RE.test(value)) return value;
   if (typeof value === "string" && value.startsWith("https://")) {

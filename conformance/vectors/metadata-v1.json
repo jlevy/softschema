@@ -1,7 +1,7 @@
 {
   "format": "softschema-vector-suite-v1",
   "id": "metadata-v1",
-  "description": "Legacy and format-1 metadata negotiation and opaque extensions.",
+  "description": "Compact and mapping metadata with opaque extensions.",
   "operation": "metadata",
   "cases": [
     {
@@ -10,7 +10,7 @@
       "expected": { "ok": true, "value": null }
     },
     {
-      "id": "legacy-compact",
+      "id": "compact",
       "input": { "raw": "example.docs:Record/v1" },
       "expected": {
         "ok": true,
@@ -23,7 +23,7 @@
       }
     },
     {
-      "id": "legacy-expanded",
+      "id": "expanded",
       "input": {
         "raw": {
           "contract": "example.docs:Record/v1",
@@ -43,10 +43,9 @@
       }
     },
     {
-      "id": "format-one",
+      "id": "extensions",
       "input": {
         "raw": {
-          "format": "1",
           "contract": "example.docs:Record/v1",
           "extensions": {
             "com.example.review": { "enabled": true, "labels": ["ready", 2, null] }
@@ -60,7 +59,6 @@
           "schema": null,
           "envelope": null,
           "status": null,
-          "format": "1",
           "extensions": {
             "com.example.review": { "enabled": true, "labels": ["ready", 2, null] }
           }
@@ -68,26 +66,30 @@
       }
     },
     {
-      "id": "numeric-format-rejected",
-      "input": { "raw": { "format": 1, "contract": "example.docs:Record/v1" } },
+      "id": "format-key-rejected",
+      "input": { "raw": { "format": "1", "contract": "example.docs:Record/v1" } },
       "expected": { "ok": false }
     },
     {
-      "id": "future-format-rejected",
-      "input": { "raw": { "format": "2", "contract": "example.docs:Record/v1" } },
-      "expected": { "ok": false }
-    },
-    {
-      "id": "extensions-require-format-one",
+      "id": "empty-extensions",
       "input": {
         "raw": { "contract": "example.docs:Record/v1", "extensions": {} }
       },
-      "expected": { "ok": false }
+      "expected": {
+        "ok": true,
+        "value": {
+          "contract": "example.docs:Record/v1",
+          "schema": null,
+          "envelope": null,
+          "status": null,
+          "extensions": {}
+        }
+      }
     },
     {
       "id": "unknown-top-level-key-rejected",
       "input": {
-        "raw": { "format": "1", "contract": "example.docs:Record/v1", "future": true }
+        "raw": { "contract": "example.docs:Record/v1", "future": true }
       },
       "expected": { "ok": false }
     },
@@ -95,7 +97,6 @@
       "id": "invalid-extension-namespace-rejected",
       "input": {
         "raw": {
-          "format": "1",
           "contract": "example.docs:Record/v1",
           "extensions": { "Example.Invalid": true }
         }

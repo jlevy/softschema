@@ -53,15 +53,15 @@ const nodeUrl = () => pathToFileURL(NODE).href;
 const cliUrl = () => pathToFileURL(CLI).href;
 
 describe("library entrypoint (issue #16)", () => {
-  test("named artifact-format and validation imports resolve", () => {
+  test("named metadata and validation imports resolve", () => {
     const r = runConsumer(
-      `import { ARTIFACT_FORMAT_VERSION, validateArtifact, parseSchemaMetadata, ` +
+      `import { validateArtifact, parseSchemaMetadata, ` +
         `validateExtensionNamespace } from ${JSON.stringify(indexUrl())};\n` +
         `process.stdout.write([typeof validateArtifact, typeof parseSchemaMetadata, ` +
-        `typeof validateExtensionNamespace, ARTIFACT_FORMAT_VERSION].join(" "));\n`,
+        `typeof validateExtensionNamespace].join(" "));\n`,
     );
     expect(r.stderr).toBe("");
-    expect(r.stdout).toBe("function function function 1");
+    expect(r.stdout).toBe("function function function");
     expect(r.status).toBe(0);
   });
 
@@ -102,7 +102,6 @@ describe("library entrypoint (issue #16)", () => {
     const rootDts = readFileSync(join(PACKAGE_ROOT, "dist", "index.d.ts"), "utf8");
     const dts = readFileSync(join(PACKAGE_ROOT, "dist", "node.d.ts"), "utf8");
     for (const sym of [
-      "ARTIFACT_FORMAT_VERSION",
       "validateArtifact",
       "validateExtensionNamespace",
       "parseSchemaMetadata",

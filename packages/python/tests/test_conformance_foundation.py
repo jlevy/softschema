@@ -59,8 +59,6 @@ EXPECTED_SCHEMAS = {
     "conformance-evolution.schema.json",
     "implementation-matrix.schema.json",
     "manifest.schema.json",
-    "metadata-legacy.schema.json",
-    "metadata-v1.schema.json",
     "metadata.schema.json",
     "public-claims.schema.json",
     "release-manifest.schema.json",
@@ -75,7 +73,7 @@ EXPECTED_SCHEMAS = {
 }
 
 EXPECTED_COVERAGE_FAMILIES = {
-    "artifact_format",
+    "artifact_metadata",
     "artifact_profiles",
     "core_api",
     "diagnostic_v1",
@@ -89,7 +87,6 @@ EXPECTED_COVERAGE_FAMILIES = {
     "raw_canonicalization",
     "resource_bundles",
     "schema_errors",
-    "version_negotiation",
 }
 
 
@@ -1256,26 +1253,13 @@ def test_python_adapter_normalizes_json_integer_limit_spelling() -> None:
 def test_artifact_metadata_schemas_negotiate_legacy_and_format_1_exactly() -> None:
     schemas = _load_schemas()
     registry = _registry(schemas)
-    validators = {
-        name: Draft202012Validator(schemas[name], registry=registry)
-        for name in (
-            "metadata.schema.json",
-            "metadata-legacy.schema.json",
-            "metadata-v1.schema.json",
-        )
-    }
+    validator = Draft202012Validator(schemas["metadata.schema.json"], registry=registry)
     vectors = json.loads((ROOT / "tests/parity/artifact-format.json").read_text())
 
     for vector in vectors:
         valid = not vector.get("error", False)
         raw = vector["raw"]
-        assert validators["metadata.schema.json"].is_valid(raw) is valid, vector["id"]
-        if valid and isinstance(raw, dict) and raw.get("format") == "1":
-            assert validators["metadata-v1.schema.json"].is_valid(raw), vector["id"]
-            assert not validators["metadata-legacy.schema.json"].is_valid(raw), vector["id"]
-        elif valid:
-            assert validators["metadata-legacy.schema.json"].is_valid(raw), vector["id"]
-            assert not validators["metadata-v1.schema.json"].is_valid(raw), vector["id"]
+        assert validator.is_valid(raw) is valid, vector["id"]
 
 
 def test_x_softschema_is_an_optional_annotation_vocabulary_with_checked_payloads() -> None:
@@ -1482,7 +1466,6 @@ def test_draft_release_schemas_keep_identity_and_digest_boundaries_separate() ->
             "python": {"name": "softschema", "version": "0.2.2", "pin": "0.2.2"},
             "npm": {"name": "softschema", "version": "0.2.2", "pin": "0.2.2"},
         },
-        "artifact_formats": {"current": "1", "supported": ["legacy-0.2", "1"]},
         "conformance": {"version": "0.0.0-draft.1", "status": "candidate"},
         "runtimes": {
             "python": {"minimum": "3.11"},

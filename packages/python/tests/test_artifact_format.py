@@ -8,7 +8,6 @@ import pytest
 from pydantic import ValidationError
 
 from softschema import (
-    ARTIFACT_FORMAT_VERSION,
     Contract,
     SchemaMetadata,
     parse_schema_metadata,
@@ -22,8 +21,7 @@ VECTORS: list[dict[str, Any]] = json.loads(
 )
 
 
-def test_artifact_format_public_api_is_explicit_and_versioned() -> None:
-    assert ARTIFACT_FORMAT_VERSION == "1"
+def test_extension_namespace_validation_is_public() -> None:
     assert validate_extension_namespace("com.example.review") == "com.example.review"
 
 
@@ -31,7 +29,6 @@ def test_python_model_validation_keeps_idiomatic_field_names() -> None:
     metadata = SchemaMetadata.model_validate(
         {
             "contract_id": "example.docs:Record/v1",
-            "format_version": "1",
             "extensions": {"com.example.review": {"ready": True}},
         }
     )
@@ -41,7 +38,6 @@ def test_python_model_validation_keeps_idiomatic_field_names() -> None:
         "schema": None,
         "envelope": None,
         "status": None,
-        "format": "1",
         "extensions": {"com.example.review": {"ready": True}},
     }
 
@@ -59,12 +55,11 @@ def test_artifact_format_vectors(vector: dict[str, Any]) -> None:
     assert metadata.model_dump(by_alias=True) == vector["output"]
 
 
-def test_format_1_extensions_round_trip_through_artifact_validation(tmp_path: Path) -> None:
+def test_extensions_round_trip_through_artifact_validation(tmp_path: Path) -> None:
     artifact = tmp_path / "artifact.md"
     artifact.write_text(
         "---\n"
         "softschema:\n"
-        '  format: "1"\n'
         "  contract: example.docs:Record/v1\n"
         "  extensions:\n"
         "    com.example.review:\n"
@@ -94,7 +89,6 @@ def test_duplicate_extension_namespaces_fail_at_the_portable_yaml_boundary(
     artifact.write_text(
         "---\n"
         "softschema:\n"
-        '  format: "1"\n'
         "  contract: example.docs:Record/v1\n"
         "  extensions:\n"
         "    com.example.review: first\n"
@@ -128,7 +122,6 @@ def test_materialized_extension_values_must_be_portable() -> None:
     with pytest.raises(ValueError, match="cycles are not portable"):
         parse_schema_metadata(
             {
-                "format": "1",
                 "contract": "example.docs:Record/v1",
                 "extensions": {"com.example.review": cyclic},
             }

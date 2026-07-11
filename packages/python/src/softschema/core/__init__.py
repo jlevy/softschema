@@ -43,7 +43,7 @@ from softschema.core.identity import (
     validate_extension_namespace,
     validate_schema_id,
 )
-from softschema.core.metadata import ARTIFACT_FORMAT_VERSION, SchemaProfile, SchemaStatus
+from softschema.core.metadata import SchemaProfile, SchemaStatus
 from softschema.core.results import (
     ArtifactInputErrorWire,
     ArtifactInputReasonWire,
@@ -100,7 +100,6 @@ from softschema.patterns import (
 )
 
 __all__ = [
-    "ARTIFACT_FORMAT_VERSION",
     "DEFAULT_VALIDATION_LIMITS",
     "DIAGNOSTIC_FORMAT",
     "ENFORCEMENT_UNSUPPORTED_MESSAGE",

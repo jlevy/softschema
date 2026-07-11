@@ -1,5 +1,4 @@
 softschema:
-  format: "1"
   contract: test.pure:MetadataOnly/v1
   status: soft
 name: example

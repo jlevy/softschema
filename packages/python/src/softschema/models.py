@@ -28,9 +28,6 @@ from softschema.core.identity import (
     validate_schema_id as validate_schema_id,
 )
 from softschema.core.metadata import (
-    ARTIFACT_FORMAT_VERSION as ARTIFACT_FORMAT_VERSION,
-)
-from softschema.core.metadata import (
     SchemaProfile as SchemaProfile,
 )
 from softschema.core.metadata import (
@@ -38,20 +35,16 @@ from softschema.core.metadata import (
 )
 from softschema.core.value_domain import normalize_portable_value
 
-_LEGACY_AUTHORED_METADATA_KEYS = frozenset({"contract", "schema", "envelope", "status"})
-_FORMAT_1_AUTHORED_METADATA_KEYS = _LEGACY_AUTHORED_METADATA_KEYS | {
-    "format",
-    "extensions",
-}
+_AUTHORED_METADATA_KEYS = frozenset({"contract", "schema", "envelope", "status", "extensions"})
 
 
 class SchemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata.
 
-    Legacy metadata recognizes the self-description quartet: ``contract`` (what),
+    Metadata recognizes the self-description quartet: ``contract`` (what),
     ``schema`` (where the compiled schema lives), ``envelope`` (which top-level
-    key carries the payload), and ``status`` (how strictly to validate). Format 1
-    adds the quoted ``format: "1"`` discriminator and one opaque ``extensions`` map.
+    key carries the payload), and ``status`` (how strictly to validate), plus one
+    opaque ``extensions`` map.
     The spec makes unknown keys in the ``softschema:`` block a validation error
     (``extra="forbid"``), and a contract ID must match the enforced grammar
     (see ``validate_contract_id``).
@@ -66,37 +59,22 @@ class SchemaMetadata(BaseModel):
     schema_ref: str | None = Field(alias="schema", default=None, min_length=1)
     envelope: str | None = Field(default=None, min_length=1)
     status: SchemaStatus | None = None
-    format_version: Literal["1"] | None = Field(alias="format", default=None)
     extensions: dict[str, Any] | None = None
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_format_shape(cls, value: Any, info: ValidationInfo) -> Any:
+    def _validate_authored_shape(cls, value: Any, info: ValidationInfo) -> Any:
         if not isinstance(value, dict):
             return value
 
         authored = bool(info.context and info.context.get("authored"))
-        has_format = "format" in value
         if authored:
-            if has_format and value["format"] != ARTIFACT_FORMAT_VERSION:
-                raise ValueError('softschema metadata format must be the quoted string "1"')
-            authored_keys = (
-                _FORMAT_1_AUTHORED_METADATA_KEYS if has_format else _LEGACY_AUTHORED_METADATA_KEYS
-            )
-            unknown = [key for key in value if key not in authored_keys]
+            unknown = [key for key in value if key not in _AUTHORED_METADATA_KEYS]
             if unknown:
                 rendered = ", ".join(str(key) for key in unknown)
                 raise ValueError(f"softschema metadata has unknown keys: {rendered}")
-            format_value = value.get("format")
-        else:
-            format_value = value.get("format", value.get("format_version"))
-        if format_value is not None and format_value != ARTIFACT_FORMAT_VERSION:
-            raise ValueError('softschema metadata format must be the quoted string "1"')
-        if "extensions" in value:
-            if format_value != ARTIFACT_FORMAT_VERSION:
-                raise ValueError('softschema metadata extensions require format "1"')
-            if not isinstance(value["extensions"], dict):
-                raise ValueError("softschema metadata extensions must be a mapping")
+        if "extensions" in value and not isinstance(value["extensions"], dict):
+            raise ValueError("softschema metadata extensions must be a mapping")
         return value
 
     @field_validator("contract_id")
@@ -117,17 +95,13 @@ class SchemaMetadata(BaseModel):
         return normalized
 
     @model_serializer(mode="wrap")
-    def _serialize_grammar(
+    def _serialize_metadata(
         self,
         handler: SerializerFunctionWrapHandler,
         info: SerializationInfo,
     ) -> dict[str, Any]:
         data = handler(self)
-        if self.format_version is None:
-            data.pop("format", None)
-            data.pop("format_version", None)
-            data.pop("extensions", None)
-        elif self.extensions is None:
+        if self.extensions is None:
             data.pop("extensions", None)
         return data
 

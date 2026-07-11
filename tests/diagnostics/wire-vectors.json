@@ -36,7 +36,6 @@
           "contract": "example.movie:Movie/v1",
           "envelope": "movie",
           "schema": null,
-          "format": "1",
           "status": "enforced"
         },
         "semantic": { "errors": [], "ok": true, "skipped_reason": null },
@@ -174,7 +173,6 @@
           "contract": "example.movie:Movie/v1",
           "envelope": "movie",
           "schema": null,
-          "format": "1",
           "status": "enforced"
         },
         "semantic": { "errors": [], "ok": true, "skipped_reason": null },
@@ -232,7 +230,6 @@
           "contract": "example.movie:Movie/v1",
           "envelope": "movie",
           "schema": null,
-          "format": "1",
           "status": "enforced"
         },
         "semantic": { "errors": [], "ok": true, "skipped_reason": null },
@@ -290,7 +287,6 @@
           "contract": "example.movie:Movie/v1",
           "envelope": "movie",
           "schema": null,
-          "format": "1",
           "status": "enforced"
         },
         "semantic": {

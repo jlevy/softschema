@@ -21,22 +21,22 @@
       "size": 19643
     },
     {
-      "path": "conformance/cases/artifact-format-1/artifact.md",
-      "sha256": "ba15c1980482c01df72d3754f9d8d1285334a8959975b882c5e1696c8561c3bb",
-      "size": 409
+      "path": "conformance/cases/artifact-extensions/artifact.md",
+      "sha256": "c4ae0d7510de4dd4677704de9459589ffa60beab7f9cdf51b2f748d5beededb8",
+      "size": 395
     },
     {
-      "path": "conformance/cases/artifact-format-1/case.yaml",
-      "sha256": "41ee577613dd05793549eca809ab30f8d3f3d0459b05900ca4f6fd1362742eea",
-      "size": 702
+      "path": "conformance/cases/artifact-extensions/case.yaml",
+      "sha256": "a70953d92c8cf15ced1a9494829fd51b33e16ae62e7feda833a8079754d79c6f",
+      "size": 698
     },
     {
-      "path": "conformance/cases/artifact-format-1/expected.json",
-      "sha256": "f3df9357ea52a0740fe941a73c84c0cf7395ce021b4afe8b8d1b792ea1b4edbb",
-      "size": 1009
+      "path": "conformance/cases/artifact-extensions/expected.json",
+      "sha256": "63b94e1667509b279be72b4f6100cdb074a2fd28e92d3863bc5147ac8fc1cf8b",
+      "size": 990
     },
     {
-      "path": "conformance/cases/artifact-format-1/schema.yaml",
+      "path": "conformance/cases/artifact-extensions/schema.yaml",
       "sha256": "bcfc38d91aac03428a5ed856755471d16d01c2a467d8201f3098f24725b920c7",
       "size": 408
     },
@@ -62,18 +62,18 @@
     },
     {
       "path": "conformance/cases/diagnostic-jsonl/artifact.md",
-      "sha256": "0047f24fbbffb35202a734f1b8b30f22a123b190d480edcca689d11dd576a6c0",
-      "size": 180
+      "sha256": "cfa12bc827296ff24688186cb3b5e35287ed503174f9643efbc335ddbd53bad0",
+      "size": 166
     },
     {
       "path": "conformance/cases/diagnostic-jsonl/case.yaml",
-      "sha256": "bdcec71cdc3d41b87b71ad3ca30e5035f207d4f0511b55289d7fa59e640bbbb3",
+      "sha256": "73f6a385ba099a1bd95a88721ac1ed5abc52c805455f46786813249f9377594b",
       "size": 761
     },
     {
       "path": "conformance/cases/diagnostic-jsonl/expected.json",
-      "sha256": "ec25a15c73d25ed0c0683fbfed92094dbc4710b6927ea1f9dbef9df77b6d4996",
-      "size": 1379
+      "sha256": "2c911b8ab9595649115debe262fe8bbe1499d2c924719376ef8074618deb5952",
+      "size": 1356
     },
     {
       "path": "conformance/cases/diagnostic-jsonl/schema.yaml",
@@ -281,22 +281,22 @@
       "size": 140
     },
     {
-      "path": "conformance/cases/pure-yaml-format-1/artifact.yaml",
-      "sha256": "b2303542ebb1ffc7bb864494c16e340809dce98d3e9a92bb41006ce67d84c3b0",
-      "size": 167
+      "path": "conformance/cases/pure-yaml-metadata/artifact.yaml",
+      "sha256": "64297369d9810a0edfdd6e5ddf7052f2c349a10ea7ca69077550e19d2c23ba31",
+      "size": 153
     },
     {
-      "path": "conformance/cases/pure-yaml-format-1/case.yaml",
-      "sha256": "3ecf27b4ef68eddc42a9c576ad5dab259d1c1a5ad9bf99d3200ef27adba024f8",
-      "size": 740
+      "path": "conformance/cases/pure-yaml-metadata/case.yaml",
+      "sha256": "fe5b686ef51e62cadc3e13029af472f1e5fa46b8c4b1076fe40de1a9de9b6a41",
+      "size": 720
     },
     {
-      "path": "conformance/cases/pure-yaml-format-1/expected.json",
-      "sha256": "96b30fc922e63ba6e6ec134e2c7cb370003cda6902f2548e4d7f4cd0f57e9481",
-      "size": 805
+      "path": "conformance/cases/pure-yaml-metadata/expected.json",
+      "sha256": "6de3240c06958db53ee618dec47a7c0610984015a31839fb8ade263c3549a01b",
+      "size": 786
     },
     {
-      "path": "conformance/cases/pure-yaml-format-1/schema.yaml",
+      "path": "conformance/cases/pure-yaml-metadata/schema.yaml",
       "sha256": "41486f58324cb10f1832ff96a69899da05d5008d1f71c6d70dd35b7de9558375",
       "size": 158
     },
@@ -487,8 +487,8 @@
     },
     {
       "path": "conformance/doctor/doctor-v1-common.golden.json",
-      "sha256": "ec671e9f954845f607faf9827516739869f7101221e863b278e651c6106f851f",
-      "size": 777
+      "sha256": "420b5a126da6ee03cb7c3cc2a9b995b5a7fa051edd582d097469eecce4fd127a",
+      "size": 717
     },
     {
       "path": "conformance/evolution.json",
@@ -502,8 +502,8 @@
     },
     {
       "path": "conformance/manifest.yaml",
-      "sha256": "f8bd18f4599e69412623f8223293a1be63475f3330e3faafc4cbf965e263d6e4",
-      "size": 13918
+      "sha256": "efeb79653380f7aeb74db8f337d871daa100af61923229a37deae0fe57fee885",
+      "size": 13441
     },
     {
       "path": "conformance/publication.json",
@@ -517,8 +517,8 @@
     },
     {
       "path": "conformance/run.py",
-      "sha256": "2238d4b51178f2ed200c8219c85661ebf30679adb8649842c2690d04546a1d40",
-      "size": 31155
+      "sha256": "f854280eccb9c6f0ad96321198e10b3f708d44fc5833dbb4ff1536bc783012cf",
+      "size": 30968
     },
     {
       "path": "conformance/schemas/artifact-input-result-v1.schema.json",
@@ -552,8 +552,8 @@
     },
     {
       "path": "conformance/schemas/doctor-result.schema.json",
-      "sha256": "abc3237d87ad75ec3f80ffb51af508ebbe3c435cd4f8f5488784fff6283f7b7b",
-      "size": 2106
+      "sha256": "8a3a85775193bafe5979fa15aaf477aea143784f669961d266e113281f6e3fd8",
+      "size": 2017
     },
     {
       "path": "conformance/schemas/implementation-matrix.schema.json",
@@ -562,23 +562,13 @@
     },
     {
       "path": "conformance/schemas/manifest.schema.json",
-      "sha256": "bc4386281d00dc5bc04319464fd1b06151a46bd769c0e290413f91c252145b66",
-      "size": 9120
-    },
-    {
-      "path": "conformance/schemas/metadata-legacy.schema.json",
-      "sha256": "c0eb4f8e88a955496dbe3df1e9abadcc57d030fc8f02dbf5d77f3927684a981a",
-      "size": 817
-    },
-    {
-      "path": "conformance/schemas/metadata-v1.schema.json",
-      "sha256": "8dd3c5a0cfea0140d457cb0ad2602bbf8ccb45a9f6b628825773bd80c5c8c772",
-      "size": 1672
+      "sha256": "c932b9726c0ffcbd7a40babe22983386cd5c7893351aaf800b571fb2a0592c84",
+      "size": 8829
     },
     {
       "path": "conformance/schemas/metadata.schema.json",
-      "sha256": "3343d3ceb4d900fec81fc0c3b6ae30aeb9cbc6977edb8bd181843b485a60a41f",
-      "size": 331
+      "sha256": "d02dc71398ffadf4c5ba1122b3d489be9686a7c51ed127409014ad2f2f89bb8a",
+      "size": 1783
     },
     {
       "path": "conformance/schemas/public-claims.schema.json",
@@ -597,8 +587,8 @@
     },
     {
       "path": "conformance/schemas/release-metadata.schema.json",
-      "sha256": "c29b9fec7eb46b45c30012e2137df03ddf34153f2891c4970232d8cf61feef1f",
-      "size": 3439
+      "sha256": "89bc356db66276eb63eb1f3924e6ed8b4b621831432930cccca9f16367f0e80a",
+      "size": 3018
     },
     {
       "path": "conformance/schemas/resource-bundle.schema.json",
@@ -617,8 +607,8 @@
     },
     {
       "path": "conformance/schemas/validation-result-legacy.schema.json",
-      "sha256": "a88e90fa3aa2bca7bf45f1d2daedd4758f4b38102db396e4a4662997676f13e0",
-      "size": 3803
+      "sha256": "9dbcb795b0f7d0970999373299cec362fbabff632c3bc62e5f426ff5caa78ba4",
+      "size": 3699
     },
     {
       "path": "conformance/schemas/vector-suite.schema.json",
@@ -647,8 +637,8 @@
     },
     {
       "path": "conformance/vectors/metadata-v1.json",
-      "sha256": "86601556da4cb6b52bd8e9eda4087fd130912bb7ce698f81029b539d3a0490b8",
-      "size": 2739
+      "sha256": "c9c714b00849b79a0f757674f18f5da2bf422b2f94e543d4b2be08bc6d3af429",
+      "size": 2639
     },
     {
       "path": "conformance/vectors/portable-pattern-v1.json",

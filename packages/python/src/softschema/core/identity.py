@@ -129,7 +129,7 @@ def validate_schema_id(value: object) -> str:
 
 
 def validate_extension_namespace(value: object) -> str:
-    """Return a canonical format-1 extension namespace or raise ``ValueError``."""
+    """Return a canonical extension namespace or raise ``ValueError``."""
     if isinstance(value, str) and _REVERSE_DNS_NAMESPACE_RE.fullmatch(value):
         return value
     if isinstance(value, str) and value.startswith("https://"):

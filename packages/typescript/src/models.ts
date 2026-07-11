@@ -19,8 +19,6 @@ export {
 
 export type SchemaStatus = "soft" | "permissive" | "enforced";
 export type SchemaProfile = "frontmatter-md" | "pure-yaml";
-export const ARTIFACT_FORMAT_VERSION = "1" as const;
-
 const SCHEMA_STATUSES: readonly SchemaStatus[] = ["soft", "permissive", "enforced"];
 
 export function isSchemaStatus(value: unknown): value is SchemaStatus {
@@ -37,7 +35,6 @@ export interface SchemaMetadata {
   schema: string | null;
   envelope: string | null;
   status: SchemaStatus | null;
-  format?: "1";
   extensions?: Record<string, JsonValue>;
 }
 
@@ -89,7 +86,6 @@ export interface SchemaMetadataWire {
   envelope: string | null;
   schema: string | null;
   status: SchemaStatus | null;
-  format?: "1";
   extensions?: Record<string, JsonValue>;
 }
 
@@ -141,8 +137,7 @@ export function defineContract(contract: Contract): Contract {
   return defineContractDescriptor(contract);
 }
 
-const LEGACY_METADATA_KEYS = new Set(["contract", "schema", "envelope", "status"]);
-const FORMAT_1_METADATA_KEYS = new Set([...LEGACY_METADATA_KEYS, "format", "extensions"]);
+const METADATA_KEYS = new Set(["contract", "schema", "envelope", "status", "extensions"]);
 /** Require an optional metadata key, when present, to be a non-empty string. */
 function checkOptionalString(obj: Record<string, unknown>, key: string): string | null {
   const value = obj[key];
@@ -165,13 +160,8 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
   }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
-    const hasFormat = Object.hasOwn(obj, "format");
-    if (hasFormat && obj.format !== ARTIFACT_FORMAT_VERSION) {
-      throw new SchemaMetadataError('softschema metadata format must be the quoted string "1"');
-    }
-    const knownKeys = hasFormat ? FORMAT_1_METADATA_KEYS : LEGACY_METADATA_KEYS;
     // The spec makes unknown keys in the softschema: block a validation error.
-    const unknown = Object.keys(obj).filter((key) => !knownKeys.has(key));
+    const unknown = Object.keys(obj).filter((key) => !METADATA_KEYS.has(key));
     if (unknown.length > 0) {
       throw new SchemaMetadataError(`softschema metadata has unknown keys: ${unknown.join(", ")}`);
     }
@@ -185,8 +175,6 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
       }
       status = obj.status;
     }
-    if (!hasFormat) return { contractId: contract, schema, envelope, status };
-
     let extensions: Record<string, JsonValue> | undefined;
     if (Object.hasOwn(obj, "extensions")) {
       let normalized: JsonValue;
@@ -208,7 +196,6 @@ export function parseSchemaMetadata(raw: unknown): SchemaMetadata | null {
       schema,
       envelope,
       status,
-      format: ARTIFACT_FORMAT_VERSION,
       ...(extensions === undefined ? {} : { extensions }),
     };
   }
@@ -240,9 +227,6 @@ export function metadataToOutput(metadata: SchemaMetadata | null): SchemaMetadat
     schema: metadata.schema,
     status: metadata.status,
   };
-  if (metadata.format === ARTIFACT_FORMAT_VERSION) {
-    output.format = ARTIFACT_FORMAT_VERSION;
-    if (metadata.extensions !== undefined) output.extensions = metadata.extensions;
-  }
+  if (metadata.extensions !== undefined) output.extensions = metadata.extensions;
   return output;
 }

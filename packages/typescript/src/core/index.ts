@@ -21,7 +21,6 @@ export {
   structuralErrorRecord,
 } from "../errors.js";
 export {
-  ARTIFACT_FORMAT_VERSION,
   type Contract,
   type ContractDescriptor,
   type ContractWire,

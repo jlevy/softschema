@@ -59,7 +59,6 @@ def _normalized_doctor(report: dict[str, Any]) -> dict[str, Any]:
         "name": "<runtime-name>",
         "version": "<runtime-version>",
     }
-    normalized["capabilities"]["artifact_formats"] = ["<artifact-formats>"]
     normalized["capabilities"]["model_loaders"] = ["<model-loaders>"]
     normalized["capabilities"]["conformance"] = {
         "version": "<conformance-version>",
@@ -84,13 +83,6 @@ def test_doctor_json_matches_shared_v1_golden_and_schema(
         "release_state": release["release_state"],
     }
     assert report["runtime"]["name"] == "python"
-    assert release["artifact_formats"] == {
-        "current": "1",
-        "supported": ["legacy-0.2", "1"],
-    }
-    assert report["capabilities"]["artifact_formats"] == sorted(
-        release["artifact_formats"]["supported"]
-    )
     assert report["capabilities"]["model_loaders"] == ["json-schema", "pydantic"]
     assert report["capabilities"]["conformance"] == release["conformance"]
     assert report["build"] == build

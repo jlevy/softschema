@@ -3,16 +3,12 @@ status: draft
 identifier_status: draft-until-live-verification
 target_namespace: https://jlevy.github.io/softschema/schema/v1/
 schema_dialect: https://json-schema.org/draft/2020-12/schema
-artifact_formats:
-- legacy-0.2
-- "1"
 profiles:
 - frontmatter-md
 - pure-yaml
 defaults:
   artifact_profile: frontmatter-md
   validation_status: soft
-  authored_artifact_format: "1"
 exit_codes:
   all_passed: 0
   validation_failed: 1
@@ -89,22 +85,16 @@ schemas:
   sha256: 5c89861a833a7b5a0922dec36b9f007aa4a453f9c2900e36f88fd91333a789d1
 - id: urn:softschema:draft:conformance:doctor-result:v0
   path: schemas/doctor-result.schema.json
-  sha256: abc3237d87ad75ec3f80ffb51af508ebbe3c435cd4f8f5488784fff6283f7b7b
+  sha256: 8a3a85775193bafe5979fa15aaf477aea143784f669961d266e113281f6e3fd8
 - id: urn:softschema:draft:conformance:implementation-matrix:v0
   path: schemas/implementation-matrix.schema.json
   sha256: 3b04e792d971cbc897e42390cdce096e7462eae1a7c8482f07ac4cc726e4d606
 - id: urn:softschema:draft:conformance:manifest:v0
   path: schemas/manifest.schema.json
-  sha256: bc4386281d00dc5bc04319464fd1b06151a46bd769c0e290413f91c252145b66
-- id: urn:softschema:draft:conformance:metadata-legacy:v0
-  path: schemas/metadata-legacy.schema.json
-  sha256: c0eb4f8e88a955496dbe3df1e9abadcc57d030fc8f02dbf5d77f3927684a981a
-- id: urn:softschema:draft:conformance:metadata-v1:v0
-  path: schemas/metadata-v1.schema.json
-  sha256: 8dd3c5a0cfea0140d457cb0ad2602bbf8ccb45a9f6b628825773bd80c5c8c772
+  sha256: c932b9726c0ffcbd7a40babe22983386cd5c7893351aaf800b571fb2a0592c84
 - id: urn:softschema:draft:conformance:metadata:v0
   path: schemas/metadata.schema.json
-  sha256: 3343d3ceb4d900fec81fc0c3b6ae30aeb9cbc6977edb8bd181843b485a60a41f
+  sha256: d02dc71398ffadf4c5ba1122b3d489be9686a7c51ed127409014ad2f2f89bb8a
 - id: urn:softschema:draft:conformance:public-claims:v0
   path: schemas/public-claims.schema.json
   sha256: a368cfdccfecc5e9db1ed95ffd3d026316138d5d4576e1f01570bdba5cb5c938
@@ -116,7 +106,7 @@ schemas:
   sha256: fa1285921ae557a353cb779616cae4f1f3e8b9ca9ace7cb7abb792bc9321c2be
 - id: urn:softschema:draft:conformance:release-metadata:v0
   path: schemas/release-metadata.schema.json
-  sha256: c29b9fec7eb46b45c30012e2137df03ddf34153f2891c4970232d8cf61feef1f
+  sha256: 89bc356db66276eb63eb1f3924e6ed8b4b621831432930cccca9f16367f0e80a
 - id: urn:softschema:draft:conformance:resource-bundle:v0
   path: schemas/resource-bundle.schema.json
   sha256: 8570c7f1b04d1f1c1c8fd803578c10ce4246e0fab2d5ce4d6b601455c44ee82f
@@ -128,7 +118,7 @@ schemas:
   sha256: b3fcc96c1c8ac89fad39e4f4c13837ab1a6f84406cf8d9317e2ab1515e01cac8
 - id: urn:softschema:draft:conformance:validation-result-legacy:v0
   path: schemas/validation-result-legacy.schema.json
-  sha256: a88e90fa3aa2bca7bf45f1d2daedd4758f4b38102db396e4a4662997676f13e0
+  sha256: 9dbcb795b0f7d0970999373299cec362fbabff632c3bc62e5f426ff5caa78ba4
 - id: urn:softschema:draft:conformance:vector-suite:v0
   path: schemas/vector-suite.schema.json
   sha256: 6cedc2ae8ff9fe46338081330808940f3ac92d5c9b7bad5a2637d5c3a3e73d96
@@ -147,7 +137,7 @@ vector_suites:
   sha256: 7f0d291f5e02e65ad495ace47ffcc0592fe779332f0431273712ae0fa78269cb
 - id: metadata-v1
   path: vectors/metadata-v1.json
-  sha256: 86601556da4cb6b52bd8e9eda4087fd130912bb7ce698f81029b539d3a0490b8
+  sha256: c9c714b00849b79a0f757674f18f5da2bf422b2f94e543d4b2be08bc6d3af429
 - id: portable-pattern-v1
   path: vectors/portable-pattern-v1.json
   sha256: d5a6e0cbb1b8082bcdfe45c8df3a5e65e8ac586aee1d9b2f05d956a3296d2942
@@ -176,7 +166,7 @@ artifacts:
 - id: doctor-claims
   role: doctor-claims
   path: doctor/doctor-v1-common.golden.json
-  sha256: ec671e9f954845f607faf9827516739869f7101221e863b278e651c6106f851f
+  sha256: 420b5a126da6ee03cb7c3cc2a9b995b5a7fa051edd582d097469eecce4fd127a
 - id: python-adapter
   role: adapter
   path: adapters/python_adapter.py
@@ -206,15 +196,15 @@ artifacts:
   path: vendor/SARIF-SCHEMA-NOTICE.md
   sha256: 0f5c70e35f0f53c621ec3b1a3fa4f62fbe793597a7657b8ed559864b15205783
 cases:
-- id: artifact-format-1
-  path: cases/artifact-format-1/case.yaml
-  sha256: 41ee577613dd05793549eca809ab30f8d3f3d0459b05900ca4f6fd1362742eea
+- id: artifact-extensions
+  path: cases/artifact-extensions/case.yaml
+  sha256: a70953d92c8cf15ced1a9494829fd51b33e16ae62e7feda833a8079754d79c6f
 - id: artifact-parse-frontmatter
   path: cases/artifact-parse-frontmatter/case.yaml
   sha256: 86dfa97c07ef2a3ae135e1aa6d261e732621c37d53ff42a7bbc1af1ffb47d2c6
 - id: diagnostic-jsonl
   path: cases/diagnostic-jsonl/case.yaml
-  sha256: bdcec71cdc3d41b87b71ad3ca30e5035f207d4f0511b55289d7fa59e640bbbb3
+  sha256: 73f6a385ba099a1bd95a88721ac1ed5abc52c805455f46786813249f9377594b
 - id: enforced-composition-extra
   path: cases/enforced-composition-extra/case.yaml
   sha256: df6bacb0432e5d1d53e307eec8a0f8ca19123040f393f5b5893c6df1157ed18b
@@ -245,9 +235,9 @@ cases:
 - id: portable-pattern-newline
   path: cases/portable-pattern-newline/case.yaml
   sha256: 12098b04adbe58f2ff45e04ca63f2cd2e0723dd6d101ec459472a68df0a7fbb7
-- id: pure-yaml-format-1
-  path: cases/pure-yaml-format-1/case.yaml
-  sha256: 3ecf27b4ef68eddc42a9c576ad5dab259d1c1a5ad9bf99d3200ef27adba024f8
+- id: pure-yaml-metadata
+  path: cases/pure-yaml-metadata/case.yaml
+  sha256: fe5b686ef51e62cadc3e13029af472f1e5fa46b8c4b1076fe40de1a9de9b6a41
 - id: schema-invalid-pattern-syntax
   path: cases/schema-invalid/case-compile.yaml
   sha256: c2b4302872a5ee6a4a8b2b478da8951e9004a633955c4a3c2ba62a57cc48cb6e
@@ -282,12 +272,12 @@ cases:
   path: cases/schema-invalid/case-value-domain.yaml
   sha256: f043a7ccb0f7a2713fa86272be6bd2c2b4759aecb0cadfd873345a3367cdc3a7
 coverage:
-  artifact_format:
-  - case:artifact-format-1
+  artifact_metadata:
+  - case:artifact-extensions
   - suite:metadata-v1
   artifact_profiles:
   - case:legacy-validate-ok
-  - case:pure-yaml-format-1
+  - case:pure-yaml-metadata
   core_api:
   - suite:canonicalization-v1
   - suite:identity-v1
@@ -302,7 +292,7 @@ coverage:
   - case:legacy-validate-ok
   - schema:validation-result-legacy.schema.json
   metadata:
-  - case:artifact-format-1
+  - case:artifact-extensions
   - suite:metadata-v1
   nested_identities:
   - case:nested-resource-collision
@@ -330,6 +320,3 @@ coverage:
   - case:schema-invalid-root
   - case:schema-invalid-syntax
   - case:schema-invalid-value-domain
-  version_negotiation:
-  - case:artifact-format-1
-  - suite:metadata-v1

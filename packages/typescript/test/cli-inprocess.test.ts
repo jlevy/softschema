@@ -101,7 +101,7 @@ describe("cli main() in-process", () => {
 
   test("docs example-pure-yaml prints the copyable artifact", async () => {
     expect(await main(argv("docs", "example-pure-yaml"))).toBe(0);
-    expect(captured()).toContain('format: "1"');
+    expect(captured()).not.toContain("format:");
     expect(captured()).toContain("contract: example.movies:MoviePage/v1");
     expect(captured()).not.toContain("---");
   });

@@ -52,11 +52,10 @@
             "contract": { "type": "string", "minLength": 1 },
             "envelope": { "type": ["string", "null"] },
             "schema": { "type": ["string", "null"] },
-            "format": { "const": "1" },
             "extensions": {
               "type": "object",
               "propertyNames": {
-                "$ref": "urn:softschema:draft:conformance:metadata-v1:v0#/$defs/extensionNamespace"
+                "$ref": "urn:softschema:draft:conformance:metadata:v0#/$defs/extensionNamespace"
               }
             },
             "status": {
@@ -66,7 +65,6 @@
               ]
             }
           },
-          "dependentRequired": { "extensions": ["format"] },
           "additionalProperties": false
         }
       ]

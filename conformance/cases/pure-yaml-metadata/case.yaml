@@ -1,15 +1,14 @@
-id: pure-yaml-format-1
-description: Format-1 metadata and envelope selection work in the explicit pure-YAML profile.
+id: pure-yaml-metadata
+description: Metadata and envelope selection work in the explicit pure-YAML profile.
 operation: validate
 execution:
   status: ready
 profiles:
 - pure-yaml
-- format-1
 inputs:
   artifact:
     path: artifact.yaml
-    sha256: b2303542ebb1ffc7bb864494c16e340809dce98d3e9a92bb41006ce67d84c3b0
+    sha256: 64297369d9810a0edfdd6e5ddf7052f2c349a10ea7ca69077550e19d2c23ba31
   schema:
     path: schema.yaml
     sha256: 41486f58324cb10f1832ff96a69899da05d5008d1f71c6d70dd35b7de9558375
@@ -24,4 +23,4 @@ expected:
   schema: validation-result-legacy.schema.json
   result:
     path: expected.json
-    sha256: 96b30fc922e63ba6e6ec134e2c7cb370003cda6902f2548e4d7f4cd0f57e9481
+    sha256: 6de3240c06958db53ee618dec47a7c0610984015a31839fb8ade263c3549a01b

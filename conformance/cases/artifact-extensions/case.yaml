@@ -1,15 +1,14 @@
-id: artifact-format-1
-description: Format 1 preserves opaque extensions while core validation ignores them.
+id: artifact-extensions
+description: Metadata preserves opaque extensions while core validation ignores them.
 operation: validate
 execution:
   status: ready
 profiles:
-- "1"
 - frontmatter-md
 inputs:
   artifact:
     path: artifact.md
-    sha256: ba15c1980482c01df72d3754f9d8d1285334a8959975b882c5e1696c8561c3bb
+    sha256: c4ae0d7510de4dd4677704de9459589ffa60beab7f9cdf51b2f748d5beededb8
   schema:
     path: schema.yaml
     sha256: bcfc38d91aac03428a5ed856755471d16d01c2a467d8201f3098f24725b920c7
@@ -23,4 +22,4 @@ expected:
   schema: validation-result-legacy.schema.json
   result:
     path: expected.json
-    sha256: f3df9357ea52a0740fe941a73c84c0cf7395ce021b4afe8b8d1b792ea1b4edbb
+    sha256: 63b94e1667509b279be72b4f6100cdb074a2fd28e92d3863bc5147ac8fc1cf8b

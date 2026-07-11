@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-ARTIFACT_FORMAT_VERSION = "1"
-
 
 class SchemaStatus(StrEnum):
     """How strongly a project treats a soft schema at a boundary."""

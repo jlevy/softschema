@@ -20,7 +20,6 @@ interface DoctorReport {
   protocol_version: string;
   runtime: { name: string; version: string };
   capabilities: {
-    artifact_formats: string[];
     conformance: { version: string; status: string };
     model_loaders: string[];
     operations: string[];
@@ -33,7 +32,6 @@ interface ReleaseMetadata {
   logical_version: string;
   release_state: string;
   packages: { python: { pin: string }; npm: { pin: string } };
-  artifact_formats: { current: string; supported: string[] };
   conformance: { version: string; status: string };
 }
 
@@ -66,7 +64,6 @@ function normalizedDoctor(report: DoctorReport): DoctorReport {
   normalized.package.release_state = "<release-state>";
   normalized.protocol_version = "<discovery-protocol>";
   normalized.runtime = { name: "<runtime-name>", version: "<runtime-version>" };
-  normalized.capabilities.artifact_formats = ["<artifact-formats>"];
   normalized.capabilities.model_loaders = ["<model-loaders>"];
   normalized.capabilities.conformance = {
     version: "<conformance-version>",
@@ -91,14 +88,7 @@ test("doctor --json matches the shared v1 golden and schema under Bun", async ()
     release_state: release.release_state,
   });
   expect(report.runtime.name).toBe("bun");
-  expect(release.artifact_formats).toEqual({
-    current: "1",
-    supported: ["legacy-0.2", "1"],
-  });
   expect(report.capabilities.model_loaders).toEqual(["json-schema", "zod"]);
-  expect(report.capabilities.artifact_formats).toEqual(
-    [...release.artifact_formats.supported].sort(),
-  );
   expect(report.capabilities.conformance).toEqual(release.conformance);
   expect(report.build).toEqual(build);
 

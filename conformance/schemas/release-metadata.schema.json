@@ -9,7 +9,6 @@
     "logical_version",
     "discovery_protocol",
     "packages",
-    "artifact_formats",
     "conformance",
     "runtimes",
     "expected_artifacts"
@@ -28,20 +27,6 @@
       "properties": {
         "python": { "$ref": "#/$defs/package" },
         "npm": { "$ref": "#/$defs/package" }
-      },
-      "additionalProperties": false
-    },
-    "artifact_formats": {
-      "type": "object",
-      "required": ["current", "supported"],
-      "properties": {
-        "current": { "type": "string", "minLength": 1 },
-        "supported": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1 }
-        }
       },
       "additionalProperties": false
     },

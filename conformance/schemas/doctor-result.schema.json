@@ -29,14 +29,12 @@
       "type": "object",
       "required": [
         "operations",
-        "artifact_formats",
         "model_loaders",
         "output_formats",
         "conformance"
       ],
       "properties": {
         "operations": { "$ref": "#/$defs/stringSet" },
-        "artifact_formats": { "$ref": "#/$defs/stringSet" },
         "model_loaders": { "$ref": "#/$defs/stringSet" },
         "output_formats": { "$ref": "#/$defs/stringSet" },
         "conformance": {

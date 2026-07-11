@@ -184,12 +184,11 @@ are identical.
 | `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation and filters |
 | `SoftField` | `softField` | same emitted `x-softschema` block and omit-empty rules |
 | `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes and errors |
-| `SchemaMetadata` | `SchemaMetadata` | legacy serialization stays `{contract, envelope, schema, status}`; format 1 adds the quoted `format` and optional namespaced `extensions` mapping |
+| `SchemaMetadata` | `SchemaMetadata` | same compact or mapping input and `{contract, envelope, schema, status, extensions?}` output |
 | `_resolve_metadata_schema` | `resolveMetadataSchema` | bounded relative-path resolution from document directory + cwd |
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `SOFTSCHEMA_FORMAT_VERSION` | `SOFTSCHEMA_FORMAT_VERSION` | exported from `index.ts` / `__init__.py` |
-| `ARTIFACT_FORMAT_VERSION` | `ARTIFACT_FORMAT_VERSION` | current metadata grammar (`"1"`), independent of package and compiled-schema versions |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
 | `ValidationLimits` | `ValidationLimits` | same default budgets; Python uses snake case and TypeScript uses camel case |
 

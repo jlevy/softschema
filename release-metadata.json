@@ -1,11 +1,4 @@
 {
-  "artifact_formats": {
-    "current": "1",
-    "supported": [
-      "legacy-0.2",
-      "1"
-    ]
-  },
   "conformance": {
     "status": "unavailable",
     "version": "0.0.0-draft.1"

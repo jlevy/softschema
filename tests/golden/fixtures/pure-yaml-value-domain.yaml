@@ -1,4 +1,3 @@
 softschema:
-  format: "1"
   contract: test.pure:ValueDomain/v1
 value: .inf

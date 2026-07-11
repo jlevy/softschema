@@ -417,7 +417,6 @@ interface ReleaseMetadata {
     python: { pin: string };
     npm: { pin: string };
   };
-  artifact_formats: { supported: string[] };
   conformance: {
     version: string;
     status: "unavailable" | "candidate" | "release_asset";
@@ -437,7 +436,6 @@ interface DoctorReport {
   };
   capabilities: {
     operations: string[];
-    artifact_formats: string[];
     model_loaders: string[];
     output_formats: string[];
     conformance: ReleaseMetadata["conformance"];
@@ -469,7 +467,6 @@ function doctorReport(): DoctorReport {
     },
     capabilities: {
       operations: [...DOCTOR_OPERATIONS],
-      artifact_formats: [...release.artifact_formats.supported].sort(),
       model_loaders: ["json-schema", "zod"],
       output_formats: [...DOCTOR_OUTPUT_FORMATS],
       conformance: release.conformance,
@@ -485,7 +482,6 @@ function doctorText(report: DoctorReport): string {
     `package: ${packageInfo.name} ${packageInfo.version} (${packageInfo.release_state})`,
     `runtime: ${runtime.name} ${runtime.version}`,
     `operations: ${capabilities.operations.join(", ")}`,
-    `artifact formats: ${capabilities.artifact_formats.join(", ")}`,
     `model loaders: ${capabilities.model_loaders.join(", ")}`,
     `output formats: ${capabilities.output_formats.join(", ")}`,
     `conformance: ${capabilities.conformance.version} (${capabilities.conformance.status})`,

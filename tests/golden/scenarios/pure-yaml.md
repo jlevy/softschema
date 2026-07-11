@@ -27,7 +27,6 @@ $ softschema validate tests/golden/fixtures/pure-yaml-metadata-only.yaml --profi
   "document_metadata": {
     "contract": "test.pure:MetadataOnly/v1",
     "envelope": null,
-    "format": "1",
     "schema": null,
     "status": "soft"
   },
@@ -112,7 +111,6 @@ $ softschema validate tests/golden/fixtures/pure-yaml-envelope.yaml --profile pu
   "document_metadata": {
     "contract": "test.errors:Sample/v1",
     "envelope": "declared",
-    "format": "1",
     "schema": "error-norm.schema.yaml",
     "status": "enforced"
   },
@@ -159,7 +157,6 @@ $ softschema validate tests/golden/fixtures/pure-yaml-envelope.yaml --profile pu
   "document_metadata": {
     "contract": "test.errors:Sample/v1",
     "envelope": "declared",
-    "format": "1",
     "schema": "error-norm.schema.yaml",
     "status": "enforced"
   },
@@ -206,7 +203,6 @@ $ softschema validate examples/movie_page/spirited-away.yaml --profile pure-yaml
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
     "envelope": null,
-    "format": "1",
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },

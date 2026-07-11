@@ -75,7 +75,6 @@ $ softschema validate examples/movie_page/spirited-away.md
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
     "envelope": "movie",
-    "format": "1",
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },

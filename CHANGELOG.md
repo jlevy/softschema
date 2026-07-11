@@ -9,7 +9,7 @@ history.
 ### Features
 
 - **Portable artifact boundary:** Adds bounded JSON-compatible YAML semantics, explicit
-  `frontmatter-md` and `pure-yaml` profiles, format 1 metadata and extensions, portable
+  `frontmatter-md` and `pure-yaml` profiles, closed metadata and extensions, portable
   regex behavior, and annotation-only JSON Schema formats.
 - **Offline schema validation:** Resolves fragments and explicitly supplied in-memory
   resources without implicit HTTP, file, or relative-path retrieval.

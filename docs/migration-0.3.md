@@ -21,16 +21,14 @@ published install instructions until registry verification succeeds.
 4. Recompile model-derived schemas once.
    Review the contract/schema identity change and commit the new schema and hash
    together.
-5. Add the quoted `softschema.format: "1"` discriminator to newly authored artifacts.
-   Existing artifacts may retain the absent-format legacy grammar during migration.
-6. Update TypeScript callers to `ContractDescriptor` plus `bindContract`; compile Node
+5. Update TypeScript callers to `ContractDescriptor` plus `bindContract`; compile Node
    model modules to `.js` or `.mjs`, or use Bun for direct `.ts`.
-7. Keep parsers of the existing single-file JSON result unchanged when discovery
+6. Keep parsers of the existing single-file JSON result unchanged when discovery
    classifies one single explicit path as a regular file, including when a later read
    fails, and for the narrow missing-path or broken-symlink `not_found` exception.
    Expect diagnostic-v1 for other discovery failures, multiple or discovered paths,
    JSONL, and SARIF.
-8. Preview every skill install with explicit scope and review every target before
+7. Preview every skill install with explicit scope and review every target before
    writing.
 
 ## Artifact and YAML Changes
@@ -53,18 +51,16 @@ optional ASCII space or tab.
 Unicode line and paragraph separators are rejected as literal source characters rather
 than treated as parser-specific fences.
 
-New artifacts use:
+Metadata mappings may carry namespaced extensions without a separate format version:
 
 ```yaml
 softschema:
-  format: "1"
   contract: example.movies:MoviePage/v1
   schema: movie-page.schema.yaml
 ```
 
-Format 1 permits an `extensions` mapping keyed by a canonical HTTPS namespace or
-lowercase reverse-DNS name.
-Extension values are preserved portable data; they never load code or change core
+An `extensions` mapping is keyed by a canonical HTTPS namespace or lowercase reverse-DNS
+name. Extension values are preserved portable data; they never load code or change core
 validation.
 
 ## Schema and Identity Changes

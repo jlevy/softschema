@@ -672,8 +672,6 @@ def check_doctor_claims(corpus: Corpus, implementation: str) -> None:
     if report["runtime"]["name"] != implementation:
         raise ConformanceError(f"{implementation}/doctor reports the wrong runtime")
     capabilities = report["capabilities"]
-    if set(capabilities["artifact_formats"]) != set(corpus.manifest["artifact_formats"]):
-        raise ConformanceError(f"{implementation}/doctor artifact formats differ from manifest")
     conformance = capabilities["conformance"]
     if conformance != {"version": corpus.manifest["kit_version"], "status": "unavailable"}:
         raise ConformanceError(f"{implementation}/doctor conformance claim differs from manifest")

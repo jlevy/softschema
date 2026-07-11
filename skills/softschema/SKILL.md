@@ -26,9 +26,8 @@ npx --yes softschema@0.2.2 doctor --json
 bunx --bun softschema@0.2.2 doctor --json
 ```
 
-Accept a candidate only when protocol `1` reports the needed operation, artifact format,
-runtime, and model loader.
-For `pure-yaml`, also require `validate --help` to list the profile.
+Accept a candidate only when protocol `1` reports the needed operation, runtime, and
+model loader. For `pure-yaml`, also require `validate --help` to list the profile.
 Reuse the complete qualifying command prefix.
 If none qualifies, report the missing capability and runtime and say that softschema
 must be installed or upgraded to a release that advertises it.
@@ -61,14 +60,13 @@ softschema validate doc.md
 
 - Treat YAML/frontmatter as authoritative.
   Never parse Markdown body prose or tables for structured fields.
-- Use a mapping with exact quoted `softschema.format: "1"` for new artifacts.
-  Use `softschema.contract` for the logical payload contract; it is not a schema path,
+- Use `softschema.contract` for the logical payload contract; it is not a schema path,
   model import, or JSON Schema `$id`.
 - Select `frontmatter-md` or `pure-yaml` explicitly.
   A filename suffix never selects a profile.
 - Promote a value into YAML only when a downstream consumer needs it.
   Keep analysis, uncertainty, and judgment-heavy context as prose.
-- Preserve unknown format-1 extension values as portable data.
+- Preserve unknown extension values as portable data.
   Extensions never authorize imports, retrieval, plugins, or validation behavior.
 - Prefer a reviewed compiled schema for untrusted artifacts.
   Model loading imports and executes trusted local Pydantic or Zod code.

@@ -81,9 +81,9 @@ softschema validate examples/movie_page/spirited-away.md
 softschema validate examples/movie_page/spirited-away.yaml --profile pure-yaml
 ```
 
-The artifact carries format 1 and the descriptive fields (`contract`, `schema`,
-`envelope`, `status`) in its `softschema:` block, so `softschema validate` resolves the
-compiled schema and envelope automatically with no flags.
+The artifact carries the descriptive fields (`contract`, `schema`, `envelope`, `status`)
+in its `softschema:` block, so `softschema validate` resolves the compiled schema and
+envelope automatically with no flags.
 The pure YAML artifact carries the same contract, schema, and status but deliberately
 omits `envelope`; `--profile pure-yaml` makes the remaining root mapping the payload.
 The CLI never selects this profile from the `.yaml` extension.

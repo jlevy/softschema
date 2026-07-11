@@ -1293,7 +1293,6 @@ def _doctor_report() -> dict[str, Any]:
         },
         "capabilities": {
             "operations": list(DOCTOR_OPERATIONS),
-            "artifact_formats": sorted(release["artifact_formats"]["supported"]),
             "model_loaders": ["json-schema", "pydantic"],
             "output_formats": list(DOCTOR_OUTPUT_FORMATS),
             "conformance": release["conformance"],
@@ -1312,7 +1311,6 @@ def _doctor_text(report: dict[str, Any]) -> str:
         (f"package: {package['name']} {package['version']} ({package['release_state']})"),
         f"runtime: {runtime['name']} {runtime['version']}",
         f"operations: {', '.join(capabilities['operations'])}",
-        f"artifact formats: {', '.join(capabilities['artifact_formats'])}",
         f"model loaders: {', '.join(capabilities['model_loaders'])}",
         f"output formats: {', '.join(capabilities['output_formats'])}",
         f"conformance: {conformance['version']} ({conformance['status']})",

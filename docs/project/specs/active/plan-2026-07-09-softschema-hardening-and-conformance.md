@@ -422,20 +422,11 @@ but does not define it after the fact.
 The artifact-format version is independent of package releases.
 Newly authored artifacts use the explicit quoted format identifier `"1"`:
 
-```yaml
-softschema:
-  format: "1"
-  contract: example.movies:MoviePage/v1
-  schema: movie-page.schema.yaml
-```
+The metadata block may be a compact contract ID or one closed mapping with `contract`,
+`schema`, `envelope`, `status`, and `extensions` fields.
+The contract ID is the only authored version string.
 
-Absence selects the legacy metadata grammar.
-A format-1-capable validator supports both grammars.
-An older validator rejects the new key loudly rather than silently misinterpreting a
-newer artifact. Safe YAML representation checks and the portable value domain apply to
-both grammars because they are parser and security boundaries, not format-1 features.
-
-The format-1 metadata block may carry one `extensions` mapping.
+The metadata mapping may carry one `extensions` mapping.
 A key is either an absolute HTTPS namespace normalized by the schema-URI rules or a
 lowercase reverse-DNS name matching
 `^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$`. Values may be
@@ -446,7 +437,7 @@ Format 1 exposes no extension-registration API and the CLI never imports or exec
 extension code. A later versioned proposal may add trusted host validators with its own
 precedence and wire contract.
 Unknown top-level metadata keys remain errors.
-Encode all current opaque-extension rules in the format-1 schema and positive/negative
+Encode all current opaque-extension rules in the metadata schema and positive/negative
 compatibility vectors.
 
 The compiled-schema profile, normalized result schema, and conformance kit each have an
@@ -600,8 +591,7 @@ Bootstrap resolution is local-first and reproducible:
    `.js`/`.mjs` needs Node or Bun, and direct `.ts` needs Bun) or an explicit documented
    runner override;
 2. use a `softschema` on `PATH` only when `doctor --json` reports the discovery
-   protocol, artifact formats, runtime, model loaders, and operation capabilities
-   required;
+   protocol, runtime, model loaders, and operation capabilities required;
 3. otherwise try capable runtimes in deterministic order:
    `uvx --from 'softschema==<python-pin>' softschema`, `npx --yes softschema@<npm-pin>`,
    then `bunx --bun softschema@<npm-pin>`; validate each candidate with `doctor --json`;
@@ -611,11 +601,10 @@ Bootstrap resolution is local-first and reproducible:
 Root `release-metadata.json`, validated by `release-metadata.schema.json`, is the single
 source for logical release coordinates: metadata schema version, release state,
 discovery protocol plus separate Python/npm pins, Python PEP 440 version, npm SemVer
-version, current/supported artifact formats, conformance-kit version/status, supported
-runtime bounds, and expected artifact names.
-Conformance availability is `unavailable`, `candidate`, or `release_asset`; a digest is
-absent for unavailable/source candidates and supplied only by built metadata for an
-immutable release-asset set.
+version, conformance-kit version/status, supported runtime bounds, and expected artifact
+names. Conformance availability is `unavailable`, `candidate`, or `release_asset`; a
+digest is absent for unavailable/source candidates and supplied only by built metadata
+for an immutable release-asset set.
 This describes source and artifact bytes, not live registry state.
 Immutable package bytes never change after publication; a separate verified follow-up
 commit advances source bootstrap pins and `release_state` only after both registries
@@ -897,8 +886,8 @@ without installing softschema.
   validation limits/errors, network/resource trust, skill/bootstrap/installer behavior,
   and every safety migration.
   Add a separate 0.3 migration/release note covering contract/schema-ID rebaseline,
-  format/regex policy, Node/Bun model loading, format 1, and legacy versus diagnostic-v1
-  result shapes.
+  format/regex policy, Node/Bun model loading, and legacy versus diagnostic-v1 result
+  shapes.
 - Maintain `docs/public-claims.yaml`, validated by
   `conformance/schemas/public-claims.schema.json`. Each stable claim ID points to an
   authoritative JSON Pointer in release metadata or the conformance manifest and lists
@@ -964,7 +953,7 @@ silently inside product docs.
 - Add shared `ValidationLimits`/`validationLimits` options for trusted library callers;
   CLI defaults remain bounded and fixed by the conformance profile.
 - Add `schema_id` / `schemaId` to compiler options and `compile --schema-id`.
-- Add artifact-format parsing for the absent legacy grammar and explicit format 1.
+- Keep artifact metadata to one compact-or-mapping grammar with no format discriminator.
 - Add `ContractDescriptor` and a typed runtime Zod binding while keeping the current
   TypeScript `Contract` through deprecation.
 - Add named TypeScript wire/result/error types.
@@ -985,7 +974,7 @@ silently inside product docs.
 | Public library APIs | Keep deprecated | Preserve current entrypoints and types through v0.3; additive APIs become preferred and removals wait for a documented pre-1.0 release. |
 | CLI commands | Support existing | Preserve command names, flags, and single-file output. Additive flags are allowed. Commander usage errors normalize to the documented exit 2. |
 | Skill installation | Intentional safety break | Ambiguous/outside-repo installs and unmanaged targets now fail before writing. No compatibility path preserves unsafe writes. |
-| Artifact files | Support both | Validators accept the absent legacy metadata grammar and explicit format 1. Safe-YAML and portable-value restrictions apply to both and fail clearly. |
+| Artifact files | Do not maintain unmerged format discriminator | Validators accept the compact contract ID or one closed metadata mapping. Safe-YAML and portable-value restrictions apply to both and fail clearly. |
 | Compiled schemas | Migrate | Existing official output continues through the narrow `legacy-0.2` profile with fragment-only references and migration guidance. Other schemas must satisfy the new portable, offline profile; external resources must be supplied in memory. New compilation separates contract ID from `$id`, regenerating committed schemas and hashes once. |
 | Result/error wire shape | Support existing | Preserve the exact legacy single-file JSON serializer for representable validation results. Readable parse failures gain a new discriminated result instead of usage-error substitution. New batch/location output uses diagnostic-v1 JSON/JSONL or SARIF; schemas distinguish every contract. |
 | `SchemaView.raw` | Tighten documented behavior | It was documented read-only but returned mutable internal state. It now returns a defensive deep snapshot; mutation of returned values never changes the view. |
@@ -1102,10 +1091,13 @@ Do not publish 0.3.0 until Phase 3 is complete.
 - [x] **Contract and schema identity (`ss-yxfm`).** Apply the shared contract-ID
   validator at every boundary, add independent schema IDs, and regenerate both compiler
   outputs to one equal schema/hash.
-- [x] **Version artifact metadata (`ss-wuva`).** Support the absent legacy grammar and
-  explicit artifact format 1, add the namespaced extension mapping, reject unsupported
-  versions and unknown top-level keys, and publish machine-readable schemas plus
-  compatibility vectors for both versions.
+- [x] **Define artifact metadata (`ss-wuva`).** Support compact and mapping metadata,
+  add the namespaced extension mapping, reject unknown top-level keys, and publish a
+  machine-readable schema plus compatibility vectors.
+- [x] **Use one authored version string (`ss-rpq0`).** Remove the unmerged
+  `softschema.format` discriminator so only the contract ID carries an authored version;
+  collapse metadata schemas, capabilities, examples, docs, and skills onto the single
+  grammar.
 - [x] **Artifact and schema-view boundaries (`ss-3n2k`).** Preserve ref siblings,
   represent genuine unions, consume only values normalized by `ss-l41u`, and align
   mutability and exception documentation.
@@ -1117,7 +1109,7 @@ Do not publish 0.3.0 until Phase 3 is complete.
 **Phase gate:** every portable-value, regex, format-annotation, and schema-applicator
 vector passes in Python, Node, and Bun; raw-versus-canonical validity invariants hold;
 contract IDs and schema URIs cannot be confused; the one intentional
-compiled-schema/hash rebaseline is reviewed; legacy/format-1 metadata and extension
+compiled-schema/hash rebaseline is reviewed; compact/mapping metadata and extension
 vectors pass; `SchemaView` snapshot behavior is identical; `softschema/core` is
 transitively free of Node/runtime/CLI adapters and the legacy root facade matches its
 exact compatibility allowlist; full goldens and direct parity remain green.
@@ -1421,7 +1413,8 @@ independent security work.
 | `ss-yxfm` | `ss-pvxi` | Identity decisions finalize the draft compiler-profile schema. |
 | `ss-1yt7` | `ss-yxfm` | Nested resource identity follows the settled separation between contract IDs and schema resource IDs. |
 | `ss-3n2k` | `ss-l41u`, `ss-sbvh` | Schema views and envelope inference consume settled values and schema traversal. |
-| `ss-wuva` | `ss-pvxi`, `ss-l41u`, `ss-yxfm` | Version negotiation extends the conformance foundation after value and identity rules settle. |
+| `ss-wuva` | `ss-pvxi`, `ss-l41u`, `ss-yxfm` | Metadata and extensions extend the conformance foundation after value and identity rules settle. |
+| `ss-rpq0` | `ss-wuva`, `ss-j81s` | The single metadata grammar replaces the settled unmerged discriminator across public and standalone boundaries. |
 | `ss-0uj9` | `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva`, `ss-1yt7` | Extract the core after its boundaries, identities, semantics, formats, and nested-resource ownership are defined. |
 | `ss-6jp1` | `ss-l41u`, `ss-yxfm`, `ss-wuva` | Do not expose more YAML until values, binding IDs, and metadata versions are portable. |
 | `ss-b5l4` | `ss-pvxi`, `ss-0uj9`, `ss-yxfm` | Runtime contracts and wire types implement the frozen public result schemas on the portable core. |
@@ -1497,7 +1490,7 @@ independent security work.
 | `ss-c8ix` | `ss-tge8`, `ss-g8m8` | Release-manifest schema limits must match the standalone boundary and release state machine before publication. |
 | `ss-j2ps` | `ss-v6bv`, `ss-xnr6` | The final compatibility wording follows the settled documentation and diagnostic-output behavior. |
 | `ss-3i41` | `ss-l41u`, `ss-xnr6` | YAML property-token locations build on the portable parser and positioned diagnostic contract. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s`, `ss-07xe`, `ss-zlhf`, `ss-j64g`, `ss-b8lx` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s`, `ss-07xe`, `ss-zlhf`, `ss-j64g`, `ss-b8lx`, `ss-rpq0` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, and the complete TypeScript gate are ready. |
 | `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s`, `ss-j2ps`, `ss-66i9` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
@@ -1630,7 +1623,8 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-k381` | P2 | Annotation-only JSON Schema format semantics |
 | `ss-sbvh` | P1 | Semantics-preserving canonicalization/enforcement |
 | `ss-yxfm` | P2 | Contract-ID and schema-ID boundaries |
-| `ss-wuva` | P2 | Artifact format 1 and extension negotiation |
+| `ss-wuva` | P2 | Closed artifact metadata and extension namespaces |
+| `ss-rpq0` | P1 | Single authored version string and one metadata grammar |
 | `ss-3n2k` | P2 | SchemaView and artifact edge cases |
 | `ss-0uj9` | P2 | Portable core/runtime/CLI separation |
 | `ss-6jp1` | P2 | Pure-YAML CLI profile |
@@ -1764,8 +1758,8 @@ review because they affect v0.3 behavior:
   parser-dependent expansion.
 - New compilation does not derive `$id` from a logical contract ID; callers provide an
   explicit absolute schema URI when needed.
-- Newly authored artifacts carry `softschema.format: "1"`; absence selects the legacy
-  metadata grammar. Artifact formats do not inherit package versions.
+- Authored artifacts carry no metadata-format discriminator; the contract ID is their
+  only authored version string.
 - Direct `.ts` model loading is Bun-only; the published Node path requires built
   `.js`/`.mjs`.
 - Agent Skills frontmatter omits `allowed-tools`; the portable bootstrap requires more

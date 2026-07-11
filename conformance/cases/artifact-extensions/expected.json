@@ -20,7 +20,6 @@
       },
       "https://schemas.example/extensions/source/v1": "conformance"
     },
-    "format": "1",
     "schema": "schema.yaml",
     "status": "enforced"
   },

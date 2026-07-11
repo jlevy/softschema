@@ -29,7 +29,6 @@ $ softschema validate examples/movie_page/spirited-away.md --model examples.movi
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
     "envelope": "movie",
-    "format": "1",
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
@@ -112,7 +111,6 @@ $ softschema validate examples/movie_page/spirited-away.yaml --profile pure-yaml
   "document_metadata": {
     "contract": "example.movies:MoviePage/v1",
     "envelope": null,
-    "format": "1",
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
