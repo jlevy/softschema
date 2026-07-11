@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from ruamel.yaml import YAML
 
 from softschema import (
     Contract,
@@ -37,6 +38,9 @@ class SampleModel(BaseModel):
 
 class EnvelopeModel(BaseModel):
     sample: SampleModel
+
+
+HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 
 
 def test_compile_writes_json_schema_with_contract_id(tmp_path: Path) -> None:
@@ -216,7 +220,7 @@ def test_validate_artifact_rejects_invalid_metadata(tmp_path: Path) -> None:
     assert result.structural.errors[0]["kind"] == "document_softschema_invalid"
 
 
-def test_validate_artifact_reports_parse_error_for_malformed_pure_yaml(tmp_path: Path) -> None:
+def test_validate_artifact_reports_yaml_parse_error_for_malformed_pure_yaml(tmp_path: Path) -> None:
     doc = tmp_path / "bad.yaml"
     doc.write_text("key: [unclosed\n  : : :\n")
     contract = Contract(id="example:Sample/v1", profile=SchemaProfile.pure_yaml)
@@ -224,7 +228,7 @@ def test_validate_artifact_reports_parse_error_for_malformed_pure_yaml(tmp_path:
     result = validate_artifact(doc, contract=contract)
 
     assert not result.ok
-    assert result.structural.errors[0]["kind"] == "parse_error"
+    assert result.structural.errors[0]["kind"] == "yaml_parse_error"
 
 
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:
@@ -296,19 +300,17 @@ def test_registry_registers_complete_bindings_only() -> None:
         registry.register(Contract(id="example:Sample/v1", model=EnvelopeModel))
 
 
-def test_validate_artifact_returns_parse_error_for_missing_file_frontmatter() -> None:
-    """A nonexistent .md path returns a structured parse_error, not an exception."""
+def test_validate_artifact_returns_input_error_for_missing_file_frontmatter() -> None:
     contract = Contract(id="example:Sample/v1", model=SampleModel)
     result = validate_artifact(Path("/nonexistent.md"), contract=contract)
 
     assert not result.ok
     assert result.structural.ok is False
-    assert result.structural.errors[0]["kind"] == "parse_error"
-    assert result.semantic.skipped_reason == "parse_error"
+    assert result.structural.errors[0]["kind"] == "artifact_unreadable"
+    assert result.outcome == "input_error"
 
 
-def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> None:
-    """A nonexistent .yaml path with pure_yaml profile returns a structured parse_error."""
+def test_validate_artifact_returns_input_error_for_missing_file_pure_yaml() -> None:
     contract = Contract(
         id="example:Sample/v1",
         model=SampleModel,
@@ -318,8 +320,37 @@ def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> N
 
     assert not result.ok
     assert result.structural.ok is False
-    assert result.structural.errors[0]["kind"] == "parse_error"
-    assert result.semantic.skipped_reason == "parse_error"
+    assert result.structural.errors[0]["kind"] == "artifact_unreadable"
+    assert result.outcome == "input_error"
+
+
+def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
+    for case in vectors["portable_values"]:
+        path = tmp_path / f"{case['id']}.yaml"
+        text = "value: " + "[" * 65 + "0" + "]" * 65 if case.get("generated") else case["text"]
+        path.write_text(text)
+        result = validate_artifact(path, contract=contract)
+        assert result.ok is case["valid"], case["id"]
+        if not case["valid"]:
+            assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_shared_artifact_input_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
+    for case in vectors["artifact_input"]:
+        path = tmp_path / f"{case['id']}.yaml"
+        if case.get("source") == "invalid_utf8":
+            path.write_bytes(b"value: \xff")
+        elif case.get("source") == "too_large":
+            path.write_bytes(b"x" * 1_048_577)
+        elif "text" in case:
+            path.write_text(case["text"])
+        result = validate_artifact(path, contract=contract)
+        assert result.outcome == case["outcome"], case["id"]
+        assert result.structural.errors[0]["kind"] == case["code"], case["id"]
 
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:

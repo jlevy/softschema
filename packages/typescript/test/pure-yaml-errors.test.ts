@@ -34,7 +34,7 @@ function pureYamlContract(schemaPath: string | null = null): Contract {
 }
 
 describe("pure-yaml malformed YAML", () => {
-  test("invalid YAML returns parse_error structural result (does not throw)", () => {
+  test("invalid YAML returns yaml_parse_error structural result", () => {
     const dir = makeTempDir();
     const yamlFile = join(dir, "bad.yaml");
     writeFileSync(yamlFile, "foo: [unclosed\nbar: 1\n");
@@ -47,10 +47,10 @@ describe("pure-yaml malformed YAML", () => {
     };
     expect(structural.ok).toBe(false);
     expect(structural.errors.length).toBeGreaterThan(0);
-    expect(structural.errors[0]!.kind).toBe("parse_error");
+    expect(structural.errors[0]!.kind).toBe("yaml_parse_error");
   });
 
-  test("nonexistent YAML file returns parse_error structural result", () => {
+  test("nonexistent YAML file returns artifact_unreadable", () => {
     const dir = makeTempDir();
     const yamlFile = join(dir, "does-not-exist.yaml");
     const contract = pureYamlContract();
@@ -61,7 +61,7 @@ describe("pure-yaml malformed YAML", () => {
       errors: { kind: string; message: string }[];
     };
     expect(structural.ok).toBe(false);
-    expect(structural.errors[0]!.kind).toBe("parse_error");
+    expect(structural.errors[0]!.kind).toBe("artifact_unreadable");
   });
 
   test("valid pure-YAML file validates without errors", () => {

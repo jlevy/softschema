@@ -18,11 +18,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from frontmatter_format import FmFormatError, fmf_read, read_yaml_file
+from frontmatter_format import FmFormatError
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAMLError
 
+from softschema._portable import PortableInputError, parse_yaml, read_utf8
 from softschema.canonicalize import apply_enforced_extras
 from softschema.errors import structural_error_record
 from softschema.models import (
@@ -80,6 +81,14 @@ class ArtifactValidationResult:
     @property
     def ok(self) -> bool:
         return self.structural.ok and self.semantic.ok
+
+    @property
+    def outcome(self) -> Literal["valid", "invalid", "input_error"]:
+        if self.ok:
+            return "valid"
+        input_codes = {"artifact_unreadable", "artifact_invalid_utf8", "artifact_too_large"}
+        first_kind = self.structural.errors[0].get("kind") if self.structural.errors else None
+        return "input_error" if first_kind in input_codes else "invalid"
 
     @property
     def warning_codes(self) -> list[str]:
@@ -210,8 +219,11 @@ def _validate_frontmatter_artifact(
     if frontmatter is _UNREAD:
         try:
             _content, frontmatter = _read_frontmatter_doc(doc_path)
-        except (FmFormatError, YAMLError, OSError) as exc:
-            return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+        except OSError as exc:
+            return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
+        except (FmFormatError, YAMLError, PortableInputError) as exc:
+            kind = _portable_error_kind(exc)
+            return _artifact_failure(doc_path, contract, kind, str(exc))
     if frontmatter is None:
         return _artifact_failure(
             doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"
@@ -334,8 +346,10 @@ def _validate_pure_yaml_artifact(
     """
     try:
         raw = _read_yaml(doc_path)
-    except (YAMLError, OSError) as exc:
-        return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+    except OSError as exc:
+        return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
+    except (YAMLError, PortableInputError) as exc:
+        return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(
             doc_path,
@@ -581,11 +595,39 @@ def _artifact_failure(
 
 
 def _read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
-    return fmf_read(path)
+    text = read_utf8(path)
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return text, None
+    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"), -1)
+    if end < 0:
+        raise PortableInputError(
+            "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{path}`"
+        )
+    if end == 1:
+        return "\n".join(lines[2:]), None
+    raw = "\n".join(lines[1:end])
+    value = parse_yaml(raw)
+    if not isinstance(value, dict):
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"Expected YAML metadata to be a dict, got {type(value).__name__}: `{path}`",
+        )
+    return "\n".join(lines[end + 1 :]), value
 
 
 def _read_yaml(path: Path) -> Any:
-    return read_yaml_file(path)
+    return parse_yaml(read_utf8(path))
+
+
+def _portable_error_kind(error: Exception) -> str:
+    if not isinstance(error, PortableInputError):
+        return "yaml_parse_error"
+    if error.code == "invalid_utf8":
+        return "artifact_invalid_utf8"
+    if error.code == "input_too_large":
+        return "artifact_too_large"
+    return error.code
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

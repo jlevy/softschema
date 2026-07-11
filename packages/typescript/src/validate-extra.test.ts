@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { Contract } from "./models.js";
 import { readFrontmatter, validateArtifact, validateValues, YamlParseError } from "./validate.js";
 
 const Sample = z.strictObject({ name: z.string(), count: z.int().min(0) });
 const SAMPLE_SCHEMA = z.toJSONSchema(Sample) as Record<string, unknown>;
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 function tmpFile(name: string, content: string): string {
   const dir = mkdtempSync(join(tmpdir(), "softschema-vx-"));
@@ -114,22 +116,22 @@ describe("compiled schema invalid root", () => {
 });
 
 describe("validateArtifact: missing/unreadable document file", () => {
-  test("nonexistent frontmatter-md file returns parse_error, does not throw", () => {
+  test("nonexistent frontmatter-md file returns an input error", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.md";
     const result = validateArtifact(missingPath, contract());
     expect(result.ok).toBe(false);
     const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("parse_error");
+    expect(structural.errors[0]?.kind).toBe("artifact_unreadable");
   });
 
-  test("nonexistent pure-yaml file returns parse_error, does not throw", () => {
+  test("nonexistent pure-yaml file returns an input error", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.yaml";
     const result = validateArtifact(missingPath, contract({ profile: "pure-yaml" }));
     expect(result.ok).toBe(false);
     const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("parse_error");
+    expect(structural.errors[0]?.kind).toBe("artifact_unreadable");
   });
 });
 
@@ -146,11 +148,47 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
     expect(() => readFrontmatter(doc)).toThrow("got <class 'str'>");
   });
 
-  test("validateArtifact returns parse_error for non-mapping frontmatter", () => {
+  test("validateArtifact returns yaml_parse_error for non-mapping frontmatter", () => {
     const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
     const result = validateArtifact(doc, contract());
     expect(result.ok).toBe(false);
     const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
-    expect(structural.errors[0]?.kind).toBe("parse_error");
+    expect(structural.errors[0]?.kind).toBe("yaml_parse_error");
   });
+});
+
+test("shared portable YAML and artifact-input vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  const portableContract = contract({ profile: "pure-yaml" });
+  for (const item of vectors.portable_values ?? []) {
+    const text =
+      item.generated === "deep_sequence"
+        ? `value: ${"[".repeat(65)}0${"]".repeat(65)}`
+        : String(item.text);
+    const path = tmpFile(`${String(item.id)}.yaml`, text);
+    const result = validateArtifact(path, portableContract);
+    expect(result.ok).toBe(item.valid as boolean);
+    if (!item.valid) {
+      const structural = result.output.structural as { errors: { kind: string }[] };
+      expect(structural.errors[0]?.kind).toBe(item.code as string);
+    }
+  }
+  for (const item of vectors.artifact_input ?? []) {
+    const path = join(mkdtempSync(join(tmpdir(), "softschema-input-")), `${String(item.id)}.yaml`);
+    if (item.source === "invalid_utf8") writeFileSync(path, Buffer.from([0xff]));
+    if (item.source === "too_large") writeFileSync(path, Buffer.alloc(1_048_577, 0x78));
+    if (item.text !== undefined) writeFileSync(path, String(item.text));
+    const result = validateArtifact(path, portableContract);
+    const structural = result.output.structural as { errors: { kind: string }[] };
+    const outcome = result.ok
+      ? "valid"
+      : structural.errors[0]?.kind.startsWith("artifact_")
+        ? "input_error"
+        : "invalid";
+    expect(outcome).toBe(item.outcome as string);
+    expect(structural.errors[0]?.kind).toBe(item.code as string);
+  }
 });

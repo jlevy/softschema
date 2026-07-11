@@ -4,6 +4,7 @@
 artifact_input:
   - { id: missing, source: missing, outcome: input_error, code: artifact_unreadable }
   - { id: invalid_utf8, source: invalid_utf8, outcome: input_error, code: artifact_invalid_utf8 }
+  - { id: too_large, source: too_large, outcome: input_error, code: artifact_too_large }
   - { id: malformed_yaml, text: "movie: [", outcome: invalid, code: yaml_parse_error }
 
 portable_values:
@@ -32,6 +33,7 @@ portable_values:
   - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
   - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
   - { id: negative_zero, text: "value: -0.0", valid: false, code: number_negative_zero }
+  - { id: excessive_depth, generated: deep_sequence, valid: false, code: yaml_limit }
 
 structural:
   - id: format_is_annotation

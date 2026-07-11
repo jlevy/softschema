@@ -319,20 +319,20 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     expect(errors[0]?.kind).toBe("no_frontmatter");
     expect(errors[0]?.message).toContain("no frontmatter in ");
   });
-  test("whitespace-only frontmatter returns parse_error with Python-identical message", () => {
+  test("whitespace-only frontmatter returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\n   \n---\nbody\n");
     const r = validateArtifact(path, contract());
     const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
-    expect(errors[0]?.kind).toBe("parse_error");
+    expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
       `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
     );
   });
-  test("unterminated fence returns parse_error with Python-identical message", () => {
+  test("unterminated fence returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\nfoo: 1\n...no closing ---\n");
     const r = validateArtifact(path, contract());
     const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
-    expect(errors[0]?.kind).toBe("parse_error");
+    expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
       `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
     );

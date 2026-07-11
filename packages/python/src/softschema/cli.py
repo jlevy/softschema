@@ -15,7 +15,7 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
-from frontmatter_format import FmFormatError, fmf_read
+from frontmatter_format import FmFormatError
 from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAMLError
 from strif import atomic_write_text
@@ -24,7 +24,12 @@ from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
-from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
+from softschema.validate import (
+    EnvelopeAmbiguityError,
+    _read_frontmatter_doc,
+    infer_envelope_key,
+    validate_artifact,
+)
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
@@ -297,7 +302,7 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Read the document once here; both binding inference and validate_artifact
     # reuse this frontmatter, so the file is parsed a single time.
-    _content, frontmatter = fmf_read(args.path)
+    _content, frontmatter = _read_frontmatter_doc(args.path)
     contract_id, status, envelope_key = _infer_validation_binding(args, frontmatter)
     model = _load_model(args.model) if args.model else None
     contract = Contract(
@@ -367,7 +372,7 @@ def _compile_cmd(args: argparse.Namespace) -> int:
 
 
 def _inspect_cmd(args: argparse.Namespace) -> int:
-    _content, frontmatter = fmf_read(args.path)
+    _content, frontmatter = _read_frontmatter_doc(args.path)
     metadata = None
     envelope_keys: list[str] = []
     if isinstance(frontmatter, dict):

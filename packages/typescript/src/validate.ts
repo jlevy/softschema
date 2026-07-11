@@ -3,12 +3,11 @@
  * and run structural validation against the compiled JSON Schema via ajv. The result
  * object serializes (via stableStringify) byte-identically to the Python CLI output.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
 import { applyEnforcedExtras } from "./canonicalize.js";
 import {
@@ -28,6 +27,7 @@ import {
   SchemaMetadataError,
   type SchemaWarning,
 } from "./models.js";
+import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
 
 /** Module-level Ajv2020 instance, initialized once and reused for all validations. */
 const sharedAjv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
@@ -89,8 +89,11 @@ export class YamlParseError extends Error {}
 
 function parseYaml(text: string): unknown {
   try {
-    return yamlParse(text);
+    return parsePortableYaml(text);
   } catch (err) {
+    if (err instanceof PortableInputError) {
+      throw new YamlParseError(err.message, { cause: err });
+    }
     throw new YamlParseError((err as Error).message);
   }
 }
@@ -102,7 +105,7 @@ function parseYaml(text: string): unknown {
  * fence or non-mapping frontmatter, byte-matching the Python `frontmatter_format` errors.
  */
 function readFrontmatter(path: string): RawFrontmatter {
-  const text = readFileSync(path, "utf8");
+  const text = readUtf8(path);
   const lines = text.split(/\r?\n/);
   if (lines[0]?.trim() !== "---") return { hasFence: false, value: null };
   let end = -1;
@@ -274,9 +277,9 @@ function structuralAgainstSchemaFile(
 ): StructuralResult {
   let compiledSchema: unknown;
   try {
-    compiledSchema = parseYaml(readFileSync(resolved, "utf8"));
+    compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
-    if (err instanceof YamlParseError) {
+    if (err instanceof PortableInputError) {
       return {
         ok: false,
         errors: [structuralError("schema_invalid", err.message)],
@@ -495,10 +498,10 @@ export function validateArtifact(
   if (contract.profile === "pure-yaml") {
     let raw: unknown;
     try {
-      raw = parseYaml(readFileSync(docPath, "utf8"));
+      raw = parsePortableYaml(readUtf8(docPath));
     } catch (err) {
-      if (err instanceof YamlParseError) {
-        return failure(docPath, contract, null, "parse_error", err.message);
+      if (err instanceof PortableInputError) {
+        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
       }
       if (
         err instanceof Error &&
@@ -509,7 +512,7 @@ export function validateArtifact(
           docPath,
           contract,
           null,
-          "parse_error",
+          "artifact_unreadable",
           (err as NodeJS.ErrnoException).message,
         );
       }
@@ -579,8 +582,14 @@ export function validateArtifact(
     try {
       parsed = readFrontmatter(docPath);
     } catch (err) {
+      if (err instanceof PortableInputError) {
+        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+      }
       if (err instanceof YamlParseError) {
-        return failure(docPath, contract, null, "parse_error", err.message);
+        const cause = err.cause;
+        const kind =
+          cause instanceof PortableInputError ? portableArtifactKind(cause) : "yaml_parse_error";
+        return failure(docPath, contract, null, kind, err.message);
       }
       if (
         err instanceof Error &&
@@ -591,7 +600,7 @@ export function validateArtifact(
           docPath,
           contract,
           null,
-          "parse_error",
+          "artifact_unreadable",
           (err as NodeJS.ErrnoException).message,
         );
       }
@@ -674,3 +683,9 @@ export function validateArtifact(
 }
 
 export { readFrontmatter };
+
+function portableArtifactKind(error: PortableInputError): string {
+  if (error.code === "invalid_utf8") return "artifact_invalid_utf8";
+  if (error.code === "input_too_large") return "artifact_too_large";
+  return error.code;
+}
