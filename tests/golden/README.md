@@ -42,13 +42,10 @@ and shared vectors use YAML. Compiled JSON Schemas, strict JSON wire inputs, ven
 JSON standards, and generated integrity locks remain JSON because their encoding is
 part of the contract.
 
-## Stable vs Unstable
+## Deterministic Output
 
-These scenarios are deterministic: commands use relative paths.
-The only genuinely variable field is the version string (`--version`), matched with a
-`[VERSION]` pattern.
-Otherwise no patterns are needed.
-Note in particular:
+These scenarios use relative paths and deterministic inputs, so they need no output
+patterns or scrubbers. In particular:
 
 - `schema_sha256` is shown **literally**. It is a deterministic fingerprint of the
   canonical schema, so both implementations must produce the same digest; a divergence
@@ -110,11 +107,10 @@ Note in particular:
 | `scenarios/validate.md` | all | schema-only validate: structural ok; structural failure (engine-neutral, sorted records); absent designated envelope (`envelope_mismatch`, exit 1) |
 | `scenarios/cli-errors.md` | all | representative usage, input, and parse failures with exact exit behavior |
 | `scenarios/warnings.md` | all | `document-status-mismatch` warning on a status override |
-| `scenarios/inspect-and-docs.md` | all | complete `inspect` output, docs discovery, and bundled-topic resolution |
-| `scenarios/pure-yaml.md` | all | explicit `pure-yaml` success, binding precedence, profile selection, malformed roots, and value-domain failures |
+| `scenarios/inspect-and-docs.md` | all | representative `inspect` output, docs discovery, and bundled-topic resolution |
+| `scenarios/pure-yaml.md` | all | explicit `pure-yaml` success, binding precedence, contract mismatch, and profile selection |
 | `scenarios/batch-diagnostics.md` | all | recursive no-match as an exact diagnostic-v1 aggregate; byte-stable legacy JSON serialization |
 | `scenarios/generate.md` | all | `generate --check` no-drift and drift (exit 1) |
-| `scenarios/version.md` | all | `--version` (`[VERSION]` pattern) |
 | `scenarios/error-normalization.md` | all | every structural error keyword, engine-neutral |
 | `scenarios-py/compile.md` | py | `compile --check` no-drift (literal digest) and drift; source is a Pydantic class |
 | `scenarios-py/validate-model.md` | py | `validate --model` semantic-ok paths for `frontmatter-md` and `pure-yaml` (Pydantic) |

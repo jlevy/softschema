@@ -141,17 +141,3 @@ def test_soft_field_rejects_annotations_outside_the_public_schema() -> None:
             assert str(context["error"]) == message
 
     assert SoftFieldMeta.model_validate({"group": "valid", "order": 2.0}).order == 2
-
-
-def test_soft_field_movie_example_genres_block_present() -> None:
-    """The movie example annotates `genres`; the committed compiled schema must show it."""
-    repo_root = Path(__file__).resolve().parents[3]
-    schema_path = repo_root / "examples/movie_page/movie-page.schema.yaml"
-    schema = read_yaml_file(schema_path)
-    genres_meta = schema["properties"]["genres"].get("x-softschema")
-
-    assert genres_meta is not None
-    assert genres_meta["group"] == "taxonomy"
-    assert genres_meta["tier"] == "constrained"
-    assert genres_meta["owner"] == "agent"
-    assert "IMDb" in genres_meta["instruction"]

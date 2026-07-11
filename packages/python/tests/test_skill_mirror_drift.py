@@ -26,8 +26,3 @@ def test_committed_skill_mirrors_match_source() -> None:
             f"{relative} drifted from skills/softschema/SKILL.md; "
             "re-run `softschema skill --install` and commit"
         )
-
-
-def test_committed_skill_mirrors_are_identical() -> None:
-    contents = {(REPO_ROOT / rel).read_text(encoding="utf-8") for rel in SKILL_INSTALL_TARGETS}
-    assert len(contents) == 1, "the .agents and .claude skill mirrors must be byte-identical"

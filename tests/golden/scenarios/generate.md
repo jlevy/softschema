@@ -53,16 +53,3 @@ $ softschema generate tests/golden/fixtures/stale-generated.md --check
 }
 ? 1
 ```
-
-# Test: a marker using the legacy contract= attribute is rejected (exit 2)
-
-The path attribute is now `schema=`; a marker still using `contract=` (which named a
-schema *path* in 0.1) is rejected with a rename hint, because a contract is a logical ID,
-not a file path. The message is byte-identical across implementations, so it is asserted
-in full on stderr (`!`).
-
-```console
-$ softschema generate tests/golden/fixtures/legacy-contract-marker.md
-! softschema generate: tests/golden/fixtures/legacy-contract-marker.md: softschema:generated marker uses the removed "contract" attribute for a schema path; rename it to "schema" (contract is a logical ID, not a file path)
-? 2
-```

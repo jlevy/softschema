@@ -9,7 +9,7 @@ import {
   defineContract,
   defineContractDescriptor,
 } from "../src/models.js";
-import { bindContract, RuntimeContract } from "../src/runtime-contract.js";
+import { bindContract } from "../src/runtime-contract.js";
 import { validateArtifact } from "../src/validate.js";
 
 function descriptor(model: string | null): ContractDescriptor {
@@ -50,14 +50,6 @@ describe("portable contract descriptors", () => {
 
 describe("runtime Zod contract bindings", () => {
   const model = z.strictObject({ name: z.string() });
-
-  test("bindContract keeps the descriptor and semantic model together", () => {
-    const binding = bindContract(descriptor("./model.mjs:Payload"), model);
-    expect(binding).toBeInstanceOf(RuntimeContract);
-    expect(binding.descriptor.model).toBe("./model.mjs:Payload");
-    expect(binding.semanticModel).toBe(model);
-    expect(Object.isFrozen(binding)).toBe(true);
-  });
 
   test("binding fails deterministically for a missing semantic model", () => {
     expect(() => bindContract(descriptor("./model.mjs:Payload"))).toThrow(

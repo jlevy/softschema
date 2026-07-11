@@ -1100,6 +1100,10 @@ Do not publish 0.3.0 until Phase 3 is complete.
 - [x] **Keep tests minimal and reviewable (`ss-flo5`).** Give each behavior one primary
   layer, remove duplicate golden/parity execution and trivial constant tests, keep a
   small end-to-end CLI corpus, and use YAML for human-reviewed expectations and vectors.
+- [x] **Finish test simplification and publish the validation plan (`ss-w8vk`).** Remove
+  remaining construction-only and duplicated assertions, trim golden cases already owned
+  by shared vectors or unit boundaries, delete their fixtures, and document the exact
+  local, cross-runtime, packaging, and CI checks in the pull request.
 - [x] **Artifact and schema-view boundaries (`ss-3n2k`).** Preserve ref siblings,
   represent genuine unions, consume only values normalized by `ss-l41u`, and align
   mutability and exception documentation.
@@ -1418,6 +1422,7 @@ independent security work.
 | `ss-wuva` | `ss-pvxi`, `ss-l41u`, `ss-yxfm` | Metadata and extensions extend the conformance foundation after value and identity rules settle. |
 | `ss-rpq0` | `ss-wuva`, `ss-j81s` | The single metadata grammar replaces the settled unmerged discriminator across public and standalone boundaries. |
 | `ss-flo5` | `ss-rpq0` | Test cleanup follows the final metadata grammar and keeps its shared fixtures readable without duplicating coverage. |
+| `ss-w8vk` | `ss-flo5` | The final simplification pass follows the test-layer audit and records the complete validation plan before merge. |
 | `ss-0uj9` | `ss-dbkh`, `ss-l41u`, `ss-vn04`, `ss-k381`, `ss-sbvh`, `ss-yxfm`, `ss-wuva`, `ss-1yt7` | Extract the core after its boundaries, identities, semantics, formats, and nested-resource ownership are defined. |
 | `ss-6jp1` | `ss-l41u`, `ss-yxfm`, `ss-wuva` | Do not expose more YAML until values, binding IDs, and metadata versions are portable. |
 | `ss-b5l4` | `ss-pvxi`, `ss-0uj9`, `ss-yxfm` | Runtime contracts and wire types implement the frozen public result schemas on the portable core. |
@@ -1493,7 +1498,7 @@ independent security work.
 | `ss-c8ix` | `ss-tge8`, `ss-g8m8` | Release-manifest schema limits must match the standalone boundary and release state machine before publication. |
 | `ss-j2ps` | `ss-v6bv`, `ss-xnr6` | The final compatibility wording follows the settled documentation and diagnostic-output behavior. |
 | `ss-3i41` | `ss-l41u`, `ss-xnr6` | YAML property-token locations build on the portable parser and positioned diagnostic contract. |
-| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s`, `ss-07xe`, `ss-zlhf`, `ss-j64g`, `ss-b8lx`, `ss-rpq0`, `ss-flo5` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, the complete TypeScript gate, and the maintainable test architecture are ready. |
+| `ss-trn7` | `ss-o21w`, `ss-v6bv`, `ss-6i6d`, `ss-0rqn`, `ss-g8m8`, `ss-prjf`, `ss-a43v`, `ss-x6iq`, `ss-ap6l`, `ss-23vm`, `ss-2t5m`, `ss-1157`, `ss-3x0g`, `ss-pykr`, `ss-qezc`, `ss-1mf4`, `ss-8dt9`, `ss-bhz6`, `ss-lp5a`, `ss-c8ix`, `ss-96ih`, `ss-xsp8`, `ss-ud65`, `ss-6crf`, `ss-wepj`, `ss-yodf`, `ss-ap9s`, `ss-07xe`, `ss-zlhf`, `ss-j64g`, `ss-b8lx`, `ss-rpq0`, `ss-flo5`, `ss-w8vk` | Publish only after artifacts, public docs, conformance metadata, live authorization, idempotent orchestration, every final release-boundary closure, the complete TypeScript gate, and the maintainable test architecture are ready. |
 | `ss-1mdr` | `ss-qq77`, `ss-trn7`, `ss-nsto`, `ss-9tx6`, `ss-uywa`, `ss-22gw`, `ss-2n7g`, `ss-ode8`, `ss-ihzl`, `ss-6a90`, `ss-vnul`, `ss-yaii`, `ss-75lu`, `ss-fj2k`, `ss-j81s`, `ss-j2ps`, `ss-66i9` | Close tracking only after release verification, final adapter validation, every documentation correction, and historical cleanup. |
 | `ss-22fi` | `ss-1mdr` | The epic cannot become ready until its post-release closeout child is complete. |
 
@@ -1628,6 +1633,7 @@ snippet runner, and publish dry-run to this gate as they land.
 | `ss-wuva` | P2 | Closed artifact metadata and extension namespaces |
 | `ss-rpq0` | P1 | Single authored version string and one metadata grammar |
 | `ss-flo5` | P1 | Minimal test layers and readable YAML expectations |
+| `ss-w8vk` | P1 | Final test simplification and PR validation plan |
 | `ss-3n2k` | P2 | SchemaView and artifact edge cases |
 | `ss-0uj9` | P2 | Portable core/runtime/CLI separation |
 | `ss-6jp1` | P2 | Pure-YAML CLI profile |

@@ -43,15 +43,9 @@ V0_2_PUBLIC_API = frozenset(
 )
 
 
-def test_v0_2_root_api_remains_importable_during_v0_3() -> None:
-    public = set(softschema.__all__)
+def test_v0_2_root_api_remains_explicit_and_importable_during_v0_3() -> None:
+    exports = softschema.__all__
+    public = set(exports)
+    assert len(exports) == len(public)
     assert public >= V0_2_PUBLIC_API
     assert all(getattr(softschema, name) is not None for name in V0_2_PUBLIC_API)
-
-
-def test_root_all_is_an_explicit_well_formed_compatibility_surface() -> None:
-    public = softschema.__all__
-    assert public
-    assert len(public) == len(set(public))
-    assert all(isinstance(name, str) and name and not name.startswith("_") for name in public)
-    assert all(hasattr(softschema, name) for name in public)

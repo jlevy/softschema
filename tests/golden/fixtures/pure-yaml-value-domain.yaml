@@ -1,3 +1,0 @@
-softschema:
-  contract: test.pure:ValueDomain/v1
-value: .inf

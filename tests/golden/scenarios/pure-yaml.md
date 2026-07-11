@@ -94,49 +94,6 @@ $ softschema validate tests/golden/fixtures/pure-yaml-no-metadata.yaml --profile
 ? 0
 ```
 
-# Test: pure YAML honors a declared envelope
-
-```console
-$ softschema validate tests/golden/fixtures/pure-yaml-envelope.yaml --profile pure-yaml
-{
-  "contract": {
-    "envelope_key": "declared",
-    "id": "test.errors:Sample/v1",
-    "model": null,
-    "profile": "pure-yaml",
-    "schema_path": null,
-    "status": "enforced"
-  },
-  "contract_id": "test.errors:Sample/v1",
-  "document_metadata": {
-    "contract": "test.errors:Sample/v1",
-    "envelope": "declared",
-    "schema": "error-norm.schema.yaml",
-    "status": "enforced"
-  },
-  "path": "tests/golden/fixtures/pure-yaml-envelope.yaml",
-  "profile": "pure-yaml",
-  "semantic": {
-    "errors": [],
-    "ok": true,
-    "skipped_reason": "no_semantic_model"
-  },
-  "status": "enforced",
-  "structural": {
-    "engine": "json_schema",
-    "errors": [],
-    "ok": true,
-    "skipped_reason": null
-  },
-  "values": {
-    "title": "Declared envelope",
-    "year": 2001
-  },
-  "warnings": []
-}
-? 0
-```
-
 # Test: a CLI envelope overrides pure YAML metadata
 
 The explicit `--envelope` flag has higher precedence than
@@ -241,57 +198,4 @@ the artifact grammar.
 $ softschema validate examples/movie_page/spirited-away.yaml 2>&1
 softschema validate: missing --contract because the document has no YAML frontmatter
 ? 2
-```
-
-# Test: an unknown profile is a stable usage error
-
-The diagnostic and exit code are identical across Python, Node, and Bun.
-
-```console
-$ softschema validate examples/movie_page/spirited-away.yaml --profile yaml 2>&1
-softschema validate: invalid profile: yaml
-? 2
-```
-
-# Test: a non-mapping pure YAML root is a stable parse failure
-
-```console
-$ softschema validate tests/golden/fixtures/pure-yaml-list-root.yaml --profile pure-yaml --contract test.pure:Root/v1
-{
-  "kind": "parse_error",
-  "message": "artifact YAML root must be a mapping",
-  "reason": "root",
-  "source": "tests/golden/fixtures/pure-yaml-list-root.yaml"
-}
-? 1
-```
-
-# Test: a non-portable pure YAML value is a stable parse failure
-
-```console
-$ softschema validate tests/golden/fixtures/pure-yaml-value-domain.yaml --profile pure-yaml
-{
-  "kind": "parse_error",
-  "message": "artifact contains a non-portable YAML value",
-  "path": "/value",
-  "reason": "value_domain",
-  "source": "tests/golden/fixtures/pure-yaml-value-domain.yaml"
-}
-? 1
-```
-
-# Test: a coded YAML parser exception is a parse failure
-
-Some YAML parsers attach a string `code` to syntax exceptions. That metadata must not
-make a readable document look like a filesystem input failure.
-
-```console
-$ softschema validate tests/golden/fixtures/pure-yaml-coded-parser-error.yaml --profile pure-yaml --contract test.pure:Root/v1
-{
-  "kind": "parse_error",
-  "message": "artifact is not valid YAML",
-  "reason": "syntax",
-  "source": "tests/golden/fixtures/pure-yaml-coded-parser-error.yaml"
-}
-? 1
 ```

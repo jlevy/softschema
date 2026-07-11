@@ -107,35 +107,6 @@ def test_validate_cli_reads_contract_status_from_demo_yaml(
     assert output["values"]["title"] == "Spirited Away"
 
 
-def test_validate_cli_ignores_unrelated_top_level_keys(capsys: pytest.CaptureFixture[str]) -> None:
-    """Extra top-level frontmatter keys do not cause validation to fail.
-
-    softschema must neither forbid nor interpret keys outside the
-    `softschema:` block and the designated envelope, so a `title:` alongside
-    `movie:` is a no-op from the validator's perspective once the envelope is
-    pointed at `movie` via ``--envelope``.
-    """
-    _content, frontmatter = fmf_read(MOVIE_PAGE)
-    assert isinstance(frontmatter, dict)
-    assert frontmatter.get("title") == "Spirited Away (2001)"
-    assert "softschema" in frontmatter
-    assert "movie" in frontmatter
-
-    exit_code = softschema_main(
-        [
-            "validate",
-            str(MOVIE_PAGE),
-            "--model",
-            "examples.movie_page.model:MoviePage",
-            "--schema",
-            str(MOVIE_SCHEMA),
-            "--envelope",
-            "movie",
-        ]
-    )
-    assert exit_code == 0
-
-
 def test_movie_page_validates_with_no_flags() -> None:
     """The flagship artifact is fully self-describing.
 
@@ -146,20 +117,3 @@ def test_movie_page_validates_with_no_flags() -> None:
     """
     exit_code = softschema_main(["validate", str(MOVIE_PAGE)])
     assert exit_code == 0
-
-
-def test_validate_cli_errors_when_envelope_is_ambiguous(capsys: pytest.CaptureFixture[str]) -> None:
-    """Without any designation the CLI must refuse to guess between keys.
-
-    The spec says the envelope must be designated (flag, registry, or
-    ``softschema.envelope``) when multiple non-`softschema` top-level keys
-    exist; auto-detection is intentionally not extended to multi-key
-    documents. The error message lists the candidates.
-    """
-    fixture = ROOT / "tests/golden/fixtures/multi-key-no-envelope.md"
-    exit_code = softschema_main(["validate", str(fixture)])
-    assert exit_code == 2
-    captured = capsys.readouterr()
-    assert "multiple top-level frontmatter keys" in captured.err
-    assert "record" in captured.err
-    assert "title" in captured.err
