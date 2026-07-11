@@ -433,7 +433,7 @@ Do not implement migration behavior in the runtime.
 
 - [x] Record the `main` baseline: public exports, CLI surface, documented artifact
   forms, test counts, source lines, and current validation commands.
-- [ ] Build a behavior inventory that maps each public guarantee to one primary test
+- [x] Build a behavior inventory that maps each public guarantee to one primary test
   owner.
 - [x] Run the existing Python, TypeScript, Node, Bun, golden, build, and package-smoke
   checks before changing behavior.
@@ -444,7 +444,7 @@ Do not implement migration behavior in the runtime.
   functionality or an out-of-scope threat.
 - [x] Inventory the Python exports, TypeScript exports, CLI flags, and result fields;
   specify one final hard-cut surface and delete the need for deprecation shims.
-- [ ] Consolidate portable cases into shared YAML vectors without introducing a general
+- [x] Consolidate portable cases into shared YAML vectors without introducing a general
   conformance framework.
 - [ ] Reduce CLI goldens to the smallest broad scenarios that retain command, output,
   side-effect, and exit coverage.

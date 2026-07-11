@@ -1,0 +1,125 @@
+---
+# Shared data for rules that must mean the same thing in both runtimes.
+# Adapter-specific filesystem and model-loader cases remain ordinary unit tests.
+artifact_input:
+  - { id: missing, source: missing, outcome: input_error, code: artifact_unreadable }
+  - { id: invalid_utf8, source: invalid_utf8, outcome: input_error, code: artifact_invalid_utf8 }
+  - { id: malformed_yaml, text: "movie: [", outcome: invalid, code: yaml_parse_error }
+
+portable_values:
+  - id: plain_values
+    text: |
+      text: hello
+      count: 42
+      ratio: 1.5
+      enabled: true
+      empty: null
+    valid: true
+  - { id: timestamp, text: "value: 2026-07-11", valid: false, code: yaml_unsupported_scalar }
+  - id: duplicate_key
+    text: "value: first\nvalue: second"
+    valid: false
+    code: yaml_duplicate_key
+  - id: alias
+    text: "first: &value hello\nsecond: *value"
+    valid: false
+    code: yaml_alias
+  - id: merge_key
+    text: "base: &base {name: Ada}\nuser: {<<: *base}"
+    valid: false
+    code: yaml_merge_key
+  - { id: custom_tag, text: "value: !thing hello", valid: false, code: yaml_custom_tag }
+  - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
+  - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
+  - { id: negative_zero, text: "value: -0.0", valid: false, code: number_negative_zero }
+
+structural:
+  - id: format_is_annotation
+    schema: { type: string, format: email }
+    value: not-an-email
+    valid: true
+  - id: portable_pattern
+    schema: { type: string, pattern: "^[a-z]+$" }
+    value: abc
+    valid: true
+  - id: unsupported_pattern
+    schema: { type: string, pattern: "(?<=a)b" }
+    value: ab
+    valid: false
+    code: schema_invalid
+  - id: unresolved_remote_reference
+    schema: { $ref: "https://example.invalid/remote-schema" }
+    value: anything
+    valid: false
+    code: schema_invalid
+  - id: local_resource
+    schema: { $ref: "urn:example:name" }
+    resources:
+      urn:example:name: { $id: "urn:example:name", type: string, minLength: 1 }
+    value: Ada
+    valid: true
+  - id: duplicate_resource_id
+    schema: { $ref: "urn:example:name" }
+    resources:
+      first: { $id: "urn:example:name", type: string }
+      second: { $id: "urn:example:name", type: integer }
+    value: Ada
+    valid: false
+    code: schema_invalid
+
+canonicalization:
+  - id: preserve_empty_default
+    before: { type: object, properties: { items: { type: array, default: [] } } }
+    after: { type: object, properties: { items: { type: array, default: [] } } }
+  - id: nested_dependent_schema
+    before: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
+    after: { type: object, dependentSchemas: { credit_card: { type: object } } }
+
+enforcement:
+  - id: simple_object
+    schema: { type: object, properties: { name: { type: string } } }
+    supported: true
+  - id: composed_object
+    schema:
+      allOf:
+        - { type: object, properties: { first: { type: string } } }
+        - { type: object, properties: { last: { type: string } } }
+    supported: false
+    code: enforcement_unsupported
+
+identity:
+  - { id: contract_and_schema_id, contract: "example.people:Person/v1", schema_id: "https://example.com/schemas/person-v1", valid: true }
+  - { id: malformed_contract, contract: "bad id", valid: false, code: invalid_contract }
+
+compiler_annotations:
+  - id: valid_field
+    metadata: { description: Display name, group: identity, order: 1, owner: human, aliases: [full_name] }
+    valid: true
+  - { id: empty_group, metadata: { group: "" }, valid: false, code: invalid_annotation }
+  - id: reserved_root
+    root: { x-softschema: { contract: "supplied.by.model:Thing/v1" } }
+    valid: false
+    code: reserved_metadata
+
+schema_view:
+  - id: ref_sibling_description
+    schema:
+      $defs: { name: { type: string, description: Definition description } }
+      properties: { name: { $ref: "#/$defs/name", description: Property description } }
+    field: name
+    expected: { description: Property description, type: string }
+  - id: genuine_union
+    schema:
+      properties:
+        value:
+          anyOf: [{ type: string }, { type: integer }, { type: "null" }]
+    field: value
+    expected: { type: null }
+
+digests:
+  - id: lexical_integer_keys
+    value: { "10": ten, "2": two, a: letter }
+    canonical: '{"10":"ten","2":"two","a":"letter"}'
+  - id: number_spelling
+    value: { whole: 1.0, fraction: 0.000001 }
+    canonical: '{"fraction":0.000001,"whole":1}'
