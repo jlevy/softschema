@@ -40,6 +40,15 @@ def test_installed_smoke_forces_utf8_subprocess_output(
     assert output == "right quotation mark: \u2019\n"
 
 
+def test_installed_smoke_materializes_exact_cli_bytes(tmp_path: Path) -> None:
+    output = "first\nright quotation mark: \u2019\n"
+    destination = tmp_path / "example.yaml"
+
+    installed_artifact_smoke._write_cli_output(destination, output)
+
+    assert destination.read_bytes() == output.encode("utf-8")
+
+
 def test_transfer_checksum_inventory_is_recursive_and_exact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

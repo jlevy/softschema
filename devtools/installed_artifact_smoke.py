@@ -61,6 +61,11 @@ def _run(arguments: list[str], *, cwd: Path) -> str:
     return process.stdout
 
 
+def _write_cli_output(path: Path, output: str) -> None:
+    """Materialize verified CLI text without platform newline translation."""
+    path.write_bytes(output.encode("utf-8"))
+
+
 def _one(directory: Path, pattern: str) -> Path:
     matches = sorted(directory.glob(pattern))
     if len(matches) != 1:
@@ -261,6 +266,7 @@ def _smoke_python(wheel: Path, consumer: Path) -> None:
     for topic, source_path in (
         ("example-artifact", "examples/movie_page/spirited-away.md"),
         ("example-pure-yaml", "examples/movie_page/spirited-away.yaml"),
+        ("example-schema", "examples/movie_page/movie-page.schema.yaml"),
         ("guide", "docs/softschema-guide.md"),
         ("skill", "skills/softschema/SKILL.md"),
     ):
@@ -270,13 +276,13 @@ def _smoke_python(wheel: Path, consumer: Path) -> None:
     python_cli = scripts / ("softschema.exe" if os.name == "nt" else "softschema")
     pure_yaml = consumer / "spirited-away.yaml"
     schema = consumer / "movie-page.schema.yaml"
-    pure_yaml.write_text(
+    _write_cli_output(
+        pure_yaml,
         _run([str(python_cli), "docs", "example-pure-yaml"], cwd=consumer),
-        encoding="utf-8",
     )
-    schema.write_text(
+    _write_cli_output(
+        schema,
         _run([str(python_cli), "docs", "example-schema"], cwd=consumer),
-        encoding="utf-8",
     )
     result = json.loads(
         _run([str(python_cli), "validate", str(pure_yaml), "--profile", "pure-yaml"], cwd=consumer)
@@ -319,6 +325,7 @@ def _smoke_npm(npm: Path, bundle: Path, consumer: Path) -> None:
     for topic, source_path in (
         ("example-artifact", "examples/movie_page/spirited-away.md"),
         ("example-pure-yaml", "examples/movie_page/spirited-away.yaml"),
+        ("example-schema", "examples/movie_page/movie-page.schema.yaml"),
         ("guide", "docs/softschema-guide.md"),
         ("skill", "skills/softschema/SKILL.md"),
     ):
@@ -327,13 +334,13 @@ def _smoke_npm(npm: Path, bundle: Path, consumer: Path) -> None:
             raise SmokeError(f"installed npm {topic} bytes differ from source")
     pure_yaml = consumer / "spirited-away.yaml"
     schema = consumer / "movie-page.schema.yaml"
-    pure_yaml.write_text(
+    _write_cli_output(
+        pure_yaml,
         _run(["node", str(cli), "docs", "example-pure-yaml"], cwd=consumer),
-        encoding="utf-8",
     )
-    schema.write_text(
+    _write_cli_output(
+        schema,
         _run(["node", str(cli), "docs", "example-schema"], cwd=consumer),
-        encoding="utf-8",
     )
     result = json.loads(
         _run(
