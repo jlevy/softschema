@@ -16,7 +16,11 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { fileOpenFlags, readBoundedBytes } from "../src/bounded-file.js";
+import {
+  crossInterfaceIdentityMatches,
+  fileOpenFlags,
+  readBoundedBytes,
+} from "../src/bounded-file.js";
 import { compileSchema, renderSchemaWithinLimit } from "../src/compile.js";
 import {
   DEFAULT_VALIDATION_LIMITS,
@@ -66,6 +70,21 @@ test("bounded reader returns an exact initialized backing allocation", () => {
 test("bounded reader uses only Node-supported Windows open flags", () => {
   expect(fileOpenFlags("win32")).toBe(constants.O_RDONLY);
   expect(fileOpenFlags("linux")).not.toBe(fileOpenFlags("win32"));
+});
+
+test("bounded reader isolates legacy libuv Windows identity inconsistency", () => {
+  const source = { dev: 1n, ino: 2n, size: 3n };
+  const inconsistent = { dev: 4n, ino: 5n, size: 3n };
+
+  expect(crossInterfaceIdentityMatches(source, inconsistent, "win32", "1.49.1")).toBe(true);
+  expect(crossInterfaceIdentityMatches(source, inconsistent, "win32", "1.51.0")).toBe(false);
+  expect(crossInterfaceIdentityMatches(source, inconsistent, "linux", "1.49.1")).toBe(false);
+  expect(
+    crossInterfaceIdentityMatches(source, { ...inconsistent, size: 4n }, "win32", "1.49.1"),
+  ).toBe(false);
+  expect(
+    crossInterfaceIdentityMatches(source, { ...inconsistent, ino: 0n }, "win32", "1.49.1"),
+  ).toBe(false);
 });
 
 test("compile drift reads reject an oversized committed schema", () => {

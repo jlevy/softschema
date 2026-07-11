@@ -105,6 +105,21 @@ function sameSnapshot(
   );
 }
 
+/** Compare path and descriptor identity where the runtime reports it consistently. */
+export function crossInterfaceIdentityMatches(
+  source: { readonly dev: bigint; readonly ino: bigint; readonly size: bigint },
+  opened: { readonly dev: bigint; readonly ino: bigint; readonly size: bigint },
+  platform: NodeJS.Platform = process.platform,
+  uvVersion: string = process.versions.uv,
+): boolean {
+  if (source.ino === 0n || opened.ino === 0n || source.size !== opened.size) return false;
+  const [majorText, minorText] = uvVersion.split(".");
+  const legacyWindowsIdentity =
+    platform === "win32" && Number(majorText) === 1 && Number(minorText) < 51;
+  if (legacyWindowsIdentity) return true;
+  return source.dev === opened.dev && source.ino === opened.ino;
+}
+
 /** Read one identity-stable regular file without blocking on special nodes. */
 export function readBoundedFile(
   path: string,
@@ -112,8 +127,8 @@ export function readBoundedFile(
   expected?: BoundedFileExpectation,
 ): BoundedFileRead {
   // Callers own containment policy. An expectation binds an earlier authorization
-  // decision to this open; repeated canonical checks catch persistent parent swaps,
-  // while descriptor identity catches substitutions around the open itself.
+  // decision to this open; repeated canonical checks catch persistent parent swaps.
+  // Cross-interface identity is also checked where the runtime reports it reliably.
   const sourcePath = realpathSync.native(path);
   if (expected !== undefined && sourcePath !== expected.canonicalPath) {
     throw stalePathError(path);
@@ -139,11 +154,7 @@ export function readBoundedFile(
   try {
     const openedStat = fstatSync(handle, { bigint: true });
     if (!openedStat.isFile()) throw nonRegularFileError(path);
-    if (
-      openedStat.dev !== sourceStat.dev ||
-      openedStat.ino !== sourceStat.ino ||
-      openedStat.size !== sourceStat.size
-    ) {
+    if (!crossInterfaceIdentityMatches(sourceStat, openedStat)) {
       throw stalePathError(path);
     }
     // Windows can expose timestamps with different representations through path
