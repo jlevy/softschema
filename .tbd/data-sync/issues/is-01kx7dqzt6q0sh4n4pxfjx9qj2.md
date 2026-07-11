@@ -5,7 +5,7 @@ title: Compare bounded reads through descriptor snapshots on Windows
 kind: bug
 status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - ci
@@ -14,9 +14,11 @@ labels:
 dependencies:
   - type: blocks
     target: is-01kx4w3nh1qz49ffey0dgewxp7
+  - type: blocks
+    target: is-01kx7e6apwamcj82p536kfn574
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T01:47:48.421Z
-updated_at: 2026-07-11T01:51:42.875Z
+updated_at: 2026-07-11T02:16:47.028Z
 closed_at: 2026-07-11T01:51:42.874Z
 close_reason: Separated path authorization from descriptor stability in Python and TypeScript bounded readers; regression, full Python/TypeScript suites, lint/typecheck, and real frozen artifact smoke pass.
 ---
