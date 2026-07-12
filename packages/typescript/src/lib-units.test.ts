@@ -357,7 +357,7 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
-      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
+      `Expected YAML metadata to be a dict, got NoneType: \`${path}\``,
     );
   });
   test("unterminated fence returns yaml_parse_error", () => {

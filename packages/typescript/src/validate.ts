@@ -112,12 +112,11 @@ function readFrontmatter(path: string): RawFrontmatter {
   if (end === 1) return { hasFence: false, value: null };
   const parsed = parseYaml(lines.slice(1, end).join("\n"));
   if (!isMapping(parsed)) {
-    // frontmatter-format's fmf_read rejects non-mapping frontmatter: a whitespace-only
-    // block (YAML `null`), a list, or a bare scalar. Match its message and Python class
-    // names (`NoneType`, `list`, `str`, …) so the parse error is byte-identical to the
-    // Python CLI across every entrypoint (ss-eero / ss-7cbb).
+    // Reject the same non-mapping values as Python: a whitespace-only block (YAML
+    // `null`), a list, or a bare scalar. Use Python type names so the portable error is
+    // byte-identical across runtimes (ss-eero / ss-7cbb).
     throw new YamlParseError(
-      `Expected YAML metadata to be a dict, got <class '${pyTypeName(parsed)}'>: \`${path}\``,
+      `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${path}\``,
     );
   }
   return { hasFence: true, value: parsed };

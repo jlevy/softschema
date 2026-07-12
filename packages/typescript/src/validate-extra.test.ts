@@ -151,13 +151,13 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
   test("readFrontmatter throws YamlParseError on a list frontmatter", () => {
     const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
     expect(() => readFrontmatter(doc)).toThrow(YamlParseError);
-    expect(() => readFrontmatter(doc)).toThrow("got <class 'list'>");
+    expect(() => readFrontmatter(doc)).toThrow("got list");
   });
 
   test("readFrontmatter throws YamlParseError on a scalar frontmatter", () => {
     const doc = tmpFile("doc.md", "---\njust a string\n---\nbody\n");
     expect(() => readFrontmatter(doc)).toThrow(YamlParseError);
-    expect(() => readFrontmatter(doc)).toThrow("got <class 'str'>");
+    expect(() => readFrontmatter(doc)).toThrow("got str");
   });
 
   test("validateArtifact returns yaml_parse_error for non-mapping frontmatter", () => {
