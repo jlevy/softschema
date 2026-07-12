@@ -67,7 +67,7 @@ const CONTRACT_ID_RE =
   /^(?:[a-z0-9_]+(?:\.[a-z0-9_]+)*:)?[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z0-9_.-]+)?$/;
 
 /** Validate the contract-ID grammar; throws on a malformed value. */
-function checkContractId(contract: unknown): string {
+export function checkContractId(contract: unknown): string {
   if (typeof contract !== "string" || contract.length === 0) {
     throw new SchemaMetadataError("softschema metadata requires a non-empty string 'contract'");
   }

@@ -50,9 +50,51 @@ def test_compile_writes_json_schema_with_contract_id(tmp_path: Path) -> None:
 
     assert out.is_file()
     assert "$schema:" in result.schema_yaml
-    assert "$id: example:Sample/v1" in result.schema_yaml
+    assert "$id:" not in result.schema_yaml
+    assert "contract: example:Sample/v1" in result.schema_yaml
     assert "schema_sha256" in result.schema_yaml
     assert result.schema_sha256 is not None
+
+
+def test_compile_separates_optional_schema_id_and_reserves_metadata(tmp_path: Path) -> None:
+    out = tmp_path / "sample.schema.yaml"
+    result = compile_model(
+        SampleModel,
+        out,
+        contract_id="example:Sample/v1",
+        schema_id="https://example.com/schemas/sample-v1",
+    )
+    assert "$id: https://example.com/schemas/sample-v1" in result.schema_yaml
+
+    class ReservedModel(BaseModel):
+        model_config = ConfigDict(json_schema_extra={"x-softschema": {"custom": True}})
+
+        name: str
+
+    with pytest.raises(ValueError, match="reserved root identity key"):
+        compile_model(ReservedModel, out, contract_id="example:Reserved/v1")
+
+
+def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
+    out = tmp_path / "sample.schema.yaml"
+    compile_model(SampleModel, out, contract_id="example:Sample/v1")
+    out.write_text(
+        out.read_text().replace("additionalProperties: false", "additionalProperties: 0")
+    )
+    assert compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True).drift
+    out.write_bytes(b"\xff")
+    with pytest.raises(ValueError, match="UTF-8"):
+        compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+
+
+def test_shared_contract_identity_vectors() -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["identity"]:
+        if case["valid"]:
+            assert Contract(id=case["contract"]).id == case["contract"]
+        else:
+            with pytest.raises(ValidationError):
+                Contract(id=case["contract"])
 
 
 def test_validate_structural_and_semantic(tmp_path: Path) -> None:

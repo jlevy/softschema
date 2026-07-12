@@ -102,7 +102,7 @@ identity:
 
 compiler_annotations:
   - id: valid_field
-    metadata: { description: Display name, group: identity, order: 1, owner: human, aliases: [full_name] }
+    metadata: { description: Display name, group: identity, order: 1, owner: human, aliases: { name: [full_name] } }
     valid: true
   - { id: empty_group, metadata: { group: "" }, valid: false, code: invalid_annotation }
   - id: reserved_root

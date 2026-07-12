@@ -5,9 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from frontmatter_format import read_yaml_file
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
+from ruamel.yaml import YAML
 
 from softschema import SoftField, compile_model
+from softschema.soft_field import SoftFieldMeta
+
+HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 
 
 class _AnnotatedModel(BaseModel):
@@ -89,3 +93,20 @@ def test_soft_field_movie_example_genres_block_present() -> None:
     assert genres_meta["tier"] == "constrained"
     assert genres_meta["owner"] == "agent"
     assert "IMDb" in genres_meta["instruction"]
+
+
+def test_shared_annotation_vectors() -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["compiler_annotations"]:
+        if "metadata" not in case:
+            continue
+        metadata = dict(case["metadata"])
+        metadata.pop("description", None)
+        if case["valid"]:
+            assert SoftFieldMeta.model_validate(metadata).group == "identity"
+        else:
+            try:
+                SoftFieldMeta.model_validate(metadata)
+            except ValidationError:
+                continue
+            raise AssertionError(case["id"])

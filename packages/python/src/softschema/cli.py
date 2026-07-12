@@ -217,7 +217,10 @@ def main(argv: list[str] | None = None) -> int:
     compile_parser.add_argument(
         "--out", required=True, type=Path, help="Output path for the compiled schema."
     )
-    compile_parser.add_argument("--contract", help="Contract ID stamped into the compiled schema.")
+    compile_parser.add_argument(
+        "--contract", required=True, help="Logical contract ID stored in x-softschema."
+    )
+    compile_parser.add_argument("--schema-id", help="Optional absolute JSON Schema resource URI.")
     compile_parser.add_argument(
         "--check", action="store_true", help="Do not write; exit 1 on drift."
     )
@@ -366,7 +369,13 @@ def _compile_cmd(args: argparse.Namespace) -> int:
     # Model-load and compile errors (UsageError, OSError, ...) propagate to the shared
     # `_run_cmd` boundary, which reports them as `softschema compile: ...` and exits 2.
     model = _load_model(args.model)
-    result = compile_model(model, args.out, contract_id=args.contract, check_only=args.check)
+    result = compile_model(
+        model,
+        args.out,
+        contract_id=args.contract,
+        schema_id=args.schema_id,
+        check_only=args.check,
+    )
     print(_json(result))
     return 1 if result.drift else 0
 

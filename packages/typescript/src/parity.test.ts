@@ -5,6 +5,7 @@ import { parse as yamlParse } from "yaml";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
 import { renderStructuralMessage, structuralErrorRecord } from "./errors.js";
 import { canonicalJson, stableStringify } from "./settings.js";
+import { softFieldMeta } from "./softField.js";
 
 const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
@@ -96,5 +97,22 @@ test("shared canonicalization and digest vectors", () => {
   }
   for (const item of vectors.digests ?? []) {
     expect(canonicalJson(item.value)).toBe(item.canonical as string);
+  }
+});
+
+test("shared annotation vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.compiler_annotations ?? []) {
+    if (item.metadata === undefined) continue;
+    const metadata = item.metadata as Record<string, unknown>;
+    const options = {
+      ...metadata,
+      description: String(metadata.description ?? "Field"),
+    } as Parameters<typeof softFieldMeta>[0];
+    if (item.valid) expect(softFieldMeta(options).group).toBe("identity");
+    else expect(() => softFieldMeta(options)).toThrow();
   }
 });

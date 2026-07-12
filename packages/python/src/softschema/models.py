@@ -86,6 +86,11 @@ class Contract(BaseModel):
     profile: SchemaProfile = SchemaProfile.frontmatter_md
     schema_path: Path | None = None
 
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, value: str) -> str:
+        return _check_contract_id(value)
+
 
 class WarningCode(StrEnum):
     """Stable, public identifiers for warnings emitted by validation.

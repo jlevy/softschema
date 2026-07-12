@@ -65,7 +65,17 @@ def test_compile_writes_schema_and_exits_zero(
 def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "missing.schema.yaml"
 
-    exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
+    exit_code = softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--check",
+        ]
+    )
 
     assert exit_code == 1
     assert not out.exists()
@@ -73,9 +83,21 @@ def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_mod
 
 def test_compile_check_returns_zero_when_schema_matches(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
-    softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out)])
+    softschema_main(
+        ["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--contract", "test:Sample/v1"]
+    )
 
-    exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
+    exit_code = softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--check",
+        ]
+    )
 
     assert exit_code == 0
 
@@ -85,7 +107,9 @@ def test_compile_rejects_malformed_model_spec(
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    exit_code = softschema_main(["compile", "bad-spec", "--out", str(out)])
+    exit_code = softschema_main(
+        ["compile", "bad-spec", "--out", str(out), "--contract", "test:Sample/v1"]
+    )
 
     assert exit_code == 2
     assert "module:Class" in capsys.readouterr().err
@@ -96,7 +120,16 @@ def test_compile_rejects_non_basemodel(
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    exit_code = softschema_main(["compile", "test_cli_model:NotAModel", "--out", str(out)])
+    exit_code = softschema_main(
+        [
+            "compile",
+            "test_cli_model:NotAModel",
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+        ]
+    )
 
     assert exit_code == 2
     assert "BaseModel" in capsys.readouterr().err

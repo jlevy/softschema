@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from softschema.models import Contract
+from softschema.models import Contract, _check_contract_id
 
 
 class Contracts:
@@ -19,6 +19,7 @@ class Contracts:
         self._contracts[contract.id] = contract
 
     def resolve(self, contract_id: str) -> Contract | None:
+        _check_contract_id(contract_id)
         return self._contracts.get(contract_id)
 
     @property

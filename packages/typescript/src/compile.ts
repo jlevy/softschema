@@ -8,15 +8,16 @@
  * compares parsed canonical content, and the schema_sha256 over the canonical JSON is
  * the cross-language fingerprint, independent of YAML formatting.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { writeFileSync } from "atomically";
-import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+import { stringify as yamlStringify } from "yaml";
 import { z } from "zod";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
 import { isMapping } from "./guards.js";
+import { checkContractId } from "./models.js";
+import { parsePortableYaml, readUtf8 } from "./portable.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
 
-export const SOFTSCHEMA_FORMAT_VERSION = "0.1.0";
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
 
 export interface CompileResult {
@@ -28,35 +29,33 @@ export interface CompileResult {
 }
 
 export interface CompileOptions {
-  contractId?: string | null;
+  contractId: string;
+  schemaId?: string;
   checkOnly?: boolean;
 }
 
 function augmentSchema(
   schema: Record<string, unknown>,
-  contractId: string | null,
+  contractId: string,
+  schemaId: string | undefined,
 ): Record<string, unknown> {
+  if ("x-softschema" in schema || "$id" in schema) {
+    throw new Error("model schema uses a compiler-reserved root identity key");
+  }
   const out: Record<string, unknown> = { ...schema };
   out.$schema ??= JSON_SCHEMA_DRAFT;
-  if (contractId !== null) {
-    out.$id ??= contractId;
-  }
+  if (schemaId !== undefined) out.$id = schemaId;
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
   // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
   // so custom fields from the raw schema are preserved.
-  const existing = isMapping(out["x-softschema"])
-    ? (out["x-softschema"] as Record<string, unknown>)
-    : {};
   out["x-softschema"] = {
-    ...existing,
     contract: contractId,
-    softschema_format_version: SOFTSCHEMA_FORMAT_VERSION,
   };
   return out;
 }
 
-function addGeneratedTitles(schema: Record<string, unknown>, contractId: string | null): void {
-  if (schema.title === undefined && contractId !== null) {
+function addGeneratedTitles(schema: Record<string, unknown>, contractId: string): void {
+  if (schema.title === undefined) {
     const qualified = contractId.split(":").at(-1) ?? contractId;
     schema.title = qualified.split("/")[0];
   }
@@ -106,8 +105,17 @@ function renderYaml(schema: Record<string, unknown>): string {
  */
 export function buildCanonicalSchema(
   zodSchema: z.ZodType,
-  contractId: string | null = null,
+  contractId: string,
+  schemaId?: string,
 ): { schema: Record<string, unknown>; sha: string } {
+  checkContractId(contractId);
+  if (schemaId !== undefined) {
+    try {
+      new URL(schemaId);
+    } catch {
+      throw new Error("schemaId must be an absolute URI");
+    }
+  }
   const raw = z.toJSONSchema(zodSchema, {
     target: "draft-2020-12",
     io: "input",
@@ -117,7 +125,7 @@ export function buildCanonicalSchema(
     unrepresentable: "throw",
   }) as Record<string, unknown>;
   addGeneratedTitles(raw, contractId);
-  const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId));
+  const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId, schemaId));
   const sha = schemaSha256(schema);
   (schema["x-softschema"] as Record<string, unknown>).schema_sha256 = sha;
   return { schema, sha };
@@ -126,9 +134,9 @@ export function buildCanonicalSchema(
 export function compileSchema(
   zodSchema: z.ZodType,
   outPath: string,
-  options: CompileOptions = {},
+  options: CompileOptions,
 ): CompileResult {
-  const { schema, sha } = buildCanonicalSchema(zodSchema, options.contractId ?? null);
+  const { schema, sha } = buildCanonicalSchema(zodSchema, options.contractId, options.schemaId);
   const rendered = renderYaml(schema);
 
   if (options.checkOnly) {
@@ -143,7 +151,7 @@ export function compileSchema(
     }
     // Compare parsed content, not raw bytes, so YAML formatting (a different writer than
     // Python's) is not treated as drift; only a genuine schema change is.
-    const existing = yamlParse(readFileSync(outPath, "utf8")) as unknown;
+    const existing = parsePortableYaml(readUtf8(outPath));
     const drift = canonicalJson(existing) !== canonicalJson(schema);
     return {
       outPath,

@@ -17,6 +17,7 @@ import {
 import { isMapping } from "./guards.js";
 import {
   type Contract,
+  checkContractId,
   contractToOutput,
   metadataToOutput,
   parseSchemaMetadata,
@@ -570,6 +571,7 @@ export function validateArtifact(
     preParsed?: RawFrontmatter;
   } = {},
 ): ArtifactValidationResult {
+  checkContractId(contract.id);
   const warnings: SchemaWarning[] = [];
   const metadataMode = options.metadataMode ?? "enforced";
   if (contract.profile === "pure-yaml") {

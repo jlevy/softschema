@@ -484,12 +484,13 @@ function runInspect(path: string): number {
 
 async function runCompile(
   spec: string,
-  opts: { contract?: string; out: string; check?: boolean },
+  opts: { contract: string; schemaId?: string; out: string; check?: boolean },
 ): Promise<number> {
   try {
     const schema = await loadZodModel(spec);
     const result = compileSchema(schema, opts.out, {
-      contractId: opts.contract ?? null,
+      contractId: opts.contract,
+      schemaId: opts.schemaId,
       checkOnly: opts.check,
     });
     writeText(
@@ -624,11 +625,17 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .description("Compile a Zod schema")
     .argument("<model>", "Zod schema as module:export")
     .requiredOption("--out <path>", "output path for the compiled schema")
-    .option("--contract <id>", "contract ID stamped into the compiled schema")
+    .requiredOption("--contract <id>", "logical contract ID stored in x-softschema")
+    .option("--schema-id <uri>", "optional absolute JSON Schema resource URI")
     .option("--check", "do not write; exit 1 on drift")
-    .action(async (model: string, opts: { out: string; contract?: string; check?: boolean }) => {
-      exitCode = await runCompile(model, opts);
-    });
+    .action(
+      async (
+        model: string,
+        opts: { out: string; contract: string; schemaId?: string; check?: boolean },
+      ) => {
+        exitCode = await runCompile(model, opts);
+      },
+    );
 
   program
     .command("validate")

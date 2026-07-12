@@ -109,11 +109,11 @@ export function parsePortableYaml(text: string): unknown {
   }
 
   const value = document.toJS();
-  checkValue(value);
+  checkPortableValue(value);
   return value;
 }
 
-function checkValue(root: unknown): void {
+export function checkPortableValue(root: unknown): void {
   const stack: Array<[unknown, number]> = [[root, 0]];
   let nodes = 0;
   while (stack.length > 0) {

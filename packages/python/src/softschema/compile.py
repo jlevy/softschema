@@ -10,17 +10,16 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-from frontmatter_format import new_yaml, read_yaml_file
+from frontmatter_format import new_yaml
 from pydantic import BaseModel
 from strif import atomic_write_text
 
+from softschema._portable import parse_yaml, read_utf8
 from softschema.canonicalize import canonicalize_json_schema
+from softschema.models import _check_contract_id
 
-# Version of the `x-softschema` block format emitted into compiled schemas,
-# not the installed package version (use `importlib.metadata.version("softschema")`
-# for that). Bump this only when the shape of `x-softschema` itself changes.
-SOFTSCHEMA_FORMAT_VERSION = "0.1.0"
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
 
@@ -39,11 +38,17 @@ def compile_model(
     model_cls: type[BaseModel],
     out_path: Path,
     *,
-    contract_id: str | None = None,
+    contract_id: str,
+    schema_id: str | None = None,
     check_only: bool = False,
 ) -> CompileResult:
     """Compile ``model_cls`` to a compiled JSON Schema YAML file at ``out_path``."""
-    schema = canonicalize_json_schema(_augment_schema(model_cls.model_json_schema(), contract_id))
+    _check_contract_id(contract_id)
+    if schema_id is not None and not urlparse(schema_id).scheme:
+        raise ValueError("schema_id must be an absolute URI")
+    schema = canonicalize_json_schema(
+        _augment_schema(model_cls.model_json_schema(), contract_id, schema_id)
+    )
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
@@ -60,8 +65,8 @@ def compile_model(
         # Compare parsed content, not raw bytes, so YAML formatting differences (e.g.
         # a different writer in another implementation) are not treated as drift; only a
         # genuine schema change is.
-        existing = read_yaml_file(out_path)
-        if existing == schema:
+        existing = parse_yaml(read_utf8(out_path))
+        if _canonical_json(existing) == _canonical_json(schema):
             return CompileResult(
                 out_path=out_path,
                 schema_yaml=rendered,
@@ -87,22 +92,19 @@ def compile_model(
 
 def _augment_schema(
     schema: dict[str, Any],
-    contract_id: str | None,
+    contract_id: str,
+    schema_id: str | None,
 ) -> dict[str, Any]:
+    if "x-softschema" in schema or "$id" in schema:
+        raise ValueError("model schema uses a compiler-reserved root identity key")
     out = dict(schema)
     out.setdefault("$schema", JSON_SCHEMA_DRAFT)
-    if contract_id is not None:
-        out.setdefault("$id", contract_id)
+    if schema_id is not None:
+        out["$id"] = schema_id
     # The root x-softschema block is language-neutral on purpose: no `generated_from`
     # provenance (a Pydantic/Zod-specific import path would leak the implementation and
     # break the cross-language content identity and equal schema_sha256).
-    out.setdefault("x-softschema", {})
-    out["x-softschema"].update(
-        {
-            "contract": contract_id,
-            "softschema_format_version": SOFTSCHEMA_FORMAT_VERSION,
-        }
-    )
+    out["x-softschema"] = {"contract": contract_id}
     return out
 
 

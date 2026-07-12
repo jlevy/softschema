@@ -4,7 +4,6 @@ export {
   type CompileOptions,
   type CompileResult,
   compileSchema,
-  SOFTSCHEMA_FORMAT_VERSION,
 } from "./compile.js";
 export {
   normalizeAjvError,

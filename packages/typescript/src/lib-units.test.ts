@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./errors.js";
 import {
   type Contract,
+  checkContractId,
   contractToOutput,
   isSchemaStatus,
   metadataToOutput,
@@ -19,6 +21,8 @@ import {
   SchemaMetadataError,
 } from "./models.js";
 import { validateArtifact } from "./validate.js";
+
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 function tmp(name: string, content: string): string {
   const dir = mkdtempSync(join(tmpdir(), "softschema-unit-"));
@@ -99,6 +103,16 @@ describe("models", () => {
     ]) {
       expect(() => parseSchemaMetadata(id)).toThrow(SchemaMetadataError);
       expect(() => parseSchemaMetadata({ contract: id })).toThrow(SchemaMetadataError);
+    }
+  });
+  test("shared contract identity vectors", () => {
+    const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    for (const item of vectors.identity ?? []) {
+      if (item.valid) expect(checkContractId(item.contract)).toBe(item.contract as string);
+      else expect(() => checkContractId(item.contract)).toThrow(SchemaMetadataError);
     }
   });
   test("status guard + output helpers", () => {
@@ -292,23 +306,41 @@ describe("compile: write mode + build", () => {
     expect(readFileSync(out, "utf8")).toContain("x-softschema");
   });
   test("check mode reports missing committed compiled schema", () => {
-    const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), { checkOnly: true });
-    expect(r.drift).toBe(true);
+    const result = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), {
+      contractId: "x:S/v1",
+      checkOnly: true,
+    });
+    expect(result.drift).toBe(true);
   });
   test("buildCanonicalSchema sets schema_sha256 inside x-softschema", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
-  test("augmentSchema merges into existing x-softschema (setdefault+update semantics)", () => {
-    // Simulate a raw schema that already carries x-softschema with a custom field.
-    // buildCanonicalSchema processes through augmentSchema; verify the custom field survives.
-    const CustomSchema = z.strictObject({ name: z.string() });
-    const { schema } = buildCanonicalSchema(CustomSchema, "x:S/v1");
+  test("separates schema identity and rejects reserved root metadata", () => {
+    const { schema } = buildCanonicalSchema(
+      Sample,
+      "x:S/v1",
+      "https://example.com/schemas/sample-v1",
+    );
     const xss = schema["x-softschema"] as Record<string, unknown>;
-    // The standard fields must be present:
     expect(xss.contract).toBe("x:S/v1");
-    expect(xss.softschema_format_version).toBe("0.1.0");
     expect(xss.schema_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(schema.$id).toBe("https://example.com/schemas/sample-v1");
+    const Reserved = Sample.meta({ "x-softschema": { custom: true } });
+    expect(() => buildCanonicalSchema(Reserved, "x:S/v1")).toThrow("reserved root identity key");
+  });
+  test("drift comparison is portable and boolean-safe", () => {
+    const out = join(mkdtempSync(join(tmpdir(), "softschema-drift-")), "s.yaml");
+    compileSchema(Sample, out, { contractId: "x:S/v1" });
+    writeFileSync(
+      out,
+      readFileSync(out, "utf8").replace("additionalProperties: false", "additionalProperties: 0"),
+    );
+    expect(compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true }).drift).toBe(true);
+    writeFileSync(out, Buffer.from([0xff]));
+    expect(() => compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true })).toThrow(
+      "UTF-8",
+    );
   });
 });
 

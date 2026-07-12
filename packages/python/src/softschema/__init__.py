@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from softschema.canonicalize import apply_enforced_extras, canonicalize_json_schema
-from softschema.compile import SOFTSCHEMA_FORMAT_VERSION, CompileResult, compile_model
+from softschema.compile import CompileResult, compile_model
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
 from softschema.models import (
     Contract,
@@ -37,7 +37,6 @@ from softschema.validate import (
 )
 
 __all__ = [
-    "SOFTSCHEMA_FORMAT_VERSION",
     "ArtifactValidationResult",
     "CompileResult",
     "Contract",
