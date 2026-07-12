@@ -95,14 +95,12 @@ describe("compiled schema invalid root", () => {
     const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
     const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
     expect(result.ok).toBe(false);
-    const structural = result.structural as {
-      ok: boolean;
-      errors: { kind: string; message: string }[];
-    };
-    expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("schema_invalid");
-    expect(structural.errors[0]?.message).toContain("str");
-    expect(structural.errors[0]?.message).toContain("expected mapping");
+    const error = result.structural.errors[0] as Record<string, unknown>;
+    expect(result.structural.ok).toBe(false);
+    expect(error.kind).toBe("schema_invalid");
+    expect(error.message).toContain("str");
+    expect(error.message).toContain("expected mapping");
+    expect(error.reason).toBe("compilation");
   });
 
   test("array YAML root in the compiled schema yields schema_invalid", () => {
@@ -110,14 +108,22 @@ describe("compiled schema invalid root", () => {
     const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
     const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
     expect(result.ok).toBe(false);
-    const structural = result.structural as {
-      ok: boolean;
-      errors: { kind: string; message: string }[];
-    };
-    expect(structural.ok).toBe(false);
-    expect(structural.errors[0]?.kind).toBe("schema_invalid");
-    expect(structural.errors[0]?.message).toContain("list");
-    expect(structural.errors[0]?.message).toContain("expected mapping");
+    const error = result.structural.errors[0] as Record<string, unknown>;
+    expect(result.structural.ok).toBe(false);
+    expect(error.kind).toBe("schema_invalid");
+    expect(error.message).toContain("list");
+    expect(error.message).toContain("expected mapping");
+    expect(error.reason).toBe("compilation");
+  });
+
+  test("malformed compiled YAML includes a stable schema_invalid reason", () => {
+    const compiledSchema = tmpFile("schema.yaml", "type: [\n");
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
+    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
+    expect(result.structural.errors[0]).toMatchObject({
+      kind: "schema_invalid",
+      reason: "compilation",
+    });
   });
 });
 

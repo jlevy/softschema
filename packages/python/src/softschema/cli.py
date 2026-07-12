@@ -324,7 +324,9 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     )
     result = validate_artifact(args.path, contract=contract, frontmatter=frontmatter)
     print(_json(result))
-    return 0 if result.ok else 1
+    if result.outcome == "valid":
+        return 0
+    return 2 if result.outcome == "input_error" else 1
 
 
 def _infer_validation_binding(

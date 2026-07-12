@@ -375,27 +375,13 @@ function structuralAgainstSchemaFile(
     compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
     if (err instanceof PortableInputError) {
-      return {
-        ok: false,
-        errors: [structuralError("schema_invalid", err.message)],
-        engine: "json_schema",
-        skipped_reason: null,
-      };
+      return schemaInvalid(schemaFailureReason(err.message), err.message);
     }
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    return {
-      ok: false,
-      errors: [
-        structuralError(
-          "schema_invalid",
-          `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`,
-        ),
-      ],
-      engine: "json_schema",
-      skipped_reason: null,
-    };
+    const message = `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`;
+    return schemaInvalid(schemaFailureReason(message), message);
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }
