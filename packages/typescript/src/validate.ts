@@ -375,7 +375,7 @@ function structuralAgainstSchemaFile(
     compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
     if (err instanceof PortableInputError) {
-      return schemaInvalid(schemaFailureReason(err.message), err.message);
+      return schemaInvalid("syntax", err.message);
     }
     throw err;
   }

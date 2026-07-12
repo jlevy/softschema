@@ -122,7 +122,7 @@ describe("compiled schema invalid root", () => {
     const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
     expect(result.structural.errors[0]).toMatchObject({
       kind: "schema_invalid",
-      reason: "compilation",
+      reason: "syntax",
     });
   });
 });
