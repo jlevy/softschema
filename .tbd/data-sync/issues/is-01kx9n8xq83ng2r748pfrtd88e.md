@@ -3,9 +3,9 @@ type: is
 id: is-01kx9n8xq83ng2r748pfrtd88e
 title: "Spec: Minimal softschema hardening"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - hardening
@@ -28,6 +28,8 @@ child_order_hints:
   - is-01kx9qdakxzyp25ef7kyyd0xnr
   - is-01kx9qdatz2pmwz6r61kw4czdp
 created_at: 2026-07-11T22:37:52.231Z
-updated_at: 2026-07-11T23:15:39.021Z
+updated_at: 2026-07-12T03:11:57.766Z
+closed_at: 2026-07-12T03:11:57.766Z
+close_reason: All minimal-hardening implementation beads and final review are complete; production growth is 947 lines, the golden system is smaller, and all local release gates pass.
 ---
 Implement the clean main-based hard-cut minor release in docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md. Preserve useful capabilities while replacing incorrect surfaces once, close the 24 applicable defect categories, exclude the 12 discarded platform categories, keep tests minimal with one primary owner per behavior, and enforce the production complexity budget.
