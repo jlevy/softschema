@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from softschema.canonicalize import apply_enforced_extras, canonicalize_json_schema
 from softschema.compile import CompileResult, compile_model
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
 from softschema.models import (
@@ -19,7 +18,6 @@ from softschema.schema_view import FieldInfo, SchemaView
 from softschema.soft_field import (
     RepairKind,
     SoftField,
-    SoftFieldMeta,
     SoftOwner,
     SoftTier,
 )
@@ -53,14 +51,11 @@ __all__ = [
     "SchemaWarning",
     "SemanticResult",
     "SoftField",
-    "SoftFieldMeta",
     "SoftOwner",
     "SoftTier",
     "StructuralResult",
     "ValidationResult",
     "WarningCode",
-    "apply_enforced_extras",
-    "canonicalize_json_schema",
     "compile_model",
     "infer_envelope_key",
     "parse_schema_metadata",

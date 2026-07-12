@@ -495,8 +495,8 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       schemaPath: opts.schema ?? null,
     };
     const result = validateArtifact(path, contract, { semanticModel, preParsed: parsed });
-    writeText(stableStringify(result.output));
-    return result.ok ? 0 : 1;
+    writeText(stableStringify(result));
+    return result.outcome === "valid" ? 0 : result.outcome === "invalid" ? 1 : 2;
   } catch (err) {
     // Exit 1 is reserved for a readable artifact that fails validation (the result path
     // above). A bug-indicator exception crashes; every other (user) error — missing or

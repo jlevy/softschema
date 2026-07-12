@@ -31,6 +31,7 @@ $ softschema validate tests/golden/fixtures/bound-ok.md
     "schema": "error-norm.schema.yaml",
     "status": null
   },
+  "outcome": "valid",
   "path": "tests/golden/fixtures/bound-ok.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -78,6 +79,7 @@ $ softschema validate examples/movie_page/spirited-away.md
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -161,6 +163,7 @@ $ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fi
     "schema": "error-norm.schema.yaml",
     "status": null
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-ok.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -220,6 +223,7 @@ $ softschema validate tests/golden/fixtures/bound-missing-schema.md
     "schema": "no-such.schema.yaml",
     "status": null
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-missing-schema.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -272,6 +276,7 @@ $ softschema validate tests/golden/fixtures/bound-absolute-schema.md
     "schema": "/etc/error-norm.schema.yaml",
     "status": null
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-absolute-schema.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -325,6 +330,7 @@ $ softschema validate tests/golden/fixtures/bound-escaping-schema.md
     "schema": "../../../../../../../../etc/error-norm.schema.yaml",
     "status": null
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-escaping-schema.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -386,6 +392,7 @@ $ softschema validate tests/golden/fixtures/bound-envelope-absent.md
     "schema": "error-norm.schema.yaml",
     "status": null
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-envelope-absent.md",
   "profile": "frontmatter-md",
   "semantic": {

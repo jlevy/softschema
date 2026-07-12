@@ -347,14 +347,14 @@ describe("compile: write mode + build", () => {
 describe("validate: frontmatter edge cases (ss-3iz5)", () => {
   test("empty frontmatter (---\\n---) returns no_frontmatter, matching Python fmf_read", () => {
     const r = validateArtifact(tmp("d.md", "---\n---\nbody\n"), contract());
-    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("no_frontmatter");
     expect(errors[0]?.message).toContain("no frontmatter in ");
   });
   test("whitespace-only frontmatter returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\n   \n---\nbody\n");
     const r = validateArtifact(path, contract());
-    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
       `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
@@ -363,7 +363,7 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
   test("unterminated fence returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\nfoo: 1\n...no closing ---\n");
     const r = validateArtifact(path, contract());
-    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
       `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
@@ -395,45 +395,41 @@ describe("models: parseSchemaMetadata uses Python type names (ss-3iz5)", () => {
 describe("validate: artifact error kinds + advisory warning", () => {
   test("no_frontmatter", () => {
     const r = validateArtifact(tmp("d.md", "no fence here\n"), contract());
-    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
-      "no_frontmatter",
-    );
+    expect((r.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("no_frontmatter");
   });
   test("document_softschema_invalid", () => {
     const r = validateArtifact(
       tmp("d.md", "---\nsoftschema:\n  status: enforced\nx: 1\n---\n"),
       contract(),
     );
-    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((r.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "document_softschema_invalid",
     );
   });
   test("document_contract_mismatch (enforced) vs warning (advisory)", () => {
     const doc = tmp("d.md", "---\nsoftschema:\n  contract: other:Z/v1\nmovie:\n  a: 1\n---\n");
     const enforced = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }));
-    expect((enforced.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((enforced.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "document_contract_mismatch",
     );
     const advisory = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }), {
       metadataMode: "advisory",
     });
-    expect((advisory.output.warnings as { code: string }[])[0]?.code).toBe(
-      "document-contract-mismatch",
-    );
+    expect((advisory.warnings as { code: string }[])[0]?.code).toBe("document-contract-mismatch");
   });
   test("envelope_mismatch + schema_missing", () => {
     const em = validateArtifact(
       tmp("d.md", "---\nwrong:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie" }),
     );
-    expect((em.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((em.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "envelope_mismatch",
     );
     const sm = validateArtifact(
       tmp("d.md", "---\nmovie:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie", schemaPath: "/no/such/schema.yaml" }),
     );
-    expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((sm.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "schema_missing",
     );
   });

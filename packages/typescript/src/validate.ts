@@ -47,8 +47,18 @@ export interface ValidationResult {
 }
 
 export interface ArtifactValidationResult {
-  ok: boolean;
-  output: Record<string, unknown>;
+  readonly ok: boolean;
+  contract: Record<string, unknown>;
+  contract_id: string;
+  document_metadata: Record<string, unknown> | null;
+  outcome: "valid" | "invalid" | "input_error";
+  path: string;
+  profile: string;
+  semantic: SemanticResult;
+  status: string;
+  structural: StructuralResult;
+  values: Record<string, unknown> | null;
+  warnings: SchemaWarning[];
 }
 
 export type MetadataMode = "enforced" | "advisory";
@@ -305,21 +315,28 @@ function buildResult(args: {
   warnings: SchemaWarning[];
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
-  return {
-    ok: structural.ok && semantic.ok,
-    output: {
-      contract: contractToOutput(contract),
-      contract_id: contract.id,
-      document_metadata: metadataToOutput(args.metadata),
-      path: args.docPath,
-      profile: contract.profile,
-      semantic,
-      status: contract.status,
-      structural,
-      values: args.values,
-      warnings: args.warnings,
-    },
-  };
+  const ok = structural.ok && semantic.ok;
+  const firstKind = structural.errors[0]?.kind;
+  const inputCodes = new Set([
+    "artifact_unreadable",
+    "artifact_invalid_utf8",
+    "artifact_too_large",
+  ]);
+  const result = {
+    contract: contractToOutput(contract),
+    contract_id: contract.id,
+    document_metadata: metadataToOutput(args.metadata),
+    outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
+    path: args.docPath,
+    profile: contract.profile,
+    semantic,
+    status: contract.status,
+    structural,
+    values: args.values,
+    warnings: args.warnings,
+  } as ArtifactValidationResult;
+  Object.defineProperty(result, "ok", { value: ok, enumerable: false });
+  return result;
 }
 
 function failure(

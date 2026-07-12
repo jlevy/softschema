@@ -59,8 +59,8 @@ describe("validateArtifact: pure-yaml profile", () => {
       semanticModel: Sample,
     });
     expect(result.ok).toBe(true);
-    expect(result.output.profile).toBe("pure-yaml");
-    expect(result.output.values).toEqual({ name: "hello", count: 3 });
+    expect(result.profile).toBe("pure-yaml");
+    expect(result.values).toEqual({ name: "hello", count: 3 });
   });
   test("non-mapping YAML root is yaml_not_mapping", () => {
     const doc = tmpFile("bad.yaml", "- a\n- b\n");
@@ -68,7 +68,7 @@ describe("validateArtifact: pure-yaml profile", () => {
       semanticModel: Sample,
     });
     expect(result.ok).toBe(false);
-    const err = result.output.structural as { errors: { kind: string }[] };
+    const err = result.structural as { errors: { kind: string }[] };
     expect(err.errors[0]?.kind).toBe("yaml_not_mapping");
   });
 });
@@ -84,7 +84,7 @@ describe("validateArtifact: frontmatter_not_mapping", () => {
       preParsed: { hasFence: true, value: [1, 2, 3] },
     });
     expect(result.ok).toBe(false);
-    const err = result.output.structural as { errors: { kind: string }[] };
+    const err = result.structural as { errors: { kind: string }[] };
     expect(err.errors[0]?.kind).toBe("frontmatter_not_mapping");
   });
 });
@@ -95,7 +95,7 @@ describe("compiled schema invalid root", () => {
     const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
     const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as {
+    const structural = result.structural as {
       ok: boolean;
       errors: { kind: string; message: string }[];
     };
@@ -110,7 +110,7 @@ describe("compiled schema invalid root", () => {
     const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
     const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as {
+    const structural = result.structural as {
       ok: boolean;
       errors: { kind: string; message: string }[];
     };
@@ -126,7 +126,7 @@ describe("validateArtifact: missing/unreadable document file", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.md";
     const result = validateArtifact(missingPath, contract());
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
+    const structural = result.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
     expect(structural.errors[0]?.kind).toBe("artifact_unreadable");
   });
@@ -135,7 +135,7 @@ describe("validateArtifact: missing/unreadable document file", () => {
     const missingPath = "/tmp/softschema-nonexistent-doc-12345.yaml";
     const result = validateArtifact(missingPath, contract({ profile: "pure-yaml" }));
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
+    const structural = result.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.ok).toBe(false);
     expect(structural.errors[0]?.kind).toBe("artifact_unreadable");
   });
@@ -158,7 +158,7 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
     const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
     const result = validateArtifact(doc, contract());
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as { ok: boolean; errors: { kind: string }[] };
+    const structural = result.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("yaml_parse_error");
   });
 });
@@ -178,7 +178,7 @@ test("shared portable YAML and artifact-input vectors", () => {
     const result = validateArtifact(path, portableContract);
     expect(result.ok).toBe(item.valid as boolean);
     if (!item.valid) {
-      const structural = result.output.structural as { errors: { kind: string }[] };
+      const structural = result.structural as { errors: { kind: string }[] };
       expect(structural.errors[0]?.kind).toBe(item.code as string);
     }
   }
@@ -188,13 +188,8 @@ test("shared portable YAML and artifact-input vectors", () => {
     if (item.source === "too_large") writeFileSync(path, Buffer.alloc(1_048_577, 0x78));
     if (item.text !== undefined) writeFileSync(path, String(item.text));
     const result = validateArtifact(path, portableContract);
-    const structural = result.output.structural as { errors: { kind: string }[] };
-    const outcome = result.ok
-      ? "valid"
-      : structural.errors[0]?.kind.startsWith("artifact_")
-        ? "input_error"
-        : "invalid";
-    expect(outcome).toBe(item.outcome as string);
+    const structural = result.structural as { errors: { kind: string }[] };
+    expect(result.outcome).toBe(item.outcome as typeof result.outcome);
     expect(structural.errors[0]?.kind).toBe(item.code as string);
   }
 });

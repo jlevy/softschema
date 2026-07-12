@@ -8,8 +8,8 @@ from typing import Any
 
 from ruamel.yaml import YAML
 
-from softschema import apply_enforced_extras, validate_structural
-from softschema.canonicalize import EnforcementUnsupportedError
+from softschema import validate_structural
+from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
 
 HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 

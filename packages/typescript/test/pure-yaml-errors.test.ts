@@ -41,7 +41,7 @@ describe("pure-yaml malformed YAML", () => {
     const contract = pureYamlContract();
     const result = validateArtifact(yamlFile, contract);
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as {
+    const structural = result.structural as {
       ok: boolean;
       errors: { kind: string; message: string }[];
     };
@@ -56,7 +56,7 @@ describe("pure-yaml malformed YAML", () => {
     const contract = pureYamlContract();
     const result = validateArtifact(yamlFile, contract);
     expect(result.ok).toBe(false);
-    const structural = result.output.structural as {
+    const structural = result.structural as {
       ok: boolean;
       errors: { kind: string; message: string }[];
     };

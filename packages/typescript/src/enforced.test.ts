@@ -121,7 +121,7 @@ describe("envelope inference (spec rules)", () => {
   test("multi-key root without envelopeKey is envelope_ambiguous", () => {
     const doc = tmpDoc("doc.md", "---\nname: hi\ndirection: up\n---\nbody\n");
     const result = validateArtifact(doc, mkContract());
-    const structural = result.output.structural as { errors: { kind: string; message: string }[] };
+    const structural = result.structural as { errors: { kind: string; message: string }[] };
     expect(structural.errors[0]?.kind).toBe("envelope_ambiguous");
     expect(structural.errors[0]?.message).toContain("name");
   });
@@ -129,7 +129,7 @@ describe("envelope inference (spec rules)", () => {
   test("zero-key root without envelopeKey is envelope_missing", () => {
     const doc = tmpDoc("doc.md", "---\nsoftschema:\n  contract: t:X/v1\n---\nbody\n");
     const result = validateArtifact(doc, mkContract());
-    const structural = result.output.structural as { errors: { kind: string }[] };
+    const structural = result.structural as { errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("envelope_missing");
   });
 });
@@ -139,8 +139,8 @@ describe("pure-yaml metadata rules", () => {
     const doc = tmpDoc("doc.yaml", "softschema:\n  contract: t:X/v1\nname: hello\ncount: 1\n");
     const result = validateArtifact(doc, mkContract({ profile: "pure-yaml" }));
     expect(result.ok).toBe(true);
-    expect(result.output.values).toEqual({ name: "hello", count: 1 });
-    expect(result.output.document_metadata).toEqual({
+    expect(result.values).toEqual({ name: "hello", count: 1 });
+    expect(result.document_metadata).toEqual({
       contract: "t:X/v1",
       envelope: null,
       schema: null,
@@ -151,7 +151,7 @@ describe("pure-yaml metadata rules", () => {
   test("a contract mismatch in the block is detected", () => {
     const doc = tmpDoc("doc.yaml", "softschema:\n  contract: t:X/v1\nname: hello\n");
     const result = validateArtifact(doc, mkContract({ id: "other:Y/v1", profile: "pure-yaml" }));
-    const structural = result.output.structural as { errors: { kind: string }[] };
+    const structural = result.structural as { errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("document_contract_mismatch");
   });
 
@@ -162,7 +162,7 @@ describe("pure-yaml metadata rules", () => {
       mkContract({ profile: "pure-yaml", envelopeKey: "payload" }),
     );
     expect(result.ok).toBe(true);
-    expect(result.output.values).toEqual({ name: "hi" });
+    expect(result.values).toEqual({ name: "hi" });
   });
 });
 
@@ -176,7 +176,7 @@ describe("validateArtifact preParsed (single read)", () => {
       },
     });
     expect(result.ok).toBe(true);
-    expect(result.output.values).toEqual({ name: "hi" });
+    expect(result.values).toEqual({ name: "hi" });
   });
 });
 

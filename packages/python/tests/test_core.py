@@ -6,6 +6,7 @@ import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from ruamel.yaml import YAML
 
+import softschema
 from softschema import (
     Contract,
     Contracts,
@@ -41,6 +42,40 @@ class EnvelopeModel(BaseModel):
 
 
 HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
+
+
+def test_package_root_exports_only_the_supported_surface() -> None:
+    assert set(softschema.__all__) == {
+        "ArtifactValidationResult",
+        "CompileResult",
+        "Contract",
+        "Contracts",
+        "EnvelopeAmbiguityError",
+        "FieldInfo",
+        "GeneratedSection",
+        "RegenerateResult",
+        "RepairKind",
+        "SchemaMetadata",
+        "SchemaProfile",
+        "SchemaStatus",
+        "SchemaView",
+        "SchemaWarning",
+        "SemanticResult",
+        "SoftField",
+        "SoftOwner",
+        "SoftTier",
+        "StructuralResult",
+        "ValidationResult",
+        "WarningCode",
+        "compile_model",
+        "infer_envelope_key",
+        "parse_schema_metadata",
+        "regenerate",
+        "validate_artifact",
+        "validate_semantic",
+        "validate_structural",
+        "validate_values",
+    }
 
 
 def test_compile_writes_json_schema_with_contract_id(tmp_path: Path) -> None:

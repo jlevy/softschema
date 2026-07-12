@@ -33,6 +33,7 @@ $ softschema validate tests/golden/fixtures/big-number.md --schema tests/golden/
     "schema": null,
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/big-number.md",
   "profile": "frontmatter-md",
   "semantic": {

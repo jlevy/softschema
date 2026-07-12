@@ -47,6 +47,7 @@ $ softschema validate tests/golden/fixtures/bad-error-norm.md --schema tests/gol
     "schema": null,
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bad-error-norm.md",
   "profile": "frontmatter-md",
   "semantic": {

@@ -27,6 +27,7 @@ $ softschema validate tests/golden/fixtures/empty-frontmatter.md --schema tests/
   },
   "contract_id": "test.errors:Sample/v1",
   "document_metadata": null,
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/empty-frontmatter.md",
   "profile": "frontmatter-md",
   "semantic": {

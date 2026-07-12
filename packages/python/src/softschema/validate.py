@@ -82,18 +82,17 @@ class ArtifactValidationResult:
     document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
     warnings: list[SchemaWarning] = field(default_factory=list)
+    outcome: Literal["valid", "invalid", "input_error"] = field(init=False)
+
+    def __post_init__(self) -> None:
+        input_codes = {"artifact_unreadable", "artifact_invalid_utf8", "artifact_too_large"}
+        first_kind = self.structural.errors[0].get("kind") if self.structural.errors else None
+        outcome = "valid" if self.ok else "input_error" if first_kind in input_codes else "invalid"
+        object.__setattr__(self, "outcome", outcome)
 
     @property
     def ok(self) -> bool:
         return self.structural.ok and self.semantic.ok
-
-    @property
-    def outcome(self) -> Literal["valid", "invalid", "input_error"]:
-        if self.ok:
-            return "valid"
-        input_codes = {"artifact_unreadable", "artifact_invalid_utf8", "artifact_too_large"}
-        first_kind = self.structural.errors[0].get("kind") if self.structural.errors else None
-        return "input_error" if first_kind in input_codes else "invalid"
 
     @property
     def warning_codes(self) -> list[str]:

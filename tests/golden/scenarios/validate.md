@@ -33,6 +33,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -116,6 +117,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
     "schema": null,
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bad-movie.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -201,6 +203,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -255,6 +258,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md
     "schema": null,
     "status": "permissive"
   },
+  "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
   "semantic": {

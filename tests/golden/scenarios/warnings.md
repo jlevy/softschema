@@ -31,6 +31,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {
