@@ -564,9 +564,9 @@ Final local validation on 2026-07-12:
 | Release boundary | candidate checksums verified; manual dispatch has no publish job; only release jobs receive OIDC publish authority |
 | Agent resources | source skill and both managed discovery mirrors passed byte-for-byte drift tests |
 
-The final production source is 6,222 lines, 994 more than the 5,228-line baseline and
+The final production source is 6,197 lines, 969 more than the 5,228-line baseline and
 far below the 3,000-line growth review threshold.
-Unit-test source is 4,444 lines.
+Unit-test source is 4,465 lines.
 The CLI golden corpus fell from 15 to 10 scenario files and now contains 1,630 lines.
 Seven unreferenced fixtures were deleted; all 21 retained fixtures have a named
 consumer. The repository has 168 tracked files after the deletion pass.
