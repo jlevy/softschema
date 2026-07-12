@@ -8,7 +8,7 @@
  * The original write function is restored in afterEach.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
@@ -27,8 +27,10 @@ const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
 /* ---- stdout capture helper ---- */
 let originalWrite: typeof process.stdout.write;
+let originalErrorWrite: typeof process.stderr.write;
 let originalPath: string | undefined;
 let chunks: string[] = [];
+let errorChunks: string[] = [];
 
 /** Return everything written to stdout since the last beforeEach reset. */
 function captured(): string {
@@ -37,15 +39,22 @@ function captured(): string {
 
 beforeEach(() => {
   originalWrite = process.stdout.write.bind(process.stdout);
+  originalErrorWrite = process.stderr.write.bind(process.stderr);
   originalPath = process.env.PATH;
   chunks = [];
+  errorChunks = [];
   process.stdout.write = ((chunk: string | Uint8Array) => {
     chunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
     return true;
   }) as typeof process.stdout.write;
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    errorChunks.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+    return true;
+  }) as typeof process.stderr.write;
 });
 afterEach(() => {
   process.stdout.write = originalWrite;
+  process.stderr.write = originalErrorWrite;
   process.env.PATH = originalPath;
 });
 
@@ -142,6 +151,49 @@ describe("cli main() in-process", () => {
 
   test("validate a self-describing artifact with no flags exits 0", async () => {
     expect(await main(argv("validate", MOVIE_DOC))).toBe(0);
+  });
+
+  test("loads a model whose filesystem path needs URL escaping", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "softschema model #"));
+    const modulePath = join(dir, "movie model #%.mjs");
+    const fixtureUrl = new URL("./fixtures/movie-model.mjs", import.meta.url).href;
+    writeFileSync(modulePath, `export { MoviePage } from ${JSON.stringify(fixtureUrl)};\n`);
+    try {
+      expect(await main(argv("validate", MOVIE_DOC, "--model", `${modulePath}:MoviePage`))).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("explains model file support when an import fails", async () => {
+    const missing = join(tmpdir(), "missing model.ts");
+    expect(await main(argv("validate", MOVIE_DOC, "--model", `${missing}:MoviePage`))).toBe(2);
+    expect(errorChunks.join("")).toContain(
+      "Node model paths must name built JavaScript (.js or .mjs); Bun may load TypeScript directly.",
+    );
+  });
+
+  test("rejects a document schema symlink that escapes its directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "softschema-schema-link-"));
+    const docs = join(root, "docs");
+    const outside = join(root, "outside.schema.yaml");
+    const doc = join(docs, "artifact.md");
+    const linked = join(docs, "linked.schema.yaml");
+    mkdirSync(docs);
+    writeFileSync(outside, "type: object\n");
+    writeFileSync(
+      doc,
+      "---\nsoftschema:\n  contract: example:Linked/v1\n  schema: linked.schema.yaml\nvalue: {}\n---\n",
+    );
+    symlinkSync(outside, linked);
+    try {
+      expect(await main(argv("validate", doc))).toBe(1);
+      const output = JSON.parse(captured());
+      expect(output.structural.errors[0].kind).toBe("schema_missing");
+      expect(output.structural.errors[0].message).toContain("escapes");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("generate --check on the committed example exits 0 (no drift)", async () => {

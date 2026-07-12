@@ -308,6 +308,35 @@ def test_validate_artifact_resolves_schema_path_relative_to_doc(tmp_path: Path) 
     assert result.ok
 
 
+def test_document_schema_binding_rejects_symlink_escape(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    outside = tmp_path / "outside.schema.yaml"
+    compile_model(SampleModel, outside, contract_id="example:Sample/v1")
+    (docs / "linked.schema.yaml").symlink_to(outside)
+    doc = docs / "sample.md"
+    write_doc(
+        doc,
+        """
+        softschema:
+          contract: example:Sample/v1
+          schema: linked.schema.yaml
+          envelope: sample
+        sample:
+          name: hello
+          direction: up
+          delta: 1.5
+        """,
+    )
+    contract = Contract(id="example:Sample/v1", envelope_key="sample")
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "schema_missing"
+    assert "escapes" in result.structural.errors[0]["message"]
+
+
 def test_validate_artifact_reports_missing_schema(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(

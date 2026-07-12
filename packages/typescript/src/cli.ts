@@ -394,9 +394,16 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
   const exportName = spec.slice(idx + 1);
   let mod: Record<string, unknown>;
   try {
-    mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
+    mod = (await import(pathToFileURL(resolve(spec.slice(0, idx))).href)) as Record<
+      string,
+      unknown
+    >;
   } catch (err) {
-    throw new UsageError(`cannot import ${JSON.stringify(spec)}: ${errMessage(err)}`);
+    const runtime = process.versions.bun === undefined ? "Node" : "Bun";
+    throw new UsageError(
+      `cannot import ${JSON.stringify(spec)} with ${runtime}: ${errMessage(err)}. ` +
+        "Node model paths must name built JavaScript (.js or .mjs); Bun may load TypeScript directly.",
+    );
   }
   const schema = mod[exportName];
   if (schema === undefined) {

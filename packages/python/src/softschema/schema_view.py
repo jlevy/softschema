@@ -9,11 +9,13 @@ diverging on edge cases like `$ref` resolution or `x-softschema` lookup.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from frontmatter_format import read_yaml_file
+from softschema._portable import parse_yaml, read_utf8
+from softschema.models import _check_contract_id
 
 JsonPointer = str
 
@@ -42,12 +44,12 @@ class SchemaView:
     """Stable navigation API over a compiled JSON Schema 2020-12 file with x-softschema."""
 
     def __init__(self, schema: dict[str, Any]) -> None:
-        self._schema = schema
+        self._schema = deepcopy(schema)
 
     @classmethod
     def load(cls, schema_path: Path) -> SchemaView:
         """Load a compiled YAML or JSON schema from disk."""
-        data = read_yaml_file(schema_path)
+        data = parse_yaml(read_utf8(schema_path))
         if not isinstance(data, dict):
             msg = f"schema at {schema_path} is not a mapping at the root"
             raise ValueError(msg)
@@ -56,7 +58,7 @@ class SchemaView:
     @property
     def raw(self) -> dict[str, Any]:
         """The full underlying schema dict. Treat as read-only."""
-        return self._schema
+        return deepcopy(self._schema)
 
     @property
     def root_softmeta(self) -> dict[str, Any]:
@@ -66,12 +68,17 @@ class SchemaView:
 
     @property
     def contract_id(self) -> str | None:
-        """Contract ID from `x-softschema.contract` or, falling back, `$id`."""
+        """Validated logical contract ID from `x-softschema.contract`."""
         meta_contract = self.root_softmeta.get("contract")
         if isinstance(meta_contract, str):
-            return meta_contract
-        schema_id = self._schema.get("$id")
-        return schema_id if isinstance(schema_id, str) else None
+            return _check_contract_id(meta_contract)
+        return None
+
+    @property
+    def schema_id(self) -> str | None:
+        """JSON Schema resource identity, separate from the artifact contract."""
+        value = self._schema.get("$id")
+        return value if isinstance(value, str) else None
 
     @property
     def schema_sha256(self) -> str | None:
@@ -169,17 +176,15 @@ class SchemaView:
         target = _resolve_ref(self._schema, ref)
         if target is None:
             return prop, None
-        return target, ref
+        merged = dict(target)
+        merged.update({key: value for key, value in prop.items() if key != "$ref"})
+        return merged, ref
 
 
 def _ref_from_anyof(prop: dict[str, Any]) -> str | None:
-    any_of = prop.get("anyOf")
-    if not isinstance(any_of, list):
-        return None
-    for entry in any_of:
-        if isinstance(entry, dict) and isinstance(entry.get("$ref"), str):
-            return entry["$ref"]
-    return None
+    branch = _nullable_value_branch(prop)
+    ref = branch.get("$ref") if branch is not None else None
+    return ref if isinstance(ref, str) else None
 
 
 def _resolve_ref(schema: dict[str, Any], ref: str) -> dict[str, Any] | None:
@@ -200,19 +205,17 @@ def _extract_type(prop: dict[str, Any]) -> str | None:
     t = prop.get("type")
     if isinstance(t, str):
         return t
-    if isinstance(t, list):
+    if isinstance(t, list) and len(t) == 2 and t.count("null") == 1:
         # JSON Schema 2020-12 allows ["string", "null"] etc. Return the non-null one.
         non_null = [entry for entry in t if entry != "null"]
         if len(non_null) == 1 and isinstance(non_null[0], str):
             return non_null[0]
     # `anyOf` style optionals (Pydantic's `Foo | None`): extract from the first typed branch.
-    any_of = prop.get("anyOf")
-    if isinstance(any_of, list):
-        for entry in any_of:
-            if isinstance(entry, dict):
-                inner = entry.get("type")
-                if isinstance(inner, str) and inner != "null":
-                    return inner
+    branch = _nullable_value_branch(prop)
+    if branch is not None:
+        inner = branch.get("type")
+        if isinstance(inner, str) and inner != "null":
+            return inner
     return None
 
 
@@ -221,14 +224,21 @@ def _extract_enum(prop: dict[str, Any]) -> list[str] | None:
     if isinstance(enum, list) and all(isinstance(v, str) for v in enum):
         return list(enum)
     # `anyOf: [{enum: [...]}, {type: null}]` shape from `Literal[...] | None`.
-    any_of = prop.get("anyOf")
-    if isinstance(any_of, list):
-        for entry in any_of:
-            if isinstance(entry, dict):
-                inner = entry.get("enum")
-                if isinstance(inner, list) and all(isinstance(v, str) for v in inner):
-                    return list(inner)
+    branch = _nullable_value_branch(prop)
+    if branch is not None:
+        inner = branch.get("enum")
+        if isinstance(inner, list) and all(isinstance(v, str) for v in inner):
+            return list(inner)
     return None
+
+
+def _nullable_value_branch(prop: dict[str, Any]) -> dict[str, Any] | None:
+    any_of = prop.get("anyOf")
+    if not isinstance(any_of, list) or len(any_of) != 2:
+        return None
+    nulls = [entry for entry in any_of if entry == {"type": "null"}]
+    others = [entry for entry in any_of if isinstance(entry, dict) and entry != {"type": "null"}]
+    return others[0] if len(nulls) == 1 and len(others) == 1 else None
 
 
 def _extract_softmeta(prop: dict[str, Any]) -> dict[str, Any]:

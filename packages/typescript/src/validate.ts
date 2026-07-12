@@ -3,7 +3,7 @@
  * and run structural validation against the compiled JSON Schema via ajv. The result
  * object serializes (via stableStringify) byte-identically to the Python CLI output.
  */
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
@@ -403,10 +403,10 @@ function resolveMetadataSchema(
   if (isAbsolute(schemaRef)) {
     return { path: null, error: `softschema.schema must be a relative path: ${schemaRef}` };
   }
-  const docDir = resolve(dirname(docPath));
-  const resolved = resolve(docDir, schemaRef);
-  const cwd = resolve(process.cwd());
-  if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
+  const docDir = realpathSync(resolve(dirname(docPath)));
+  const candidate = resolve(docDir, schemaRef);
+  const cwd = realpathSync(resolve(process.cwd()));
+  if (!isContained(docDir, candidate) && !isContained(cwd, candidate)) {
     return {
       path: null,
       error:
@@ -414,8 +414,17 @@ function resolveMetadataSchema(
         `directory: ${schemaRef}`,
     };
   }
-  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+  if (!existsSync(candidate) || !statSync(candidate).isFile()) {
     return { path: null, error: `compiled schema not found: ${schemaRef}` };
+  }
+  const resolved = realpathSync(candidate);
+  if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
+    return {
+      path: null,
+      error:
+        "softschema.schema escapes the document directory and the working " +
+        `directory: ${schemaRef}`,
+    };
   }
   return { path: resolved, error: null };
 }

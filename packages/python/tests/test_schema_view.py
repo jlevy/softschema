@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 
 from softschema import FieldInfo, SchemaView
+from softschema._portable import parse_yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MOVIE_SCHEMA = REPO_ROOT / "examples/movie_page/movie-page.schema.yaml"
+HARDENING_VECTORS = REPO_ROOT / "tests/vectors/hardening.yaml"
 
 
 @pytest.fixture
@@ -128,3 +130,30 @@ def test_iter_fields_terminates_on_cyclic_ref() -> None:
     ]
     # The cyclic `child` is surfaced as an unresolved leaf (no further recursion).
     assert view.field("/properties/root/properties/child").json_type is None
+
+
+def test_shared_schema_view_contract() -> None:
+    vectors = parse_yaml(HARDENING_VECTORS.read_text(encoding="utf-8"))["schema_view"]
+
+    ref_case = vectors[0]
+    source = ref_case["schema"]
+    view = SchemaView(source)
+    source["properties"]["name"]["description"] = "mutated"
+    field = view.field("/properties/name")
+    assert {"description": field.description, "type": field.json_type} == ref_case["expected"]
+
+    union_case = vectors[1]
+    union = SchemaView(union_case["schema"]).field("/properties/value")
+    assert union.json_type is union_case["expected"]["type"]
+
+    identities = SchemaView(
+        {
+            "$id": "https://example.com/schemas/person-v1",
+            "x-softschema": {"contract": "example.people:Person/v1"},
+        }
+    )
+    assert identities.contract_id == "example.people:Person/v1"
+    assert identities.schema_id == "https://example.com/schemas/person-v1"
+    raw = identities.raw
+    raw["$id"] = "mutated"
+    assert identities.schema_id == "https://example.com/schemas/person-v1"
