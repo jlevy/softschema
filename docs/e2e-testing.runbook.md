@@ -35,7 +35,7 @@ The automated half of the story runs on every push and PR
 | TS typecheck, biome, unit tests + coverage gate | `typescript` job |
 | TS build + publint (publishable layout) | `typescript` job |
 | Golden corpus on py, ts (Node), ts-bun | `golden` + `typescript` jobs |
-| Python-vs-TypeScript byte parity | `cross-impl` job |
+| Python-vs-TypeScript semantic parity | `cross-impl` job |
 | Tag ↔ `package.json` version match | `publish.yml` guard |
 
 **Not** covered by CI—the reason this runbook exists:
@@ -129,8 +129,8 @@ If a local supply-chain cool-off blocks the `npm install` of dependencies, add
 
 The README Quick Start is the contract with a first-time user; run it verbatim from an
 **empty directory** on both implementations.
-Before a release, substitute the local builds for the exact zero-install version shown
-in the README (the published forms are verified in Phase 5):
+Before a release, substitute the local builds for the zero-install `@latest` commands
+shown in the README (the published forms are verified in Phase 5):
 
 ```bash
 repo=$(pwd)   # the softschema checkout
@@ -212,8 +212,8 @@ uvx softschema@X.Y.Z docs example-schema   > movie-page.schema.yaml
 uvx softschema@X.Y.Z validate spirited-away.md
 ```
 
-After verification, update the exact last-verified version used by the README, bundled
-skill, CLI help, and installation guide in the release-preparation PR.
+The README, bundled skill, CLI help, and installation guide use `@latest`, so published
+release verification requires no follow-up documentation pin change.
 
 ## Recording Results
 

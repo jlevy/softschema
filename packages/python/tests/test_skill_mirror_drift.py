@@ -2,9 +2,8 @@
 
 This is the drift test the cli-agent-skill-patterns guideline calls for under the
 "commit and dogfood" model: regenerate the install payload from
-``skills/softschema/SKILL.md`` and fail if either committed mirror differs. The skill
-uses one exact last-verified zero-install version, and both mirrors compare byte-for-byte
-against the generated source payload.
+``skills/softschema/SKILL.md`` and fail if either committed mirror differs. Both mirrors
+compare byte-for-byte against the generated source payload.
 """
 
 from __future__ import annotations

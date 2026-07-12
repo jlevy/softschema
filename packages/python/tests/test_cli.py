@@ -225,8 +225,8 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "IMPORTANT for agents" in output
     assert "repo root" in output
     assert "skill --install" in output
-    assert "uvx softschema@0.2.2" in output
-    assert "npx -y softschema@0.2.2" in output
+    assert "uvx softschema@latest" in output
+    assert "npx -y softschema@latest" in output
 
 
 def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -293,16 +293,15 @@ def test_skill_brief_is_derived_from_source_skill(capsys: pytest.CaptureFixture[
     assert capsys.readouterr().out == cli._brief_skill_text()
 
 
-def test_skill_uses_pinned_runner(
+def test_skill_uses_latest_runner(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = softschema_main(["skill"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    # Agent bootstrap uses one exact last-verified release in both ecosystems.
-    assert "uvx softschema@0.2.2" in output
-    assert "npx -y softschema@0.2.2" in output
+    assert "uvx softschema@latest" in output
+    assert "npx -y softschema@latest" in output
     assert "Pick One Runner" in output
     assert "$SS docs guide" in output
 
@@ -327,10 +326,11 @@ def test_skill_install_creates_both_mirrors(
     agents = (tmp_path / ".agents/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     claude = (tmp_path / ".claude/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     assert agents == claude
-    assert "DO NOT EDIT format=f02 source-sha256=" in agents
+    assert "DO NOT EDIT format=f02:" in agents
+    assert "source-sha256" not in agents
 
 
-def test_skill_install_is_idempotent(
+def test_skill_install_is_idempotent_and_refreshes_managed_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -343,6 +343,16 @@ def test_skill_install_is_idempotent(
     assert exit_code == 0
     summary = json.loads(capsys.readouterr().out)
     assert all(f["status"] == "unchanged" for f in summary["files"])
+
+    target = tmp_path / ".agents/skills/softschema/SKILL.md"
+    target.write_text(target.read_text().replace("# softschema Skill", "# local edit"))
+    assert softschema_main(args) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert {f["path"]: f["status"] for f in summary["files"]} == {
+        ".agents/skills/softschema/SKILL.md": "updated",
+        ".claude/skills/softschema/SKILL.md": "unchanged",
+    }
+    assert "# softschema Skill" in target.read_text()
 
 
 def test_skill_install_dry_run_and_refusal(

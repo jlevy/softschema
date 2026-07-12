@@ -7,7 +7,7 @@ Both provide the same commands, exit classes, structured result meaning, and can
 compiled JSON Schema with an equal `schema_sha256`.
 
 ```bash
-npx -y softschema@0.2.2 --help          # exact last-verified zero-install release
+npx -y softschema@latest --help         # latest published release
 # or
 bun add softschema
 ```

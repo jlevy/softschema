@@ -6,50 +6,50 @@ Pick the runtime you already have; both validate against the same canonical sche
 
 ## Two Ways to Consume It
 
-|  | Pin as a dependency | Zero-install (`uvx` / `npx`) |
+|  | Install as a dependency | Zero-install (`uvx` / `npx`) |
 | --- | --- | --- |
 | **For** | Projects, CI gates, library use | One-off checks, agent bootstrap |
-| **Reproducible** | Yes—the version is locked in `uv.lock` / `package-lock.json` | Only if you pin the runner (`uvx softschema@0.2.2`) |
+| **Reproducible** | Yes—the version is locked in `uv.lock` / `package-lock.json` | No—`@latest` resolves at invocation time |
 | **Fast / offline** | Yes—the binary is already on disk | Cold-start fetch; needs the network |
 | **Library import** | Yes—the only way | No |
 
-The rule of thumb: **if softschema runs more than once, or in CI, or you import it—pin
-it as a dependency.
-For a quick one-off or an agent bootstrapping with nothing installed,
-use a zero-install runner**, pinned where the result must be repeatable.
+The rule of thumb: **if softschema runs more than once, or in CI, or you import it—add
+it as a project dependency and commit the lockfile.
+For a quick one-off or an agent bootstrapping with nothing installed, use a zero-install
+runner**.
 
-## Pin as a Dependency
+## Install as a Dependency
 
 Python (a dev dependency, or a persistent user tool):
 
 ```bash
-uv add --dev softschema==0.2.2      # project dev dependency; run via `uv run softschema`
+uv add --dev softschema             # project dev dependency; run via `uv run softschema`
 uv tool install softschema          # persistent CLI on your PATH
 ```
 
 Node (>= 22.12):
 
 ```bash
-npm install -D softschema@0.2.2     # or: pnpm add -D / bun add -d
+npm install -D softschema@latest    # or: pnpm add -D / bun add -d
 npx softschema --help               # resolves the local pinned copy
 ```
 
 ## Zero-Install
 
 ```bash
-uvx softschema@0.2.2 --help        # Python implementation, ephemeral
-npx -y softschema@0.2.2 --help     # Node implementation, ephemeral
+uvx softschema@latest --help       # Python implementation, ephemeral
+npx -y softschema@latest --help    # Node implementation, ephemeral
 ```
 
-The exact version is the last verified zero-install release.
-Update the pin deliberately after verifying a newer release.
+These commands resolve the latest published release.
+Use the project-dependency path above when a workflow must be repeatable.
 
 ## Quick Start for Agents
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@0.2.2 --help` (for the Python implementation) or
-> `npx -y softschema@0.2.2 --help` (for the Node implementation) and follow the
+> Run `uvx softschema@latest --help` (for the Python implementation) or
+> `npx -y softschema@latest --help` (for the Node implementation) and follow the
 > instructions to set up softschema for this repo as a skill.
 
 The help output points to the explicit project install:
@@ -79,11 +79,10 @@ brew install uv
 
 ## Supply-chain Cool-off
 
-Zero-install commands use an exact version because consumer environments cannot be
-assumed to enforce a release-age gate.
-Projects should also pin their dependency in the normal lockfile.
-When evaluating an upgrade, apply a release-age cool-off and review the lockfile or
-resolved artifact before changing either pin.
+Zero-install commands use `@latest` for low-friction one-off checks and agent bootstrap.
+They are intentionally not reproducible.
+Projects and CI should install softschema as a dependency, commit the normal lockfile,
+and apply a release-age cool-off when updating it.
 See [supply-chain-hardening](https://github.com/jlevy/supply-chain-hardening) for the
 rationale.
 

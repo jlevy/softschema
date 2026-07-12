@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib
 import json
-import re
 import shutil
 import sys
 from dataclasses import asdict, dataclass, is_dataclass
@@ -33,19 +31,19 @@ from softschema.validate import (
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
-PINNED_RUNNER_VERSION = "0.2.2"
+ZERO_INSTALL_PACKAGE = "softschema@latest"
 RUNNER_COMMANDS: tuple[str, ...] = ("softschema", "uvx", "npx")
 RUNNER_INVOCATIONS: dict[str, str] = {
     "softschema": "softschema",
-    "uvx": f"uvx softschema@{PINNED_RUNNER_VERSION}",
-    "npx": f"npx -y softschema@{PINNED_RUNNER_VERSION}",
+    "uvx": f"uvx {ZERO_INSTALL_PACKAGE}",
+    "npx": f"npx -y {ZERO_INSTALL_PACKAGE}",
 }
 
 AGENT_HELP_EPILOG = f"""IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@{PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
+    uvx {ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
     # or
-    npx -y softschema@{PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
+    npx -y {ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
   Then read `softschema skill --brief` and `softschema docs --list` for operating rules
   and bundled docs."""
 
@@ -518,13 +516,9 @@ SKILL_INSTALL_TARGETS: dict[str, Path] = {
     "claude": Path(".claude/skills/softschema/SKILL.md"),
 }
 
-# The format=fNN stamp lets a future installer recognize this managed surface and
-# refuse to clobber a newer format. The package version is intentionally omitted so the
-# committed mirrors stay deterministic across dev builds (the drift test renders with the
-# locally installed version).
-_SKILL_MARKER_RE = re.compile(
-    r"<!-- DO NOT EDIT format=f02 source-sha256=([0-9a-f]{64}): written by "
-    r"`softschema skill --install`\.\nRe-run that command to update\.\n-->\n\n"
+_SKILL_MARKER = (
+    "<!-- DO NOT EDIT format=f02: written by `softschema skill --install`.\n"
+    "Re-run that command to update.\n-->\n"
 )
 
 
@@ -541,18 +535,13 @@ def _rendered_skill_text() -> str:
 
 def _install_skill_payload(rendered: str) -> str:
     """Insert the DO NOT EDIT marker after the closing frontmatter delimiter."""
-    digest = hashlib.sha256(rendered.encode()).hexdigest()
-    marker = (
-        f"<!-- DO NOT EDIT format=f02 source-sha256={digest}: written by "
-        "`softschema skill --install`.\nRe-run that command to update.\n-->\n"
-    )
     lines = rendered.split("\n")
     delimiter_count = 0
     for i, line in enumerate(lines):
         if line.strip() == "---":
             delimiter_count += 1
             if delimiter_count == 2:
-                lines.insert(i + 1, marker)
+                lines.insert(i + 1, _SKILL_MARKER)
                 break
     return "\n".join(lines)
 
@@ -567,12 +556,8 @@ def _resolve_install_base(start: Path) -> Path:
     return start
 
 
-def _managed_skill_source(existing: str) -> str | None:
-    match = _SKILL_MARKER_RE.search(existing)
-    if match is None:
-        return None
-    source = existing[: match.start()] + existing[match.end() :]
-    return source if hashlib.sha256(source.encode()).hexdigest() == match.group(1) else None
+def _is_managed_skill(existing: str) -> bool:
+    return _SKILL_MARKER in existing
 
 
 def _install_skill(base_dir: Path, *, agents: list[str], dry_run: bool = False) -> dict[str, Any]:
@@ -586,8 +571,8 @@ def _install_skill(base_dir: Path, *, agents: list[str], dry_run: bool = False) 
         existing = target.read_text(encoding="utf-8") if target.exists() else None
         if existing == payload:
             status = "unchanged"
-        elif existing is not None and _managed_skill_source(existing) is None:
-            raise UsageError(f"refusing to overwrite unmanaged or modified skill: {target}")
+        elif existing is not None and not _is_managed_skill(existing):
+            raise UsageError(f"refusing to overwrite unmanaged skill: {target}")
         else:
             status = "would_update" if existing is not None else "would_create"
             pending.append((target, "updated" if existing is not None else "created"))

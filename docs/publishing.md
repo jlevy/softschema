@@ -19,10 +19,9 @@ No API tokens are stored in the repo.
   to `X.Y.Z` in the same commit that prepares the release, so the npm version matches
   the Git tag the Python build derives.
   CI verifies this match before publishing and fails the release on a mismatch.
-- **Zero-install examples use an exact last-verified version.** After registry and
-  package smoke tests pass, update the pin in the README, installation guide, source
-  skill, and both CLI help epilogs.
-  Never use an unpinned agent bootstrap command.
+- **Zero-install examples use `@latest`.** This keeps the README, installation guide,
+  shipped skill, and CLI help stable across releases.
+  Repeatable project and CI use belongs in a lockfile-backed dependency instead.
 - The committed skill mirrors under `.agents/` and `.claude/` are regenerated with the
   explicit project-scope install command; a drift test keeps them in sync with the
   source.
@@ -77,8 +76,7 @@ For each release of version `X.Y.Z`:
 2. **Set both package versions to `X.Y.Z`.** Edit `packages/typescript/package.json`
    `"version"` to `X.Y.Z` (the Python version is derived from the tag, so it needs no
    file edit). The two must match or the npm publish step aborts.
-   Bump any docs that pin the version (`installation.md`, the guide, README) in the same
-   commit.
+   Public zero-install examples remain on `@latest` and require no release edit.
 
 3. **Run the full validation pass** from the
    [end-to-end testing runbook](e2e-testing.runbook.md): the local automated sweep

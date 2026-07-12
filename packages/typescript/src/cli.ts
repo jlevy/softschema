@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
 /**
  * Command-line interface for the TypeScript softschema implementation. Mirrors the
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
@@ -37,19 +36,19 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->";
 const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
-const PINNED_RUNNER_VERSION = "0.2.2";
+const ZERO_INSTALL_PACKAGE = "softschema@latest";
 const RUNNER_COMMANDS = ["softschema", "uvx", "npx"] as const;
 const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
   softschema: "softschema",
-  uvx: `uvx softschema@${PINNED_RUNNER_VERSION}`,
-  npx: `npx -y softschema@${PINNED_RUNNER_VERSION}`,
+  uvx: `uvx ${ZERO_INSTALL_PACKAGE}`,
+  npx: `npx -y ${ZERO_INSTALL_PACKAGE}`,
 };
 
 const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@${PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
+    uvx ${ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
     # or
-    npx -y softschema@${PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
+    npx -y ${ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
   Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
   and bundled docs.`;
 
@@ -169,11 +168,9 @@ export const SKILL_INSTALL_TARGETS = {
   claude: ".claude/skills/softschema/SKILL.md",
 } as const;
 
-// The format=fNN stamp lets a future installer recognize this managed surface and refuse
-// to clobber a newer format. The package version is intentionally omitted so the
-// committed mirrors stay deterministic across dev builds (matches the Python marker).
-const SKILL_MARKER_RE =
-  /<!-- DO NOT EDIT format=f02 source-sha256=([0-9a-f]{64}): written by `softschema skill --install`\.\nRe-run that command to update\.\n-->\n\n/;
+const SKILL_MARKER =
+  "<!-- DO NOT EDIT format=f02: written by `softschema skill --install`.\n" +
+  "Re-run that command to update.\n-->\n";
 
 function packageVersion(): string {
   try {
@@ -235,17 +232,13 @@ function renderedSkillBrief(): string {
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
 export function installSkillPayload(rendered: string): string {
-  const digest = createHash("sha256").update(rendered).digest("hex");
-  const marker =
-    `<!-- DO NOT EDIT format=f02 source-sha256=${digest}: written by ` +
-    "`softschema skill --install`.\nRe-run that command to update.\n-->\n";
   const lines = rendered.split("\n");
   let delimiters = 0;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i]?.trim() === "---") {
       delimiters += 1;
       if (delimiters === 2) {
-        lines.splice(i + 1, 0, marker);
+        lines.splice(i + 1, 0, SKILL_MARKER);
         break;
       }
     }
@@ -264,11 +257,8 @@ function resolveInstallBase(start: string): string {
   }
 }
 
-function managedSkillSource(existing: string): string | null {
-  const match = SKILL_MARKER_RE.exec(existing);
-  if (match?.index === undefined || match[1] === undefined) return null;
-  const source = existing.slice(0, match.index) + existing.slice(match.index + match[0].length);
-  return createHash("sha256").update(source).digest("hex") === match[1] ? source : null;
+function isManagedSkill(existing: string): boolean {
+  return existing.includes(SKILL_MARKER);
 }
 
 function runSkillInstall(opts: { scope?: string; agent?: string[]; dryRun?: boolean }): number {
@@ -292,8 +282,8 @@ function runSkillInstall(opts: { scope?: string; agent?: string[]; dryRun?: bool
     let status: string;
     if (existing === payload) {
       status = "unchanged";
-    } else if (existing !== null && managedSkillSource(existing) === null) {
-      throw new UsageError(`refusing to overwrite unmanaged or modified skill: ${target}`);
+    } else if (existing !== null && !isManagedSkill(existing)) {
+      throw new UsageError(`refusing to overwrite unmanaged skill: ${target}`);
     } else {
       status = existing !== null ? "would_update" : "would_create";
       pending.push({ target, status: existing !== null ? "updated" : "created" });

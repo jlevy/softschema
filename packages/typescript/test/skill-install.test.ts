@@ -62,7 +62,8 @@ describe("skill --install", () => {
       const fullPath = join(tempDir, file.path);
       expect(existsSync(fullPath)).toBe(true);
       const content = readFileSync(fullPath, "utf8");
-      expect(content).toContain("DO NOT EDIT format=f02 source-sha256=");
+      expect(content).toContain("DO NOT EDIT format=f02:");
+      expect(content).not.toContain("source-sha256");
     }
 
     // Verify the targets match SKILL_INSTALL_TARGETS
@@ -72,7 +73,7 @@ describe("skill --install", () => {
     }
   });
 
-  test("second run reports unchanged for both files", async () => {
+  test("second run is unchanged and a managed edit is refreshed", async () => {
     // First run: create files.
     await main(argv(...installArgs));
     stdout = "";
@@ -91,6 +92,17 @@ describe("skill --install", () => {
     for (const file of result.files) {
       expect(file.status).toBe("unchanged");
     }
+
+    const target = join(tempDir, SKILL_INSTALL_TARGETS.portable);
+    writeFileSync(target, readFileSync(target, "utf8").replace("# softschema Skill", "# local edit"));
+    stdout = "";
+    expect(await main(argv(...installArgs))).toBe(0);
+    const refreshed = JSON.parse(stdout) as { files: { path: string; status: string }[] };
+    expect(Object.fromEntries(refreshed.files.map((file) => [file.path, file.status]))).toEqual({
+      ".agents/skills/softschema/SKILL.md": "updated",
+      ".claude/skills/softschema/SKILL.md": "unchanged",
+    });
+    expect(readFileSync(target, "utf8")).toContain("# softschema Skill");
   });
 
   test("dry-run previews and unmanaged files are refused", async () => {

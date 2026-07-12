@@ -199,7 +199,7 @@ The parity invariants, and where each is enforced:
 | --- | --- |
 | Canonical schema (equal `schema_sha256`) | `compile` and the KitchenSink conformance test (`packages/typescript/test/conformance.test.ts`) and `examples/parity/` |
 | Engine-neutral structural errors | shared message templates (`errors`), the golden corpus |
-| Byte-identical neutral CLI output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
+| Structurally equal JSON and exact stable human output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
 | Equal flag/command surface | per-impl and neutral golden scenarios |
 | Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
 | Skill mirrors never go stale | the mirror drift test (`tests/test_skill_mirror_drift.py`) |

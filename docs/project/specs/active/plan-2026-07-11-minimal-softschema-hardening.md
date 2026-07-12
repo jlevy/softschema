@@ -5,7 +5,7 @@ author: Codex, with maintainer direction from Joshua Levy
 ---
 # Feature: Minimal Softschema Hardening
 
-**Date:** 2026-07-11 (last updated 2026-07-11)
+**Date:** 2026-07-11 (last updated 2026-07-12)
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
@@ -215,8 +215,8 @@ implementation.
 | TypeScript document-declared schema containment was lexical and could follow an in-tree symlink outside the project boundary | Resolve the real target before the containment check in both runtimes. Keep same-user path replacement races out of scope. | One filesystem boundary test per runtime |
 | The existing TypeScript model loader imported raw path strings, so spaces, URL metacharacters, and Windows paths could resolve incorrectly | Parse `path:export` on the final colon, convert the resolved local path with `pathToFileURL`, and give a clear Node-built-JavaScript versus Bun-TypeScript error. Keep model loading trusted and local. | Focused TypeScript adapter tests |
 | Installed CLI resources could be shadowed by a consumer repository | Resolve installed docs, examples, and skills from package resources. Permit live source resources only when the module has the exact source-checkout layout. | Built-package collision smoke per ecosystem |
-| `skill --install` overwrote unmanaged or locally modified files and inferred scope too freely | Require explicit project or personal scope, support dry run, constrain targets, refuse unmanaged or modified files, and replace managed files atomically. | One shared behavioral matrix exercised through each CLI |
-| Agent bootstrap examples used unpinned zero-install commands while claiming a release-age policy that consumers may not have | Prefer an installed qualifying CLI. Make any zero-install fallback use one centrally generated, exact last-verified package version and a noninteractive invocation. | Skill content assertion and installed-package smoke |
+| `skill --install` overwrote files without an explicit ownership boundary and inferred scope too freely | Require explicit project or personal scope, support dry run, constrain targets, refuse unmarked files, and replace `DO NOT EDIT` managed files atomically. | One shared behavioral matrix exercised through each CLI |
+| Agent bootstrap examples need to stay current without a release-wide documentation bump | Prefer an installed qualifying CLI. Use noninteractive `@latest` for zero-install bootstrap and require a lockfile-backed dependency where repeatability matters. | Skill content assertion and installed-package smoke |
 | CI and publication rebuilt or trusted artifacts across an incompletely closed boundary | Pin reviewed actions, install from frozen locks, build wheel/sdist/npm tarball once without publish authority, checksum them, smoke the exact transferred artifacts on supported operating systems, then publish those bytes through protected OIDC jobs. | Workflow dry run plus built-artifact matrix smoke |
 | Public docs and agent guidance overstated byte parity, schema trust, bootstrap safety, and agent-target support | Rewrite claims to match the hard-cut semantic parity and trust model; keep exact rules in the spec, APIs in one reference, and agent-specific claims tied to primary documentation or tested discovery. | Link/claim audit plus installed docs smoke |
 
@@ -263,7 +263,8 @@ both runtimes rejected 64 nested sequences beneath a root mapping.
 Shared 63/64/65 cases now pin that boundary, and the actual hostile-depth classification
 gap is normalized. The same pass also aligned generated compiler titles and schema-root
 messages, guarded shallow installed-resource paths, removed dead error arms, centralized
-runner pins inside each CLI, and annotated action SHAs with versions.
+the `@latest` zero-install package selector inside each CLI, and annotated action SHAs
+with versions.
 
 ### Accepted Hardening Set
 
@@ -290,7 +291,8 @@ They do not authorize the previous PR’s architecture.
 
 - Resolve bundled docs, examples, and skill content from the installed package root.
 - Keep `skill --install` simple: explicit scope, dry-run preview, repository
-  containment, refusal to overwrite unmanaged or modified files, and atomic replacement.
+  containment, refusal to overwrite unmarked files, and atomic replacement of managed
+  files.
 - Do not add locking, journaling, repair, rollback protocols, or concurrent-writer
   defenses.
 
@@ -550,15 +552,15 @@ Cross-runtime JSON comparison parses and sorts JSON structurally.
 Only human-readable text, exit codes, generated Markdown, and digest preimages are
 compared as exact bytes where exactness is part of the contract.
 
-Final local validation on 2026-07-11:
+Final local validation on 2026-07-12:
 
 | Boundary | Result |
 | --- | --- |
 | Python | lint, type checks, and 165 tests passed in 1.23 seconds |
-| TypeScript | lint, typecheck, and 166 tests passed in 2.14 seconds; 96.06% function and 96.34% line coverage |
+| TypeScript | lint, typecheck, and 166 tests passed in 1.99 seconds; 96.06% function and 96.34% line coverage |
 | CLI goldens | 38 Python, 36 Node, and 38 Bun journeys passed |
 | Cross-runtime | 20 direct Python-to-Node commands passed with structural JSON comparison |
-| Packages | wheel, sdist, and npm tarball built; `publint` passed; exact artifacts installed and ran outside the checkout |
+| Packages | version 0.3.0 wheel, sdist, and npm tarball built; `publint` passed; exact artifacts installed and ran outside the checkout |
 | Release boundary | candidate checksums verified; manual dispatch has no publish job; only release jobs receive OIDC publish authority |
 | Agent resources | source skill and both managed discovery mirrors passed byte-for-byte drift tests |
 

@@ -44,8 +44,8 @@ describe("bundled resources (standalone, outside the repo)", () => {
     expect(r.stdout).toContain("IMPORTANT for agents");
     expect(r.stdout).toContain("repo root");
     expect(r.stdout).toContain("skill --install");
-    expect(r.stdout).toContain("uvx softschema@0.2.2");
-    expect(r.stdout).toContain("npx -y softschema@0.2.2");
+    expect(r.stdout).toContain("uvx softschema@latest");
+    expect(r.stdout).toContain("npx -y softschema@latest");
   });
 
   test("--version prints 'softschema <version>'", () => {

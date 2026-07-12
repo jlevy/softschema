@@ -15,8 +15,8 @@ Two interchangeable implementations share one portable contract: see
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@0.2.2 --help` (for the Python implementation) or
-> `npx -y softschema@0.2.2 --help` (for the Node implementation) and follow the
+> Run `uvx softschema@latest --help` (for the Python implementation) or
+> `npx -y softschema@latest --help` (for the Node implementation) and follow the
 > instructions to set up softschema for this repo as a skill.
 
 The help output points the agent to the repo-local skill install command and the bundled
@@ -484,10 +484,10 @@ Pin softschema as a dev dependency so CI uses a known version:
 
 ```bash
 # Python
-uv add --dev softschema==0.2.2
+uv add --dev softschema
 
 # Node
-npm i -D softschema@0.2.2
+npm i -D softschema@latest
 ```
 
 Two checks belong in CI:

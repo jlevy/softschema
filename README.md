@@ -10,18 +10,18 @@ Print the bundled example artifact and its compiled schema, then validate—the 
 is fully self-describing, so no flags are needed:
 
 ```bash
-uvx softschema@0.2.2 docs example-artifact > spirited-away.md
-uvx softschema@0.2.2 docs example-schema > movie-page.schema.yaml
-uvx softschema@0.2.2 validate spirited-away.md
+uvx softschema@latest docs example-artifact > spirited-away.md
+uvx softschema@latest docs example-schema > movie-page.schema.yaml
+uvx softschema@latest validate spirited-away.md
 ```
 
-(Or `npx -y softschema@0.2.2 ...` for the Node implementation; the two are
+(Or `npx -y softschema@latest ...` for the Node implementation; the two are
 interchangeable.)
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@0.2.2 --help` (for the Python implementation) or
-> `npx -y softschema@0.2.2 --help` (for the Node implementation) and follow the
+> Run `uvx softschema@latest --help` (for the Python implementation) or
+> `npx -y softschema@latest --help` (for the Node implementation) and follow the
 > instructions to set up softschema for this repo as a skill.
 
 The help output points the agent to the explicit install command, which writes the
@@ -200,25 +200,27 @@ via `--schema` executes nothing and is the safe path for untrusted input.
 
 Two supported ways to consume softschema; pick by use:
 
-- **Pin it as a dependency** for projects, CI gates, and library use (reproducible,
-  fast, offline, and the only way to `import` it):
+- **Install it as a dependency** for projects, CI gates, and library use (reproducible
+  through the project lockfile, fast, offline, and the only way to `import` it):
 
   ```bash
-  uv add --dev softschema==0.2.2        # Python
-  npm install -D softschema@0.2.2       # Node (or: bun add -d)
+  uv add --dev softschema               # Python
+  npm install -D softschema@latest      # Node (or: bun add -d)
   ```
 
 - **Zero-install** for one-off checks and agent bootstrap:
 
   ```bash
-  uvx softschema@0.2.2 --help
-  npx -y softschema@0.2.2 --help
+  uvx softschema@latest --help
+  npx -y softschema@latest --help
   ```
 
-The rule of thumb: if softschema runs more than once, or in CI, or you import it—pin it.
+The rule of thumb: if softschema runs more than once, or in CI, or you import it—install
+it in the project and commit the lockfile.
 For a quick check or an agent bootstrapping with nothing installed, use a zero-install
-runner. See [Installation](docs/installation.md) for details, including the supply-chain
-exact last-verified runner pin and the project supply-chain policy.
+runner.
+See [Installation](docs/installation.md) for details and the project supply-chain
+policy.
 
 ## Use as a Library
 
@@ -260,24 +262,24 @@ docs.
 
 ```bash
 # Python:
-uvx softschema@0.2.2 --help            # entry point with skill setup pointers
-uvx softschema@0.2.2 skill --install --scope project --agent portable --agent claude
-uvx softschema@0.2.2 skill --brief     # compact operating brief
-uvx softschema@0.2.2 docs guide        # full mental model and adoption path
+uvx softschema@latest --help            # entry point with skill setup pointers
+uvx softschema@latest skill --install --scope project --agent portable --agent claude
+uvx softschema@latest skill --brief     # compact operating brief
+uvx softschema@latest docs guide        # full mental model and adoption path
 
 # TypeScript (same commands, same bundled docs/skill):
-npx -y softschema@0.2.2 --help
-npx -y softschema@0.2.2 skill --install --scope project --agent portable --agent claude
-npx -y softschema@0.2.2 skill --brief
-npx -y softschema@0.2.2 docs guide
+npx -y softschema@latest --help
+npx -y softschema@latest skill --install --scope project --agent portable --agent claude
+npx -y softschema@latest skill --brief
+npx -y softschema@latest docs guide
 ```
 
 Self-install the skill into a project so any agent working in the repo finds it natively
 (either package writes the identical mirrors):
 
 ```bash
-uvx softschema@0.2.2 skill --install --scope project --agent portable --agent claude
-# or: npx -y softschema@0.2.2 skill --install --scope project --agent portable --agent claude
+uvx softschema@latest skill --install --scope project --agent portable --agent claude
+# or: npx -y softschema@latest skill --install --scope project --agent portable --agent claude
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
