@@ -43,7 +43,7 @@ hooks-install: install
 format:
 	$(FLOWMARK) --auto .
 	uv run softschema generate examples/movie_page/README.md
-	uv run softschema skill --install
+	uv run softschema skill --install --scope project --agent portable --agent claude
 
 # CI-mode Markdown check: run the FULL format pipeline, then fail if it would
 # change anything. flowmark-rs has no native --check, so we approximate via git
@@ -55,7 +55,7 @@ format:
 format-check:
 	$(FLOWMARK) --auto .
 	uv run softschema generate examples/movie_page/README.md
-	uv run softschema skill --install
+	uv run softschema skill --install --scope project --agent portable --agent claude
 	@git diff --exit-code -- '*.md' || \
 	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 

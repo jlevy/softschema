@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import json
+import re
 import shutil
 import sys
 from dataclasses import asdict, dataclass, is_dataclass
@@ -36,15 +38,15 @@ BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
 RUNNER_COMMANDS: tuple[str, ...] = ("softschema", "uvx", "npx")
 RUNNER_INVOCATIONS: dict[str, str] = {
     "softschema": "softschema",
-    "uvx": "uvx softschema@latest",
-    "npx": "npx softschema@latest",
+    "uvx": "uvx softschema@0.2.2",
+    "npx": "npx -y softschema@0.2.2",
 }
 
 AGENT_HELP_EPILOG = """IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@latest skill --install
+    uvx softschema@0.2.2 skill --install --scope project --agent portable --agent claude
     # or
-    npx softschema@latest skill --install
+    npx -y softschema@0.2.2 skill --install --scope project --agent portable --agent claude
   Then read `softschema skill --brief` and `softschema docs --list` for operating rules
   and bundled docs."""
 
@@ -285,6 +287,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print compact skill guidance for constrained contexts.",
     )
+    skill_parser.add_argument("--scope", choices=("project", "personal"))
+    skill_parser.add_argument(
+        "--agent", action="append", choices=("portable", "claude"), dest="agents"
+    )
+    skill_parser.add_argument("--dry-run", action="store_true", help="Preview without writing.")
     skill_parser.add_argument(
         "--install",
         action="store_true",
@@ -508,19 +515,18 @@ def _find_runner(name: str) -> str | None:
     return shutil.which(name)
 
 
-SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
-    Path(".agents/skills/softschema/SKILL.md"),
-    Path(".claude/skills/softschema/SKILL.md"),
-)
+SKILL_INSTALL_TARGETS: dict[str, Path] = {
+    "portable": Path(".agents/skills/softschema/SKILL.md"),
+    "claude": Path(".claude/skills/softschema/SKILL.md"),
+}
 
 # The format=fNN stamp lets a future installer recognize this managed surface and
 # refuse to clobber a newer format. The package version is intentionally omitted so the
 # committed mirrors stay deterministic across dev builds (the drift test renders with the
 # locally installed version).
-SKILL_DO_NOT_EDIT_MARKER = (
-    "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\n"
-    "Re-run that command to update.\n"
-    "-->\n"
+_SKILL_MARKER_RE = re.compile(
+    r"<!-- DO NOT EDIT format=f02 source-sha256=([0-9a-f]{64}): written by "
+    r"`softschema skill --install`\.\nRe-run that command to update\.\n-->\n\n"
 )
 
 
@@ -537,13 +543,18 @@ def _rendered_skill_text() -> str:
 
 def _install_skill_payload(rendered: str) -> str:
     """Insert the DO NOT EDIT marker after the closing frontmatter delimiter."""
+    digest = hashlib.sha256(rendered.encode()).hexdigest()
+    marker = (
+        f"<!-- DO NOT EDIT format=f02 source-sha256={digest}: written by "
+        "`softschema skill --install`.\nRe-run that command to update.\n-->\n"
+    )
     lines = rendered.split("\n")
     delimiter_count = 0
     for i, line in enumerate(lines):
         if line.strip() == "---":
             delimiter_count += 1
             if delimiter_count == 2:
-                lines.insert(i + 1, SKILL_DO_NOT_EDIT_MARKER)
+                lines.insert(i + 1, marker)
                 break
     return "\n".join(lines)
 
@@ -558,29 +569,54 @@ def _resolve_install_base(start: Path) -> Path:
     return start
 
 
-def _install_skill(base_dir: Path) -> dict[str, Any]:
-    base_dir = _resolve_install_base(base_dir)
-    payload = _install_skill_payload(_rendered_skill_text())
+def _managed_skill_source(existing: str) -> str | None:
+    match = _SKILL_MARKER_RE.search(existing)
+    if match is None:
+        return None
+    source = existing[: match.start()] + existing[match.end() :]
+    return source if hashlib.sha256(source.encode()).hexdigest() == match.group(1) else None
+
+
+def _install_skill(base_dir: Path, *, agents: list[str], dry_run: bool = False) -> dict[str, Any]:
+    payload_source = _rendered_skill_text()
+    payload = _install_skill_payload(payload_source)
     files: list[dict[str, str]] = []
-    for relative in SKILL_INSTALL_TARGETS:
+    pending: list[tuple[Path, str]] = []
+    for agent in dict.fromkeys(agents):
+        relative = SKILL_INSTALL_TARGETS[agent]
         target = base_dir / relative
         existing = target.read_text(encoding="utf-8") if target.exists() else None
         if existing == payload:
             status = "unchanged"
+        elif existing is not None and _managed_skill_source(existing) is None:
+            raise UsageError(f"refusing to overwrite unmanaged or modified skill: {target}")
         else:
-            atomic_write_text(target, payload, make_parents=True)
-            status = "updated" if existing is not None else "created"
+            status = "would_update" if existing is not None else "would_create"
+            pending.append((target, "updated" if existing is not None else "created"))
         files.append({"path": str(relative), "status": status})
+    if not dry_run:
+        for target, final_status in pending:
+            atomic_write_text(target, payload, make_parents=True)
+            next(item for item in files if base_dir / item["path"] == target)["status"] = (
+                final_status
+            )
     return {
         "version": _installed_version(),
         "base_dir": str(base_dir),
+        "dry_run": dry_run,
         "files": files,
     }
 
 
 def _skill_cmd(args: argparse.Namespace) -> int:
     if args.install:
-        _write_text(_json(_install_skill(Path.cwd())))
+        if args.scope is None or not args.agents:
+            raise UsageError(
+                "skill --install requires --scope project|personal and at least one "
+                "--agent portable|claude"
+            )
+        base = _resolve_install_base(Path.cwd()) if args.scope == "project" else Path.home()
+        _write_text(_json(_install_skill(base, agents=args.agents, dry_run=args.dry_run)))
         return 0
     if args.brief:
         _write_text(_brief_skill_text())
@@ -675,10 +711,12 @@ def _read_resource(relative_path: str) -> str:
 
 
 def _dev_resource_path(relative_path: str) -> Path | None:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "pyproject.toml").is_file() and (parent / "docs").is_dir():
-            candidate = parent / relative_path
-            return candidate if candidate.is_file() else None
+    module = Path(__file__).resolve()
+    root = module.parents[4]
+    expected = root / "packages/python/src/softschema/cli.py"
+    if expected.is_file() and expected.samefile(module) and (root / "pyproject.toml").is_file():
+        candidate = root / relative_path
+        return candidate if candidate.is_file() else None
     return None
 
 

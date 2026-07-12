@@ -6,6 +6,8 @@ wheel force-include / dev-repo file tree.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from softschema.cli import DOC_TOPICS, ResourceTopic, _read_resource
@@ -18,6 +20,19 @@ def test_doc_topic_resolves(name: str, topic: ResourceTopic) -> None:
     assert len(content) > 0, f"DOC_TOPICS[{name!r}] resolved but was empty"
 
 
+def test_consumer_checkout_cannot_shadow_source_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    collision = tmp_path / "docs/softschema-guide.md"
+    collision.parent.mkdir()
+    collision.write_text("COLLISION\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='consumer'\n")
+    monkeypatch.chdir(tmp_path)
+    content = _read_resource("docs/softschema-guide.md")
+    assert "# softschema Guide" in content
+    assert "COLLISION" not in content
+
+
 def test_doc_topics_are_bundled_in_the_wheel() -> None:
     """Every DOC_TOPICS path must be covered by the wheel force-include map.
 
@@ -28,7 +43,6 @@ def test_doc_topics_are_bundled_in_the_wheel() -> None:
     force-included directory (e.g. `skills/...` under the `skills` entry).
     """
     import tomllib
-    from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[3]
     pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))

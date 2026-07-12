@@ -225,8 +225,8 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "IMPORTANT for agents" in output
     assert "repo root" in output
     assert "skill --install" in output
-    assert "uvx softschema@latest" in output
-    assert "npx softschema@latest" in output
+    assert "uvx softschema@0.2.2" in output
+    assert "npx -y softschema@0.2.2" in output
 
 
 def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -302,8 +302,8 @@ def test_skill_uses_latest_runner(
     output = capsys.readouterr().out
     # The skill references @latest (safe under the repo's supply-chain cool-off), so no
     # version placeholder survives and no per-release pin is baked in.
-    assert "uvx softschema@latest" in output
-    assert "npx softschema@latest" in output
+    assert "uvx softschema@0.2.2" in output
+    assert "npx -y softschema@0.2.2" in output
     assert "Pick One Runner" in output
     assert "$SS docs guide" in output
 
@@ -313,7 +313,9 @@ def test_skill_install_creates_both_mirrors(
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    exit_code = softschema_main(["skill", "--install"])
+    exit_code = softschema_main(
+        ["skill", "--install", "--scope", "project", "--agent", "portable", "--agent", "claude"]
+    )
 
     assert exit_code == 0
     summary = json.loads(capsys.readouterr().out)
@@ -326,21 +328,39 @@ def test_skill_install_creates_both_mirrors(
     agents = (tmp_path / ".agents/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     claude = (tmp_path / ".claude/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     assert agents == claude
-    assert "DO NOT EDIT format=f01: written by `softschema skill --install`" in agents
+    assert "DO NOT EDIT format=f02 source-sha256=" in agents
 
 
 def test_skill_install_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    softschema_main(["skill", "--install"])
+    args = ["skill", "--install", "--scope", "project", "--agent", "portable", "--agent", "claude"]
+    softschema_main(args)
     capsys.readouterr()
 
-    exit_code = softschema_main(["skill", "--install"])
+    exit_code = softschema_main(args)
 
     assert exit_code == 0
     summary = json.loads(capsys.readouterr().out)
     assert all(f["status"] == "unchanged" for f in summary["files"])
+
+
+def test_skill_install_dry_run_and_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    args = ["skill", "--install", "--scope", "project", "--agent", "portable"]
+    assert softschema_main([*args, "--dry-run"]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["files"][0]["status"] == "would_create"
+    assert not (tmp_path / summary["files"][0]["path"]).exists()
+
+    target = tmp_path / ".agents/skills/softschema/SKILL.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("unmanaged\n")
+    assert softschema_main(args) == 2
+    assert target.read_text() == "unmanaged\n"
 
 
 def test_validate_overrides_apply_when_frontmatter_lacks_metadata(

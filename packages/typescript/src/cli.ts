@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 /**
  * Command-line interface for the TypeScript softschema implementation. Mirrors the
  * Python argparse CLI's behavior, exit codes (0 ok / 1 failure / 2 usage), and output
@@ -12,6 +13,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
@@ -38,15 +40,15 @@ const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
 const RUNNER_COMMANDS = ["softschema", "uvx", "npx"] as const;
 const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
   softschema: "softschema",
-  uvx: "uvx softschema@latest",
-  npx: "npx softschema@latest",
+  uvx: "uvx softschema@0.2.2",
+  npx: "npx -y softschema@0.2.2",
 };
 
 const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@latest skill --install
+    uvx softschema@0.2.2 skill --install --scope project --agent portable --agent claude
     # or
-    npx softschema@latest skill --install
+    npx -y softschema@0.2.2 skill --install --scope project --agent portable --agent claude
   Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
   and bundled docs.`;
 
@@ -55,14 +57,12 @@ const AGENT_HELP_EPILOG = `IMPORTANT for agents:
  * source file so tests catch source drift; installed packages fall back to bundled
  * `resources/`, so they never depend on the working directory.
  */
-const MAX_RESOURCE_WALK_DEPTH = 6;
-
 function readResource(relPath: string): string {
-  let dir = PACKAGE_ROOT;
-  for (let i = 0; i < MAX_RESOURCE_WALK_DEPTH; i++) {
-    const candidate = join(dir, relPath);
-    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
-    dir = resolve(dir, "..");
+  const modulePath = fileURLToPath(import.meta.url);
+  const expectedSource = join(PACKAGE_ROOT, "src", "cli.ts");
+  if (existsSync(expectedSource) && realpathSync(expectedSource) === realpathSync(modulePath)) {
+    const source = join(PACKAGE_ROOT, "../..", relPath);
+    if (existsSync(source)) return readFileSync(source, "utf8");
   }
   const bundled = join(PACKAGE_ROOT, "resources", relPath);
   if (existsSync(bundled)) return readFileSync(bundled, "utf8");
@@ -163,16 +163,16 @@ const COPYABLE_EXAMPLES = [
   "example-schema",
 ];
 
-export const SKILL_INSTALL_TARGETS = [
-  ".agents/skills/softschema/SKILL.md",
-  ".claude/skills/softschema/SKILL.md",
-] as const;
+export const SKILL_INSTALL_TARGETS = {
+  portable: ".agents/skills/softschema/SKILL.md",
+  claude: ".claude/skills/softschema/SKILL.md",
+} as const;
 
 // The format=fNN stamp lets a future installer recognize this managed surface and refuse
 // to clobber a newer format. The package version is intentionally omitted so the
 // committed mirrors stay deterministic across dev builds (matches the Python marker).
-export const SKILL_DO_NOT_EDIT_MARKER =
-  "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
+const SKILL_MARKER_RE =
+  /<!-- DO NOT EDIT format=f02 source-sha256=([0-9a-f]{64}): written by `softschema skill --install`\.\nRe-run that command to update\.\n-->\n\n/;
 
 function packageVersion(): string {
   try {
@@ -234,13 +234,17 @@ function renderedSkillBrief(): string {
 
 /** Insert the DO NOT EDIT marker after the closing frontmatter delimiter (matches Python). */
 export function installSkillPayload(rendered: string): string {
+  const digest = createHash("sha256").update(rendered).digest("hex");
+  const marker =
+    `<!-- DO NOT EDIT format=f02 source-sha256=${digest}: written by ` +
+    "`softschema skill --install`.\nRe-run that command to update.\n-->\n";
   const lines = rendered.split("\n");
   let delimiters = 0;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i]?.trim() === "---") {
       delimiters += 1;
       if (delimiters === 2) {
-        lines.splice(i + 1, 0, SKILL_DO_NOT_EDIT_MARKER);
+        lines.splice(i + 1, 0, marker);
         break;
       }
     }
@@ -259,28 +263,61 @@ function resolveInstallBase(start: string): string {
   }
 }
 
-function runSkillInstall(): number {
+function managedSkillSource(existing: string): string | null {
+  const match = SKILL_MARKER_RE.exec(existing);
+  if (match?.index === undefined || match[1] === undefined) return null;
+  const source = existing.slice(0, match.index) + existing.slice(match.index + match[0].length);
+  return createHash("sha256").update(source).digest("hex") === match[1] ? source : null;
+}
+
+function runSkillInstall(opts: { scope?: string; agent?: string[]; dryRun?: boolean }): number {
+  if (
+    (opts.scope !== "project" && opts.scope !== "personal") ||
+    opts.agent === undefined ||
+    opts.agent.length === 0 ||
+    opts.agent.some((agent) => agent !== "portable" && agent !== "claude")
+  ) {
+    throw new UsageError(
+      "skill --install requires --scope project|personal and at least one --agent portable|claude",
+    );
+  }
   const payload = installSkillPayload(renderedSkill());
-  const baseDir = resolveInstallBase(process.cwd());
-  const files = SKILL_INSTALL_TARGETS.map((relative) => {
+  const baseDir = opts.scope === "project" ? resolveInstallBase(process.cwd()) : homedir();
+  const pending: { target: string; status: "created" | "updated" }[] = [];
+  const files = [...new Set(opts.agent)].map((agent) => {
+    const relative = SKILL_INSTALL_TARGETS[agent as keyof typeof SKILL_INSTALL_TARGETS];
     const target = join(baseDir, relative);
     const existing = existsSync(target) ? readFileSync(target, "utf8") : null;
     let status: string;
     if (existing === payload) {
       status = "unchanged";
+    } else if (existing !== null && managedSkillSource(existing) === null) {
+      throw new UsageError(`refusing to overwrite unmanaged or modified skill: ${target}`);
     } else {
-      const dir = dirname(target);
-      mkdirSync(dir, { recursive: true });
-      // Atomic write: write to a temp file in the same directory, then rename.
-      // fs.renameSync is atomic on the same filesystem (POSIX guarantee).
-      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
-      writeFileSync(tmp, payload);
-      renameSync(tmp, target);
-      status = existing !== null ? "updated" : "created";
+      status = existing !== null ? "would_update" : "would_create";
+      pending.push({ target, status: existing !== null ? "updated" : "created" });
     }
     return { path: relative, status };
   });
-  writeText(stableStringify({ version: packageVersion(), base_dir: baseDir, files }));
+  if (!opts.dryRun) {
+    for (const item of pending) {
+      const dir = dirname(item.target);
+      mkdirSync(dir, { recursive: true });
+      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
+      writeFileSync(tmp, payload);
+      renameSync(tmp, item.target);
+      const output = files.find((file) => join(baseDir, file.path) === item.target);
+      if (output !== undefined) output.status = item.status;
+    }
+  }
+  writeText(
+    stableStringify({
+      version: packageVersion(),
+      base_dir: baseDir,
+      dry_run: Boolean(opts.dryRun),
+      files,
+    }),
+  );
   return 0;
 }
 
@@ -724,17 +761,33 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .description("Print or install the agent skill")
     .option("--brief", "print compact skill guidance")
     .option("--install", "write discoverable skill mirrors into .agents and .claude")
-    .action((opts: { brief?: boolean; install?: boolean }) => {
-      if (opts.install) {
-        exitCode = runSkillInstall();
-      } else if (opts.brief) {
-        writeText(renderedSkillBrief());
-        exitCode = 0;
-      } else {
-        writeText(renderedSkill());
-        exitCode = 0;
-      }
-    });
+    .option("--scope <scope>", "install scope: project or personal")
+    .option(
+      "--agent <agent>",
+      "target agent: portable or claude (repeatable)",
+      (value, previous: string[]) => [...previous, value],
+      [],
+    )
+    .option("--dry-run", "preview installation without writing")
+    .action(
+      (opts: {
+        brief?: boolean;
+        install?: boolean;
+        scope?: string;
+        agent?: string[];
+        dryRun?: boolean;
+      }) => {
+        if (opts.install) {
+          exitCode = runSkillInstall(opts);
+        } else if (opts.brief) {
+          writeText(renderedSkillBrief());
+          exitCode = 0;
+        } else {
+          writeText(renderedSkill());
+          exitCode = 0;
+        }
+      },
+    );
 
   try {
     await program.parseAsync(argv);

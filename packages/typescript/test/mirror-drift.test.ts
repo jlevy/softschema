@@ -24,7 +24,7 @@ describe("committed skill mirrors match source", () => {
   const sourceText = readFileSync(SOURCE, "utf8").replaceAll("<version>", packageVersion());
   const expected = installSkillPayload(sourceText);
 
-  for (const relative of SKILL_INSTALL_TARGETS) {
+  for (const relative of Object.values(SKILL_INSTALL_TARGETS)) {
     test(`${relative} matches skills/softschema/SKILL.md`, () => {
       const mirrorPath = join(REPO_ROOT, relative);
       const mirror = readFileSync(mirrorPath, "utf8");
@@ -34,7 +34,7 @@ describe("committed skill mirrors match source", () => {
 
   test("the .agents and .claude skill mirrors are byte-identical", () => {
     const contents = new Set(
-      SKILL_INSTALL_TARGETS.map((rel) => readFileSync(join(REPO_ROOT, rel), "utf8")),
+      Object.values(SKILL_INSTALL_TARGETS).map((rel) => readFileSync(join(REPO_ROOT, rel), "utf8")),
     );
     expect(contents.size).toBe(1);
   });

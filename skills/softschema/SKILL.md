@@ -27,14 +27,14 @@ Pick one command prefix, then use it for every command in this skill.
 In examples, `$SS ...` means “run the selected prefix with these arguments.”
 
 1. If `softschema --version` works, use `SS='softschema'`.
-2. Else if `uvx --version` works, use `SS='uvx softschema@latest'`.
-3. Else if `npx --version` works, use `SS='npx softschema@latest'`.
+2. Else if `uvx --version` works, use `SS='uvx softschema@0.2.2'`.
+3. Else if `npx --version` works, use `SS='npx -y softschema@0.2.2'`.
 4. Else install uv (`curl -LsSf https://astral.sh/uv/install.sh | sh` or
    `brew install uv`) or Node (`brew install node`), then retry.
 
-The unpinned `@latest` is a deliberate repo policy, not an oversight: installs resolve
-through a release-age cool-off gate (see `$SS docs installation`), which is this
-project’s supply-chain control in place of a pinned version.
+The zero-install fallback uses the exact last-verified release.
+Prefer an installed project command when one is available; update the fallback only
+after verifying a newer release (see `$SS docs installation`).
 
 `$SS doctor` reports the installed version, available runners, and recommended command
 prefix.
@@ -87,11 +87,11 @@ Use a zero-install runner:
 
 ```bash
 # Python (Pydantic):
-uvx softschema@latest --help            # ephemeral
+uvx softschema@0.2.2 --help             # ephemeral, exact last-verified release
 uv tool install softschema             # persistent
 
 # TypeScript (Zod):
-npx softschema@latest --help            # ephemeral
+npx -y softschema@0.2.2 --help          # ephemeral, exact last-verified release
 ```
 
 Both expose the same commands and flags and validate against the same canonical schema;
