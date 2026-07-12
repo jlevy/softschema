@@ -68,6 +68,27 @@ describe("library entrypoint (issue #16)", () => {
     expect(r.status).toBe(0);
   });
 
+  test("runtime exports are exactly the supported value surface", () => {
+    const r = runConsumer(
+      `const api = await import(${JSON.stringify(indexUrl())});\n` +
+        `process.stdout.write(JSON.stringify(Object.keys(api).sort()));\n`,
+    );
+    expect(JSON.parse(r.stdout)).toEqual([
+      "Contracts",
+      "EnvelopeAmbiguityError",
+      "SchemaView",
+      "compileSchema",
+      "inferEnvelopeKey",
+      "parseSchemaMetadata",
+      "regenerate",
+      "softField",
+      "validateArtifact",
+      "validateSemantic",
+      "validateStructural",
+      "validateValues",
+    ]);
+  });
+
   test("importing the ./cli module runs no CLI behavior", () => {
     const r = runConsumer(`await import(${JSON.stringify(cliUrl())});\nprocess.stdout.write("cli-ok");\n`);
     expect(r.stderr).toBe("");
@@ -81,8 +102,6 @@ describe("library entrypoint (issue #16)", () => {
       "validateArtifact",
       "parseSchemaMetadata",
       "SchemaMetadata",
-      "RawFrontmatter",
-      "MetadataMode",
       "Contract",
       "ArtifactValidationResult",
     ]) {

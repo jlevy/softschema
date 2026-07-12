@@ -6,11 +6,9 @@ document covers the TypeScript package, `softschema`, which implements the same
 Markdown/YAML validation slice as the [Python package](softschema-python-design.md)
 using Zod instead of Pydantic.
 
-The two implementations are held to **exact behavioral parity**: equivalent CLI
-inputs/outputs/flags and equivalent library APIs, the same canonical compiled JSON
-Schema (content-identical, equal `schema_sha256` over its canonical JSON; the YAML
-serialization bytes may differ, and `--check` drift compares parsed canonical content),
-and the same engine-neutral validation results.
+The two implementations share the same commands, exit classes, structured result
+meaning, and canonical compiled JSON Schema (content-identical with equal
+`schema_sha256`; YAML presentation bytes may differ).
 Only idiomatic surface details differ (snake_case ↔ camelCase, Pydantic ↔ Zod).
 Parity is enforced by the shared golden corpus and a cross-implementation conformance
 test; see the parity development process in [development.md](development.md).
@@ -51,7 +49,7 @@ are identical.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
-| `validate_artifact` | `validateArtifact` | same result JSON, `kind`s, warnings, `metadataMode` |
+| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, error kinds, and warnings |
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping |
 | `validate_structural` | `validateStructural` | jsonschema ↔ ajv; identical error records |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
@@ -64,44 +62,34 @@ are identical.
 | `_resolve_metadata_schema` | `resolveMetadataSchema` | bounded relative-path resolution from document directory + cwd |
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
-| `SOFTSCHEMA_FORMAT_VERSION` | `SOFTSCHEMA_FORMAT_VERSION` | exported from `index.ts` / `__init__.py` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
 
 ## Result Shape and CLI Output
 
-`validateArtifact` returns a result whose serialized form is byte-identical to Python’s
-(`contract`, `contract_id`, `document_metadata`, `path`, `profile`, `semantic`,
-`status`, `structural`, `values`, `warnings`). Structural errors are engine-neutral
-records (`{ kind, path, validator, validator_value, value, message }`) with
-softschema-synthesized messages, sorted by `(path, validator)`. CLI JSON uses a
-`stableStringify` that matches Python’s
-`json.dumps(..., indent=2, sort_keys=True, ensure_ascii=False)`; exit codes are `0` ok /
-`1` validation failure or drift / `2` usage error.
+`validateArtifact` returns the portable fields `contract`, `contract_id`,
+`document_metadata`, `outcome`, `path`, `profile`, `semantic`, `status`, `structural`,
+`values`, and `warnings`. Structural errors use engine-neutral records
+`{ kind, path, validator, validator_value, value, message }`, sorted by
+`(path, validator)`. Library results use `valid` / `invalid` / `input_error`. The CLI
+reads once to infer document binding: readable results map to exits `0` or `1`, while
+access and parse failures use its one-line stderr and exit-`2` input boundary.
+Cross-runtime tests compare JSON structurally; deterministic pretty printing is local
+presentation, not a byte-level wire contract.
 
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
 the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for
 every keyword; ajv’s per-key `additionalProperties` errors are collapsed to one.
 
-One known divergence remains (`ss-wbnm`): JS collapses a whole-number float (`2.0`, the
-schema bound `10.0`) to `2`/`10` at parse, while Python preserves the float from the
-YAML source token (`repr(2.0) == "2.0"`), so such a value renders without its `.0` in a
-TypeScript `value`/`validator_value`/message.
-A schema-type-aware fix cannot match Python (Python’s rendering follows the parsed
-value’s runtime type, not the declared type), so an exact fix requires preserving source
-tokens through parse → serialize → ajv; that is disproportionate for an edge case where
-all other golden CLI output and error rendering is byte-identical.
-(Compiled schema YAML files are content-identical rather than byte-identical; see
-above.) The golden corpus keeps error-case values integer or non-whole-float so it stays
-byte-identical on both engines (see `tests/golden/README.md`). Full analysis in the
-parity plan (epic `ss-jgkf`).
+Values are restricted to the shared portable domain.
+JSON object key order and runtime-native number spelling are not semantic; canonical
+byte encoding is reserved for the compiled-schema digest.
 
 ## Toolchain
 
 bun (runtime and package manager), `bunup` (build), `bun test` (unit), `biome` (lint and
 format), `tsc --noEmit` (types).
-Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`) and `ajv-formats`,
-`atomically` (the CLI emits only JSON, so no color dependency).
-The shared `tests/golden/` corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
+Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`), and `atomically`. The
+shared `tests/golden/` corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
 
 ## Packaging
 

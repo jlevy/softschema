@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Direct cross-implementation parity check: run the SAME neutral commands through the
 # Python CLI (softschema-py) and the TypeScript CLI under Node (the published runtime),
-# and byte-compare stdout + exit code. Unlike the golden corpus (which compares each
-# implementation against committed expected files), this reports a divergence AS a
-# py-vs-ts difference, so a parity break is attributed directly rather than surfacing as
+# and compare stdout + exit code. JSON output is compared structurally; human-readable
+# output remains exact. This attributes a parity break directly instead of surfacing as
 # one side drifting from the golden files.
 #
 #   ./tests/golden/cross-impl-diff.sh
@@ -30,6 +29,41 @@ fi
 export NO_COLOR=1
 fail=0
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "error: jq is required for structural JSON comparison" >&2
+  exit 1
+fi
+
+normalize_json() {
+  jq --sort-keys --compact-output . 2>/dev/null
+}
+
+outputs_match() {
+  local left="$1" right="$2" left_json right_json
+  if left_json=$(printf '%s\n' "$left" | normalize_json) &&
+    right_json=$(printf '%s\n' "$right" | normalize_json); then
+    [ "$left_json" = "$right_json" ]
+  else
+    [ "$left" = "$right" ]
+  fi
+}
+
+render_for_diff() {
+  local output="$1" normalized
+  if normalized=$(printf '%s\n' "$output" | normalize_json); then
+    printf '%s\n' "$normalized"
+  else
+    printf '%s\n' "$output"
+  fi
+}
+
+# Guard the comparison rule itself: JSON object order is not part of the public
+# contract, including for integer-like keys whose host ordering rules differ.
+if ! outputs_match '{"10":"ten","2":"two"}' '{"2":"two","10":"ten"}'; then
+  echo "error: structural JSON comparison is not order-independent" >&2
+  exit 1
+fi
+
 # Compare stdout + exit code of one neutral invocation across both CLIs.
 diff_cmd() {
   local desc="$1"
@@ -39,11 +73,11 @@ diff_cmd() {
   pcode=$?
   tout=$("${TS[@]}" "$@" 2>/dev/null)
   tcode=$?
-  if [ "$pout" = "$tout" ] && [ "$pcode" = "$tcode" ]; then
+  if outputs_match "$pout" "$tout" && [ "$pcode" = "$tcode" ]; then
     echo "ok   (exit $pcode)  $desc"
   else
     echo "DIFF (py exit $pcode, ts exit $tcode)  $desc"
-    diff <(printf '%s\n' "$pout") <(printf '%s\n' "$tout") | head -40
+    diff <(render_for_diff "$pout") <(render_for_diff "$tout") | head -40
     fail=1
   fi
 }
@@ -77,4 +111,4 @@ if [ "$fail" -ne 0 ]; then
   echo "cross-impl parity FAILED" >&2
   exit 1
 fi
-echo "cross-impl parity OK (Python vs TypeScript/Node byte-identical)"
+echo "cross-impl parity OK (Python vs TypeScript/Node semantically equal)"

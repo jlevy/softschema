@@ -4,10 +4,10 @@
  * status "unchanged" for both.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { main, SKILL_DO_NOT_EDIT_MARKER, SKILL_INSTALL_TARGETS } from "../src/cli.js";
+import { main, SKILL_INSTALL_TARGETS } from "../src/cli.js";
 
 let tempDir: string;
 let originalCwd: string;
@@ -35,8 +35,19 @@ afterEach(() => {
 const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
 describe("skill --install", () => {
+  const installArgs = [
+    "skill",
+    "--install",
+    "--scope",
+    "project",
+    "--agent",
+    "portable",
+    "--agent",
+    "claude",
+  ];
+
   test("creates both mirror files with DO NOT EDIT marker", async () => {
-    const code = await main(argv("skill", "--install"));
+    const code = await main(argv(...installArgs));
     expect(code).toBe(0);
 
     const result = JSON.parse(stdout) as {
@@ -51,23 +62,24 @@ describe("skill --install", () => {
       const fullPath = join(tempDir, file.path);
       expect(existsSync(fullPath)).toBe(true);
       const content = readFileSync(fullPath, "utf8");
-      expect(content).toContain(SKILL_DO_NOT_EDIT_MARKER.trimEnd());
+      expect(content).toContain("DO NOT EDIT format=f02:");
+      expect(content).not.toContain("source-sha256");
     }
 
     // Verify the targets match SKILL_INSTALL_TARGETS
     const paths = result.files.map((f) => f.path);
-    for (const target of SKILL_INSTALL_TARGETS) {
+    for (const target of Object.values(SKILL_INSTALL_TARGETS)) {
       expect(paths).toContain(target);
     }
   });
 
-  test("second run reports unchanged for both files", async () => {
+  test("second run is unchanged and a managed edit is refreshed", async () => {
     // First run: create files.
-    await main(argv("skill", "--install"));
+    await main(argv(...installArgs));
     stdout = "";
 
     // Second run: should be unchanged.
-    const code = await main(argv("skill", "--install"));
+    const code = await main(argv(...installArgs));
     expect(code).toBe(0);
 
     const result = JSON.parse(stdout) as {
@@ -80,5 +92,30 @@ describe("skill --install", () => {
     for (const file of result.files) {
       expect(file.status).toBe("unchanged");
     }
+
+    const target = join(tempDir, SKILL_INSTALL_TARGETS.portable);
+    writeFileSync(target, readFileSync(target, "utf8").replace("# softschema Skill", "# local edit"));
+    stdout = "";
+    expect(await main(argv(...installArgs))).toBe(0);
+    const refreshed = JSON.parse(stdout) as { files: { path: string; status: string }[] };
+    expect(Object.fromEntries(refreshed.files.map((file) => [file.path, file.status]))).toEqual({
+      ".agents/skills/softschema/SKILL.md": "updated",
+      ".claude/skills/softschema/SKILL.md": "unchanged",
+    });
+    expect(readFileSync(target, "utf8")).toContain("# softschema Skill");
+  });
+
+  test("dry-run previews and unmanaged files are refused", async () => {
+    expect(await main(argv(...installArgs.slice(0, 6), "--dry-run"))).toBe(0);
+    const preview = JSON.parse(stdout);
+    expect(preview.files[0].status).toBe("would_create");
+    expect(existsSync(join(tempDir, preview.files[0].path))).toBe(false);
+
+    stdout = "";
+    const target = join(tempDir, SKILL_INSTALL_TARGETS.portable);
+    mkdirSync(join(tempDir, ".agents/skills/softschema"), { recursive: true });
+    writeFileSync(target, "unmanaged\n");
+    expect(await main(argv(...installArgs.slice(0, 6)))).toBe(2);
+    expect(readFileSync(target, "utf8")).toBe("unmanaged\n");
   });
 });

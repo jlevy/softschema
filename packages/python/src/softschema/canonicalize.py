@@ -18,12 +18,10 @@ The transforms are intentionally minimal and semantic:
 2. **Nullable unions are ``anyOf``.** A ``oneOf``/``anyOf`` that is exactly a
    type plus ``{"type": "null"}`` is normalized to ``anyOf`` (Pydantic's form;
    Zod emits ``oneOf`` for ``.nullable()``).
-3. **Auto-generated ``title`` keys are dropped.** Pydantic adds a ``title`` to
-   every property and ``$def``; Zod adds none. softschema does not author
-   titles, so the canonical profile omits them entirely.
-4. **Implicit ``default: null`` is stripped.** Pydantic emits ``default: null``
-   for ``X | None = None`` fields; the canonical profile omits a null default.
-   Non-null defaults are preserved.
+3. **Annotations are preserved.** ``title``, ``default``, descriptions, and unknown
+   extension data are never rewritten by canonicalization.
+4. **Required fields are sorted.** Their order does not affect validation, so the
+   stable form does not depend on model declaration order. Enum order remains authored.
 
 Key ordering (rule 5 in the design) is handled at serialization time
 (frontmatter-format's YAML writer with ``key_sort`` and ``json.dumps(...,
@@ -41,10 +39,6 @@ _JS_MIN_SAFE_INTEGER = -9007199254740991
 _JS_MAX_SAFE_INTEGER = 9007199254740991
 
 
-def _is_empty_default(value: Any) -> bool:
-    return value is None or value == [] or value == {}
-
-
 def _is_string_key_constraint(value: Any) -> bool:
     return isinstance(value, dict) and list(value.keys()) == ["type"] and value["type"] == "string"
 
@@ -52,14 +46,28 @@ def _is_string_key_constraint(value: Any) -> bool:
 # Keywords whose value is a mapping of arbitrary *names* to subschemas. Their
 # keys are field/definition names (which may legitimately be "title" or
 # "default") and must be preserved; only their values are subschemas.
-_NAME_MAP_KEYWORDS = frozenset({"properties", "$defs", "definitions", "patternProperties"})
+_NAME_MAP_KEYWORDS = frozenset(
+    {"properties", "$defs", "definitions", "patternProperties", "dependentSchemas"}
+)
 
 # Keywords whose value is a list of subschemas.
 _SCHEMA_LIST_KEYWORDS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems"})
 
 # Keywords whose value is a single subschema (when it is a mapping).
 _SCHEMA_KEYWORDS = frozenset(
-    {"items", "additionalProperties", "not", "if", "then", "else", "contains", "propertyNames"}
+    {
+        "items",
+        "additionalProperties",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+        "not",
+        "if",
+        "then",
+        "else",
+        "contains",
+        "propertyNames",
+        "contentSchema",
+    }
 )
 
 
@@ -71,20 +79,13 @@ def canonicalize_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
 def _canonicalize_schema(node: Any) -> Any:
     """Canonicalize one schema object, recursing only into subschema positions.
 
-    ``title`` and a null ``default`` are dropped as *keywords* here, but never
-    when they appear as names inside a ``properties``/``$defs`` map.
+    Annotation and unknown values are preserved verbatim.
     """
     if not isinstance(node, dict):
         return node
     node = _normalize_nullable_union(node)
     out: dict[str, Any] = {}
     for key, value in node.items():
-        if key == "title":
-            continue
-        # Drop implicit/empty defaults (null, [], {}); these are no-ops on Pydantic output
-        # but normalize Zod's `.default([])`/`.default({})`/nullable defaults.
-        if key == "default" and _is_empty_default(value):
-            continue
         # Drop JS safe-integer sentinel bounds that Zod's int() adds for unbounded sides.
         if key == "minimum" and value == _JS_MIN_SAFE_INTEGER:
             continue
@@ -153,9 +154,29 @@ def apply_enforced_extras(schema: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+class EnforcementUnsupportedError(ValueError):
+    """The requested closure would change composed-schema meaning."""
+
+
 def _apply_enforced_extras(node: Any) -> Any:
     if not isinstance(node, dict):
         return node
+    union = node.get("allOf")
+    if isinstance(union, list) and any(_contains_open_properties(branch) for branch in union):
+        raise EnforcementUnsupportedError(
+            "enforced closure is unsupported for allOf object composition"
+        )
+    dependent = node.get("dependentSchemas")
+    if isinstance(dependent, dict) and any(
+        _contains_open_properties(branch) for branch in dependent.values()
+    ):
+        raise EnforcementUnsupportedError(
+            "enforced closure is unsupported for dependent object composition"
+        )
+    if any(_contains_open_properties(node.get(key)) for key in ("if", "then", "else", "not")):
+        raise EnforcementUnsupportedError(
+            "enforced closure is unsupported for conditional object composition"
+        )
     out: dict[str, Any] = {}
     for key, value in node.items():
         if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
@@ -169,3 +190,26 @@ def _apply_enforced_extras(node: Any) -> Any:
     if isinstance(out.get("properties"), dict) and "additionalProperties" not in out:
         out["additionalProperties"] = False
     return out
+
+
+def _contains_open_properties(node: Any) -> bool:
+    if not isinstance(node, dict):
+        return False
+    if isinstance(node.get("properties"), dict) and "additionalProperties" not in node:
+        return True
+    for key, value in node.items():
+        if key in _SCHEMA_KEYWORDS and _contains_open_properties(value):
+            return True
+        if (
+            key in _SCHEMA_LIST_KEYWORDS
+            and isinstance(value, list)
+            and any(_contains_open_properties(item) for item in value)
+        ):
+            return True
+        if (
+            key in _NAME_MAP_KEYWORDS
+            and isinstance(value, dict)
+            and any(_contains_open_properties(item) for item in value.values())
+        ):
+            return True
+    return False

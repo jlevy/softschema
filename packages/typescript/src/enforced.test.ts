@@ -4,14 +4,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync as wf } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync as wf } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyEnforcedExtras } from "./canonicalize.js";
+import { parse as yamlParse } from "yaml";
+import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
 import type { Contract } from "./models.js";
-import { validateArtifact } from "./validate.js";
+import { validateArtifact, validateStructural } from "./validate.js";
 
 type Schema = Record<string, unknown>;
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 function baseSchema(): Schema {
   return {
@@ -119,7 +121,7 @@ describe("envelope inference (spec rules)", () => {
   test("multi-key root without envelopeKey is envelope_ambiguous", () => {
     const doc = tmpDoc("doc.md", "---\nname: hi\ndirection: up\n---\nbody\n");
     const result = validateArtifact(doc, mkContract());
-    const structural = result.output.structural as { errors: { kind: string; message: string }[] };
+    const structural = result.structural as { errors: { kind: string; message: string }[] };
     expect(structural.errors[0]?.kind).toBe("envelope_ambiguous");
     expect(structural.errors[0]?.message).toContain("name");
   });
@@ -127,7 +129,7 @@ describe("envelope inference (spec rules)", () => {
   test("zero-key root without envelopeKey is envelope_missing", () => {
     const doc = tmpDoc("doc.md", "---\nsoftschema:\n  contract: t:X/v1\n---\nbody\n");
     const result = validateArtifact(doc, mkContract());
-    const structural = result.output.structural as { errors: { kind: string }[] };
+    const structural = result.structural as { errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("envelope_missing");
   });
 });
@@ -137,8 +139,8 @@ describe("pure-yaml metadata rules", () => {
     const doc = tmpDoc("doc.yaml", "softschema:\n  contract: t:X/v1\nname: hello\ncount: 1\n");
     const result = validateArtifact(doc, mkContract({ profile: "pure-yaml" }));
     expect(result.ok).toBe(true);
-    expect(result.output.values).toEqual({ name: "hello", count: 1 });
-    expect(result.output.document_metadata).toEqual({
+    expect(result.values).toEqual({ name: "hello", count: 1 });
+    expect(result.document_metadata).toEqual({
       contract: "t:X/v1",
       envelope: null,
       schema: null,
@@ -149,7 +151,7 @@ describe("pure-yaml metadata rules", () => {
   test("a contract mismatch in the block is detected", () => {
     const doc = tmpDoc("doc.yaml", "softschema:\n  contract: t:X/v1\nname: hello\n");
     const result = validateArtifact(doc, mkContract({ id: "other:Y/v1", profile: "pure-yaml" }));
-    const structural = result.output.structural as { errors: { kind: string }[] };
+    const structural = result.structural as { errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("document_contract_mismatch");
   });
 
@@ -160,7 +162,7 @@ describe("pure-yaml metadata rules", () => {
       mkContract({ profile: "pure-yaml", envelopeKey: "payload" }),
     );
     expect(result.ok).toBe(true);
-    expect(result.output.values).toEqual({ name: "hi" });
+    expect(result.values).toEqual({ name: "hi" });
   });
 });
 
@@ -174,6 +176,34 @@ describe("validateArtifact preParsed (single read)", () => {
       },
     });
     expect(result.ok).toBe(true);
-    expect(result.output.values).toEqual({ name: "hi" });
+    expect(result.values).toEqual({ name: "hi" });
   });
+});
+
+test("shared enforcement vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.enforcement ?? []) {
+    if (item.supported) {
+      expect(applyEnforcedExtras(item.schema as Schema).additionalProperties).toBe(false);
+    } else {
+      expect(() => applyEnforcedExtras(item.schema as Schema)).toThrow(EnforcementUnsupportedError);
+    }
+  }
+});
+
+test("structural validation reports unsupported enforcement", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  const item = (vectors.enforcement ?? []).find((candidate) => !candidate.supported);
+  const result = validateStructural(
+    { first: "Ada", last: "Lovelace" },
+    item?.schema as Record<string, unknown>,
+    { strictExtras: true },
+  );
+  expect(result.errors[0]?.kind).toBe("enforcement_unsupported");
 });

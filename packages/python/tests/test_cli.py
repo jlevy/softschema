@@ -65,7 +65,17 @@ def test_compile_writes_schema_and_exits_zero(
 def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "missing.schema.yaml"
 
-    exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
+    exit_code = softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--check",
+        ]
+    )
 
     assert exit_code == 1
     assert not out.exists()
@@ -73,9 +83,21 @@ def test_compile_check_returns_one_when_schema_missing(tmp_path: Path, model_mod
 
 def test_compile_check_returns_zero_when_schema_matches(tmp_path: Path, model_module: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
-    softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out)])
+    softschema_main(
+        ["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--contract", "test:Sample/v1"]
+    )
 
-    exit_code = softschema_main(["compile", SAMPLE_MODEL_SPEC, "--out", str(out), "--check"])
+    exit_code = softschema_main(
+        [
+            "compile",
+            SAMPLE_MODEL_SPEC,
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+            "--check",
+        ]
+    )
 
     assert exit_code == 0
 
@@ -85,7 +107,9 @@ def test_compile_rejects_malformed_model_spec(
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    exit_code = softschema_main(["compile", "bad-spec", "--out", str(out)])
+    exit_code = softschema_main(
+        ["compile", "bad-spec", "--out", str(out), "--contract", "test:Sample/v1"]
+    )
 
     assert exit_code == 2
     assert "module:Class" in capsys.readouterr().err
@@ -96,7 +120,16 @@ def test_compile_rejects_non_basemodel(
 ) -> None:
     out = tmp_path / "sample.schema.yaml"
 
-    exit_code = softschema_main(["compile", "test_cli_model:NotAModel", "--out", str(out)])
+    exit_code = softschema_main(
+        [
+            "compile",
+            "test_cli_model:NotAModel",
+            "--out",
+            str(out),
+            "--contract",
+            "test:Sample/v1",
+        ]
+    )
 
     assert exit_code == 2
     assert "BaseModel" in capsys.readouterr().err
@@ -193,7 +226,7 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "repo root" in output
     assert "skill --install" in output
     assert "uvx softschema@latest" in output
-    assert "npx softschema@latest" in output
+    assert "npx -y softschema@latest" in output
 
 
 def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -267,10 +300,8 @@ def test_skill_uses_latest_runner(
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    # The skill references @latest (safe under the repo's supply-chain cool-off), so no
-    # version placeholder survives and no per-release pin is baked in.
     assert "uvx softschema@latest" in output
-    assert "npx softschema@latest" in output
+    assert "npx -y softschema@latest" in output
     assert "Pick One Runner" in output
     assert "$SS docs guide" in output
 
@@ -280,7 +311,9 @@ def test_skill_install_creates_both_mirrors(
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    exit_code = softschema_main(["skill", "--install"])
+    exit_code = softschema_main(
+        ["skill", "--install", "--scope", "project", "--agent", "portable", "--agent", "claude"]
+    )
 
     assert exit_code == 0
     summary = json.loads(capsys.readouterr().out)
@@ -293,21 +326,50 @@ def test_skill_install_creates_both_mirrors(
     agents = (tmp_path / ".agents/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     claude = (tmp_path / ".claude/skills/softschema/SKILL.md").read_text(encoding="utf-8")
     assert agents == claude
-    assert "DO NOT EDIT format=f01: written by `softschema skill --install`" in agents
+    assert "DO NOT EDIT format=f02:" in agents
+    assert "source-sha256" not in agents
 
 
-def test_skill_install_is_idempotent(
+def test_skill_install_is_idempotent_and_refreshes_managed_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    softschema_main(["skill", "--install"])
+    args = ["skill", "--install", "--scope", "project", "--agent", "portable", "--agent", "claude"]
+    softschema_main(args)
     capsys.readouterr()
 
-    exit_code = softschema_main(["skill", "--install"])
+    exit_code = softschema_main(args)
 
     assert exit_code == 0
     summary = json.loads(capsys.readouterr().out)
     assert all(f["status"] == "unchanged" for f in summary["files"])
+
+    target = tmp_path / ".agents/skills/softschema/SKILL.md"
+    target.write_text(target.read_text().replace("# softschema Skill", "# local edit"))
+    assert softschema_main(args) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert {f["path"]: f["status"] for f in summary["files"]} == {
+        ".agents/skills/softschema/SKILL.md": "updated",
+        ".claude/skills/softschema/SKILL.md": "unchanged",
+    }
+    assert "# softschema Skill" in target.read_text()
+
+
+def test_skill_install_dry_run_and_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    args = ["skill", "--install", "--scope", "project", "--agent", "portable"]
+    assert softschema_main([*args, "--dry-run"]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["files"][0]["status"] == "would_create"
+    assert not (tmp_path / summary["files"][0]["path"]).exists()
+
+    target = tmp_path / ".agents/skills/softschema/SKILL.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("unmanaged\n")
+    assert softschema_main(args) == 2
+    assert target.read_text() == "unmanaged\n"
 
 
 def test_validate_overrides_apply_when_frontmatter_lacks_metadata(

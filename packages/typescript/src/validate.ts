@@ -1,16 +1,13 @@
 /**
  * Artifact validation: read Markdown frontmatter (or pure YAML), resolve the envelope,
  * and run structural validation against the compiled JSON Schema via ajv. The result
- * object serializes (via stableStringify) byte-identically to the Python CLI output.
+ * object has the same portable fields and meaning as the Python result.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type { ValidateFunction } from "ajv/dist/2020.js";
 import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
-import { parse as yamlParse } from "yaml";
 import type { z } from "zod";
-import { applyEnforcedExtras } from "./canonicalize.js";
+import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
 import {
   collapseAdditionalProperties,
   compareStructuralRecords,
@@ -20,6 +17,7 @@ import {
 import { isMapping } from "./guards.js";
 import {
   type Contract,
+  checkContractId,
   contractToOutput,
   metadataToOutput,
   parseSchemaMetadata,
@@ -28,27 +26,7 @@ import {
   SchemaMetadataError,
   type SchemaWarning,
 } from "./models.js";
-
-/** Module-level Ajv2020 instance, initialized once and reused for all validations. */
-const sharedAjv = new Ajv2020({ allErrors: true, strict: false, verbose: true });
-addFormats(sharedAjv);
-
-/** Cache of compiled validators keyed by the stable JSON serialization of the final schema. */
-const validatorCache = new Map<string, ValidateFunction>();
-
-/** Deterministic JSON key for a schema object (sorts keys recursively). */
-function stableCacheKey(obj: unknown): string {
-  return JSON.stringify(obj, (_key, value) => {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      const sorted: Record<string, unknown> = {};
-      for (const k of Object.keys(value).sort()) {
-        sorted[k] = value[k];
-      }
-      return sorted;
-    }
-    return value;
-  });
-}
+import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
 
 export interface StructuralResult {
   ok: boolean;
@@ -69,8 +47,18 @@ export interface ValidationResult {
 }
 
 export interface ArtifactValidationResult {
-  ok: boolean;
-  output: Record<string, unknown>;
+  readonly ok: boolean;
+  contract: Record<string, unknown>;
+  contract_id: string;
+  document_metadata: Record<string, unknown> | null;
+  outcome: "valid" | "invalid" | "input_error";
+  path: string;
+  profile: string;
+  semantic: SemanticResult;
+  status: string;
+  structural: StructuralResult;
+  values: Record<string, unknown> | null;
+  warnings: SchemaWarning[];
 }
 
 export type MetadataMode = "enforced" | "advisory";
@@ -89,8 +77,11 @@ export class YamlParseError extends Error {}
 
 function parseYaml(text: string): unknown {
   try {
-    return yamlParse(text);
+    return parsePortableYaml(text);
   } catch (err) {
+    if (err instanceof PortableInputError) {
+      throw new YamlParseError(err.message, { cause: err });
+    }
     throw new YamlParseError((err as Error).message);
   }
 }
@@ -99,34 +90,31 @@ function parseYaml(text: string): unknown {
  * Read the YAML inside a document's leading `---` frontmatter fence. Returns
  * `hasFence: false` with a null value when there is no fence or the fence is empty (the
  * caller then treats the file as pure YAML). Throws `YamlParseError` on an unterminated
- * fence or non-mapping frontmatter, byte-matching the Python `frontmatter_format` errors.
+ * fence or non-mapping frontmatter with the portable error contract.
  */
 function readFrontmatter(path: string): RawFrontmatter {
-  const text = readFileSync(path, "utf8");
+  const text = readUtf8(path);
   const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return { hasFence: false, value: null };
+  if (lines[0]?.trimEnd() !== "---") return { hasFence: false, value: null };
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
+    if (lines[i]?.trimEnd() === "---") {
       end = i;
       break;
     }
   }
   if (end === -1) {
-    // Unterminated fence: Python's frontmatter_format raises FmFormatError.
     throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${path}\``);
   }
-  // Empty frontmatter (end-fence at line 1, zero content lines between fences):
-  // Python's fmf_read returns metadata=None → no_frontmatter.
+  // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
   const parsed = parseYaml(lines.slice(1, end).join("\n"));
   if (!isMapping(parsed)) {
-    // frontmatter-format's fmf_read rejects non-mapping frontmatter: a whitespace-only
-    // block (YAML `null`), a list, or a bare scalar. Match its message and Python class
-    // names (`NoneType`, `list`, `str`, …) so the parse error is byte-identical to the
-    // Python CLI across every entrypoint (ss-eero / ss-7cbb).
+    // Reject the same non-mapping values as Python: a whitespace-only block (YAML
+    // `null`), a list, or a bare scalar. Use the portable type names from the shared
+    // error contract.
     throw new YamlParseError(
-      `Expected YAML metadata to be a dict, got <class '${pyTypeName(parsed)}'>: \`${path}\``,
+      `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${path}\``,
     );
   }
   return { hasFence: true, value: parsed };
@@ -152,30 +140,143 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
 export function validateStructural(
   values: unknown,
   schemaObject: Record<string, unknown>,
-  options: { strictExtras?: boolean } = {},
+  options: { strictExtras?: boolean; resources?: Record<string, Record<string, unknown>> } = {},
 ): StructuralResult {
-  let schema = { ...schemaObject };
-  // $id is provenance, not a validation keyword; drop it to avoid URI-base handling.
-  delete schema.$id;
-  if (options.strictExtras) {
-    // The `status: enforced` overlay: object schemas that declare `properties` but
-    // omit `additionalProperties` are validated as closed. See applyEnforcedExtras.
-    schema = applyEnforcedExtras(schema) as Record<string, unknown>;
+  try {
+    checkSchemaIdentities(schemaObject, options.resources ?? {});
+    checkPatterns(schemaObject);
+    const schema = options.strictExtras
+      ? (applyEnforcedExtras(schemaObject) as Record<string, unknown>)
+      : schemaObject;
+    const ajv = new Ajv2020({
+      allErrors: true,
+      strict: false,
+      verbose: true,
+      validateFormats: false,
+    });
+    for (const [key, resource] of Object.entries(options.resources ?? {})) {
+      ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
+    }
+    const validateFn = ajv.compile(schema);
+    const ok = validateFn(values);
+    const errors: StructuralErrorRecord[] = ok
+      ? []
+      : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
+    errors.sort(compareStructuralRecords);
+    return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof EnforcementUnsupportedError) {
+      return {
+        ok: false,
+        errors: [{ kind: "enforcement_unsupported", message }],
+        engine: "json_schema",
+        skipped_reason: null,
+      };
+    }
+    return schemaInvalid(schemaFailureReason(message), message);
   }
-  // Cache key is computed from the FINAL schema (post-$id deletion and post-overlay),
-  // so two calls with the same base schema but different strictExtras won't collide.
-  const cacheKey = stableCacheKey(schema);
-  let validateFn = validatorCache.get(cacheKey);
-  if (validateFn === undefined) {
-    validateFn = sharedAjv.compile(schema);
-    validatorCache.set(cacheKey, validateFn);
+}
+
+const SCHEMA_MAPS = new Set([
+  "$defs",
+  "definitions",
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+]);
+const SCHEMA_LISTS = new Set(["allOf", "anyOf", "oneOf", "prefixItems"]);
+const SCHEMA_SINGLES = new Set([
+  "additionalProperties",
+  "contains",
+  "contentSchema",
+  "else",
+  "if",
+  "items",
+  "not",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+]);
+const MAX_PATTERN_LENGTH = 1_024;
+const UNSUPPORTED_PATTERN_PARTS = ["(?<", "(?P", "\\A", "\\Z", "\\z", "\\p", "\\P"];
+
+function* iterSchemas(root: Record<string, unknown>): Iterable<Record<string, unknown>> {
+  const stack = [root];
+  while (stack.length > 0) {
+    const schema = stack.pop() as Record<string, unknown>;
+    yield schema;
+    for (const [key, value] of Object.entries(schema)) {
+      if (SCHEMA_MAPS.has(key) && isMapping(value)) {
+        stack.push(...Object.values(value).filter(isMapping));
+      } else if (SCHEMA_LISTS.has(key) && Array.isArray(value)) {
+        stack.push(...value.filter(isMapping));
+      } else if (SCHEMA_SINGLES.has(key) && isMapping(value)) {
+        stack.push(value);
+      }
+    }
   }
-  const ok = validateFn(values);
-  const errors: StructuralErrorRecord[] = ok
-    ? []
-    : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
-  errors.sort(compareStructuralRecords);
-  return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
+}
+
+function checkPatterns(schema: Record<string, unknown>): void {
+  const check = (pattern: unknown): void => {
+    if (typeof pattern !== "string" || pattern.length > MAX_PATTERN_LENGTH) {
+      throw new Error("pattern must be a string of at most 1024 characters");
+    }
+    if (
+      UNSUPPORTED_PATTERN_PARTS.some((part) => pattern.includes(part)) ||
+      /\\[1-9]|\(\?[aiLmsux-]/u.test(pattern)
+    ) {
+      throw new Error("pattern uses syntax outside the portable subset");
+    }
+    try {
+      new RegExp(pattern, "u");
+    } catch (error) {
+      throw new Error(`pattern is invalid: ${String(error)}`);
+    }
+  };
+
+  for (const node of iterSchemas(schema)) {
+    const pattern = node.pattern;
+    if (pattern !== undefined) check(pattern);
+    if (isMapping(node.patternProperties)) {
+      for (const propertyPattern of Object.keys(node.patternProperties)) {
+        check(propertyPattern);
+      }
+    }
+  }
+}
+
+function checkSchemaIdentities(
+  schema: Record<string, unknown>,
+  resources: Record<string, Record<string, unknown>>,
+): void {
+  const seen = new Set<string>();
+  for (const document of [schema, ...Object.values(resources)]) {
+    for (const node of iterSchemas(document)) {
+      if (typeof node.$id !== "string") continue;
+      if (seen.has(node.$id)) throw new Error(`duplicate schema resource identity: ${node.$id}`);
+      seen.add(node.$id);
+    }
+  }
+}
+
+function schemaFailureReason(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("reference") || lower.includes("resolve")) return "reference";
+  if (lower.includes("pattern")) return "pattern";
+  if (lower.includes("duplicate schema resource")) return "resource_identity";
+  return "compilation";
+}
+
+function schemaInvalid(reason: string, message: string): StructuralResult {
+  return {
+    ok: false,
+    errors: [{ kind: "schema_invalid", reason, message }],
+    engine: "json_schema",
+    skipped_reason: null,
+  };
 }
 
 /**
@@ -224,21 +325,28 @@ function buildResult(args: {
   warnings: SchemaWarning[];
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
-  return {
-    ok: structural.ok && semantic.ok,
-    output: {
-      contract: contractToOutput(contract),
-      contract_id: contract.id,
-      document_metadata: metadataToOutput(args.metadata),
-      path: args.docPath,
-      profile: contract.profile,
-      semantic,
-      status: contract.status,
-      structural,
-      values: args.values,
-      warnings: args.warnings,
-    },
-  };
+  const ok = structural.ok && semantic.ok;
+  const firstKind = structural.errors[0]?.kind;
+  const inputCodes = new Set([
+    "artifact_unreadable",
+    "artifact_invalid_utf8",
+    "artifact_too_large",
+  ]);
+  const result = {
+    contract: contractToOutput(contract),
+    contract_id: contract.id,
+    document_metadata: metadataToOutput(args.metadata),
+    outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
+    path: args.docPath,
+    profile: contract.profile,
+    semantic,
+    status: contract.status,
+    structural,
+    values: args.values,
+    warnings: args.warnings,
+  } as ArtifactValidationResult;
+  Object.defineProperty(result, "ok", { value: ok, enumerable: false });
+  return result;
 }
 
 function failure(
@@ -274,30 +382,15 @@ function structuralAgainstSchemaFile(
 ): StructuralResult {
   let compiledSchema: unknown;
   try {
-    compiledSchema = parseYaml(readFileSync(resolved, "utf8"));
+    compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
-    if (err instanceof YamlParseError) {
-      return {
-        ok: false,
-        errors: [structuralError("schema_invalid", err.message)],
-        engine: "json_schema",
-        skipped_reason: null,
-      };
+    if (err instanceof PortableInputError) {
+      return schemaInvalid("syntax", err.message);
     }
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    return {
-      ok: false,
-      errors: [
-        structuralError(
-          "schema_invalid",
-          `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`,
-        ),
-      ],
-      engine: "json_schema",
-      skipped_reason: null,
-    };
+    return schemaInvalid("syntax", "compiled schema root must be a mapping");
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }
@@ -322,10 +415,10 @@ function resolveMetadataSchema(
   if (isAbsolute(schemaRef)) {
     return { path: null, error: `softschema.schema must be a relative path: ${schemaRef}` };
   }
-  const docDir = resolve(dirname(docPath));
-  const resolved = resolve(docDir, schemaRef);
-  const cwd = resolve(process.cwd());
-  if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
+  const docDir = realpathSync(resolve(dirname(docPath)));
+  const candidate = resolve(docDir, schemaRef);
+  const cwd = realpathSync(resolve(process.cwd()));
+  if (!isContained(docDir, candidate) && !isContained(cwd, candidate)) {
     return {
       path: null,
       error:
@@ -333,8 +426,17 @@ function resolveMetadataSchema(
         `directory: ${schemaRef}`,
     };
   }
-  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+  if (!existsSync(candidate) || !statSync(candidate).isFile()) {
     return { path: null, error: `compiled schema not found: ${schemaRef}` };
+  }
+  const resolved = realpathSync(candidate);
+  if (!isContained(docDir, resolved) && !isContained(cwd, resolved)) {
+    return {
+      path: null,
+      error:
+        "softschema.schema escapes the document directory and the working " +
+        `directory: ${schemaRef}`,
+    };
   }
   return { path: resolved, error: null };
 }
@@ -490,15 +592,16 @@ export function validateArtifact(
     preParsed?: RawFrontmatter;
   } = {},
 ): ArtifactValidationResult {
+  checkContractId(contract.id);
   const warnings: SchemaWarning[] = [];
   const metadataMode = options.metadataMode ?? "enforced";
   if (contract.profile === "pure-yaml") {
     let raw: unknown;
     try {
-      raw = parseYaml(readFileSync(docPath, "utf8"));
+      raw = parsePortableYaml(readUtf8(docPath));
     } catch (err) {
-      if (err instanceof YamlParseError) {
-        return failure(docPath, contract, null, "parse_error", err.message);
+      if (err instanceof PortableInputError) {
+        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
       }
       if (
         err instanceof Error &&
@@ -509,7 +612,7 @@ export function validateArtifact(
           docPath,
           contract,
           null,
-          "parse_error",
+          "artifact_unreadable",
           (err as NodeJS.ErrnoException).message,
         );
       }
@@ -579,8 +682,14 @@ export function validateArtifact(
     try {
       parsed = readFrontmatter(docPath);
     } catch (err) {
+      if (err instanceof PortableInputError) {
+        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+      }
       if (err instanceof YamlParseError) {
-        return failure(docPath, contract, null, "parse_error", err.message);
+        const cause = err.cause;
+        const kind =
+          cause instanceof PortableInputError ? portableArtifactKind(cause) : "yaml_parse_error";
+        return failure(docPath, contract, null, kind, err.message);
       }
       if (
         err instanceof Error &&
@@ -591,7 +700,7 @@ export function validateArtifact(
           docPath,
           contract,
           null,
-          "parse_error",
+          "artifact_unreadable",
           (err as NodeJS.ErrnoException).message,
         );
       }
@@ -674,3 +783,9 @@ export function validateArtifact(
 }
 
 export { readFrontmatter };
+
+function portableArtifactKind(error: PortableInputError): string {
+  if (error.code === "invalid_utf8") return "artifact_invalid_utf8";
+  if (error.code === "input_too_large") return "artifact_too_large";
+  return error.code;
+}

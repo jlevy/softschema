@@ -14,16 +14,20 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from frontmatter_format import FmFormatError, fmf_read, read_yaml_file
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
-from ruamel.yaml import YAMLError
+from referencing import Registry, Resource
+from referencing.exceptions import Unresolvable
+from referencing.jsonschema import DRAFT202012
 
-from softschema.canonicalize import apply_enforced_extras
+from softschema._portable import PortableInputError, parse_yaml, read_utf8
+from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
 from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
@@ -76,6 +80,13 @@ class ArtifactValidationResult:
     document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
     warnings: list[SchemaWarning] = field(default_factory=list)
+    outcome: Literal["valid", "invalid", "input_error"] = field(init=False)
+
+    def __post_init__(self) -> None:
+        input_codes = {"artifact_unreadable", "artifact_invalid_utf8", "artifact_too_large"}
+        first_kind = self.structural.errors[0].get("kind") if self.structural.errors else None
+        outcome = "valid" if self.ok else "input_error" if first_kind in input_codes else "invalid"
+        object.__setattr__(self, "outcome", outcome)
 
     @property
     def ok(self) -> bool:
@@ -91,6 +102,7 @@ def validate_structural(
     schema_yaml_path: Path,
     *,
     strict_extras: bool = False,
+    resources: Mapping[str, dict[str, Any]] | None = None,
 ) -> StructuralResult:
     """Validate values against a compiled JSON Schema (YAML or JSON).
 
@@ -99,23 +111,144 @@ def validate_structural(
     validated as ``additionalProperties: false``; see
     :func:`softschema.canonicalize.apply_enforced_extras`.
     """
-    schema = _read_yaml(schema_yaml_path)
-    if strict_extras and isinstance(schema, dict):
-        schema = apply_enforced_extras(schema)
-    validator = Draft202012Validator(schema)
-    errors = [
-        structural_error_record(
-            path=list(error.absolute_path),
-            validator=str(error.validator),
-            validator_value=error.validator_value,
-            value=error.instance,
+    try:
+        schema = _read_yaml(schema_yaml_path)
+        if not isinstance(schema, dict):
+            return _schema_invalid("syntax", "compiled schema root must be a mapping")
+        _check_patterns(schema)
+        Draft202012Validator.check_schema(schema)
+        _check_schema_identities(schema, resources or {})
+        if strict_extras:
+            schema = apply_enforced_extras(schema)
+        registry: Registry[Any] = Registry()
+        for key, resource_schema in (resources or {}).items():
+            resource_id = str(resource_schema.get("$id", key))
+            registry = registry.with_resource(
+                resource_id,
+                Resource.from_contents(resource_schema, default_specification=DRAFT202012),
+            )
+        registry = registry.crawl()
+        validator = Draft202012Validator(schema, registry=registry)
+        errors = [
+            structural_error_record(
+                path=list(error.absolute_path),
+                validator=str(error.validator),
+                validator_value=error.validator_value,
+                value=error.instance,
+            )
+            for error in validator.iter_errors(values)
+        ]
+    except PortableInputError as exc:
+        return _schema_invalid("syntax", str(exc))
+    except SchemaError as exc:
+        return _schema_invalid("dialect", exc.message)
+    except Unresolvable as exc:
+        return _schema_invalid("reference", str(exc))
+    except re.error as exc:
+        return _schema_invalid("pattern", str(exc))
+    except EnforcementUnsupportedError as exc:
+        return StructuralResult(
+            ok=False,
+            errors=[{"kind": "enforcement_unsupported", "message": str(exc)}],
         )
-        for error in validator.iter_errors(values)
-    ]
+    except Exception as exc:
+        return _schema_invalid(_schema_failure_reason(exc), str(exc))
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
     return StructuralResult(ok=not errors, errors=errors)
+
+
+_SCHEMA_MAPS = frozenset(
+    {"$defs", "definitions", "properties", "patternProperties", "dependentSchemas"}
+)
+_SCHEMA_LISTS = frozenset({"allOf", "anyOf", "oneOf", "prefixItems"})
+_SCHEMA_SINGLES = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "contentSchema",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
+_MAX_PATTERN_LENGTH = 1_024
+_UNSUPPORTED_PATTERN_PARTS = ("(?<", "(?P", "\\A", "\\Z", "\\z", "\\p", "\\P")
+
+
+def _iter_schemas(root: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    stack = [root]
+    while stack:
+        schema = stack.pop()
+        yield schema
+        for key, value in schema.items():
+            if key in _SCHEMA_MAPS and isinstance(value, dict):
+                stack.extend(item for item in value.values() if isinstance(item, dict))
+            elif key in _SCHEMA_LISTS and isinstance(value, list):
+                stack.extend(item for item in value if isinstance(item, dict))
+            elif key in _SCHEMA_SINGLES and isinstance(value, dict):
+                stack.append(value)
+
+
+def _check_patterns(schema: dict[str, Any]) -> None:
+    def check(pattern: Any) -> None:
+        if not isinstance(pattern, str) or len(pattern) > _MAX_PATTERN_LENGTH:
+            raise ValueError("pattern must be a string of at most 1024 characters")
+        if any(part in pattern for part in _UNSUPPORTED_PATTERN_PARTS) or re.search(
+            r"\\[1-9]|\(\?[aiLmsux-]", pattern
+        ):
+            raise ValueError("pattern uses syntax outside the portable subset")
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f"pattern is invalid: {exc}") from exc
+
+    for node in _iter_schemas(schema):
+        pattern = node.get("pattern")
+        if pattern is not None:
+            check(pattern)
+        pattern_properties = node.get("patternProperties")
+        if isinstance(pattern_properties, dict):
+            for property_pattern in pattern_properties:
+                check(property_pattern)
+
+
+def _check_schema_identities(
+    schema: dict[str, Any], resources: Mapping[str, dict[str, Any]]
+) -> None:
+    seen: set[str] = set()
+    for document in (schema, *resources.values()):
+        for node in _iter_schemas(document):
+            resource_id = node.get("$id")
+            if not isinstance(resource_id, str):
+                continue
+            if resource_id in seen:
+                raise ValueError(f"duplicate schema resource identity: {resource_id}")
+            seen.add(resource_id)
+
+
+def _schema_failure_reason(error: Exception) -> str:
+    message = str(error).lower()
+    if "reference" in message or "unresolvable" in message:
+        return "reference"
+    if "pattern" in message:
+        return "pattern"
+    if "duplicate schema resource" in message:
+        return "resource_identity"
+    return "compilation"
+
+
+def _schema_invalid(reason: str, message: str) -> StructuralResult:
+    return StructuralResult(
+        ok=False,
+        errors=[{"kind": "schema_invalid", "reason": reason, "message": message}],
+    )
 
 
 def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult:
@@ -164,12 +297,10 @@ def validate_artifact(
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
 
-    ``frontmatter`` is an optional already-parsed frontmatter mapping (as
-    returned by ``frontmatter_format.fmf_read``); when supplied for a
-    frontmatter-md contract the document is not re-read. A caller that has
-    already parsed the document (the CLI does, to infer the binding) passes it
-    to avoid a second read. ``None`` is a valid value (no frontmatter); the
-    sentinel ``_UNREAD`` means "read the file".
+    ``frontmatter`` is an optional already-parsed frontmatter mapping. When supplied for
+    a frontmatter-md contract the document is not re-read. The CLI passes its binding
+    parse to keep validation single-read. ``None`` is a valid value (no frontmatter);
+    the sentinel ``_UNREAD`` means "read the file".
     """
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
@@ -209,9 +340,12 @@ def _validate_frontmatter_artifact(
 ) -> ArtifactValidationResult:
     if frontmatter is _UNREAD:
         try:
-            _content, frontmatter = _read_frontmatter_doc(doc_path)
-        except (FmFormatError, YAMLError, OSError) as exc:
-            return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+            _content, frontmatter = read_frontmatter_doc(doc_path)
+        except OSError as exc:
+            return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
+        except PortableInputError as exc:
+            kind = _portable_error_kind(exc)
+            return _artifact_failure(doc_path, contract, kind, str(exc))
     if frontmatter is None:
         return _artifact_failure(
             doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"
@@ -334,8 +468,10 @@ def _validate_pure_yaml_artifact(
     """
     try:
         raw = _read_yaml(doc_path)
-    except (YAMLError, OSError) as exc:
-        return _artifact_failure(doc_path, contract, "parse_error", str(exc))
+    except OSError as exc:
+        return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
+    except PortableInputError as exc:
+        return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(
             doc_path,
@@ -580,12 +716,40 @@ def _artifact_failure(
     )
 
 
-def _read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
-    return fmf_read(path)
+def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
+    text = read_utf8(path)
+    lines = text.splitlines()
+    if not lines or lines[0].rstrip() != "---":
+        return text, None
+    end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)
+    if end < 0:
+        raise PortableInputError(
+            "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{path}`"
+        )
+    if end == 1:
+        return "\n".join(lines[2:]), None
+    raw = "\n".join(lines[1:end])
+    value = parse_yaml(raw)
+    if not isinstance(value, dict):
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"Expected YAML metadata to be a dict, got {type(value).__name__}: `{path}`",
+        )
+    return "\n".join(lines[end + 1 :]), value
 
 
 def _read_yaml(path: Path) -> Any:
-    return read_yaml_file(path)
+    return parse_yaml(read_utf8(path))
+
+
+def _portable_error_kind(error: Exception) -> str:
+    if not isinstance(error, PortableInputError):
+        return "yaml_parse_error"
+    if error.code == "invalid_utf8":
+        return "artifact_invalid_utf8"
+    if error.code == "input_too_large":
+        return "artifact_too_large"
+    return error.code
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

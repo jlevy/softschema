@@ -21,7 +21,7 @@ $ softschema compile examples.movie_page.model:MoviePage --contract example.movi
   "drift": false,
   "drift_diff": null,
   "out_path": "examples/movie_page/movie-page.schema.yaml",
-  "schema_sha256": "b537ea5b1a5e36febe5feaa8f8536fc500ff25c912013b8961bdcde0cb6f7dd3",
+  "schema_sha256": "6ee3e6803df2958ec1e58a20c71f0999f4fc7225c533b3732f2904fbb1dee6dd",
   "schema_yaml": [..]
 }
 ? 0
@@ -29,8 +29,9 @@ $ softschema compile examples.movie_page.model:MoviePage --contract example.movi
 
 # Test: compile --check reports drift for a different contract id
 
-A different `--contract` changes `$id` and the digest, so `--check` against the
-committed sidecar reports drift and exits 1.
+A different `--contract` changes compiler-owned contract metadata, the generated root
+title, and the digest, so `--check` against the committed sidecar reports drift and
+exits 1.
 
 ```console
 $ softschema compile examples.movie_page.model:MoviePage --contract wrong:Movie/v1 --out examples/movie_page/movie-page.schema.yaml --check
@@ -38,7 +39,7 @@ $ softschema compile examples.movie_page.model:MoviePage --contract wrong:Movie/
   "drift": true,
   "drift_diff": "committed schema at examples/movie_page/movie-page.schema.yaml differs from compile output",
   "out_path": "examples/movie_page/movie-page.schema.yaml",
-  "schema_sha256": "4708c54daa1ef206dd6965b0a5464cfb0e3d23b326fa781dd32c4016b3baf141",
+  "schema_sha256": "57d9e54b19f628aff12949d6b8fb109c5ed520310dde6b81aa5b5ff2ec7dae81",
   "schema_yaml": [..]
 }
 ? 1

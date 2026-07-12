@@ -10,8 +10,8 @@ path:
 
 The neutral `softschema` command resolves to `softschema-py` or `softschema-ts`
 depending on `SOFTSCHEMA_IMPL` (see `tests/golden/run.sh`). Both implementations
-must produce byte-identical output. Validation uses only the language-neutral
-JSON Schema sidecar (`--schema`); the semantic layer (Pydantic / Zod) is
+produce the same portable structure for this input. Validation uses only the
+language-neutral JSON Schema sidecar (`--schema`); the semantic layer (Pydantic / Zod) is
 implementation-specific and is exercised per-language, not here, so the semantic
 block is skipped identically.
 
@@ -33,6 +33,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -116,6 +117,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
     "schema": null,
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/bad-movie.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -201,6 +203,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -255,6 +258,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md
     "schema": null,
     "status": "permissive"
   },
+  "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
   "semantic": {

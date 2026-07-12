@@ -4,7 +4,7 @@ softschema is a file convention for Markdown/YAML artifacts that are readable by
 and structured enough for tools.
 The spec is programming-language agnostic.
 This repository ships two interchangeable implementations of the spec, a Python/Pydantic
-package and a TypeScript/Zod package, held to exact behavioral parity.
+package and a TypeScript/Zod package, held to the same portable behavior.
 
 For the adoption guide, examples, and tutorials, see
 [softschema Guide](softschema-guide.md).
@@ -88,9 +88,30 @@ A `pure-yaml` artifact follows the same metadata rules:
 ```yaml
 softschema:
   contract: mycorp.runs:BacktestReport/v1
-run_id: 2026-04-12T18-03-00Z
+run_id: run-2026-04-12T18-03-00Z
 summary: regression vs baseline
 ```
+
+## Portable YAML Values
+
+YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite
+numbers, lists, and string-keyed mappings.
+Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero,
+timestamps, duplicate keys, aliases, anchors, merge keys, explicit tags, non-string
+keys, lone surrogates, and non-finite numbers are rejected.
+Quoted strings remain strings; an unquoted scalar beginning with a YAML timestamp shape
+(`YYYY-MM-DD` followed by end-of-value, `T`, a space, or a tab) is rejected before
+construction.
+
+One input is at most 1 MiB, one scalar is at most 256 KiB, and one YAML document has at
+most 100,000 scalar or collection nodes and 64 simultaneously open collections,
+including the root. Exceeding a structure limit is `yaml_limit`, including a host YAML
+parser stack overflow caused by hostile nesting.
+
+For `frontmatter-md`, the opening and closing delimiters begin at column one and contain
+`---` plus optional trailing whitespace.
+An indented `---` is YAML content, so a block scalar may contain it without ending
+frontmatter.
 
 ## Frontmatter Artifact Shape
 
@@ -311,6 +332,16 @@ The two are unrelated: one schema validates many artifacts, while companion data
 pair with a single document.
 This spec does not standardize a companion-data discovery mechanism (see Compatibility).
 
+Regular expressions in `pattern` and in `patternProperties` keys are checked eagerly.
+Each is at most 1,024 characters and must compile in both Python and JavaScript.
+Named groups, lookbehind, inline flags, numeric backreferences, `\A`, `\Z`, `\z`, `\p`,
+and `\P` are outside the portable subset and make the schema invalid.
+
+The `schema_sha256` preimage uses canonical JSON: object keys sort by UTF-16 code unit,
+and binary floating-point values use the ECMAScript shortest round-trip spelling.
+A Python arbitrary-precision integer outside the portable safe range is rejected rather
+than hashed into an identity the TypeScript runtime cannot represent.
+
 ## Validation Expectations
 
 A conforming validator runs two independent layers and reports their results separately:
@@ -335,16 +366,11 @@ A validator must reject:
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
   Values)
 
-Validation output is deterministic across conforming implementations: structural error
-records share an engine-neutral shape and message wording, and numbers — in an error
-record’s `value`/`validator_value`, in a synthesized message, and in an echoed payload —
-render in a canonical form, where a whole-valued number carries no trailing fraction
-(`2`, not `2.0`). Output is byte-identical for every number an implementation can
-represent exactly: integers and whole-valued numbers within the IEEE-754 safe-integer
-range (`abs < 2^53`), and ordinary floats.
-A whole-valued magnitude at or beyond 2^53 is out of scope, because an
-arbitrary-precision integer runtime and a double-only runtime cannot always render it
-identically; validated payloads should avoid such literals.
+Validation output is deterministic within each implementation.
+Across implementations, structural error records have the same engine-neutral fields and
+portable meaning, and machine-readable JSON is compared as parsed data rather than as
+presentation bytes. The portable value domain accepts integers only within the IEEE-754
+safe-integer range (`abs < 2^53`) so both runtimes retain the same numeric value.
 
 ## Generated Sections
 
@@ -374,8 +400,9 @@ Recognized attributes:
 | `sha256` | no | Informational hash of the schema at render time. |
 
 (The path attribute is `schema`, not `contract`: `contract` is a logical ID, never a
-file path. This is a 0.2.0 change; a marker that still uses `contract="...path..."` is
-rejected with a message pointing at the rename.)
+file path.
+A marker that uses `contract="...path..."` is rejected with a message pointing
+at the rename.)
 
 The output is normative—equal inputs produce byte-equal output, and an implementation is
 checked against this spec, not the other way around:
@@ -418,19 +445,18 @@ two do not collide (see Compatibility).
   Where the implementations would differ from frontmatter-format’s Markdown rules,
   frontmatter-format is authoritative (for example, non-mapping frontmatter is
   rejected).
-- **sidematter-format.** A future version may adopt
+- **sidematter-format.** This spec does not adopt
   [sidematter-format](https://github.com/jlevy/sidematter-format)’s per-document
-  companion convention (`doc.md` → `doc.meta.yml` / `doc.assets/`) for companion data.
-  The term “sidecar” is reserved for that future alignment and is not used for compiled
-  schemas. Not specified now.
+  companion convention (`doc.md` → `doc.meta.yml` / `doc.assets/`). The term “sidecar”
+  is reserved for that convention and is not used for compiled schemas.
 - **markform.** The generated-section marker mechanism matches markform’s
   HTML-comment-tag convention (`key="value"` attributes) under a `softschema:`
   namespace; there is no formal dependency in either direction.
 
-## Out of Scope for v0.2
+## Out of Scope
 
-The following are explicitly not part of v0.2. A conforming implementation must not
-treat any of them as valid artifact-format rules:
+The following are not part of this spec.
+A conforming implementation must not treat any of them as valid artifact-format rules:
 
 - A `softschema.values: {location, pointer}` resolver shape, or any envelope-resolution
   mode beyond the one-envelope rule above.
@@ -439,9 +465,9 @@ treat any of them as valid artifact-format rules:
   body prose or tables.
 - A repair loop, alias resolution, or patch protocol.
 - A `legacy` status value.
-- Provider structured-output adapters (planned, but not part of v0.2).
+- Provider structured-output adapters.
 - Generated-section `view` presets, instance-value mirrors, and URN-based `schema`
-  resolution (deferred extensions of the generated-section feature above).
+  resolution.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

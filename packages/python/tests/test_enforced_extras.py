@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 from typing import Any
 
-from softschema import apply_enforced_extras
+from ruamel.yaml import YAML
+
+from softschema import validate_structural
+from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
+
+HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 
 
 def _base_schema() -> dict[str, Any]:
@@ -97,3 +103,27 @@ def test_input_schema_is_not_mutated() -> None:
     apply_enforced_extras(schema)
 
     assert schema == snapshot
+
+
+def test_shared_enforcement_vectors() -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["enforcement"]:
+        if case["supported"]:
+            assert apply_enforced_extras(case["schema"])["additionalProperties"] is False
+        else:
+            try:
+                apply_enforced_extras(case["schema"])
+            except EnforcementUnsupportedError:
+                continue
+            raise AssertionError(case["id"])
+
+
+def test_structural_validation_reports_unsupported_enforcement(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    case = next(item for item in vectors["enforcement"] if not item["supported"])
+    schema_path = tmp_path / "composed.schema.yaml"
+    YAML().dump(case["schema"], schema_path)
+    result = validate_structural(
+        {"first": "Ada", "last": "Lovelace"}, schema_path, strict_extras=True
+    )
+    assert result.errors[0]["kind"] == "enforcement_unsupported"

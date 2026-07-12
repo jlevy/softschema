@@ -6,8 +6,8 @@
 #   SOFTSCHEMA_IMPL=ts-bun ./tests/golden/run.sh   # the TypeScript CLI under Bun
 #
 # `ts` runs the built CLI under **Node**, the runtime npm users actually get via
-# `npx softschema`; `ts-bun` runs the same bundle under Bun. Both must produce
-# byte-identical output, so the published runtime is proven, not just the dev one.
+# `npx softschema`; `ts-bun` runs the same bundle under Bun. The shared journeys prove
+# the published runtime, while cross-impl-diff.sh compares machine JSON structurally.
 #
 # The scenarios invoke the neutral `softschema` command. This script builds a
 # one-file shim directory that points `softschema` at the chosen implementation

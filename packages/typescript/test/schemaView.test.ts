@@ -1,8 +1,11 @@
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
+import YAML from "yaml";
 import { SchemaView } from "../src/schemaView.js";
 
 const MOVIE_SCHEMA = join(import.meta.dir, "../../../examples/movie_page/movie-page.schema.yaml");
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 describe("SchemaView (movie compiled schema)", () => {
   const view = SchemaView.load(MOVIE_SCHEMA);
@@ -95,5 +98,35 @@ describe("SchemaView ($ref cycle detection)", () => {
     ]);
     // The cyclic `child` is surfaced as an unresolved leaf (no further recursion).
     expect(view.field("/properties/root/properties/child").jsonType).toBeNull();
+  });
+});
+
+describe("SchemaView shared contract", () => {
+  const vectors = YAML.parse(readFileSync(HARDENING_VECTORS, "utf8")).schema_view;
+
+  test("preserves ref siblings, snapshots input, and rejects genuine unions", () => {
+    const refCase = vectors[0];
+    const source = structuredClone(refCase.schema);
+    const view = new SchemaView(source);
+    source.properties.name.description = "mutated";
+    const field = view.field("/properties/name");
+    expect({ description: field.description, type: field.jsonType }).toEqual(refCase.expected);
+
+    const unionCase = vectors[1];
+    expect(new SchemaView(unionCase.schema).field("/properties/value").jsonType).toBe(
+      unionCase.expected.type,
+    );
+  });
+
+  test("keeps contract and schema identities separate and returns snapshots", () => {
+    const view = new SchemaView({
+      $id: "https://example.com/schemas/person-v1",
+      "x-softschema": { contract: "example.people:Person/v1" },
+    });
+    expect(view.contractId).toBe("example.people:Person/v1");
+    expect(view.schemaId).toBe("https://example.com/schemas/person-v1");
+    const raw = view.raw;
+    raw.$id = "mutated";
+    expect(view.schemaId).toBe("https://example.com/schemas/person-v1");
   });
 });

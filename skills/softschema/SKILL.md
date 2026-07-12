@@ -28,13 +28,13 @@ In examples, `$SS ...` means “run the selected prefix with these arguments.”
 
 1. If `softschema --version` works, use `SS='softschema'`.
 2. Else if `uvx --version` works, use `SS='uvx softschema@latest'`.
-3. Else if `npx --version` works, use `SS='npx softschema@latest'`.
+3. Else if `npx --version` works, use `SS='npx -y softschema@latest'`.
 4. Else install uv (`curl -LsSf https://astral.sh/uv/install.sh | sh` or
    `brew install uv`) or Node (`brew install node`), then retry.
 
-The unpinned `@latest` is a deliberate repo policy, not an oversight: installs resolve
-through a release-age cool-off gate (see `$SS docs installation`), which is this
-project’s supply-chain control in place of a pinned version.
+The zero-install fallback resolves the latest published release.
+Prefer an installed project command when one is available; use a lockfile-backed project
+dependency when the version must be repeatable (see `$SS docs installation`).
 
 `$SS doctor` reports the installed version, available runners, and recommended command
 prefix.
@@ -87,11 +87,11 @@ Use a zero-install runner:
 
 ```bash
 # Python (Pydantic):
-uvx softschema@latest --help            # ephemeral
+uvx softschema@latest --help            # ephemeral, latest published release
 uv tool install softschema             # persistent
 
 # TypeScript (Zod):
-npx softschema@latest --help            # ephemeral
+npx -y softschema@latest --help         # ephemeral, latest published release
 ```
 
 Both expose the same commands and flags and validate against the same canonical schema;
@@ -103,14 +103,14 @@ Run once per project to install discoverable mirrors of this skill, so any agent
 in the repo finds it natively:
 
 ```bash
-$SS skill --install
+$SS skill --install --scope project --agent portable --agent claude
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
 ```
 
 The mirrors carry a `DO NOT EDIT` marker.
-Re-run `softschema skill --install` to refresh after upgrading.
+Re-run the same explicit install command to refresh after upgrading.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

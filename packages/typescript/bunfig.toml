@@ -4,3 +4,6 @@
 # `bun test --coverage` runs (CI + `bun run test:cov`).
 coverageThreshold = { lines = 0.70, functions = 0.70 }
 coverageSkipTestFiles = true
+# The CLI is exercised as a published process by the tryscript goldens. Excluding it
+# avoids duplicating every command in-process solely to satisfy an instrumentation gate.
+coveragePathIgnorePatterns = ["src/cli.ts"]

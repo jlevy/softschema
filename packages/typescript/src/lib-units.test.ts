@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./errors.js";
 import {
   type Contract,
+  checkContractId,
   contractToOutput,
   isSchemaStatus,
   metadataToOutput,
@@ -19,6 +21,8 @@ import {
   SchemaMetadataError,
 } from "./models.js";
 import { validateArtifact } from "./validate.js";
+
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
 function tmp(name: string, content: string): string {
   const dir = mkdtempSync(join(tmpdir(), "softschema-unit-"));
@@ -99,6 +103,16 @@ describe("models", () => {
     ]) {
       expect(() => parseSchemaMetadata(id)).toThrow(SchemaMetadataError);
       expect(() => parseSchemaMetadata({ contract: id })).toThrow(SchemaMetadataError);
+    }
+  });
+  test("shared contract identity vectors", () => {
+    const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    for (const item of vectors.identity ?? []) {
+      if (item.valid) expect(checkContractId(item.contract)).toBe(item.contract as string);
+      else expect(() => checkContractId(item.contract)).toThrow(SchemaMetadataError);
     }
   });
   test("status guard + output helpers", () => {
@@ -292,47 +306,78 @@ describe("compile: write mode + build", () => {
     expect(readFileSync(out, "utf8")).toContain("x-softschema");
   });
   test("check mode reports missing committed compiled schema", () => {
-    const r = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), { checkOnly: true });
-    expect(r.drift).toBe(true);
+    const result = compileSchema(Sample, join(tmpdir(), "does-not-exist-xyz.yaml"), {
+      contractId: "x:S/v1",
+      checkOnly: true,
+    });
+    expect(result.drift).toBe(true);
   });
   test("buildCanonicalSchema sets schema_sha256 inside x-softschema", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
-  test("augmentSchema merges into existing x-softschema (setdefault+update semantics)", () => {
-    // Simulate a raw schema that already carries x-softschema with a custom field.
-    // buildCanonicalSchema processes through augmentSchema; verify the custom field survives.
-    const CustomSchema = z.strictObject({ name: z.string() });
-    const { schema } = buildCanonicalSchema(CustomSchema, "x:S/v1");
+  test("shared generated-title vectors", () => {
+    const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    for (const item of vectors.compiler_titles ?? []) {
+      const model = z.strictObject({ camelCase: z.string() });
+      const { schema } = buildCanonicalSchema(model, String(item.contract));
+      expect(schema.title).toBe(item.expected_root);
+      const properties = schema.properties as Record<string, Record<string, unknown>>;
+      expect(properties[String(item.field)]?.title).toBe(item.expected_field);
+    }
+  });
+  test("separates schema identity and rejects reserved root metadata", () => {
+    const { schema } = buildCanonicalSchema(
+      Sample,
+      "x:S/v1",
+      "https://example.com/schemas/sample-v1",
+    );
     const xss = schema["x-softschema"] as Record<string, unknown>;
-    // The standard fields must be present:
     expect(xss.contract).toBe("x:S/v1");
-    expect(xss.softschema_format_version).toBe("0.1.0");
     expect(xss.schema_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(schema.$id).toBe("https://example.com/schemas/sample-v1");
+    const Reserved = Sample.meta({ "x-softschema": { custom: true } });
+    expect(() => buildCanonicalSchema(Reserved, "x:S/v1")).toThrow("reserved root identity key");
+  });
+  test("drift comparison is portable and boolean-safe", () => {
+    const out = join(mkdtempSync(join(tmpdir(), "softschema-drift-")), "s.yaml");
+    compileSchema(Sample, out, { contractId: "x:S/v1" });
+    writeFileSync(
+      out,
+      readFileSync(out, "utf8").replace("additionalProperties: false", "additionalProperties: 0"),
+    );
+    expect(compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true }).drift).toBe(true);
+    writeFileSync(out, Buffer.from([0xff]));
+    expect(() => compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true })).toThrow(
+      "UTF-8",
+    );
   });
 });
 
 describe("validate: frontmatter edge cases (ss-3iz5)", () => {
   test("empty frontmatter (---\\n---) returns no_frontmatter, matching Python fmf_read", () => {
     const r = validateArtifact(tmp("d.md", "---\n---\nbody\n"), contract());
-    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
+    const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("no_frontmatter");
     expect(errors[0]?.message).toContain("no frontmatter in ");
   });
-  test("whitespace-only frontmatter returns parse_error with Python-identical message", () => {
+  test("whitespace-only frontmatter returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\n   \n---\nbody\n");
     const r = validateArtifact(path, contract());
-    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
-    expect(errors[0]?.kind).toBe("parse_error");
+    const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
-      `Expected YAML metadata to be a dict, got <class 'NoneType'>: \`${path}\``,
+      `Expected YAML metadata to be a dict, got NoneType: \`${path}\``,
     );
   });
-  test("unterminated fence returns parse_error with Python-identical message", () => {
+  test("unterminated fence returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\nfoo: 1\n...no closing ---\n");
     const r = validateArtifact(path, contract());
-    const errors = (r.output.structural as { errors: { kind: string; message: string }[] }).errors;
-    expect(errors[0]?.kind).toBe("parse_error");
+    const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
+    expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
       `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
     );
@@ -363,45 +408,41 @@ describe("models: parseSchemaMetadata uses Python type names (ss-3iz5)", () => {
 describe("validate: artifact error kinds + advisory warning", () => {
   test("no_frontmatter", () => {
     const r = validateArtifact(tmp("d.md", "no fence here\n"), contract());
-    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
-      "no_frontmatter",
-    );
+    expect((r.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe("no_frontmatter");
   });
   test("document_softschema_invalid", () => {
     const r = validateArtifact(
       tmp("d.md", "---\nsoftschema:\n  status: enforced\nx: 1\n---\n"),
       contract(),
     );
-    expect((r.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((r.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "document_softschema_invalid",
     );
   });
   test("document_contract_mismatch (enforced) vs warning (advisory)", () => {
     const doc = tmp("d.md", "---\nsoftschema:\n  contract: other:Z/v1\nmovie:\n  a: 1\n---\n");
     const enforced = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }));
-    expect((enforced.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((enforced.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "document_contract_mismatch",
     );
     const advisory = validateArtifact(doc, contract({ id: "x:S/v1", envelopeKey: "movie" }), {
       metadataMode: "advisory",
     });
-    expect((advisory.output.warnings as { code: string }[])[0]?.code).toBe(
-      "document-contract-mismatch",
-    );
+    expect((advisory.warnings as { code: string }[])[0]?.code).toBe("document-contract-mismatch");
   });
   test("envelope_mismatch + schema_missing", () => {
     const em = validateArtifact(
       tmp("d.md", "---\nwrong:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie" }),
     );
-    expect((em.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((em.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "envelope_mismatch",
     );
     const sm = validateArtifact(
       tmp("d.md", "---\nmovie:\n  a: 1\n---\n"),
       contract({ envelopeKey: "movie", schemaPath: "/no/such/schema.yaml" }),
     );
-    expect((sm.output.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
+    expect((sm.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "schema_missing",
     );
   });

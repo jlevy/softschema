@@ -10,6 +10,109 @@ permissions:
   contents: read
 
 jobs:
+  release-candidates:
+    uses: ./.github/workflows/release-candidates.yml
+
+  artifact-smoke:
+    needs: release-candidates
+    name: Artifact smoke (${{ matrix.os }}, py${{ matrix.python-context }}, node${{ matrix.node-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The protected context retains its historical 3.11.15 label, but current
+        # macOS-arm64 and Windows runner toolcaches do not publish that exact patch.
+        # Use the latest available 3.11 patch for the supported-minor compatibility lane.
+        include:
+          - os: ubuntu-latest
+            python-context: "3.11.15"
+            python-version: "3.11"
+            node-version: "22.12.0"
+          - os: ubuntu-latest
+            python-context: "3.14.6"
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+          - os: macos-latest
+            python-context: "3.11.15"
+            python-version: "3.11"
+            node-version: "22.12.0"
+          - os: macos-latest
+            python-context: "3.14.6"
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+          - os: windows-latest
+            python-context: "3.11.15"
+            python-version: "3.11"
+            node-version: "22.12.0"
+          - os: windows-latest
+            python-context: "3.14.6"
+            python-version: "3.14.6"
+            node-version: "24.18.0"
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download exact candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidates
+          path: release-candidates
+
+      - name: Set up exact Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Verify transferred checksums
+        run: |
+          node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync } = require("node:fs");
+          for (const line of readFileSync("release-candidates/SHA256SUMS", "utf8").trim().split("\n")) {
+            const match = line.match(/^([0-9a-f]{64})  (.+)$/);
+            if (!match) throw new Error(`invalid checksum line: ${line}`);
+            const actual = createHash("sha256").update(readFileSync(`release-candidates/${match[2]}`)).digest("hex");
+            if (actual !== match[1]) throw new Error(`checksum mismatch: ${match[2]}`);
+          }
+          NODE
+
+      - name: Smoke wheel and sdist outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.whl \
+            softschema --version
+          uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.whl \
+            softschema docs spec > /dev/null
+          uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.tar.gz \
+            softschema --version
+          uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.tar.gz \
+            softschema docs spec > /dev/null
+
+      - name: Smoke npm tarball outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir softschema-node
+          cd softschema-node
+          npm init --yes > /dev/null
+          npm install --ignore-scripts --no-audit --no-fund \
+            "$GITHUB_WORKSPACE"/release-candidates/npm/*.tgz
+          node --input-type=module -e \
+            'import { validateArtifact } from "softschema"; if (typeof validateArtifact !== "function") process.exit(1)'
+          ./node_modules/.bin/softschema --version
+          ./node_modules/.bin/softschema docs spec > /dev/null
+
   build:
     strategy:
       matrix:
@@ -19,12 +122,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.12"
           enable-cache: true
@@ -58,12 +161,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.12"
           enable-cache: true
@@ -82,7 +185,7 @@ jobs:
         run: uv sync --all-extras --exclude-newer-package strif=2026-06-03
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
@@ -96,17 +199,17 @@ jobs:
         working-directory: packages/typescript
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.11"
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
@@ -137,17 +240,17 @@ jobs:
         run: SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
 
   cross-impl:
-    # Direct Python-vs-TypeScript(Node) byte-comparison on the same inputs, so a parity
-    # break is reported as a divergence rather than as one side drifting from the goldens.
+    # Direct Python-vs-TypeScript(Node) semantic comparison on the same inputs, so a
+    # parity break is reported as a divergence instead of one side drifting from goldens.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.11.12"
           enable-cache: true
@@ -163,12 +266,12 @@ jobs:
         run: uv sync --all-extras --exclude-newer-package strif=2026-06-03
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.11"
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 

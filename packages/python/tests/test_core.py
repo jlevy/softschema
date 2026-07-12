@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from ruamel.yaml import YAML
 
+import softschema
 from softschema import (
     Contract,
     Contracts,
@@ -39,6 +41,47 @@ class EnvelopeModel(BaseModel):
     sample: SampleModel
 
 
+class GeneratedTitleModel(BaseModel):
+    camelCase: str
+
+
+HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
+
+
+def test_package_root_exports_only_the_supported_surface() -> None:
+    assert set(softschema.__all__) == {
+        "ArtifactValidationResult",
+        "CompileResult",
+        "Contract",
+        "Contracts",
+        "EnvelopeAmbiguityError",
+        "FieldInfo",
+        "GeneratedSection",
+        "RegenerateResult",
+        "RepairKind",
+        "SchemaMetadata",
+        "SchemaProfile",
+        "SchemaStatus",
+        "SchemaView",
+        "SchemaWarning",
+        "SemanticResult",
+        "SoftField",
+        "SoftOwner",
+        "SoftTier",
+        "StructuralResult",
+        "ValidationResult",
+        "WarningCode",
+        "compile_model",
+        "infer_envelope_key",
+        "parse_schema_metadata",
+        "regenerate",
+        "validate_artifact",
+        "validate_semantic",
+        "validate_structural",
+        "validate_values",
+    }
+
+
 def test_compile_writes_json_schema_with_contract_id(tmp_path: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
 
@@ -46,9 +89,61 @@ def test_compile_writes_json_schema_with_contract_id(tmp_path: Path) -> None:
 
     assert out.is_file()
     assert "$schema:" in result.schema_yaml
-    assert "$id: example:Sample/v1" in result.schema_yaml
+    assert "$id:" not in result.schema_yaml
+    assert "contract: example:Sample/v1" in result.schema_yaml
     assert "schema_sha256" in result.schema_yaml
     assert result.schema_sha256 is not None
+
+
+def test_compile_separates_optional_schema_id_and_reserves_metadata(tmp_path: Path) -> None:
+    out = tmp_path / "sample.schema.yaml"
+    result = compile_model(
+        SampleModel,
+        out,
+        contract_id="example:Sample/v1",
+        schema_id="https://example.com/schemas/sample-v1",
+    )
+    assert "$id: https://example.com/schemas/sample-v1" in result.schema_yaml
+
+    class ReservedModel(BaseModel):
+        model_config = ConfigDict(json_schema_extra={"x-softschema": {"custom": True}})
+
+        name: str
+
+    with pytest.raises(ValueError, match="reserved root identity key"):
+        compile_model(ReservedModel, out, contract_id="example:Reserved/v1")
+
+
+def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
+    out = tmp_path / "sample.schema.yaml"
+    compile_model(SampleModel, out, contract_id="example:Sample/v1")
+    out.write_text(
+        out.read_text().replace("additionalProperties: false", "additionalProperties: 0")
+    )
+    assert compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True).drift
+    out.write_bytes(b"\xff")
+    with pytest.raises(ValueError, match="UTF-8"):
+        compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+
+
+def test_shared_generated_title_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["compiler_titles"]:
+        out = tmp_path / f"{case['id']}.schema.yaml"
+        compile_model(GeneratedTitleModel, out, contract_id=case["contract"])
+        schema = YAML(typ="safe").load(out.read_text())
+        assert schema["title"] == case["expected_root"], case["id"]
+        assert schema["properties"][case["field"]]["title"] == case["expected_field"], case["id"]
+
+
+def test_shared_contract_identity_vectors() -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["identity"]:
+        if case["valid"]:
+            assert Contract(id=case["contract"]).id == case["contract"]
+        else:
+            with pytest.raises(ValidationError):
+                Contract(id=case["contract"])
 
 
 def test_validate_structural_and_semantic(tmp_path: Path) -> None:
@@ -216,7 +311,7 @@ def test_validate_artifact_rejects_invalid_metadata(tmp_path: Path) -> None:
     assert result.structural.errors[0]["kind"] == "document_softschema_invalid"
 
 
-def test_validate_artifact_reports_parse_error_for_malformed_pure_yaml(tmp_path: Path) -> None:
+def test_validate_artifact_reports_yaml_parse_error_for_malformed_pure_yaml(tmp_path: Path) -> None:
     doc = tmp_path / "bad.yaml"
     doc.write_text("key: [unclosed\n  : : :\n")
     contract = Contract(id="example:Sample/v1", profile=SchemaProfile.pure_yaml)
@@ -224,7 +319,7 @@ def test_validate_artifact_reports_parse_error_for_malformed_pure_yaml(tmp_path:
     result = validate_artifact(doc, contract=contract)
 
     assert not result.ok
-    assert result.structural.errors[0]["kind"] == "parse_error"
+    assert result.structural.errors[0]["kind"] == "yaml_parse_error"
 
 
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:
@@ -262,6 +357,35 @@ def test_validate_artifact_resolves_schema_path_relative_to_doc(tmp_path: Path) 
     assert result.ok
 
 
+def test_document_schema_binding_rejects_symlink_escape(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    outside = tmp_path / "outside.schema.yaml"
+    compile_model(SampleModel, outside, contract_id="example:Sample/v1")
+    (docs / "linked.schema.yaml").symlink_to(outside)
+    doc = docs / "sample.md"
+    write_doc(
+        doc,
+        """
+        softschema:
+          contract: example:Sample/v1
+          schema: linked.schema.yaml
+          envelope: sample
+        sample:
+          name: hello
+          direction: up
+          delta: 1.5
+        """,
+    )
+    contract = Contract(id="example:Sample/v1", envelope_key="sample")
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "schema_missing"
+    assert "escapes" in result.structural.errors[0]["message"]
+
+
 def test_validate_artifact_reports_missing_schema(tmp_path: Path) -> None:
     doc = tmp_path / "sample.md"
     write_doc(
@@ -296,19 +420,17 @@ def test_registry_registers_complete_bindings_only() -> None:
         registry.register(Contract(id="example:Sample/v1", model=EnvelopeModel))
 
 
-def test_validate_artifact_returns_parse_error_for_missing_file_frontmatter() -> None:
-    """A nonexistent .md path returns a structured parse_error, not an exception."""
+def test_validate_artifact_returns_input_error_for_missing_file_frontmatter() -> None:
     contract = Contract(id="example:Sample/v1", model=SampleModel)
     result = validate_artifact(Path("/nonexistent.md"), contract=contract)
 
     assert not result.ok
     assert result.structural.ok is False
-    assert result.structural.errors[0]["kind"] == "parse_error"
-    assert result.semantic.skipped_reason == "parse_error"
+    assert result.structural.errors[0]["kind"] == "artifact_unreadable"
+    assert result.outcome == "input_error"
 
 
-def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> None:
-    """A nonexistent .yaml path with pure_yaml profile returns a structured parse_error."""
+def test_validate_artifact_returns_input_error_for_missing_file_pure_yaml() -> None:
     contract = Contract(
         id="example:Sample/v1",
         model=SampleModel,
@@ -318,8 +440,65 @@ def test_validate_artifact_returns_parse_error_for_missing_file_pure_yaml() -> N
 
     assert not result.ok
     assert result.structural.ok is False
-    assert result.structural.errors[0]["kind"] == "parse_error"
-    assert result.semantic.skipped_reason == "parse_error"
+    assert result.structural.errors[0]["kind"] == "artifact_unreadable"
+    assert result.outcome == "input_error"
+
+
+def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
+    for case in vectors["portable_values"]:
+        path = tmp_path / f"{case['id']}.yaml"
+        depth = int(case.get("depth", 1_000))
+        text = (
+            "value: " + "[" * depth + "0" + "]" * depth if case.get("generated") else case["text"]
+        )
+        path.write_text(text)
+        result = validate_artifact(path, contract=contract)
+        assert result.ok is case["valid"], case["id"]
+        if not case["valid"]:
+            assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_shared_frontmatter_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Movie/v1", envelope_key="movie")
+    for case in vectors["frontmatter"]:
+        path = tmp_path / f"{case['id']}.md"
+        path.write_text(case["text"])
+        result = validate_artifact(path, contract=contract)
+        assert result.ok, case["id"]
+        assert result.values == case["expected"], case["id"]
+
+
+def test_shared_artifact_input_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
+    for case in vectors["artifact_input"]:
+        path = tmp_path / f"{case['id']}.yaml"
+        if case.get("source") == "invalid_utf8":
+            path.write_bytes(b"value: \xff")
+        elif case.get("source") == "too_large":
+            path.write_bytes(b"x" * 1_048_577)
+        elif "text" in case:
+            path.write_text(case["text"])
+        result = validate_artifact(path, contract=contract)
+        assert result.outcome == case["outcome"], case["id"]
+        assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_shared_structural_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    yaml = YAML()
+    for case in vectors["structural"]:
+        path = tmp_path / f"{case['id']}.schema.yaml"
+        yaml.dump(case["schema"], path)
+        result = validate_structural(case["value"], path, resources=case.get("resources"))
+        assert result.ok is case["valid"], case["id"]
+        if not case["valid"]:
+            assert result.errors[0]["kind"] == case["code"], case["id"]
+            if "reason" in case:
+                assert result.errors[0]["reason"] == case["reason"], case["id"]
 
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:

@@ -30,6 +30,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
     "schema": null,
     "status": "permissive"
   },
+  "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -83,6 +84,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
     "schema": null,
     "status": "permissive"
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
   "semantic": {
@@ -168,6 +170,7 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
     "schema": null,
     "status": "enforced"
   },
+  "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-enforced.md",
   "profile": "frontmatter-md",
   "semantic": {

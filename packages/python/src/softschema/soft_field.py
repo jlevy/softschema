@@ -29,7 +29,9 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from softschema._portable import _check_value
 
 SoftOwner: TypeAlias = Literal["agent", "postprocess", "system", "human"]
 """Who or what produces the value at runtime."""
@@ -44,16 +46,24 @@ RepairKind: TypeAlias = Literal["none", "safe_coerce", "suggest_alias"]
 class SoftFieldMeta(BaseModel):
     """Structured metadata block written under ``x-softschema`` on each field."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
-    group: str
+    group: str = Field(min_length=1)
     order: int | None = None
     tier: SoftTier | None = None
     owner: SoftOwner = "agent"
-    instruction: str | None = None
+    instruction: str | None = Field(default=None, min_length=1)
     examples: list[Any] = Field(default_factory=list)
     aliases: dict[str, list[str]] = Field(default_factory=dict)
     repair: RepairKind = "none"
+
+    @model_validator(mode="after")
+    def _validate_portable_metadata(self) -> SoftFieldMeta:
+        _check_value({"examples": self.examples, "aliases": self.aliases})
+        for name, values in self.aliases.items():
+            if not name or not values or any(not value for value in values):
+                raise ValueError("aliases require non-empty names and values")
+        return self
 
 
 def SoftField(
@@ -83,6 +93,8 @@ def SoftField(
     Empty optional values are omitted from the emitted metadata so the compiled
     schema stays minimal.
     """
+    if not description:
+        raise ValueError("description must be a non-empty string")
     meta = SoftFieldMeta(
         group=group,
         order=order,

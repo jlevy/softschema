@@ -3,9 +3,9 @@
  * Python `SchemaView`. One reader for every downstream consumer (generated sections, QA,
  * agent prompts) so $ref resolution and x-softschema lookup never diverge.
  */
-import { readFileSync } from "node:fs";
-import { parse as yamlParse } from "yaml";
 import { isMapping } from "./guards.js";
+import { checkContractId } from "./models.js";
+import { parsePortableYaml, readUtf8 } from "./portable.js";
 
 const X_SOFTSCHEMA = "x-softschema";
 
@@ -33,12 +33,8 @@ function unescapePointerSegment(segment: string): string {
 }
 
 function refFromAnyOf(prop: SchemaNode): string | null {
-  const anyOf = prop.anyOf;
-  if (!Array.isArray(anyOf)) return null;
-  for (const entry of anyOf) {
-    if (isMapping(entry) && typeof entry.$ref === "string") return entry.$ref;
-  }
-  return null;
+  const branch = nullableValueBranch(prop);
+  return branch !== null && typeof branch.$ref === "string" ? branch.$ref : null;
 }
 
 function resolveRef(schema: SchemaNode, ref: string): SchemaNode | null {
@@ -58,18 +54,13 @@ function resolveRef(schema: SchemaNode, ref: string): SchemaNode | null {
 function extractType(prop: SchemaNode): string | null {
   const t = prop.type;
   if (typeof t === "string") return t;
-  if (Array.isArray(t)) {
+  if (Array.isArray(t) && t.length === 2 && t.filter((entry) => entry === "null").length === 1) {
     const nonNull = t.filter((e) => e !== "null");
     if (nonNull.length === 1 && typeof nonNull[0] === "string") return nonNull[0];
   }
-  const anyOf = prop.anyOf;
-  if (Array.isArray(anyOf)) {
-    for (const entry of anyOf) {
-      if (isMapping(entry) && typeof entry.type === "string" && entry.type !== "null") {
-        return entry.type;
-      }
-    }
-  }
+  const branch = nullableValueBranch(prop);
+  if (branch !== null && typeof branch.type === "string" && branch.type !== "null")
+    return branch.type;
   return null;
 }
 
@@ -78,19 +69,27 @@ function extractEnum(prop: SchemaNode): string[] | null {
   if (Array.isArray(enumValue) && enumValue.every((v) => typeof v === "string")) {
     return [...(enumValue as string[])];
   }
-  const anyOf = prop.anyOf;
-  if (Array.isArray(anyOf)) {
-    for (const entry of anyOf) {
-      if (
-        isMapping(entry) &&
-        Array.isArray(entry.enum) &&
-        entry.enum.every((v) => typeof v === "string")
-      ) {
-        return [...(entry.enum as string[])];
-      }
-    }
+  const branch = nullableValueBranch(prop);
+  if (
+    branch !== null &&
+    Array.isArray(branch.enum) &&
+    branch.enum.every((v) => typeof v === "string")
+  ) {
+    return [...(branch.enum as string[])];
   }
   return null;
+}
+
+function nullableValueBranch(prop: SchemaNode): SchemaNode | null {
+  const anyOf = prop.anyOf;
+  if (!Array.isArray(anyOf) || anyOf.length !== 2) return null;
+  const nulls = anyOf.filter(
+    (entry) => isMapping(entry) && Object.keys(entry).length === 1 && entry.type === "null",
+  );
+  const others = anyOf.filter(
+    (entry) => isMapping(entry) && !(Object.keys(entry).length === 1 && entry.type === "null"),
+  );
+  return nulls.length === 1 && others.length === 1 ? (others[0] as SchemaNode) : null;
 }
 
 function extractSoftmeta(prop: SchemaNode): Record<string, unknown> {
@@ -102,12 +101,12 @@ export class SchemaView {
   private readonly schema: SchemaNode;
 
   constructor(schema: SchemaNode) {
-    this.schema = schema;
+    this.schema = structuredClone(schema);
   }
 
   /** Load a YAML or JSON compiled schema from disk. */
   static load(schemaPath: string): SchemaView {
-    const data = yamlParse(readFileSync(schemaPath, "utf8")) as unknown;
+    const data = parsePortableYaml(readUtf8(schemaPath));
     if (!isMapping(data)) {
       throw new Error(`schema at ${schemaPath} is not a mapping at the root`);
     }
@@ -115,7 +114,7 @@ export class SchemaView {
   }
 
   get raw(): SchemaNode {
-    return this.schema;
+    return structuredClone(this.schema);
   }
 
   get rootSoftmeta(): Record<string, unknown> {
@@ -125,7 +124,10 @@ export class SchemaView {
 
   get contractId(): string | null {
     const metaContract = this.rootSoftmeta.contract;
-    if (typeof metaContract === "string") return metaContract;
+    return typeof metaContract === "string" ? checkContractId(metaContract) : null;
+  }
+
+  get schemaId(): string | null {
     return typeof this.schema.$id === "string" ? this.schema.$id : null;
   }
 
@@ -209,6 +211,14 @@ export class SchemaView {
     if (ref === null) ref = refFromAnyOf(prop);
     if (ref === null || seenRefs.has(ref)) return { node: prop, ref: null };
     const target = resolveRef(this.schema, ref);
-    return target !== null ? { node: target, ref } : { node: prop, ref: null };
+    return target !== null
+      ? {
+          node: {
+            ...target,
+            ...Object.fromEntries(Object.entries(prop).filter(([key]) => key !== "$ref")),
+          },
+          ref,
+        }
+      : { node: prop, ref: null };
   }
 }

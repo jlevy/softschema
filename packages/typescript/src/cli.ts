@@ -12,6 +12,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
@@ -35,18 +36,19 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->";
 const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
+const ZERO_INSTALL_PACKAGE = "softschema@latest";
 const RUNNER_COMMANDS = ["softschema", "uvx", "npx"] as const;
 const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
   softschema: "softschema",
-  uvx: "uvx softschema@latest",
-  npx: "npx softschema@latest",
+  uvx: `uvx ${ZERO_INSTALL_PACKAGE}`,
+  npx: `npx -y ${ZERO_INSTALL_PACKAGE}`,
 };
 
 const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@latest skill --install
+    uvx ${ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
     # or
-    npx softschema@latest skill --install
+    npx -y ${ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
   Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
   and bundled docs.`;
 
@@ -55,14 +57,12 @@ const AGENT_HELP_EPILOG = `IMPORTANT for agents:
  * source file so tests catch source drift; installed packages fall back to bundled
  * `resources/`, so they never depend on the working directory.
  */
-const MAX_RESOURCE_WALK_DEPTH = 6;
-
 function readResource(relPath: string): string {
-  let dir = PACKAGE_ROOT;
-  for (let i = 0; i < MAX_RESOURCE_WALK_DEPTH; i++) {
-    const candidate = join(dir, relPath);
-    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
-    dir = resolve(dir, "..");
+  const modulePath = fileURLToPath(import.meta.url);
+  const expectedSource = join(PACKAGE_ROOT, "src", "cli.ts");
+  if (existsSync(expectedSource) && realpathSync(expectedSource) === realpathSync(modulePath)) {
+    const source = join(PACKAGE_ROOT, "../..", relPath);
+    if (existsSync(source)) return readFileSync(source, "utf8");
   }
   const bundled = join(PACKAGE_ROOT, "resources", relPath);
   if (existsSync(bundled)) return readFileSync(bundled, "utf8");
@@ -163,16 +163,14 @@ const COPYABLE_EXAMPLES = [
   "example-schema",
 ];
 
-export const SKILL_INSTALL_TARGETS = [
-  ".agents/skills/softschema/SKILL.md",
-  ".claude/skills/softschema/SKILL.md",
-] as const;
+export const SKILL_INSTALL_TARGETS = {
+  portable: ".agents/skills/softschema/SKILL.md",
+  claude: ".claude/skills/softschema/SKILL.md",
+} as const;
 
-// The format=fNN stamp lets a future installer recognize this managed surface and refuse
-// to clobber a newer format. The package version is intentionally omitted so the
-// committed mirrors stay deterministic across dev builds (matches the Python marker).
-export const SKILL_DO_NOT_EDIT_MARKER =
-  "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\nRe-run that command to update.\n-->\n";
+const SKILL_MARKER =
+  "<!-- DO NOT EDIT format=f02: written by `softschema skill --install`.\n" +
+  "Re-run that command to update.\n-->\n";
 
 function packageVersion(): string {
   try {
@@ -240,7 +238,7 @@ export function installSkillPayload(rendered: string): string {
     if (lines[i]?.trim() === "---") {
       delimiters += 1;
       if (delimiters === 2) {
-        lines.splice(i + 1, 0, SKILL_DO_NOT_EDIT_MARKER);
+        lines.splice(i + 1, 0, SKILL_MARKER);
         break;
       }
     }
@@ -259,28 +257,58 @@ function resolveInstallBase(start: string): string {
   }
 }
 
-function runSkillInstall(): number {
+function isManagedSkill(existing: string): boolean {
+  return existing.includes(SKILL_MARKER);
+}
+
+function runSkillInstall(opts: { scope?: string; agent?: string[]; dryRun?: boolean }): number {
+  if (
+    (opts.scope !== "project" && opts.scope !== "personal") ||
+    opts.agent === undefined ||
+    opts.agent.length === 0 ||
+    opts.agent.some((agent) => agent !== "portable" && agent !== "claude")
+  ) {
+    throw new UsageError(
+      "skill --install requires --scope project|personal and at least one --agent portable|claude",
+    );
+  }
   const payload = installSkillPayload(renderedSkill());
-  const baseDir = resolveInstallBase(process.cwd());
-  const files = SKILL_INSTALL_TARGETS.map((relative) => {
+  const baseDir = opts.scope === "project" ? resolveInstallBase(process.cwd()) : homedir();
+  const pending: { target: string; status: "created" | "updated" }[] = [];
+  const files = [...new Set(opts.agent)].map((agent) => {
+    const relative = SKILL_INSTALL_TARGETS[agent as keyof typeof SKILL_INSTALL_TARGETS];
     const target = join(baseDir, relative);
     const existing = existsSync(target) ? readFileSync(target, "utf8") : null;
     let status: string;
     if (existing === payload) {
       status = "unchanged";
+    } else if (existing !== null && !isManagedSkill(existing)) {
+      throw new UsageError(`refusing to overwrite unmanaged skill: ${target}`);
     } else {
-      const dir = dirname(target);
-      mkdirSync(dir, { recursive: true });
-      // Atomic write: write to a temp file in the same directory, then rename.
-      // fs.renameSync is atomic on the same filesystem (POSIX guarantee).
-      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
-      writeFileSync(tmp, payload);
-      renameSync(tmp, target);
-      status = existing !== null ? "updated" : "created";
+      status = existing !== null ? "would_update" : "would_create";
+      pending.push({ target, status: existing !== null ? "updated" : "created" });
     }
     return { path: relative, status };
   });
-  writeText(stableStringify({ version: packageVersion(), base_dir: baseDir, files }));
+  if (!opts.dryRun) {
+    for (const item of pending) {
+      const dir = dirname(item.target);
+      mkdirSync(dir, { recursive: true });
+      const tmp = join(dir, `.softschema-tmp-${process.pid}-${Date.now()}`);
+      writeFileSync(tmp, payload);
+      renameSync(tmp, item.target);
+      const output = files.find((file) => join(baseDir, file.path) === item.target);
+      if (output !== undefined) output.status = item.status;
+    }
+  }
+  writeText(
+    stableStringify({
+      version: packageVersion(),
+      base_dir: baseDir,
+      dry_run: Boolean(opts.dryRun),
+      files,
+    }),
+  );
   return 0;
 }
 
@@ -394,9 +422,16 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
   const exportName = spec.slice(idx + 1);
   let mod: Record<string, unknown>;
   try {
-    mod = (await import(resolve(spec.slice(0, idx)))) as Record<string, unknown>;
+    mod = (await import(pathToFileURL(resolve(spec.slice(0, idx))).href)) as Record<
+      string,
+      unknown
+    >;
   } catch (err) {
-    throw new UsageError(`cannot import ${JSON.stringify(spec)}: ${errMessage(err)}`);
+    const runtime = process.versions.bun === undefined ? "Node" : "Bun";
+    throw new UsageError(
+      `cannot import ${JSON.stringify(spec)} with ${runtime}: ${errMessage(err)}. ` +
+        "Node model paths must name built JavaScript (.js or .mjs); Bun may load TypeScript directly.",
+    );
   }
   const schema = mod[exportName];
   if (schema === undefined) {
@@ -451,8 +486,11 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       schemaPath: opts.schema ?? null,
     };
     const result = validateArtifact(path, contract, { semanticModel, preParsed: parsed });
-    writeText(stableStringify(result.output));
-    return result.ok ? 0 : 1;
+    if (result.outcome === "input_error") {
+      throw new Error("pre-parsed CLI validation returned an input error");
+    }
+    writeText(stableStringify(result));
+    return result.outcome === "valid" ? 0 : 1;
   } catch (err) {
     // Exit 1 is reserved for a readable artifact that fails validation (the result path
     // above). A bug-indicator exception crashes; every other (user) error — missing or
@@ -484,12 +522,13 @@ function runInspect(path: string): number {
 
 async function runCompile(
   spec: string,
-  opts: { contract?: string; out: string; check?: boolean },
+  opts: { contract: string; schemaId?: string; out: string; check?: boolean },
 ): Promise<number> {
   try {
     const schema = await loadZodModel(spec);
     const result = compileSchema(schema, opts.out, {
-      contractId: opts.contract ?? null,
+      contractId: opts.contract,
+      schemaId: opts.schemaId,
       checkOnly: opts.check,
     });
     writeText(
@@ -624,11 +663,17 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .description("Compile a Zod schema")
     .argument("<model>", "Zod schema as module:export")
     .requiredOption("--out <path>", "output path for the compiled schema")
-    .option("--contract <id>", "contract ID stamped into the compiled schema")
+    .requiredOption("--contract <id>", "logical contract ID stored in x-softschema")
+    .option("--schema-id <uri>", "optional absolute JSON Schema resource URI")
     .option("--check", "do not write; exit 1 on drift")
-    .action(async (model: string, opts: { out: string; contract?: string; check?: boolean }) => {
-      exitCode = await runCompile(model, opts);
-    });
+    .action(
+      async (
+        model: string,
+        opts: { out: string; contract: string; schemaId?: string; check?: boolean },
+      ) => {
+        exitCode = await runCompile(model, opts);
+      },
+    );
 
   program
     .command("validate")
@@ -709,18 +754,34 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .command("skill")
     .description("Print or install the agent skill")
     .option("--brief", "print compact skill guidance")
-    .option("--install", "write discoverable skill mirrors into .agents and .claude")
-    .action((opts: { brief?: boolean; install?: boolean }) => {
-      if (opts.install) {
-        exitCode = runSkillInstall();
-      } else if (opts.brief) {
-        writeText(renderedSkillBrief());
-        exitCode = 0;
-      } else {
-        writeText(renderedSkill());
-        exitCode = 0;
-      }
-    });
+    .option("--install", "install the skill for each --agent at the selected --scope")
+    .option("--scope <scope>", "install scope: project or personal")
+    .option(
+      "--agent <agent>",
+      "target agent: portable or claude (repeatable)",
+      (value, previous: string[]) => [...previous, value],
+      [],
+    )
+    .option("--dry-run", "preview installation without writing")
+    .action(
+      (opts: {
+        brief?: boolean;
+        install?: boolean;
+        scope?: string;
+        agent?: string[];
+        dryRun?: boolean;
+      }) => {
+        if (opts.install) {
+          exitCode = runSkillInstall(opts);
+        } else if (opts.brief) {
+          writeText(renderedSkillBrief());
+          exitCode = 0;
+        } else {
+          writeText(renderedSkill());
+          exitCode = 0;
+        }
+      },
+    );
 
   try {
     await program.parseAsync(argv);

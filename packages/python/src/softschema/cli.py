@@ -15,31 +15,35 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
-from frontmatter_format import FmFormatError, fmf_read
 from pydantic import BaseModel, ValidationError
-from ruamel.yaml import YAMLError
 from strif import atomic_write_text
 
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
-from softschema.validate import EnvelopeAmbiguityError, infer_envelope_key, validate_artifact
+from softschema.validate import (
+    EnvelopeAmbiguityError,
+    infer_envelope_key,
+    read_frontmatter_doc,
+    validate_artifact,
+)
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
+ZERO_INSTALL_PACKAGE = "softschema@latest"
 RUNNER_COMMANDS: tuple[str, ...] = ("softschema", "uvx", "npx")
 RUNNER_INVOCATIONS: dict[str, str] = {
     "softschema": "softschema",
-    "uvx": "uvx softschema@latest",
-    "npx": "npx softschema@latest",
+    "uvx": f"uvx {ZERO_INSTALL_PACKAGE}",
+    "npx": f"npx -y {ZERO_INSTALL_PACKAGE}",
 }
 
-AGENT_HELP_EPILOG = """IMPORTANT for agents:
+AGENT_HELP_EPILOG = f"""IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@latest skill --install
+    uvx {ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
     # or
-    npx softschema@latest skill --install
+    npx -y {ZERO_INSTALL_PACKAGE} skill --install --scope project --agent portable --agent claude
   Then read `softschema skill --brief` and `softschema docs --list` for operating rules
   and bundled docs."""
 
@@ -61,8 +65,6 @@ class UsageError(ValueError):
 # traceback rather than be masked as a clean exit 2.
 _USER_ERRORS = (
     OSError,
-    FmFormatError,
-    YAMLError,
     ModuleNotFoundError,
     ImportError,
     ValidationError,
@@ -212,7 +214,10 @@ def main(argv: list[str] | None = None) -> int:
     compile_parser.add_argument(
         "--out", required=True, type=Path, help="Output path for the compiled schema."
     )
-    compile_parser.add_argument("--contract", help="Contract ID stamped into the compiled schema.")
+    compile_parser.add_argument(
+        "--contract", required=True, help="Logical contract ID stored in x-softschema."
+    )
+    compile_parser.add_argument("--schema-id", help="Optional absolute JSON Schema resource URI.")
     compile_parser.add_argument(
         "--check", action="store_true", help="Do not write; exit 1 on drift."
     )
@@ -277,13 +282,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print compact skill guidance for constrained contexts.",
     )
+    skill_parser.add_argument("--scope", choices=("project", "personal"))
+    skill_parser.add_argument(
+        "--agent", action="append", choices=("portable", "claude"), dest="agents"
+    )
+    skill_parser.add_argument("--dry-run", action="store_true", help="Preview without writing.")
     skill_parser.add_argument(
         "--install",
         action="store_true",
-        help=(
-            "Write the skill into .agents/skills/softschema/SKILL.md and "
-            ".claude/skills/softschema/SKILL.md (relative to the current directory)."
-        ),
+        help="Install the skill for each selected --agent at the selected --scope.",
     )
     skill_parser.set_defaults(func=_skill_cmd)
 
@@ -297,7 +304,7 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Read the document once here; both binding inference and validate_artifact
     # reuse this frontmatter, so the file is parsed a single time.
-    _content, frontmatter = fmf_read(args.path)
+    _content, frontmatter = read_frontmatter_doc(args.path)
     contract_id, status, envelope_key = _infer_validation_binding(args, frontmatter)
     model = _load_model(args.model) if args.model else None
     contract = Contract(
@@ -308,8 +315,12 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         status=status,
     )
     result = validate_artifact(args.path, contract=contract, frontmatter=frontmatter)
+    if result.outcome == "input_error":
+        raise RuntimeError("pre-parsed CLI validation returned an input error")
     print(_json(result))
-    return 0 if result.ok else 1
+    if result.outcome == "valid":
+        return 0
+    return 1
 
 
 def _infer_validation_binding(
@@ -361,13 +372,19 @@ def _compile_cmd(args: argparse.Namespace) -> int:
     # Model-load and compile errors (UsageError, OSError, ...) propagate to the shared
     # `_run_cmd` boundary, which reports them as `softschema compile: ...` and exits 2.
     model = _load_model(args.model)
-    result = compile_model(model, args.out, contract_id=args.contract, check_only=args.check)
+    result = compile_model(
+        model,
+        args.out,
+        contract_id=args.contract,
+        schema_id=args.schema_id,
+        check_only=args.check,
+    )
     print(_json(result))
     return 1 if result.drift else 0
 
 
 def _inspect_cmd(args: argparse.Namespace) -> int:
-    _content, frontmatter = fmf_read(args.path)
+    _content, frontmatter = read_frontmatter_doc(args.path)
     metadata = None
     envelope_keys: list[str] = []
     if isinstance(frontmatter, dict):
@@ -494,19 +511,14 @@ def _find_runner(name: str) -> str | None:
     return shutil.which(name)
 
 
-SKILL_INSTALL_TARGETS: tuple[Path, ...] = (
-    Path(".agents/skills/softschema/SKILL.md"),
-    Path(".claude/skills/softschema/SKILL.md"),
-)
+SKILL_INSTALL_TARGETS: dict[str, Path] = {
+    "portable": Path(".agents/skills/softschema/SKILL.md"),
+    "claude": Path(".claude/skills/softschema/SKILL.md"),
+}
 
-# The format=fNN stamp lets a future installer recognize this managed surface and
-# refuse to clobber a newer format. The package version is intentionally omitted so the
-# committed mirrors stay deterministic across dev builds (the drift test renders with the
-# locally installed version).
-SKILL_DO_NOT_EDIT_MARKER = (
-    "<!-- DO NOT EDIT format=f01: written by `softschema skill --install`.\n"
-    "Re-run that command to update.\n"
-    "-->\n"
+_SKILL_MARKER = (
+    "<!-- DO NOT EDIT format=f02: written by `softschema skill --install`.\n"
+    "Re-run that command to update.\n-->\n"
 )
 
 
@@ -529,7 +541,7 @@ def _install_skill_payload(rendered: str) -> str:
         if line.strip() == "---":
             delimiter_count += 1
             if delimiter_count == 2:
-                lines.insert(i + 1, SKILL_DO_NOT_EDIT_MARKER)
+                lines.insert(i + 1, _SKILL_MARKER)
                 break
     return "\n".join(lines)
 
@@ -544,29 +556,50 @@ def _resolve_install_base(start: Path) -> Path:
     return start
 
 
-def _install_skill(base_dir: Path) -> dict[str, Any]:
-    base_dir = _resolve_install_base(base_dir)
-    payload = _install_skill_payload(_rendered_skill_text())
+def _is_managed_skill(existing: str) -> bool:
+    return _SKILL_MARKER in existing
+
+
+def _install_skill(base_dir: Path, *, agents: list[str], dry_run: bool = False) -> dict[str, Any]:
+    payload_source = _rendered_skill_text()
+    payload = _install_skill_payload(payload_source)
     files: list[dict[str, str]] = []
-    for relative in SKILL_INSTALL_TARGETS:
+    pending: list[tuple[Path, str]] = []
+    for agent in dict.fromkeys(agents):
+        relative = SKILL_INSTALL_TARGETS[agent]
         target = base_dir / relative
         existing = target.read_text(encoding="utf-8") if target.exists() else None
         if existing == payload:
             status = "unchanged"
+        elif existing is not None and not _is_managed_skill(existing):
+            raise UsageError(f"refusing to overwrite unmanaged skill: {target}")
         else:
-            atomic_write_text(target, payload, make_parents=True)
-            status = "updated" if existing is not None else "created"
+            status = "would_update" if existing is not None else "would_create"
+            pending.append((target, "updated" if existing is not None else "created"))
         files.append({"path": str(relative), "status": status})
+    if not dry_run:
+        for target, final_status in pending:
+            atomic_write_text(target, payload, make_parents=True)
+            next(item for item in files if base_dir / item["path"] == target)["status"] = (
+                final_status
+            )
     return {
         "version": _installed_version(),
         "base_dir": str(base_dir),
+        "dry_run": dry_run,
         "files": files,
     }
 
 
 def _skill_cmd(args: argparse.Namespace) -> int:
     if args.install:
-        _write_text(_json(_install_skill(Path.cwd())))
+        if args.scope is None or not args.agents:
+            raise UsageError(
+                "skill --install requires --scope project|personal and at least one "
+                "--agent portable|claude"
+            )
+        base = _resolve_install_base(Path.cwd()) if args.scope == "project" else Path.home()
+        _write_text(_json(_install_skill(base, agents=args.agents, dry_run=args.dry_run)))
         return 0
     if args.brief:
         _write_text(_brief_skill_text())
@@ -661,10 +694,14 @@ def _read_resource(relative_path: str) -> str:
 
 
 def _dev_resource_path(relative_path: str) -> Path | None:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "pyproject.toml").is_file() and (parent / "docs").is_dir():
-            candidate = parent / relative_path
-            return candidate if candidate.is_file() else None
+    module = Path(__file__).resolve()
+    if len(module.parents) <= 4:
+        return None
+    root = module.parents[4]
+    expected = root / "packages/python/src/softschema/cli.py"
+    if expected.is_file() and expected.samefile(module) and (root / "pyproject.toml").is_file():
+        candidate = root / relative_path
+        return candidate if candidate.is_file() else None
     return None
 
 
@@ -675,8 +712,7 @@ def _write_text(text: str) -> None:
 
 
 def _json(value: Any) -> str:
-    # ensure_ascii=False keeps non-ASCII literal so output matches the TypeScript
-    # CLI's JSON.stringify (which never escapes) byte-for-byte in golden tests.
+    # Keep non-ASCII text readable and sort keys for stable diffs within this runtime.
     return json.dumps(_plain(value), indent=2, sort_keys=True, ensure_ascii=False)
 
 

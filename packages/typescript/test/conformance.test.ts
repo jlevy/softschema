@@ -1,8 +1,4 @@
-/**
- * Cross-language conformance: the Zod KitchenSink must compile to the same canonical
- * schema (content + schema_sha256) as the committed Python reference. YAML formatting is
- * incidental, so this compares the parsed content and the content hash, not raw bytes.
- */
+/** Cross-language compiled-schema parity and shared-vector readability. */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -11,6 +7,7 @@ import { buildCanonicalSchema } from "../src/compile.js";
 import { KitchenSink } from "./fixtures/parity.js";
 
 const REFERENCE = join(import.meta.dir, "../../../examples/parity/parity.schema.yaml");
+const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 const CONTRACT_ID = "example.parity:KitchenSink/v1";
 
 describe("KitchenSink cross-language parity", () => {
@@ -25,4 +22,26 @@ describe("KitchenSink cross-language parity", () => {
     const expected = (committed["x-softschema"] as Record<string, unknown>).schema_sha256;
     expect(sha).toBe(expected as string);
   });
+});
+
+test("shared hardening vectors are readable", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<{ id: string }>
+  >;
+  expect(Object.keys(vectors)).toEqual([
+    "artifact_input",
+    "frontmatter",
+    "portable_values",
+    "structural",
+    "canonicalization",
+    "enforcement",
+    "identity",
+    "compiler_annotations",
+    "compiler_titles",
+    "schema_view",
+    "digests",
+  ]);
+  const ids = Object.values(vectors).flatMap((cases) => cases.map(({ id }) => id));
+  expect(new Set(ids).size).toBe(ids.length);
 });

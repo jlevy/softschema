@@ -15,17 +15,17 @@ uvx softschema@latest docs example-schema > movie-page.schema.yaml
 uvx softschema@latest validate spirited-away.md
 ```
 
-(Or `npx softschema@latest ...` for the Node implementation; the two are
+(Or `npx -y softschema@latest ...` for the Node implementation; the two are
 interchangeable.)
 
 To set up softschema in a repository with an agent, tell the agent:
 
 > Run `uvx softschema@latest --help` (for the Python implementation) or
-> `npx softschema@latest --help` (for the Node implementation) and follow the
+> `npx -y softschema@latest --help` (for the Node implementation) and follow the
 > instructions to set up softschema for this repo as a skill.
 
-The help output points the agent to `skill --install`, which writes discoverable
-`SKILL.md` mirrors for Codex, Claude Code, Gemini CLI, and other coding agents.
+The help output points the agent to the explicit install command, which writes the
+portable Agent Skills location and the Claude Code discovery mirror.
 
 ## What Are Soft Schemas?
 
@@ -200,25 +200,27 @@ via `--schema` executes nothing and is the safe path for untrusted input.
 
 Two supported ways to consume softschema; pick by use:
 
-- **Pin it as a dependency** for projects, CI gates, and library use (reproducible,
-  fast, offline, and the only way to `import` it):
+- **Install it as a dependency** for projects, CI gates, and library use (reproducible
+  through the project lockfile, fast, offline, and the only way to `import` it):
 
   ```bash
-  uv add --dev softschema==0.2.2        # Python
-  npm install -D softschema@0.2.2       # Node (or: bun add -d)
+  uv add --dev softschema               # Python
+  npm install -D softschema@latest      # Node (or: bun add -d)
   ```
 
 - **Zero-install** for one-off checks and agent bootstrap:
 
   ```bash
   uvx softschema@latest --help
-  npx softschema@latest --help
+  npx -y softschema@latest --help
   ```
 
-The rule of thumb: if softschema runs more than once, or in CI, or you import it—pin it.
+The rule of thumb: if softschema runs more than once, or in CI, or you import it—install
+it in the project and commit the lockfile.
 For a quick check or an agent bootstrapping with nothing installed, use a zero-install
-runner. See [Installation](docs/installation.md) for details, including the supply-chain
-cool-off that makes `@latest` safe to recommend.
+runner.
+See [Installation](docs/installation.md) for details and the project supply-chain
+policy.
 
 ## Use as a Library
 
@@ -251,8 +253,9 @@ See the [softschema Guide](docs/softschema-guide.md) for the full playbooks.
 ## Use as an Agent Skill
 
 Both packages ship the same [`SKILL.md`](https://agentskills.io) following the open
-Agent Skills standard discovered by Claude Code, Codex, Gemini CLI, Cursor, Copilot, and
-~20 other coding agents.
+Agent Skills standard.
+The portable mirror works with agents that discover `.agents`; the optional Claude
+mirror supports Claude Code’s discovery path.
 Pointing an agent at the CLI is enough to bootstrap its understanding of the soft-schema
 approach: the `--help` epilog routes it to `skill --install`, a brief, and the bundled
 docs.
@@ -260,23 +263,23 @@ docs.
 ```bash
 # Python:
 uvx softschema@latest --help            # entry point with skill setup pointers
-uvx softschema@latest skill --install   # install repo-local skill mirrors
+uvx softschema@latest skill --install --scope project --agent portable --agent claude
 uvx softschema@latest skill --brief     # compact operating brief
 uvx softschema@latest docs guide        # full mental model and adoption path
 
 # TypeScript (same commands, same bundled docs/skill):
-npx softschema@latest --help
-npx softschema@latest skill --install
-npx softschema@latest skill --brief
-npx softschema@latest docs guide
+npx -y softschema@latest --help
+npx -y softschema@latest skill --install --scope project --agent portable --agent claude
+npx -y softschema@latest skill --brief
+npx -y softschema@latest docs guide
 ```
 
 Self-install the skill into a project so any agent working in the repo finds it natively
 (either package writes the identical mirrors):
 
 ```bash
-uvx softschema@latest skill --install
-# or: npx softschema@latest skill --install
+uvx softschema@latest skill --install --scope project --agent portable --agent claude
+# or: npx -y softschema@latest skill --install --scope project --agent portable --agent claude
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
@@ -295,12 +298,10 @@ library surface:
 - **TypeScript / Zod**: [`softschema`](docs/softschema-typescript-design.md) on npm (run
   as `softschema` or `softschema-ts`).
 
-The two are held to **exact behavioral parity**: equivalent CLI inputs, outputs, and
-flags; equivalent library APIs; the same canonical compiled JSON Schema
-(content-identical, with an equal `schema_sha256` fingerprint); and the same
-engine-neutral validation results.
-Every behavior change lands in a shared golden-test corpus first, then in both packages,
-and CI fails if their outputs or compiled schemas drift.
+The two share the same commands, exit classes, structured result meaning, canonical
+compiled JSON Schema, and `schema_sha256` fingerprint.
+Human-readable presentation and model-native errors may differ where the runtime does;
+shared vectors and broad CLI journeys keep the portable contract aligned.
 They release together under the same version number on PyPI and npm.
 
 ## Further Reading

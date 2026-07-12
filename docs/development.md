@@ -174,16 +174,17 @@ your repository.
 ## Keeping Python and TypeScript in Parity
 
 softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
-(`softschema`, `softschema-ts`), held to **exact behavioral parity**: equivalent CLI
-inputs/outputs/flags and library APIs, the same canonical compiled JSON Schema
-(content-identical, equal `schema_sha256`), and the same engine-neutral validation
-results. Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
+(`softschema`, `softschema-ts`), with the same commands, exit classes, structured result
+meaning, canonical compiled JSON Schema, and `schema_sha256`. Only idiomatic surface
+details differ (snake_case ↔ camelCase, Pydantic ↔ Zod), and cross-runtime JSON output
+is compared structurally rather than as presentation bytes.
 
 When you change any behavior, follow this loop so the two never drift:
 
-1. **Golden first.** Write or update the shared scenario in `tests/golden/scenarios/`
-   (neutral, runs on both) or `tests/golden/scenarios-{py,ts}/` (per-language
-   invocation, identical output) **before** touching code.
+1. **Choose one primary owner first.** Use a shared YAML vector for a portable library
+   rule, an adapter unit test for runtime-specific integration, or a golden journey for
+   public CLI output and exit behavior.
+   Do not add the same case at every layer.
 2. **Implement in Python**, then `uv run pytest` and
    `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and
@@ -198,7 +199,7 @@ The parity invariants, and where each is enforced:
 | --- | --- |
 | Canonical schema (equal `schema_sha256`) | `compile` and the KitchenSink conformance test (`packages/typescript/test/conformance.test.ts`) and `examples/parity/` |
 | Engine-neutral structural errors | shared message templates (`errors`), the golden corpus |
-| Byte-identical neutral CLI output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
+| Structurally equal JSON and exact stable human output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
 | Equal flag/command surface | per-impl and neutral golden scenarios |
 | Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
 | Skill mirrors never go stale | the mirror drift test (`tests/test_skill_mirror_drift.py`) |

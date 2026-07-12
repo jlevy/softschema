@@ -1,10 +1,9 @@
 /**
- * Serialization helpers shared across the package, tuned for byte-for-byte parity
- * with the Python implementation's CLI output and schema hashing.
+ * Deterministic presentation JSON and canonical schema-hash encoding.
  */
 import { createHash } from "node:crypto";
 
-/** Recursively sort object keys so output is deterministic and matches Python's sort_keys. */
+/** Recursively sort object keys for stable presentation within this runtime. */
 function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortKeysDeep);
@@ -20,8 +19,7 @@ function sortKeysDeep(value: unknown): unknown {
 }
 
 /**
- * Pretty JSON with 2-space indent and recursively sorted keys, matching Python's
- * `json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False)`.
+ * Pretty JSON with recursively sorted keys for stable diffs within this runtime.
  */
 export function stableStringify(value: unknown, indent = 2): string {
   return JSON.stringify(sortKeysDeep(value), null, indent);
@@ -32,7 +30,25 @@ export function stableStringify(value: unknown, indent = 2): string {
  * `json.dumps(value, sort_keys=True, separators=(",", ":"))`.
  */
 export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortKeysDeep(value));
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("canonical JSON requires finite numbers");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map(
+        (key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  }
+  throw new TypeError(`canonical JSON does not support ${typeof value}`);
 }
 
 /** Deterministic SHA-256 over the canonical JSON form, hex-encoded. */

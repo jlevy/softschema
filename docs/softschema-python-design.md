@@ -189,10 +189,14 @@ synthesized by softschema, not passed through from the library.
 Each violation becomes
 `{kind: "schema_violation", path, validator, validator_value, value, message}` where
 `message` comes from a shared template keyed on the JSON Schema keyword
-(`softschema.errors`). Records are sorted by `(path, validator)`. This keeps structural
-errors byte-identical to the TypeScript port (which validates the same canonical
-compiled schema through `ajv`). Semantic errors stay implementation-specific (raw
-Pydantic errors) and are not part of the cross-language contract.
+(`softschema.errors`). Records are sorted by `(path, validator)`. The TypeScript port
+returns the same structured meaning through `ajv`; semantic model errors remain
+implementation-specific.
+
+`ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
+`invalid`, or `input_error`. Library callers always receive this structured result.
+The CLI reads once to infer document binding: readable results map to exits `0` or `1`,
+while access and parse failures use its one-line stderr and exit-`2` input boundary.
 
 ### Alignment with `python-cli-patterns`
 
@@ -200,24 +204,30 @@ The CLI follows the house Python-CLI conventions: exit codes `0` success / `1`
 validation failure or drift / `2` usage error; structured data to stdout and diagnostics
 to stderr; the package version comes from `importlib.metadata` via
 `uv-dynamic-versioning`. The package installs two console scripts, `softschema` and
-`softschema-py` (the latter pairs with a future `softschema-ts` for the shared golden
-corpus).
+`softschema-py` (the latter pairs with `softschema-ts` in the shared golden corpus).
 
 ### Skill Resource and Mirrors
 
 `skills/softschema/SKILL.md` is the source skill.
-`softschema skill --install` writes full generated copies to
-`.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md`.
+An explicit install writes the selected generated copies:
+
+```bash
+softschema skill --install --scope project --agent portable --agent claude
+```
+
+Project scope writes `.agents/skills/softschema/SKILL.md` and/or
+`.claude/skills/softschema/SKILL.md`; personal scope writes the corresponding agent
+directory under the user home.
+`--dry-run` previews without writing.
 
 The project intentionally uses generated copies rather than symlinks because agent
 discovery paths and package registries do not share one portable symlink model.
 Full copies are also easier for users and agents to inspect after installation.
-The mirrors carry a `DO NOT EDIT` marker and are regenerated from the source skill; the
-mirror drift test keeps both mirrors byte-identical.
+The mirrors carry a `DO NOT EDIT` marker and source digest and are regenerated from the
+source skill; the drift test verifies the managed wrapper and source payload.
 
 When adding another agent target, extend `SKILL_INSTALL_TARGETS`, regenerate from the
-source skill, and update the drift test only if the new target cannot use the same
-byte-identical payload.
+source skill, and update the drift test for the new managed target.
 
 ## Warning Codes
 
@@ -249,7 +259,10 @@ The current first-release kinds:
 
 | Kind | Meaning |
 | --- | --- |
-| `parse_error` | YAML or frontmatter could not be parsed. |
+| `artifact_unreadable` | The artifact cannot be opened. |
+| `artifact_invalid_utf8` | The artifact is not valid UTF-8. |
+| `artifact_too_large` | The artifact exceeds the bounded input size. |
+| `yaml_parse_error` | YAML or frontmatter could not be parsed. |
 | `no_frontmatter` | Frontmatter block is missing in a Markdown artifact. |
 | `frontmatter_not_mapping` | Frontmatter parsed but is not a mapping at the top level. |
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
@@ -280,18 +293,17 @@ softschema compile examples.movie_page.model:MoviePage \
 The emitted schema includes:
 
 - `$schema` for JSON Schema 2020-12
-- `$id` when a contract ID is supplied
-- an `x-softschema` annotation block with `contract`, `softschema_format_version`, and
-  `schema_sha256` (a deterministic SHA-256 over the canonical JSON form of the schema).
+- `$id` only when the separate optional `--schema-id` resource URI is supplied
+- an `x-softschema` annotation block with `contract` and `schema_sha256` (a
+  deterministic SHA-256 over the canonical JSON form of the schema).
   The block is deliberately language-neutral; it carries no `generated_from` provenance,
   since a Pydantic/Zod import path would leak the implementation and break the
   cross-language content identity and equal `schema_sha256`.
 
 Before hashing and serialization, the raw `model_json_schema()` output is run through
-`softschema.canonicalize.canonicalize_json_schema`, which applies a small set of
-semantic transforms (drop auto-generated `title` keywords, strip the implicit
-`default: null` of optional-nullable fields, rewrite `oneOf` nullable unions to `anyOf`)
-and serializes with sorted keys.
+`softschema.canonicalize.canonicalize_json_schema`, which preserves annotations,
+normalizes an exact nullable `oneOf` to `anyOf`, sorts the set-like `required` array,
+and removes only documented Zod/Pydantic representation differences.
 This is the canonical JSON Schema profile: a schema compiled from a Pydantic model and
 one compiled from the equivalent Zod schema converge to the same canonical schema
 content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the

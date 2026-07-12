@@ -10,8 +10,8 @@ path:
 
 Exercises the `--model` loading path: the CLI imports the model and runs semantic
 validation (no `--schema`, so structural is skipped as `inferred_via_model`). The model
-spec is language-specific; the rest of the output is byte-identical to the other
-implementation (semantic logic itself is per-language by design and is not asserted
+spec is language-specific; the rest of the output has the same portable meaning as the
+other implementation (semantic logic itself is per-language by design and is not asserted
 beyond pass/empty-errors here).
 
 ```console
@@ -32,6 +32,7 @@ $ softschema validate examples/movie_page/spirited-away.md --model packages/type
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "semantic": {

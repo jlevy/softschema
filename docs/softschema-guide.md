@@ -7,7 +7,7 @@ pattern.
 
 For the exact file format and validation rules, see
 [softschema Spec](softschema-spec.md).
-Two interchangeable implementations ship here, at exact behavioral parity: see
+Two interchangeable implementations share one portable contract: see
 [Python Package Design](softschema-python-design.md) and
 [TypeScript Package Design](softschema-typescript-design.md).
 
@@ -16,7 +16,7 @@ Two interchangeable implementations ship here, at exact behavioral parity: see
 To set up softschema in a repository with an agent, tell the agent:
 
 > Run `uvx softschema@latest --help` (for the Python implementation) or
-> `npx softschema@latest --help` (for the Node implementation) and follow the
+> `npx -y softschema@latest --help` (for the Node implementation) and follow the
 > instructions to set up softschema for this repo as a skill.
 
 The help output points the agent to the repo-local skill install command and the bundled
@@ -484,10 +484,10 @@ Pin softschema as a dev dependency so CI uses a known version:
 
 ```bash
 # Python
-uv add --dev softschema==0.2.0
+uv add --dev softschema
 
 # Node
-npm i -D softschema@0.2.0
+npm i -D softschema@latest
 ```
 
 Two checks belong in CI:
@@ -525,7 +525,7 @@ integration” section of [docs/development.md](development.md).
 
 Take an artifact that doesn’t fit the canonical shape and bring it in line.
 
-The canonical v0.2 shape is:
+The canonical shape is:
 
 - A `softschema:` block (the self-description quartet: `contract`, `schema`, `envelope`,
   `status`) plus a designated envelope key at the top level.
@@ -688,8 +688,8 @@ A few patterns help agents do the right thing:
 
 ## Relationship to the Packages
 
-Two interchangeable packages implement the language-neutral pattern at exact behavioral
-parity, Python/Pydantic and TypeScript/Zod.
+Two interchangeable packages implement the same language-neutral contract with
+Python/Pydantic and TypeScript/Zod.
 The Python public surface:
 
 - `Contract`: maps a contract ID to a Pydantic model and optional compiled JSON Schema.
@@ -700,8 +700,10 @@ The Python public surface:
 - `validate_values(values, model=..., schema=...)`: validates a values dict produced by
   any consumer (frontmatter, body-form runtime, structured-output adapter, hand-written
   fixture).
-- `compile_model(model_cls, out_path)`: emits a deterministic JSON Schema YAML file with
-  canonical-JSON hashing for drift checks.
+- `compile_model(model_cls, out_path, contract_id=..., schema_id=...)`: emits a
+  deterministic JSON Schema YAML file.
+  The required contract ID names the payload; the optional schema ID is a separate JSON
+  Schema resource URI.
 
 The TypeScript package mirrors this surface (`validateArtifact`, `validateValues`,
 `compileSchema`) with Zod models; both CLIs expose the same commands.

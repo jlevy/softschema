@@ -6,7 +6,7 @@
  * beforeAll builds the package so the test is self-contained regardless of run order.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { beforeAll, describe, expect, test } from "bun:test";
@@ -23,6 +23,7 @@ interface RunResult {
 function runFromTmp(args: string[], files: Record<string, string> = {}): RunResult {
   const cwd = mkdtempSync(join(tmpdir(), "softschema-standalone-"));
   for (const [name, content] of Object.entries(files)) {
+    mkdirSync(resolve(cwd, name, ".."), { recursive: true });
     writeFileSync(join(cwd, name), content);
   }
   const r = spawnSync("bun", [CLI, ...args], { cwd, encoding: "utf8" });
@@ -44,7 +45,7 @@ describe("bundled resources (standalone, outside the repo)", () => {
     expect(r.stdout).toContain("repo root");
     expect(r.stdout).toContain("skill --install");
     expect(r.stdout).toContain("uvx softschema@latest");
-    expect(r.stdout).toContain("npx softschema@latest");
+    expect(r.stdout).toContain("npx -y softschema@latest");
   });
 
   test("--version prints 'softschema <version>'", () => {
@@ -54,9 +55,10 @@ describe("bundled resources (standalone, outside the repo)", () => {
   });
 
   test("docs guide reads the bundled resource, not a cwd-relative file", () => {
-    const r = runFromTmp(["docs", "guide"]);
+    const r = runFromTmp(["docs", "guide"], { "docs/softschema-guide.md": "COLLISION\n" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("# softschema Guide");
+    expect(r.stdout).not.toContain("COLLISION");
   });
 
   test("docs spec works from outside the repo", () => {

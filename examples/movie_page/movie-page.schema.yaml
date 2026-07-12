@@ -4,12 +4,15 @@ $defs:
     description: One billed cast member.
     properties:
       actor:
+        title: Actor
         type: string
       character:
+        title: Character
         type: string
     required:
     - actor
     - character
+    title: CastMember
     type: object
   ImdbRating:
     additionalProperties: false
@@ -19,13 +22,16 @@ $defs:
         description: IMDb rating on a 0-10 scale.
         maximum: 10.0
         minimum: 0.0
+        title: Score
         type: number
       total_votes:
         minimum: 0
+        title: Total Votes
         type: integer
     required:
     - score
     - total_votes
+    title: ImdbRating
     type: object
   MovieRatings:
     additionalProperties: false
@@ -35,10 +41,13 @@ $defs:
         anyOf:
         - $ref: '#/$defs/ImdbRating'
         - type: 'null'
+        default: null
       rotten_tomatoes:
         anyOf:
         - $ref: '#/$defs/RottenTomatoesRating'
         - type: 'null'
+        default: null
+    title: MovieRatings
     type: object
   RottenTomatoesRating:
     additionalProperties: false
@@ -48,21 +57,24 @@ $defs:
         description: Popcornmeter score, 0-100.
         maximum: 100
         minimum: 0
+        title: Audience Percent
         type: integer
       critic_review_count:
         minimum: 0
+        title: Critic Review Count
         type: integer
       critics_percent:
         description: Tomatometer score, 0-100.
         maximum: 100
         minimum: 0
+        title: Critics Percent
         type: integer
     required:
     - audience_percent
     - critic_review_count
     - critics_percent
+    title: RottenTomatoesRating
     type: object
-$id: example.movies:MoviePage/v1
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
 description: |-
@@ -75,17 +87,20 @@ properties:
   cast:
     items:
       $ref: '#/$defs/CastMember'
+    title: Cast
     type: array
   directors:
     items:
       type: string
     minItems: 1
+    title: Directors
     type: array
   genres:
     description: Genre labels for the film.
     items:
       type: string
     minItems: 1
+    title: Genres
     type: array
     x-softschema:
       group: taxonomy
@@ -103,21 +118,29 @@ properties:
       - NR
       type: string
     - type: 'null'
+    default: null
+    title: Mpaa Rating
   ratings:
     $ref: '#/$defs/MovieRatings'
   release_year:
     minimum: 1888
+    title: Release Year
     type: integer
   runtime_minutes:
     exclusiveMinimum: 0
+    title: Runtime Minutes
     type: integer
   synopsis:
+    title: Synopsis
     type: string
   tagline:
     anyOf:
     - type: string
     - type: 'null'
+    default: null
+    title: Tagline
   title:
+    title: Title
     type: string
 required:
 - directors
@@ -127,8 +150,8 @@ required:
 - runtime_minutes
 - synopsis
 - title
+title: MoviePage
 type: object
 x-softschema:
   contract: example.movies:MoviePage/v1
-  schema_sha256: b537ea5b1a5e36febe5feaa8f8536fc500ff25c912013b8961bdcde0cb6f7dd3
-  softschema_format_version: 0.1.0
+  schema_sha256: 6ee3e6803df2958ec1e58a20c71f0999f4fc7225c533b3732f2904fbb1dee6dd
