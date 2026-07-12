@@ -3,9 +3,9 @@ type: is
 id: is-01kxa51ypp776456nxmyd81gps
 title: "Address review: PR #21 portable-boundary findings"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 10
 labels: []
 dependencies: []
 child_order_hints:
@@ -17,6 +17,8 @@ child_order_hints:
   - is-01kxa52021aqt2h042ag2sdqpj
   - is-01kxa520b614b6c041mh0vqdxd
 created_at: 2026-07-12T03:13:41.077Z
-updated_at: 2026-07-12T03:13:43.077Z
+updated_at: 2026-07-12T03:27:22.606Z
+closed_at: 2026-07-12T03:27:22.605Z
+close_reason: All seven numbered findings are fixed or disproven with shared coverage; focused, full, golden, parity, coverage, build, publint, and exact package smokes pass.
 ---
 Address https://github.com/jlevy/softschema/pull/21#issuecomment-4949743807. Reproduce and fix all seven numbered findings, validate both runtimes, reply with dispositions, and confirm CI.
