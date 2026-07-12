@@ -178,7 +178,7 @@ test("shared portable YAML and artifact-input vectors", () => {
   for (const item of vectors.portable_values ?? []) {
     const text =
       item.generated === "deep_sequence"
-        ? `value: ${"[".repeat(65)}0${"]".repeat(65)}`
+        ? `value: ${"[".repeat(1_000)}0${"]".repeat(1_000)}`
         : String(item.text);
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);

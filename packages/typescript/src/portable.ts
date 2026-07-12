@@ -53,7 +53,11 @@ export function parsePortableYaml(text: string): unknown {
 
   let nodes = 0;
   let hasAlias = false;
-  visit(document, (_key, node) => {
+  visit(document, (_key, node, path) => {
+    const depth = path.reduce((total, ancestor) => total + (isCollection(ancestor) ? 1 : 0), 0);
+    if (depth > MAX_DEPTH) {
+      throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
+    }
     if (isPair(node)) {
       if (!isScalar(node.key) || typeof node.key.value !== "string") {
         throw new PortableInputError("yaml_non_string_key", "mapping keys must be strings");

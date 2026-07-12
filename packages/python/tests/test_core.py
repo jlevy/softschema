@@ -435,7 +435,9 @@ def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
     contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
     for case in vectors["portable_values"]:
         path = tmp_path / f"{case['id']}.yaml"
-        text = "value: " + "[" * 65 + "0" + "]" * 65 if case.get("generated") else case["text"]
+        text = (
+            "value: " + "[" * 1_000 + "0" + "]" * 1_000 if case.get("generated") else case["text"]
+        )
         path.write_text(text)
         result = validate_artifact(path, contract=contract)
         assert result.ok is case["valid"], case["id"]
