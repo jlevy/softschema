@@ -70,9 +70,11 @@ are identical.
 `document_metadata`, `outcome`, `path`, `profile`, `semantic`, `status`, `structural`,
 `values`, and `warnings`. Structural errors use engine-neutral records
 `{ kind, path, validator, validator_value, value, message }`, sorted by
-`(path, validator)`. The outcome `valid` / `invalid` / `input_error` maps to CLI exits
-`0` / `1` / `2`. Cross-runtime tests compare JSON structurally; deterministic pretty
-printing is local presentation, not a byte-level wire contract.
+`(path, validator)`. Library results use `valid` / `invalid` / `input_error`. The CLI
+reads once to infer document binding: readable results map to exits `0` or `1`, while
+access and parse failures use its one-line stderr and exit-`2` input boundary.
+Cross-runtime tests compare JSON structurally; deterministic pretty printing is local
+presentation, not a byte-level wire contract.
 
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
 the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for

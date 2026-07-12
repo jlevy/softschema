@@ -16,7 +16,7 @@ from frontmatter_format import new_yaml
 from pydantic import BaseModel
 from strif import atomic_write_text
 
-from softschema._portable import parse_yaml, read_utf8
+from softschema._portable import MAX_SAFE_INTEGER, parse_yaml, read_utf8
 from softschema.canonicalize import canonicalize_json_schema
 from softschema.models import _check_contract_id
 
@@ -46,9 +46,10 @@ def compile_model(
     _check_contract_id(contract_id)
     if schema_id is not None and not urlparse(schema_id).scheme:
         raise ValueError("schema_id must be an absolute URI")
-    schema = canonicalize_json_schema(
-        _augment_schema(model_cls.model_json_schema(), contract_id, schema_id)
-    )
+    raw_schema = model_cls.model_json_schema()
+    if model_cls.model_config.get("title") is None:
+        raw_schema["title"] = _contract_name(contract_id)
+    schema = canonicalize_json_schema(_augment_schema(raw_schema, contract_id, schema_id))
     schema_sha256 = _schema_sha256(schema)
     schema.setdefault("x-softschema", {})["schema_sha256"] = schema_sha256
     rendered = _yaml_dump(schema)
@@ -108,6 +109,10 @@ def _augment_schema(
     return out
 
 
+def _contract_name(contract_id: str) -> str:
+    return contract_id.rsplit(":", 1)[-1].split("/", 1)[0]
+
+
 def _schema_sha256(schema: dict[str, Any]) -> str:
     canonical = _canonical_json(schema)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -122,6 +127,8 @@ def _canonical_json(value: Any) -> str:
     if isinstance(value, str):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if isinstance(value, int):
+        if abs(value) > MAX_SAFE_INTEGER:
+            raise TypeError("canonical JSON integer exceeds the portable safe range")
         return str(value)
     if isinstance(value, float):
         return _canonical_float(value)
@@ -145,7 +152,7 @@ def _canonical_float(value: float) -> str:
     magnitude = abs(value)
     text = repr(value).lower()
     if value.is_integer() and magnitude < 1e21:
-        return str(int(value))
+        return format(Decimal(text), "f").split(".", 1)[0]
     if 1e-6 <= magnitude < 1e21 and "e" in text:
         return format(Decimal(text), "f")
     if "e" not in text:

@@ -36,9 +36,20 @@ export function readUtf8(path: string): string {
 }
 
 export function parsePortableYaml(text: string): unknown {
-  const document = parseDocument(text, { uniqueKeys: true });
+  let document: ReturnType<typeof parseDocument>;
+  try {
+    document = parseDocument(text, { uniqueKeys: true });
+  } catch (error) {
+    if (error instanceof RangeError || String(error).includes("Maximum call stack size exceeded")) {
+      throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
+    }
+    throw error;
+  }
   if (document.errors.length > 0) {
     const message = document.errors[0]?.message ?? "invalid YAML";
+    if (message.includes("Maximum call stack size exceeded")) {
+      throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
+    }
     const code = message.includes("Map keys must be unique")
       ? "yaml_duplicate_key"
       : "yaml_parse_error";
@@ -83,7 +94,7 @@ export function parsePortableYaml(text: string): unknown {
       isScalar(node) &&
       node.type === "PLAIN" &&
       typeof node.source === "string" &&
-      /^\d{4}-\d{2}-\d{2}(?:[Tt]|$)/u.test(node.source)
+      /^\d{4}-\d{2}-\d{2}(?:[Tt \t]|$)/u.test(node.source)
     ) {
       throw new PortableInputError("yaml_unsupported_scalar", "timestamps are not supported");
     }

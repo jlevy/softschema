@@ -316,6 +316,19 @@ describe("compile: write mode + build", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
+  test("shared generated-title vectors", () => {
+    const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    for (const item of vectors.compiler_titles ?? []) {
+      const model = z.strictObject({ camelCase: z.string() });
+      const { schema } = buildCanonicalSchema(model, String(item.contract));
+      expect(schema.title).toBe(item.expected_root);
+      const properties = schema.properties as Record<string, Record<string, unknown>>;
+      expect(properties[String(item.field)]?.title).toBe(item.expected_field);
+    }
+  });
   test("separates schema identity and rejects reserved root metadata", () => {
     const { schema } = buildCanonicalSchema(
       Sample,

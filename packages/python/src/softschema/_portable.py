@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ MAX_DEPTH = 64
 MAX_NODES = 100_000
 MAX_SCALAR_BYTES = 262_144
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
+_TIMESTAMP_SHAPE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[Tt \t]|$)")
 
 
 class PortableInputError(ValueError):
@@ -69,6 +71,10 @@ def parse_yaml(text: str) -> Any:
                     raise PortableInputError("yaml_limit", "YAML scalar exceeds the size limit")
                 if stack and stack[-1] == ("map", True) and event.value == "<<":
                     raise PortableInputError("yaml_merge_key", "YAML merge keys are not supported")
+                if event.style is None and _TIMESTAMP_SHAPE.match(event.value):
+                    raise PortableInputError(
+                        "yaml_unsupported_scalar", "timestamps are not supported"
+                    )
                 consume_parent_slot()
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
                 nodes += 1
@@ -90,6 +96,8 @@ def parse_yaml(text: str) -> Any:
     except YAMLError as exc:
         code = "yaml_duplicate_key" if "duplicate key" in str(exc).lower() else "yaml_parse_error"
         raise PortableInputError(code, str(exc)) from exc
+    except ValueError as exc:
+        raise PortableInputError("yaml_parse_error", str(exc)) from exc
     _check_value(value)
     return value
 

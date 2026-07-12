@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from jsonschema import Draft202012Validator
 from ruamel.yaml import YAML
 
@@ -73,3 +74,8 @@ def test_shared_canonicalization_and_digest_vectors() -> None:
             assert before_ok is after_ok, case["id"]
     for case in vectors["digests"]:
         assert _canonical_json(case["value"]) == case["canonical"], case["id"]
+
+
+def test_canonical_json_rejects_nonportable_integer() -> None:
+    with pytest.raises(TypeError, match="safe range"):
+        _canonical_json({"value": 9_007_199_254_740_992})

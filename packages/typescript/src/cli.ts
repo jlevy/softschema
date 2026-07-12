@@ -37,18 +37,19 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->";
 const BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->";
+const PINNED_RUNNER_VERSION = "0.2.2";
 const RUNNER_COMMANDS = ["softschema", "uvx", "npx"] as const;
 const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
   softschema: "softschema",
-  uvx: "uvx softschema@0.2.2",
-  npx: "npx -y softschema@0.2.2",
+  uvx: `uvx softschema@${PINNED_RUNNER_VERSION}`,
+  npx: `npx -y softschema@${PINNED_RUNNER_VERSION}`,
 };
 
 const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@0.2.2 skill --install --scope project --agent portable --agent claude
+    uvx softschema@${PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
     # or
-    npx -y softschema@0.2.2 skill --install --scope project --agent portable --agent claude
+    npx -y softschema@${PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
   Then read \`softschema skill --brief\` and \`softschema docs --list\` for operating rules
   and bundled docs.`;
 
@@ -495,8 +496,11 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       schemaPath: opts.schema ?? null,
     };
     const result = validateArtifact(path, contract, { semanticModel, preParsed: parsed });
+    if (result.outcome === "input_error") {
+      throw new Error("pre-parsed CLI validation returned an input error");
+    }
     writeText(stableStringify(result));
-    return result.outcome === "valid" ? 0 : result.outcome === "invalid" ? 1 : 2;
+    return result.outcome === "valid" ? 0 : 1;
   } catch (err) {
     // Exit 1 is reserved for a readable artifact that fails validation (the result path
     // above). A bug-indicator exception crashes; every other (user) error — missing or

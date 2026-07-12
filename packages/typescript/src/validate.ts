@@ -90,25 +90,23 @@ function parseYaml(text: string): unknown {
  * Read the YAML inside a document's leading `---` frontmatter fence. Returns
  * `hasFence: false` with a null value when there is no fence or the fence is empty (the
  * caller then treats the file as pure YAML). Throws `YamlParseError` on an unterminated
- * fence or non-mapping frontmatter, byte-matching the Python `frontmatter_format` errors.
+ * fence or non-mapping frontmatter with the portable error contract.
  */
 function readFrontmatter(path: string): RawFrontmatter {
   const text = readUtf8(path);
   const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return { hasFence: false, value: null };
+  if (lines[0]?.trimEnd() !== "---") return { hasFence: false, value: null };
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
+    if (lines[i]?.trimEnd() === "---") {
       end = i;
       break;
     }
   }
   if (end === -1) {
-    // Unterminated fence: Python's frontmatter_format raises FmFormatError.
     throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${path}\``);
   }
-  // Empty frontmatter (end-fence at line 1, zero content lines between fences):
-  // Python's fmf_read returns metadata=None → no_frontmatter.
+  // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
   const parsed = parseYaml(lines.slice(1, end).join("\n"));
   if (!isMapping(parsed)) {
@@ -222,9 +220,7 @@ function* iterSchemas(root: Record<string, unknown>): Iterable<Record<string, un
 }
 
 function checkPatterns(schema: Record<string, unknown>): void {
-  for (const node of iterSchemas(schema)) {
-    const pattern = node.pattern;
-    if (pattern === undefined) continue;
+  const check = (pattern: unknown): void => {
     if (typeof pattern !== "string" || pattern.length > MAX_PATTERN_LENGTH) {
       throw new Error("pattern must be a string of at most 1024 characters");
     }
@@ -233,6 +229,21 @@ function checkPatterns(schema: Record<string, unknown>): void {
       /\\[1-9]|\(\?[aiLmsux-]/u.test(pattern)
     ) {
       throw new Error("pattern uses syntax outside the portable subset");
+    }
+    try {
+      new RegExp(pattern, "u");
+    } catch (error) {
+      throw new Error(`pattern is invalid: ${String(error)}`);
+    }
+  };
+
+  for (const node of iterSchemas(schema)) {
+    const pattern = node.pattern;
+    if (pattern !== undefined) check(pattern);
+    if (isMapping(node.patternProperties)) {
+      for (const propertyPattern of Object.keys(node.patternProperties)) {
+        check(propertyPattern);
+      }
     }
   }
 }
@@ -379,8 +390,7 @@ function structuralAgainstSchemaFile(
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    const message = `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`;
-    return schemaInvalid("syntax", message);
+    return schemaInvalid("syntax", "compiled schema root must be a mapping");
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }

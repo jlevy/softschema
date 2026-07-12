@@ -20,13 +20,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from frontmatter_format import FmFormatError
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
 from referencing import Registry, Resource
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
-from ruamel.yaml import YAMLError
 
 from softschema._portable import PortableInputError, parse_yaml, read_utf8
 from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
@@ -117,9 +115,9 @@ def validate_structural(
         schema = _read_yaml(schema_yaml_path)
         if not isinstance(schema, dict):
             return _schema_invalid("syntax", "compiled schema root must be a mapping")
+        _check_patterns(schema)
         Draft202012Validator.check_schema(schema)
         _check_schema_identities(schema, resources or {})
-        _check_patterns(schema)
         if strict_extras:
             schema = apply_enforced_extras(schema)
         registry: Registry[Any] = Registry()
@@ -199,16 +197,26 @@ def _iter_schemas(root: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 
 def _check_patterns(schema: dict[str, Any]) -> None:
-    for node in _iter_schemas(schema):
-        pattern = node.get("pattern")
-        if pattern is None:
-            continue
+    def check(pattern: Any) -> None:
         if not isinstance(pattern, str) or len(pattern) > _MAX_PATTERN_LENGTH:
             raise ValueError("pattern must be a string of at most 1024 characters")
         if any(part in pattern for part in _UNSUPPORTED_PATTERN_PARTS) or re.search(
             r"\\[1-9]|\(\?[aiLmsux-]", pattern
         ):
             raise ValueError("pattern uses syntax outside the portable subset")
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f"pattern is invalid: {exc}") from exc
+
+    for node in _iter_schemas(schema):
+        pattern = node.get("pattern")
+        if pattern is not None:
+            check(pattern)
+        pattern_properties = node.get("patternProperties")
+        if isinstance(pattern_properties, dict):
+            for property_pattern in pattern_properties:
+                check(property_pattern)
 
 
 def _check_schema_identities(
@@ -289,12 +297,10 @@ def validate_artifact(
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
 
-    ``frontmatter`` is an optional already-parsed frontmatter mapping (as
-    returned by ``frontmatter_format.fmf_read``); when supplied for a
-    frontmatter-md contract the document is not re-read. A caller that has
-    already parsed the document (the CLI does, to infer the binding) passes it
-    to avoid a second read. ``None`` is a valid value (no frontmatter); the
-    sentinel ``_UNREAD`` means "read the file".
+    ``frontmatter`` is an optional already-parsed frontmatter mapping. When supplied for
+    a frontmatter-md contract the document is not re-read. The CLI passes its binding
+    parse to keep validation single-read. ``None`` is a valid value (no frontmatter);
+    the sentinel ``_UNREAD`` means "read the file".
     """
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
@@ -334,10 +340,10 @@ def _validate_frontmatter_artifact(
 ) -> ArtifactValidationResult:
     if frontmatter is _UNREAD:
         try:
-            _content, frontmatter = _read_frontmatter_doc(doc_path)
+            _content, frontmatter = read_frontmatter_doc(doc_path)
         except OSError as exc:
             return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
-        except (FmFormatError, YAMLError, PortableInputError) as exc:
+        except PortableInputError as exc:
             kind = _portable_error_kind(exc)
             return _artifact_failure(doc_path, contract, kind, str(exc))
     if frontmatter is None:
@@ -464,7 +470,7 @@ def _validate_pure_yaml_artifact(
         raw = _read_yaml(doc_path)
     except OSError as exc:
         return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
-    except (YAMLError, PortableInputError) as exc:
+    except PortableInputError as exc:
         return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(
@@ -710,12 +716,12 @@ def _artifact_failure(
     )
 
 
-def _read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
+def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
     text = read_utf8(path)
     lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
+    if not lines or lines[0].rstrip() != "---":
         return text, None
-    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"), -1)
+    end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)
     if end < 0:
         raise PortableInputError(
             "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{path}`"

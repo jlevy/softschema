@@ -7,6 +7,20 @@ artifact_input:
   - { id: too_large, source: too_large, outcome: input_error, code: artifact_too_large }
   - { id: malformed_yaml, text: "movie: [", outcome: invalid, code: yaml_parse_error }
 
+frontmatter:
+  - id: indented_delimiter_in_block_scalar
+    text: |
+      ---
+      movie:
+        notes: |
+          first line
+          ---
+          more text
+        count: 3
+      ---
+      body
+    expected: { notes: "first line\n---\nmore text\n", count: 3 }
+
 portable_values:
   - id: plain_values
     text: |
@@ -17,6 +31,8 @@ portable_values:
       empty: null
     valid: true
   - { id: timestamp, text: "value: 2026-07-11", valid: false, code: yaml_unsupported_scalar }
+  - { id: invalid_timestamp, text: "value: 2001-13-99", valid: false, code: yaml_unsupported_scalar }
+  - { id: spaced_timestamp, text: "value: 2001-12-14 21:59:43", valid: false, code: yaml_unsupported_scalar }
   - id: duplicate_key
     text: "value: first\nvalue: second"
     valid: false
@@ -33,7 +49,11 @@ portable_values:
   - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
   - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
   - { id: negative_zero, text: "value: -0.0", valid: false, code: number_negative_zero }
-  - { id: excessive_depth, generated: deep_sequence, valid: false, code: yaml_limit }
+  - { id: depth_63, generated: deep_sequence, depth: 63, valid: true }
+  - { id: depth_64, generated: deep_sequence, depth: 64, valid: false, code: yaml_limit }
+  - { id: depth_65, generated: deep_sequence, depth: 65, valid: false, code: yaml_limit }
+  - { id: excessive_depth, generated: deep_sequence, depth: 1000, valid: false, code: yaml_limit }
+  - { id: hostile_depth, generated: deep_sequence, depth: 50000, valid: false, code: yaml_limit }
 
 structural:
   - id: format_is_annotation
@@ -49,6 +69,19 @@ structural:
     value: ab
     valid: false
     code: schema_invalid
+    reason: pattern
+  - id: invalid_pattern
+    schema: { type: string, pattern: "[" }
+    value: anything
+    valid: false
+    code: schema_invalid
+    reason: pattern
+  - id: invalid_pattern_properties
+    schema: { type: object, patternProperties: { "[": { type: string } } }
+    value: { name: Ada }
+    valid: false
+    code: schema_invalid
+    reason: pattern
   - id: unresolved_remote_reference
     schema: { $ref: "https://example.invalid/remote-schema" }
     value: anything
@@ -110,6 +143,13 @@ compiler_annotations:
     valid: false
     code: reserved_metadata
 
+compiler_titles:
+  - id: generated_titles
+    contract: "example:ContractName/v1"
+    field: camelCase
+    expected_root: ContractName
+    expected_field: Camelcase
+
 schema_view:
   - id: ref_sibling_description
     schema:
@@ -132,3 +172,6 @@ digests:
   - id: number_spelling
     value: { whole: 1.0, fraction: 0.000001 }
     canonical: '{"fraction":0.000001,"whole":1}'
+  - id: large_integral_float
+    value: { whole: 98765432109876543210.0 }
+    canonical: '{"whole":98765432109876540000}'

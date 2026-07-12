@@ -35,12 +35,14 @@ def test_shared_hardening_vectors_are_readable() -> None:
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
     assert list(vectors) == [
         "artifact_input",
+        "frontmatter",
         "portable_values",
         "structural",
         "canonicalization",
         "enforcement",
         "identity",
         "compiler_annotations",
+        "compiler_titles",
         "schema_view",
         "digests",
     ]

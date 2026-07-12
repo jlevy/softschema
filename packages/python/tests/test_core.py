@@ -41,6 +41,10 @@ class EnvelopeModel(BaseModel):
     sample: SampleModel
 
 
+class GeneratedTitleModel(BaseModel):
+    camelCase: str
+
+
 HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 
 
@@ -120,6 +124,16 @@ def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
     out.write_bytes(b"\xff")
     with pytest.raises(ValueError, match="UTF-8"):
         compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+
+
+def test_shared_generated_title_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["compiler_titles"]:
+        out = tmp_path / f"{case['id']}.schema.yaml"
+        compile_model(GeneratedTitleModel, out, contract_id=case["contract"])
+        schema = YAML(typ="safe").load(out.read_text())
+        assert schema["title"] == case["expected_root"], case["id"]
+        assert schema["properties"][case["field"]]["title"] == case["expected_field"], case["id"]
 
 
 def test_shared_contract_identity_vectors() -> None:
@@ -435,14 +449,26 @@ def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
     contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
     for case in vectors["portable_values"]:
         path = tmp_path / f"{case['id']}.yaml"
+        depth = int(case.get("depth", 1_000))
         text = (
-            "value: " + "[" * 1_000 + "0" + "]" * 1_000 if case.get("generated") else case["text"]
+            "value: " + "[" * depth + "0" + "]" * depth if case.get("generated") else case["text"]
         )
         path.write_text(text)
         result = validate_artifact(path, contract=contract)
         assert result.ok is case["valid"], case["id"]
         if not case["valid"]:
             assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_shared_frontmatter_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Movie/v1", envelope_key="movie")
+    for case in vectors["frontmatter"]:
+        path = tmp_path / f"{case['id']}.md"
+        path.write_text(case["text"])
+        result = validate_artifact(path, contract=contract)
+        assert result.ok, case["id"]
+        assert result.values == case["expected"], case["id"]
 
 
 def test_shared_artifact_input_vectors(tmp_path: Path) -> None:
@@ -471,6 +497,8 @@ def test_shared_structural_vectors(tmp_path: Path) -> None:
         assert result.ok is case["valid"], case["id"]
         if not case["valid"]:
             assert result.errors[0]["kind"] == case["code"], case["id"]
+            if "reason" in case:
+                assert result.errors[0]["reason"] == case["reason"], case["id"]
 
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:

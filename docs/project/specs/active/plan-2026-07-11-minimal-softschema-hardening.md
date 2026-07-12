@@ -241,6 +241,30 @@ This table is the coverage checklist for the earlier PR. A newly discovered cand
 must be added here with a disposition before implementation; it must not enter through a
 new bead without a spec update.
 
+### Final Review Follow-Ups
+
+The final PR review reproduced seven additional defects in the focused implementation.
+All are accepted because they cross the portable-value or documented CLI boundary; none
+requires a new subsystem.
+
+| Finding | Minimal correction | Primary owner |
+| --- | --- | --- |
+| Indented `---` truncated a frontmatter block scalar | Close frontmatter only on an unindented delimiter. | Shared frontmatter case |
+| Invalid date-shaped YAML escaped Python as `ValueError` | Reject plain timestamp-shaped scalars before construction. | Shared portable-value vector |
+| Large integral floats hashed differently | Render the shortest round-trip float spelling and reject Python integers outside the portable range. | Shared digest vectors |
+| YAML depth boundaries and stack-overflow reasons diverged | Use one collection-depth rule and map parser stack overflow to `yaml_limit`. | Shared 64/65 depth vectors |
+| Space-separated timestamps were accepted only in TypeScript | Apply the same timestamp-shape rule in both parsers. | Shared portable-value vector |
+| CLI `input_error` JSON was unreachable after binding pre-read | Keep CLI input failures as the existing stderr/exit-2 boundary and remove the synthetic outcome test. | Existing end-to-end CLI error journey |
+| `patternProperties` and invalid regexes bypassed eager portable checks | Eagerly compile `pattern` and every `patternProperties` key in both runtimes. | Shared structural vectors |
+
+All seven follow-ups are resolved.
+The reported 64-level runtime disagreement did not reproduce on the reviewed commit:
+both runtimes rejected 64 nested sequences beneath a root mapping.
+Shared 63/64/65 cases now pin that boundary, and the actual hostile-depth classification
+gap is normalized. The same pass also aligned generated compiler titles and schema-root
+messages, guarded shallow installed-resource paths, removed dead error arms, centralized
+runner pins inside each CLI, and annotated action SHAs with versions.
+
 ### Accepted Hardening Set
 
 The applicable defects above define the bounded hardening set.
@@ -393,9 +417,11 @@ JSONL, SARIF, format negotiation, or legacy output switch is added.
 
 Artifact results retain the existing contract, metadata, values, warning, structural,
 and semantic fields and add one top-level `outcome` discriminator: `valid`, `invalid`,
-or `input_error`. CLI exit classes derive only from that outcome (`0`, `1`, or `2`).
-Presentation JSON is deterministic within a runtime but cross-runtime tests compare its
-parsed structure. Compiled-schema digests use the shared canonical digest encoding.
+or `input_error`. Library callers receive that result directly.
+CLI binding reads use the established stderr/exit-`2` input boundary; readable
+validation results exit `0` or `1`. Presentation JSON is deterministic within a runtime
+but cross-runtime tests compare its parsed structure.
+Compiled-schema digests use the shared canonical digest encoding.
 
 Remove deprecated aliases, v0.2 compatibility exports, and alternate result projections
 that are not part of this surface.
@@ -528,18 +554,18 @@ Final local validation on 2026-07-11:
 
 | Boundary | Result |
 | --- | --- |
-| Python | lint, type checks, and 163 tests passed in 1.06 seconds |
-| TypeScript | lint, typecheck, and 164 tests passed in 2.12 seconds; 96.05% function and 96.34% line coverage |
+| Python | lint, type checks, and 165 tests passed in 1.23 seconds |
+| TypeScript | lint, typecheck, and 166 tests passed in 2.14 seconds; 96.06% function and 96.34% line coverage |
 | CLI goldens | 38 Python, 36 Node, and 38 Bun journeys passed |
 | Cross-runtime | 20 direct Python-to-Node commands passed with structural JSON comparison |
 | Packages | wheel, sdist, and npm tarball built; `publint` passed; exact artifacts installed and ran outside the checkout |
 | Release boundary | candidate checksums verified; manual dispatch has no publish job; only release jobs receive OIDC publish authority |
 | Agent resources | source skill and both managed discovery mirrors passed byte-for-byte drift tests |
 
-The final production source is 6,175 lines, 947 more than the 5,228-line baseline and
+The final production source is 6,222 lines, 994 more than the 5,228-line baseline and
 far below the 3,000-line growth review threshold.
-Unit-test source is 4,410 lines.
-The CLI golden corpus fell from 15 to 10 scenario files and now contains 1,629 lines.
+Unit-test source is 4,444 lines.
+The CLI golden corpus fell from 15 to 10 scenario files and now contains 1,630 lines.
 Seven unreferenced fixtures were deleted; all 21 retained fixtures have a named
 consumer. The repository has 168 tracked files after the deletion pass.
 No parser, glob, transaction, hosted-conformance, discovery, diagnostics, or

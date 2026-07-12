@@ -8,13 +8,6 @@ from textwrap import dedent
 import pytest
 
 import softschema.cli as cli
-from softschema import (
-    ArtifactValidationResult,
-    SchemaProfile,
-    SchemaStatus,
-    SemanticResult,
-    StructuralResult,
-)
 from softschema.cli import main as softschema_main
 
 # Tests write Markdown docs with indented YAML frontmatter for readability;
@@ -51,32 +44,6 @@ def model_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def write_doc(path: Path, frontmatter_yaml: str, body: str = "# title\n\nbody.\n") -> None:
     path.write_text(f"---\n{frontmatter_yaml}\n---\n{body}")
-
-
-def test_validate_maps_input_error_outcome_to_exit_two(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-    result = ArtifactValidationResult(
-        path=doc,
-        contract_id="test:Sample/v1",
-        status=SchemaStatus.soft,
-        profile=SchemaProfile.frontmatter_md,
-        structural=StructuralResult(
-            ok=False,
-            errors=[{"kind": "artifact_unreadable", "message": "became unreadable"}],
-        ),
-        semantic=SemanticResult(ok=False, skipped_reason="artifact_unreadable"),
-    )
-    monkeypatch.setattr(cli, "validate_artifact", lambda *_args, **_kwargs: result)
-
-    exit_code = softschema_main(
-        ["validate", str(doc), "--contract", "test:Sample/v1", "--envelope", "sample"]
-    )
-
-    assert exit_code == 2
-    assert json.loads(capsys.readouterr().out)["outcome"] == "input_error"
 
 
 def test_compile_writes_schema_and_exits_zero(

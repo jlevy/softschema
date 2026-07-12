@@ -88,7 +88,7 @@ function addGeneratedTitles(schema: Record<string, unknown>, contractId: string)
 function fieldTitle(name: string): string {
   return name
     .replaceAll("_", " ")
-    .replace(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .toLowerCase()
     .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 

@@ -29,8 +29,9 @@ $ softschema compile examples.movie_page.model:MoviePage --contract example.movi
 
 # Test: compile --check reports drift for a different contract id
 
-A different `--contract` changes `$id` and the digest, so `--check` against the
-committed sidecar reports drift and exits 1.
+A different `--contract` changes compiler-owned contract metadata, the generated root
+title, and the digest, so `--check` against the committed sidecar reports drift and
+exits 1.
 
 ```console
 $ softschema compile examples.movie_page.model:MoviePage --contract wrong:Movie/v1 --out examples/movie_page/movie-page.schema.yaml --check
@@ -38,7 +39,7 @@ $ softschema compile examples.movie_page.model:MoviePage --contract wrong:Movie/
   "drift": true,
   "drift_diff": "committed schema at examples/movie_page/movie-page.schema.yaml differs from compile output",
   "out_path": "examples/movie_page/movie-page.schema.yaml",
-  "schema_sha256": "6472aa977ed6fea42f0b29348718e55571419d82ac8e63417430683977beb044",
+  "schema_sha256": "57d9e54b19f628aff12949d6b8fb109c5ed520310dde6b81aa5b5ff2ec7dae81",
   "schema_yaml": [..]
 }
 ? 1

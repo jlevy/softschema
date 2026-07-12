@@ -31,12 +31,14 @@ test("shared hardening vectors are readable", () => {
   >;
   expect(Object.keys(vectors)).toEqual([
     "artifact_input",
+    "frontmatter",
     "portable_values",
     "structural",
     "canonicalization",
     "enforcement",
     "identity",
     "compiler_annotations",
+    "compiler_titles",
     "schema_view",
     "digests",
   ]);

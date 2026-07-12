@@ -88,9 +88,30 @@ A `pure-yaml` artifact follows the same metadata rules:
 ```yaml
 softschema:
   contract: mycorp.runs:BacktestReport/v1
-run_id: 2026-04-12T18-03-00Z
+run_id: run-2026-04-12T18-03-00Z
 summary: regression vs baseline
 ```
+
+## Portable YAML Values
+
+YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite
+numbers, lists, and string-keyed mappings.
+Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero,
+timestamps, duplicate keys, aliases, anchors, merge keys, explicit tags, non-string
+keys, lone surrogates, and non-finite numbers are rejected.
+Quoted strings remain strings; an unquoted scalar beginning with a YAML timestamp shape
+(`YYYY-MM-DD` followed by end-of-value, `T`, a space, or a tab) is rejected before
+construction.
+
+One input is at most 1 MiB, one scalar is at most 256 KiB, and one YAML document has at
+most 100,000 scalar or collection nodes and 64 simultaneously open collections,
+including the root. Exceeding a structure limit is `yaml_limit`, including a host YAML
+parser stack overflow caused by hostile nesting.
+
+For `frontmatter-md`, the opening and closing delimiters begin at column one and contain
+`---` plus optional trailing whitespace.
+An indented `---` is YAML content, so a block scalar may contain it without ending
+frontmatter.
 
 ## Frontmatter Artifact Shape
 
@@ -310,6 +331,16 @@ A compiled schema is not a per-document companion data file.
 The two are unrelated: one schema validates many artifacts, while companion data would
 pair with a single document.
 This spec does not standardize a companion-data discovery mechanism (see Compatibility).
+
+Regular expressions in `pattern` and in `patternProperties` keys are checked eagerly.
+Each is at most 1,024 characters and must compile in both Python and JavaScript.
+Named groups, lookbehind, inline flags, numeric backreferences, `\A`, `\Z`, `\z`, `\p`,
+and `\P` are outside the portable subset and make the schema invalid.
+
+The `schema_sha256` preimage uses canonical JSON: object keys sort by UTF-16 code unit,
+and binary floating-point values use the ECMAScript shortest round-trip spelling.
+A Python arbitrary-precision integer outside the portable safe range is rejected rather
+than hashed into an identity the TypeScript runtime cannot represent.
 
 ## Validation Expectations
 

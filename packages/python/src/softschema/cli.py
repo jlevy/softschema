@@ -17,9 +17,7 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, cast
 
-from frontmatter_format import FmFormatError
 from pydantic import BaseModel, ValidationError
-from ruamel.yaml import YAMLError
 from strif import atomic_write_text
 
 from softschema.compile import compile_model
@@ -28,25 +26,26 @@ from softschema.generate import regenerate
 from softschema.models import Contract, SchemaStatus, parse_schema_metadata
 from softschema.validate import (
     EnvelopeAmbiguityError,
-    _read_frontmatter_doc,
     infer_envelope_key,
+    read_frontmatter_doc,
     validate_artifact,
 )
 
 BRIEF_MARKER_START = "<!-- BEGIN SOFTSCHEMA BRIEF -->"
 BRIEF_MARKER_END = "<!-- END SOFTSCHEMA BRIEF -->"
+PINNED_RUNNER_VERSION = "0.2.2"
 RUNNER_COMMANDS: tuple[str, ...] = ("softschema", "uvx", "npx")
 RUNNER_INVOCATIONS: dict[str, str] = {
     "softschema": "softschema",
-    "uvx": "uvx softschema@0.2.2",
-    "npx": "npx -y softschema@0.2.2",
+    "uvx": f"uvx softschema@{PINNED_RUNNER_VERSION}",
+    "npx": f"npx -y softschema@{PINNED_RUNNER_VERSION}",
 }
 
-AGENT_HELP_EPILOG = """IMPORTANT for agents:
+AGENT_HELP_EPILOG = f"""IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
-    uvx softschema@0.2.2 skill --install --scope project --agent portable --agent claude
+    uvx softschema@{PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
     # or
-    npx -y softschema@0.2.2 skill --install --scope project --agent portable --agent claude
+    npx -y softschema@{PINNED_RUNNER_VERSION} skill --install --scope project --agent portable --agent claude
   Then read `softschema skill --brief` and `softschema docs --list` for operating rules
   and bundled docs."""
 
@@ -68,8 +67,6 @@ class UsageError(ValueError):
 # traceback rather than be masked as a clean exit 2.
 _USER_ERRORS = (
     OSError,
-    FmFormatError,
-    YAMLError,
     ModuleNotFoundError,
     ImportError,
     ValidationError,
@@ -309,7 +306,7 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Read the document once here; both binding inference and validate_artifact
     # reuse this frontmatter, so the file is parsed a single time.
-    _content, frontmatter = _read_frontmatter_doc(args.path)
+    _content, frontmatter = read_frontmatter_doc(args.path)
     contract_id, status, envelope_key = _infer_validation_binding(args, frontmatter)
     model = _load_model(args.model) if args.model else None
     contract = Contract(
@@ -320,10 +317,12 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         status=status,
     )
     result = validate_artifact(args.path, contract=contract, frontmatter=frontmatter)
+    if result.outcome == "input_error":
+        raise RuntimeError("pre-parsed CLI validation returned an input error")
     print(_json(result))
     if result.outcome == "valid":
         return 0
-    return 2 if result.outcome == "input_error" else 1
+    return 1
 
 
 def _infer_validation_binding(
@@ -387,7 +386,7 @@ def _compile_cmd(args: argparse.Namespace) -> int:
 
 
 def _inspect_cmd(args: argparse.Namespace) -> int:
-    _content, frontmatter = _read_frontmatter_doc(args.path)
+    _content, frontmatter = read_frontmatter_doc(args.path)
     metadata = None
     envelope_keys: list[str] = []
     if isinstance(frontmatter, dict):
@@ -711,6 +710,8 @@ def _read_resource(relative_path: str) -> str:
 
 def _dev_resource_path(relative_path: str) -> Path | None:
     module = Path(__file__).resolve()
+    if len(module.parents) <= 4:
+        return None
     root = module.parents[4]
     expected = root / "packages/python/src/softschema/cli.py"
     if expected.is_file() and expected.samefile(module) and (root / "pyproject.toml").is_file():

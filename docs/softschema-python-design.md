@@ -194,7 +194,9 @@ returns the same structured meaning through `ajv`; semantic model errors remain
 implementation-specific.
 
 `ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
-`invalid`, or `input_error`. The CLI maps those outcomes to exits `0`, `1`, and `2`.
+`invalid`, or `input_error`. Library callers always receive this structured result.
+The CLI reads once to infer document binding: readable results map to exits `0` or `1`,
+while access and parse failures use its one-line stderr and exit-`2` input boundary.
 
 ### Alignment with `python-cli-patterns`
 

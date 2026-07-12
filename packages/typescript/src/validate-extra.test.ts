@@ -98,8 +98,7 @@ describe("compiled schema invalid root", () => {
     const error = result.structural.errors[0] as Record<string, unknown>;
     expect(result.structural.ok).toBe(false);
     expect(error.kind).toBe("schema_invalid");
-    expect(error.message).toContain("str");
-    expect(error.message).toContain("expected mapping");
+    expect(error.message).toBe("compiled schema root must be a mapping");
     expect(error.reason).toBe("syntax");
   });
 
@@ -111,8 +110,7 @@ describe("compiled schema invalid root", () => {
     const error = result.structural.errors[0] as Record<string, unknown>;
     expect(result.structural.ok).toBe(false);
     expect(error.kind).toBe("schema_invalid");
-    expect(error.message).toContain("list");
-    expect(error.message).toContain("expected mapping");
+    expect(error.message).toBe("compiled schema root must be a mapping");
     expect(error.reason).toBe("syntax");
   });
 
@@ -176,9 +174,10 @@ test("shared portable YAML and artifact-input vectors", () => {
   >;
   const portableContract = contract({ profile: "pure-yaml" });
   for (const item of vectors.portable_values ?? []) {
+    const depth = Number(item.depth ?? 1_000);
     const text =
       item.generated === "deep_sequence"
-        ? `value: ${"[".repeat(1_000)}0${"]".repeat(1_000)}`
+        ? `value: ${"[".repeat(depth)}0${"]".repeat(depth)}`
         : String(item.text);
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);
@@ -200,6 +199,19 @@ test("shared portable YAML and artifact-input vectors", () => {
   }
 });
 
+test("shared frontmatter vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.frontmatter ?? []) {
+    const path = tmpFile(`${String(item.id)}.md`, String(item.text));
+    const result = validateArtifact(path, contract({ envelopeKey: "movie" }));
+    expect(result.ok).toBe(true);
+    expect(result.values).toEqual(item.expected as Record<string, unknown>);
+  }
+});
+
 test("shared structural vectors", () => {
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
     string,
@@ -210,6 +222,10 @@ test("shared structural vectors", () => {
       resources: item.resources as Record<string, Record<string, unknown>> | undefined,
     });
     expect(result.ok).toBe(item.valid as boolean);
-    if (!item.valid) expect(result.errors[0]?.kind).toBe(item.code as string);
+    if (!item.valid) {
+      const error = result.errors[0] as Record<string, unknown> | undefined;
+      expect(error?.kind).toBe(item.code as string);
+      if (item.reason !== undefined) expect(error?.reason).toBe(item.reason as string);
+    }
   }
 });
