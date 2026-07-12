@@ -381,7 +381,7 @@ function structuralAgainstSchemaFile(
   }
   if (!isMapping(compiledSchema)) {
     const message = `compiled schema root is ${pyTypeName(compiledSchema)}, expected mapping`;
-    return schemaInvalid(schemaFailureReason(message), message);
+    return schemaInvalid("syntax", message);
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }

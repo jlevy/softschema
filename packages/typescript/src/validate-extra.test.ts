@@ -100,7 +100,7 @@ describe("compiled schema invalid root", () => {
     expect(error.kind).toBe("schema_invalid");
     expect(error.message).toContain("str");
     expect(error.message).toContain("expected mapping");
-    expect(error.reason).toBe("compilation");
+    expect(error.reason).toBe("syntax");
   });
 
   test("array YAML root in the compiled schema yields schema_invalid", () => {
@@ -113,7 +113,7 @@ describe("compiled schema invalid root", () => {
     expect(error.kind).toBe("schema_invalid");
     expect(error.message).toContain("list");
     expect(error.message).toContain("expected mapping");
-    expect(error.reason).toBe("compilation");
+    expect(error.reason).toBe("syntax");
   });
 
   test("malformed compiled YAML includes a stable schema_invalid reason", () => {
