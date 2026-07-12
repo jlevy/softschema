@@ -1,7 +1,7 @@
 /**
  * Artifact validation: read Markdown frontmatter (or pure YAML), resolve the envelope,
  * and run structural validation against the compiled JSON Schema via ajv. The result
- * object serializes (via stableStringify) byte-identically to the Python CLI output.
+ * object has the same portable fields and meaning as the Python result.
  */
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -113,8 +113,8 @@ function readFrontmatter(path: string): RawFrontmatter {
   const parsed = parseYaml(lines.slice(1, end).join("\n"));
   if (!isMapping(parsed)) {
     // Reject the same non-mapping values as Python: a whitespace-only block (YAML
-    // `null`), a list, or a bare scalar. Use Python type names so the portable error is
-    // byte-identical across runtimes (ss-eero / ss-7cbb).
+    // `null`), a list, or a bare scalar. Use the portable type names from the shared
+    // error contract.
     throw new YamlParseError(
       `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${path}\``,
     );

@@ -760,7 +760,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .command("skill")
     .description("Print or install the agent skill")
     .option("--brief", "print compact skill guidance")
-    .option("--install", "write discoverable skill mirrors into .agents and .claude")
+    .option("--install", "install the skill for each --agent at the selected --scope")
     .option("--scope <scope>", "install scope: project or personal")
     .option(
       "--agent <agent>",

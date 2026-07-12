@@ -10,6 +10,9 @@ permissions:
   contents: read
 
 jobs:
+  release-candidates:
+    uses: ./.github/workflows/release-candidates.yml
+
   build:
     strategy:
       matrix:
@@ -137,8 +140,8 @@ jobs:
         run: SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
 
   cross-impl:
-    # Direct Python-vs-TypeScript(Node) byte-comparison on the same inputs, so a parity
-    # break is reported as a divergence rather than as one side drifting from the goldens.
+    # Direct Python-vs-TypeScript(Node) semantic comparison on the same inputs, so a
+    # parity break is reported as a divergence instead of one side drifting from goldens.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

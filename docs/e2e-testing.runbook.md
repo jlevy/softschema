@@ -55,16 +55,16 @@ Mirror CI from the repo root, in this order (later phases depend on the builds):
 ```bash
 make install        # uv sync + npm install (lefthook) + bun install
 make lint-check     # codespell, ruff, basedpyright, doc footers
-uv run pytest       # Python unit tests (142 as of 0.2.0)
+uv run pytest       # Python unit tests
 uv build            # wheel + sdist into dist/ (used by Phase 2)
 
 cd packages/typescript
-bun run check       # biome + tsc + bun test with coverage gate (160 tests as of 0.2.0)
+bun run check       # biome + tsc + bun test with coverage gate
 bun run build       # copy-resources + bunup → dist/ (required by the ts golden runs)
 bun run publint
 cd ../..
 
-SOFTSCHEMA_IMPL=py     bash tests/golden/run.sh   # 46 scenarios as of 0.2.0
+SOFTSCHEMA_IMPL=py     bash tests/golden/run.sh
 SOFTSCHEMA_IMPL=ts     bash tests/golden/run.sh   # 44
 SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh   # 46
 bash tests/golden/cross-impl-diff.sh              # "cross-impl parity OK"
@@ -128,9 +128,9 @@ If a local supply-chain cool-off blocks the `npm install` of dependencies, add
 ## Phase 3: The Quickstart, As Written
 
 The README Quick Start is the contract with a first-time user; run it verbatim from an
-**empty directory**, on both implementations, and byte-compare.
-Before a release, substitute the local builds for `uvx softschema@latest` /
-`npx softschema@latest` (the published forms are verified in Phase 5):
+**empty directory** on both implementations.
+Before a release, substitute the local builds for the exact zero-install version shown
+in the README (the published forms are verified in Phase 5):
 
 ```bash
 repo=$(pwd)   # the softschema checkout
@@ -166,7 +166,7 @@ from Phase 2 or 3:
 
 ```bash
 cd "$(mktemp -d)" && git init -q .
-softschema skill --install
+softschema skill --install --scope project --agent portable --agent claude
 ls .agents/skills/softschema/SKILL.md .claude/skills/softschema/SKILL.md
 ```
 
@@ -212,8 +212,8 @@ uvx softschema@X.Y.Z docs example-schema   > movie-page.schema.yaml
 uvx softschema@X.Y.Z validate spirited-away.md
 ```
 
-Once the release ages past the cool-off, the unpinned `@latest` forms in the README
-resolve to it with no override.
+After verification, update the exact last-verified version used by the README, bundled
+skill, CLI help, and installation guide in the release-preparation PR.
 
 ## Recording Results
 

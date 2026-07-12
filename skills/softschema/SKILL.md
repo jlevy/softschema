@@ -103,14 +103,14 @@ Run once per project to install discoverable mirrors of this skill, so any agent
 in the repo finds it natively:
 
 ```bash
-$SS skill --install
+$SS skill --install --scope project --agent portable --agent claude
 # writes:
 #   .agents/skills/softschema/SKILL.md   (Codex, Gemini CLI, cross-agent installers)
 #   .claude/skills/softschema/SKILL.md   (Claude Code mirror)
 ```
 
 The mirrors carry a `DO NOT EDIT` marker.
-Re-run `softschema skill --install` to refresh after upgrading.
+Re-run the same explicit install command to refresh after upgrading.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

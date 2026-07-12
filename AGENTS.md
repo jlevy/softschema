@@ -11,9 +11,9 @@ Start here:
 
 softschema ships two interchangeable implementations with the same CLI and library
 surface: Python/Pydantic (`softschema`, `softschema-py`) and TypeScript/Zod
-(`softschema`, `softschema-ts`). They are held to exact behavioral parity: same flags,
-same canonical compiled JSON Schema, same validation results, so authoring an artifact
-is identical regardless of which you run.
+(`softschema`, `softschema-ts`). They share commands, exit classes, structured result
+meaning, and canonical compiled JSON Schema, so authoring an artifact is identical
+regardless of which you run.
 
 For implementer reference (only when changing a package itself):
 

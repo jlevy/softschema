@@ -46,8 +46,6 @@ function augmentSchema(
   out.$schema ??= JSON_SCHEMA_DRAFT;
   if (schemaId !== undefined) out.$id = schemaId;
   // Language-neutral: no `generated_from` provenance (would leak the implementation).
-  // Merge into an existing x-softschema mapping (Python uses setdefault+update semantics)
-  // so custom fields from the raw schema are preserved.
   out["x-softschema"] = {
     contract: contractId,
   };

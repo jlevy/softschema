@@ -295,10 +295,7 @@ def main(argv: list[str] | None = None) -> int:
     skill_parser.add_argument(
         "--install",
         action="store_true",
-        help=(
-            "Write the skill into .agents/skills/softschema/SKILL.md and "
-            ".claude/skills/softschema/SKILL.md (relative to the current directory)."
-        ),
+        help="Install the skill for each selected --agent at the selected --scope.",
     )
     skill_parser.set_defaults(func=_skill_cmd)
 
@@ -729,8 +726,7 @@ def _write_text(text: str) -> None:
 
 
 def _json(value: Any) -> str:
-    # ensure_ascii=False keeps non-ASCII literal so output matches the TypeScript
-    # CLI's JSON.stringify (which never escapes) byte-for-byte in golden tests.
+    # Keep non-ASCII text readable and sort keys for stable diffs within this runtime.
     return json.dumps(_plain(value), indent=2, sort_keys=True, ensure_ascii=False)
 
 

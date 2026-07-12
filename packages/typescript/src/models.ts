@@ -1,7 +1,7 @@
 /**
  * Language-neutral contract and metadata models. Field names mirror the Python
- * package; the `*Output` helpers emit the snake_case shapes the CLI serializes,
- * so JSON output is byte-identical across implementations.
+ * package; the `*Output` helpers emit the same portable snake_case structures that
+ * the Python CLI serializes.
  */
 
 export type SchemaStatus = "soft" | "permissive" | "enforced";

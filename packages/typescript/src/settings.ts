@@ -1,10 +1,9 @@
 /**
- * Serialization helpers shared across the package, tuned for byte-for-byte parity
- * with the Python implementation's CLI output and schema hashing.
+ * Deterministic presentation JSON and canonical schema-hash encoding.
  */
 import { createHash } from "node:crypto";
 
-/** Recursively sort object keys so output is deterministic and matches Python's sort_keys. */
+/** Recursively sort object keys for stable presentation within this runtime. */
 function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortKeysDeep);
@@ -20,8 +19,7 @@ function sortKeysDeep(value: unknown): unknown {
 }
 
 /**
- * Pretty JSON with 2-space indent and recursively sorted keys, matching Python's
- * `json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False)`.
+ * Pretty JSON with recursively sorted keys for stable diffs within this runtime.
  */
 export function stableStringify(value: unknown, indent = 2): string {
   return JSON.stringify(sortKeysDeep(value), null, indent);

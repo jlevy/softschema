@@ -326,15 +326,14 @@ def test_skill_brief_is_derived_from_source_skill(capsys: pytest.CaptureFixture[
     assert capsys.readouterr().out == cli._brief_skill_text()
 
 
-def test_skill_uses_latest_runner(
+def test_skill_uses_pinned_runner(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = softschema_main(["skill"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    # The skill references @latest (safe under the repo's supply-chain cool-off), so no
-    # version placeholder survives and no per-release pin is baked in.
+    # Agent bootstrap uses one exact last-verified release in both ecosystems.
     assert "uvx softschema@0.2.2" in output
     assert "npx -y softschema@0.2.2" in output
     assert "Pick One Runner" in output

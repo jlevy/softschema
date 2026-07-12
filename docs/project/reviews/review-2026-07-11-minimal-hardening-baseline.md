@@ -23,7 +23,7 @@ plan committed. Before runtime changes:
 - Bun CLI goldens: 47 passed
 - direct Python-to-Node command parity: 20 commands passed
 - TypeScript build and `publint`: passed
-- production source: 6,120 lines
+- production source: 5,228 lines
 - unit tests: 14 Python files and 17 TypeScript files
 - CLI goldens: 15 scenarios
 

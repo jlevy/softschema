@@ -37,24 +37,30 @@ npx softschema --help               # resolves the local pinned copy
 ## Zero-Install
 
 ```bash
-uvx softschema@latest --help        # Python implementation, ephemeral
-npx softschema@latest --help        # Node implementation, ephemeral
+uvx softschema@0.2.2 --help        # Python implementation, ephemeral
+npx -y softschema@0.2.2 --help     # Node implementation, ephemeral
 ```
 
-Use `uvx softschema@0.2.2` / `npx -y softschema@0.2.2` when a repeated ad-hoc run must
-resolve the same version every time.
+The exact version is the last verified zero-install release.
+Update the pin deliberately after verifying a newer release.
 
 ## Quick Start for Agents
 
 To set up softschema in a repository with an agent, tell the agent:
 
-> Run `uvx softschema@latest --help` (for the Python implementation) or
-> `npx softschema@latest --help` (for the Node implementation) and follow the
+> Run `uvx softschema@0.2.2 --help` (for the Python implementation) or
+> `npx -y softschema@0.2.2 --help` (for the Node implementation) and follow the
 > instructions to set up softschema for this repo as a skill.
 
-The help output points the agent to `skill --install`, which writes
-`.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md` from the
-repository root.
+The help output points to the explicit project install:
+
+```bash
+softschema skill --install --scope project --agent portable --agent claude
+```
+
+This writes `.agents/skills/softschema/SKILL.md` and
+`.claude/skills/softschema/SKILL.md` from the repository root.
+Use one `--agent` when only one mirror is wanted; use `--dry-run` to preview.
 
 ## Installing uv
 
@@ -73,14 +79,11 @@ brew install uv
 
 ## Supply-chain Cool-off
 
-`@latest` is the recommended form for the agent-bootstrap path, including under a
-release-age cool-off.
-A gate such as npm’s `--before` / `NPM_CONFIG_BEFORE`, pnpm’s `minimumReleaseAge`, or
-uv’s `--exclude-newer` resolves `@latest` to the newest release old enough to pass, so
-you get the freshest vetted version without pinning.
-A just-published version installs only once it ages past the cutoff.
-Consumer projects should still pin their own dependency—a project’s reproducibility is
-the project’s responsibility, not the publisher’s cool-off.
+Zero-install commands use an exact version because consumer environments cannot be
+assumed to enforce a release-age gate.
+Projects should also pin their dependency in the normal lockfile.
+When evaluating an upgrade, apply a release-age cool-off and review the lockfile or
+resolved artifact before changing either pin.
 See [supply-chain-hardening](https://github.com/jlevy/supply-chain-hardening) for the
 rationale.
 

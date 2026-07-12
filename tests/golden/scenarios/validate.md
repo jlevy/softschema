@@ -10,8 +10,8 @@ path:
 
 The neutral `softschema` command resolves to `softschema-py` or `softschema-ts`
 depending on `SOFTSCHEMA_IMPL` (see `tests/golden/run.sh`). Both implementations
-must produce byte-identical output. Validation uses only the language-neutral
-JSON Schema sidecar (`--schema`); the semantic layer (Pydantic / Zod) is
+produce the same portable structure for this input. Validation uses only the
+language-neutral JSON Schema sidecar (`--schema`); the semantic layer (Pydantic / Zod) is
 implementation-specific and is exercised per-language, not here, so the semantic
 block is skipped identically.
 

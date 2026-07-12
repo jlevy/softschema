@@ -174,16 +174,17 @@ your repository.
 ## Keeping Python and TypeScript in Parity
 
 softschema ships two implementations, Python/Pydantic (`softschema`) and TypeScript/Zod
-(`softschema`, `softschema-ts`), held to **exact behavioral parity**: equivalent CLI
-inputs/outputs/flags and library APIs, the same canonical compiled JSON Schema
-(content-identical, equal `schema_sha256`), and the same engine-neutral validation
-results. Only idiomatic surface differs (snake_case ↔ camelCase, Pydantic ↔ Zod).
+(`softschema`, `softschema-ts`), with the same commands, exit classes, structured result
+meaning, canonical compiled JSON Schema, and `schema_sha256`. Only idiomatic surface
+details differ (snake_case ↔ camelCase, Pydantic ↔ Zod), and cross-runtime JSON output
+is compared structurally rather than as presentation bytes.
 
 When you change any behavior, follow this loop so the two never drift:
 
-1. **Golden first.** Write or update the shared scenario in `tests/golden/scenarios/`
-   (neutral, runs on both) or `tests/golden/scenarios-{py,ts}/` (per-language
-   invocation, identical output) **before** touching code.
+1. **Choose one primary owner first.** Use a shared YAML vector for a portable library
+   rule, an adapter unit test for runtime-specific integration, or a golden journey for
+   public CLI output and exit behavior.
+   Do not add the same case at every layer.
 2. **Implement in Python**, then `uv run pytest` and
    `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and

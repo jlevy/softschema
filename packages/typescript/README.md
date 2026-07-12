@@ -2,13 +2,12 @@
 
 The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softschema):
 validate and structure Markdown/YAML artifacts with frontmatter contracts.
-It is the idiomatic Zod counterpart to the Python/Pydantic package and is held to exact
-behavioral parity with it: the same CLI inputs/outputs/flags, the same library surface,
-and the same canonical compiled JSON Schema (content-identical, equal `schema_sha256`
-over its canonical JSON; YAML serialization bytes may differ).
+It is the idiomatic Zod counterpart to the Python/Pydantic package.
+Both provide the same commands, exit classes, structured result meaning, and canonical
+compiled JSON Schema with an equal `schema_sha256`.
 
 ```bash
-npx softschema@latest --help            # zero-install
+npx -y softschema@0.2.2 --help          # exact last-verified zero-install release
 # or
 bun add softschema
 ```
@@ -23,7 +22,8 @@ softschema-ts compile <mod.ts:ZodSchema> --contract <id> --out <schema.yaml> [--
 softschema-ts inspect <doc.md>
 softschema-ts generate <doc.md> [--check]
 softschema-ts docs --list [--json] | softschema-ts docs <topic>
-softschema-ts skill --brief | softschema-ts skill --install
+softschema-ts skill --brief
+softschema-ts skill --install --scope project --agent portable --agent claude
 ```
 
 ## Library

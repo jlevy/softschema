@@ -9,7 +9,7 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
-**Status:** Approved
+**Status:** Complete
 
 **Tracking:** `ss-gwdt` (minimal hardening implementation epic)
 
@@ -80,7 +80,7 @@ The intended result remains a small paired library:
 
 Current `main` is a working paired implementation with:
 
-- 6,120 tracked lines of Python and TypeScript production source
+- 5,228 tracked lines of Python and TypeScript production source
 - 14 Python test files and 17 TypeScript test files
 - 3,981 lines of Python and TypeScript unit-test code
 - 15 CLI golden scenarios shared where runtime behavior permits
@@ -283,8 +283,8 @@ They do not authorize the previous PR’s architecture.
 #### Documentation and Agent Surfaces
 
 - Keep the README a short subset of the guide.
-- Keep exact format rules only in the spec, public APIs in `docs/api.md`, and runtime
-  decisions in the language design docs.
+- Keep exact format rules only in the spec and public APIs and runtime decisions in the
+  language design docs.
 - Keep one authoritative `skills/softschema/SKILL.md`; generate identical agent-specific
   mirrors only where discovery requires a physical copy.
 - Keep agent instructions brief and progressively disclose detail through bundled CLI
@@ -446,11 +446,11 @@ Do not implement migration behavior in the runtime.
   specify one final hard-cut surface and delete the need for deprecation shims.
 - [x] Consolidate portable cases into shared YAML vectors without introducing a general
   conformance framework.
-- [ ] Reduce CLI goldens to the smallest broad scenarios that retain command, output,
+- [x] Reduce CLI goldens to the smallest broad scenarios that retain command, output,
   side-effect, and exit coverage.
-- [ ] Remove redundant tests only after a coverage map shows the retained owner catches
+- [x] Remove redundant tests only after a coverage map shows the retained owner catches
   the same regression.
-- [ ] Record the accepted fix list, rejected findings, and measured complexity budget in
+- [x] Record the accepted fix list, rejected findings, and measured complexity budget in
   this spec before Phase 2 implementation.
 
 **Phase gate:** every applicable row has a reproduction, trust-boundary statement,
@@ -461,21 +461,21 @@ explicit.
 
 ### Phase 2: Apply Focused Fixes and Validate the Release Boundary
 
-- [ ] Implement accepted validation fixes shared-contract-first, using existing parser
+- [x] Implement accepted validation fixes shared-contract-first, using existing parser
   and validator libraries.
-- [ ] Port only the required semantics to the second runtime; keep adapters idiomatic.
-- [ ] Apply the minimal installed-resource and skill-write fixes.
-- [ ] Apply the minimal build-once, checksum, OIDC, and installed-artifact release
+- [x] Port only the required semantics to the second runtime; keep adapters idiomatic.
+- [x] Apply the minimal installed-resource and skill-write fixes.
+- [x] Apply the minimal build-once, checksum, OIDC, and installed-artifact release
   fixes.
-- [ ] Update the guide, spec, API reference, design docs, skill, and agent entry points
+- [x] Update the guide, spec, language design docs, skill, and agent entry points
   without duplicating explanations.
-- [ ] Run the full validation matrix and compare source, test, fixture, and workflow
+- [x] Run the full validation matrix and compare source, test, fixture, and workflow
   growth against the Phase 1 baseline.
-- [ ] Perform a deletion pass: remove helpers, fixtures, tests, and abstractions that no
+- [x] Perform a deletion pass: remove helpers, fixtures, tests, and abstractions that no
   longer have a unique behavioral responsibility.
-- [ ] Produce a validation plan that lists each behavior once, its primary test owner,
+- [x] Produce a validation plan that lists each behavior once, its primary test owner,
   and any justified secondary check.
-- [ ] Require a final senior review focused on the hard-cut API, threat-model fit, test
+- [x] Require a final senior review focused on the hard-cut API, threat-model fit, test
   ownership, and total design complexity.
 
 **Phase gate:** every retained capability and the final documented hard-cut behavior
@@ -513,6 +513,37 @@ Test review must answer:
 Do not use the number of tests as a quality measure.
 Report behavioral coverage, coverage percentages, suite runtime, and test/fixture lines
 together.
+
+## Final Validation and Complexity
+
+The test-ownership table above is the validation plan.
+Shared YAML vectors own portable rules; adapter tests prove each host integration once;
+goldens own user-visible command journeys; built-package smokes own distribution
+contents; and the release-candidate workflow owns artifact transfer and authorization.
+Cross-runtime JSON comparison parses and sorts JSON structurally.
+Only human-readable text, exit codes, generated Markdown, and digest preimages are
+compared as exact bytes where exactness is part of the contract.
+
+Final local validation on 2026-07-11:
+
+| Boundary | Result |
+| --- | --- |
+| Python | lint, type checks, and 163 tests passed in 1.06 seconds |
+| TypeScript | lint, typecheck, and 164 tests passed in 2.12 seconds; 96.05% function and 96.34% line coverage |
+| CLI goldens | 38 Python, 36 Node, and 38 Bun journeys passed |
+| Cross-runtime | 20 direct Python-to-Node commands passed with structural JSON comparison |
+| Packages | wheel, sdist, and npm tarball built; `publint` passed; exact artifacts installed and ran outside the checkout |
+| Release boundary | candidate checksums verified; manual dispatch has no publish job; only release jobs receive OIDC publish authority |
+| Agent resources | source skill and both managed discovery mirrors passed byte-for-byte drift tests |
+
+The final production source is 6,175 lines, 947 more than the 5,228-line baseline and
+far below the 3,000-line growth review threshold.
+Unit-test source is 4,410 lines.
+The CLI golden corpus fell from 15 to 10 scenario files and now contains 1,629 lines.
+Seven unreferenced fixtures were deleted; all 21 retained fixtures have a named
+consumer. The repository has 168 tracked files after the deletion pass.
+No parser, glob, transaction, hosted-conformance, discovery, diagnostics, or
+release-state subsystem was added.
 
 ## Rollout Plan
 
