@@ -21,6 +21,10 @@ Preserve the public behavior on `main`, correct only reproduced failures or expl
 trust-boundary gaps, and simplify the test suite around a small set of shared behavioral
 contracts.
 
+> **Timestamp rule:** This plan records the v0.3.0 timestamp-rejection decision.
+> [Portable YAML Timestamp Strings](plan-2026-07-31-portable-yaml-timestamps.md)
+> supersedes only that decision for the next minor release.
+
 The work begins from `main`. The earlier hardening branch is evidence about possible
 edge cases, not an implementation base.
 Code, tests, infrastructure, and abstractions from that branch must earn inclusion

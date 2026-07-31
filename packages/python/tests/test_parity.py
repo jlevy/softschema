@@ -28,7 +28,7 @@ def test_kitchen_sink_matches_committed_canonical_schema() -> None:
 def test_kitchen_sink_schema_is_language_neutral() -> None:
     text = PARITY_SCHEMA.read_text()
     assert "generated_from" not in text
-    assert "- active\n- channels\n- code\n" in text
+    assert "- active\n- calendar_date\n- calendar_datetime\n- channels\n- code\n" in text
 
 
 def test_shared_hardening_vectors_are_readable() -> None:

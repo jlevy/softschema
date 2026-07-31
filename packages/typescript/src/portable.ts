@@ -92,14 +92,6 @@ export function parsePortableYaml(text: string): unknown {
     }
     if (
       isScalar(node) &&
-      node.type === "PLAIN" &&
-      typeof node.source === "string" &&
-      /^\d{4}-\d{2}-\d{2}(?:[Tt \t]|$)/u.test(node.source)
-    ) {
-      throw new PortableInputError("yaml_unsupported_scalar", "timestamps are not supported");
-    }
-    if (
-      isScalar(node) &&
       typeof node.value === "number" &&
       Number.isInteger(node.value) &&
       Math.abs(node.value) > MAX_SAFE_INTEGER &&
@@ -161,6 +153,12 @@ export function checkPortableValue(root: unknown): void {
         throw new PortableInputError("number_negative_zero", "negative zero is not supported");
       }
       continue;
+    }
+    if (value instanceof Date) {
+      throw new PortableInputError(
+        "yaml_unsupported_scalar",
+        "host-native Date values are not portable; use an ISO string",
+      );
     }
     if (Array.isArray(value)) {
       stack.push(...value.map((item): [unknown, number] => [item, depth + 1]));

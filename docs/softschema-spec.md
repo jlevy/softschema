@@ -97,11 +97,18 @@ summary: regression vs baseline
 YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite
 numbers, lists, and string-keyed mappings.
 Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero,
-timestamps, duplicate keys, aliases, anchors, merge keys, explicit tags, non-string
-keys, lone surrogates, and non-finite numbers are rejected.
-Quoted strings remain strings; an unquoted scalar beginning with a YAML timestamp shape
-(`YYYY-MM-DD` followed by end-of-value, `T`, a space, or a tab) is rejected before
-construction.
+duplicate keys, aliases, anchors, merge keys, explicit tags, non-string keys, lone
+surrogates, and non-finite numbers are rejected.
+
+Date- and timestamp-shaped plain scalars without an explicit tag decode as strings.
+A conforming implementation must preserve the decoded scalar content rather than
+construct or canonicalize a host-language date or timestamp value.
+Quoted and unquoted date-shaped scalars with the same content therefore produce the same
+string.
+Portable YAML decoding does not determine whether that string is a valid calendar
+date or timestamp; a semantic model or explicit structural assertion may impose that
+constraint. An explicit tag such as `!!timestamp` remains unsupported under the
+explicit-tag rule.
 
 One input is at most 1 MiB, one scalar is at most 256 KiB, and one YAML document has at
 most 100,000 scalar or collection nodes and 64 simultaneously open collections,
@@ -332,6 +339,13 @@ The two are unrelated: one schema validates many artifacts, while companion data
 pair with a single document.
 This spec does not standardize a companion-data discovery mechanism (see Compatibility).
 
+The canonical profile uses JSON Schema Draft 2020-12’s default Format-Annotation
+vocabulary. A `format` value, including `date` or `date-time`, is descriptive metadata
+and does not make structural validation fail.
+This rule is the same in every runtime and for every document status.
+A schema that needs structural lexical enforcement must use an assertion such as a
+portable `pattern`; calendar-aware validation belongs in a semantic model.
+
 Regular expressions in `pattern` and in `patternProperties` keys are checked eagerly.
 Each is at most 1,024 characters and must compile in both Python and JavaScript.
 Named groups, lookbehind, inline flags, numeric backreferences, `\A`, `\Z`, `\z`, `\p`,
@@ -438,10 +452,9 @@ two do not collide (see Compatibility).
 - **frontmatter-format.** The `frontmatter-md` profile matches
   [frontmatter-format](https://github.com/jlevy/frontmatter-format)’s YAML/Markdown
   (`---` delimited) style, and only that style.
-  The Python implementation consumes the `frontmatter-format` library; the TypeScript
-  implementation implements the same `---` subset and is held to it by the golden
-  corpus. Comment-style fences for other file types (HTML, Python, Rust, CSS, SQL) that
-  frontmatter-format also defines are out of scope here.
+  Both softschema implementations implement the same `---` subset and are held to it by
+  the shared corpus. Comment-style fences for other file types (HTML, Python, Rust, CSS,
+  SQL) that frontmatter-format also defines are out of scope here.
   Where the implementations would differ from frontmatter-format’s Markdown rules,
   frontmatter-format is authoritative (for example, non-mapping frontmatter is
   rejected).

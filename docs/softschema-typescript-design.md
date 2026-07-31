@@ -18,6 +18,7 @@ test; see the parity development process in [development.md](development.md).
 | Module | Purpose |
 | --- | --- |
 | `models` | `Contract`, status/profile unions, `SchemaMetadata`, `WarningCode`, `parseSchemaMetadata` |
+| `portable` | Bounded UTF-8 reading and portable YAML value decoding |
 | `registry` | `Contracts`: resolve contracts by id |
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
@@ -41,6 +42,35 @@ test; see the parity development process in [development.md](development.md).
 - Resources (docs/skill) are bundled into the package (`resources/`, copied at build)
   and served from there (never read from the working directory), mirroring the Python
   wheel.
+
+## Portable YAML Parsing
+
+`parsePortableYaml` preflights the `yaml` syntax tree for limits and unsupported YAML
+features, converts it to JavaScript values, and checks the result against the shared
+portable domain. The configured parser already decodes implicit date- and
+timestamp-shaped scalars as strings, so softschema does not apply a separate lexical
+rejection or timestamp constructor.
+
+Host-native JavaScript `Date` objects are outside the portable domain and are rejected
+when programmatic field metadata is checked.
+For semantic validation of portable date strings, use `z.iso.date()` or
+`z.iso.datetime({ offset: true })`. `z.date()` and `z.coerce.date()` produce JavaScript
+`Date` values and cannot represent the package’s portable artifact boundary or compile
+to its JSON Schema output.
+
+Zod emits intrinsic regex patterns when its ISO date schemas are converted to JSON
+Schema, while Pydantic emits only a format annotation.
+The compiler’s `toJSONSchema` override removes the intrinsic pattern from `z.ZodISODate`
+and `z.ZodISODateTime` nodes before canonicalization.
+An authored `z.string().regex(...)` pattern remains intact, including when its metadata
+also declares a date format.
+
+Ajv runs with `validateFormats: false`, matching JSON Schema Draft 2020-12’s default
+Format-Annotation vocabulary and the Python runtime.
+Calendar-aware rejection belongs in the Zod semantic model; an explicit portable
+`pattern` remains a structural assertion.
+`validateValues` accepts already-extracted host data and does not parse or normalize it
+as YAML.
 
 ## Library API Parity
 

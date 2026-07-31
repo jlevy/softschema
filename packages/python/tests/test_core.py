@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from softschema import (
     validate_structural,
     validate_values,
 )
+from softschema._portable import parse_yaml
 
 
 class SampleModel(BaseModel):
@@ -456,8 +458,42 @@ def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
         path.write_text(text)
         result = validate_artifact(path, contract=contract)
         assert result.ok is case["valid"], case["id"]
-        if not case["valid"]:
+        if case.get("expected") is not None:
+            assert result.values == case["expected"], case["id"]
+        elif not case["valid"]:
             assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_portable_timestamp_constructor_does_not_change_ruamel_defaults() -> None:
+    before = YAML(typ="safe").load("value: 2026-07-11")["value"]
+    assert type(before) is date
+
+    assert parse_yaml("value: 2026-07-11") == {"value": "2026-07-11"}
+
+    after = YAML(typ="safe").load("value: 2026-07-11")["value"]
+    assert type(after) is date
+    assert after == before
+
+
+def test_timestamp_strings_are_validated_by_pydantic_semantics() -> None:
+    class TimestampModel(BaseModel):
+        date_value: date
+        datetime_value: datetime
+
+    valid = validate_semantic(
+        {
+            "date_value": "2026-07-11",
+            "datetime_value": "2026-05-16T13:10:10-07:00",
+        },
+        TimestampModel,
+    )
+    invalid = validate_semantic(
+        {"date_value": "2001-13-99", "datetime_value": "not-a-datetime"},
+        TimestampModel,
+    )
+
+    assert valid.ok
+    assert not invalid.ok
 
 
 def test_shared_frontmatter_vectors(tmp_path: Path) -> None:

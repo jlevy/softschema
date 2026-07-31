@@ -12,6 +12,7 @@ matrix in the plan spec for how Pydantic and Zod outputs are normalized to agree
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -54,6 +55,9 @@ class KitchenSink(BaseModel):
     code: str = Field(min_length=2, max_length=8, pattern="^[A-Z]+$")
     # Boolean.
     active: bool
+    # Semantic date strings compile to format annotations.
+    calendar_date: date
+    calendar_datetime: datetime
     # String enum (Literal).
     kind: Literal["alpha", "beta", "gamma"]
     # Non-null defaults of several types.

@@ -628,6 +628,35 @@ movie:
 The table stays for readers but is no longer the source of truth.
 The consumer reads YAML now.
 
+### Dates and Timestamps Are Strings
+
+Date- and timestamp-shaped YAML values remain portable strings, whether they are quoted
+or unquoted:
+
+```yaml
+run:
+  started_on: 2026-07-11
+  reviewed_on: "2026-07-12"
+```
+
+Both values above decode as strings.
+Existing quoted values need no edit, and artifacts that use bare date-shaped values do
+not need a normalization pass.
+After upgrading softschema, refresh any installed skill mirrors and validate the
+artifact corpus before making optional style-only changes.
+
+Portable decoding does not decide whether `2001-13-99` is a valid date.
+Use a Pydantic `date` or `datetime` field, or a Zod `z.iso.date()` or
+`z.iso.datetime({ offset: true })` schema, when calendar validity matters.
+The `format: date` and `format: date-time` values in a compiled schema are annotations,
+not structural assertions.
+For schema-only lexical rejection, add a portable `pattern` explicitly.
+The compiler removes Zod’s intrinsic ISO patterns so equivalent Pydantic and Zod date
+fields produce the same format-only sidecar; an authored Zod regex remains intact.
+The validation result’s `values` mapping remains portable strings; host code that needs
+native date objects should construct its model explicitly from that mapping.
+See [Portable YAML Values](softschema-spec.md#portable-yaml-values) for the exact rule.
+
 For each migration, set `status: soft` or `permissive` initially.
 Tighten only after existing instances validate cleanly.
 

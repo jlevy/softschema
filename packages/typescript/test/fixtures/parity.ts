@@ -33,6 +33,8 @@ export const KitchenSink = z
     step: z.int().multipleOf(5),
     code: z.string().min(2).max(8).regex(/^[A-Z]+$/),
     active: z.boolean(),
+    calendar_date: z.iso.date(),
+    calendar_datetime: z.iso.datetime({ offset: true }),
     kind: z.enum(["alpha", "beta", "gamma"]),
     priority: z.int().default(1),
     label: z.string().default("none"),

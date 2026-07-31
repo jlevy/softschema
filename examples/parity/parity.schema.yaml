@@ -38,6 +38,14 @@ properties:
   active:
     title: Active
     type: boolean
+  calendar_date:
+    format: date
+    title: Calendar Date
+    type: string
+  calendar_datetime:
+    format: date-time
+    title: Calendar Datetime
+    type: string
   channels:
     description: Delivery channels.
     items:
@@ -157,6 +165,8 @@ properties:
     type: string
 required:
 - active
+- calendar_date
+- calendar_datetime
 - channels
 - code
 - count
@@ -171,4 +181,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 954248d7a78af54d23b7a52182f083fb770744bb88b1f519ad724bf79d02313b
+  schema_sha256: 1abffb4be5909052426c7431fc9a270b0ce85d4ffc8d2ed29c878e742985f503

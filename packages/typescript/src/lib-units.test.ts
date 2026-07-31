@@ -316,6 +316,22 @@ describe("compile: write mode + build", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
+  test("preserves an authored pattern on a date-formatted string", () => {
+    const model = z.strictObject({
+      day: z
+        .string()
+        .regex(/^[0-9]{4}$/)
+        .meta({ format: "date" }),
+      isoDay: z.iso.date().regex(/^2026-/),
+    });
+    const { schema } = buildCanonicalSchema(model, "x:PatternDate/v1");
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+
+    expect(properties.day?.format).toBe("date");
+    expect(properties.day?.pattern).toBe("^[0-9]{4}$");
+    expect(properties.isoDay?.format).toBe("date");
+    expect(properties.isoDay?.allOf).toEqual([{ pattern: "^2026-" }]);
+  });
   test("shared generated-title vectors", () => {
     const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
       string,

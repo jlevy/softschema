@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { Contract } from "./models.js";
+import { softFieldMeta } from "./softField.js";
 import {
   readFrontmatter,
   validateArtifact,
+  validateSemantic,
   validateStructural,
   validateValues,
   YamlParseError,
@@ -49,6 +51,40 @@ describe("validateValues", () => {
     const r = validateValues({ name: "hi", count: -1 }, { schema: SAMPLE_SCHEMA });
     expect(r.structural.ok).toBe(false);
     expect(r.structural.errors[0]?.validator).toBe("minimum");
+  });
+});
+
+describe("date-shaped portable values", () => {
+  const TimestampModel = z.strictObject({
+    dateValue: z.iso.date(),
+    datetimeValue: z.iso.datetime({ offset: true }),
+  });
+
+  test("Zod ISO schemas validate portable timestamp strings", () => {
+    const valid = validateSemantic(
+      {
+        dateValue: "2026-07-11",
+        datetimeValue: "2026-05-16T13:10:10-07:00",
+      },
+      TimestampModel,
+    );
+    const invalid = validateSemantic(
+      { dateValue: "2001-13-99", datetimeValue: "not-a-datetime" },
+      TimestampModel,
+    );
+
+    expect(valid.ok).toBe(true);
+    expect(invalid.ok).toBe(false);
+  });
+
+  test("host-native Date metadata is outside the portable domain", () => {
+    expect(() =>
+      softFieldMeta({
+        description: "Date example.",
+        group: "dates",
+        examples: [new Date("2026-07-11T00:00:00Z")],
+      }),
+    ).toThrow("host-native Date values are not portable");
   });
 });
 
@@ -182,7 +218,9 @@ test("shared portable YAML and artifact-input vectors", () => {
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);
     expect(result.ok).toBe(item.valid as boolean);
-    if (!item.valid) {
+    if (item.expected !== undefined) {
+      expect(result.values).toEqual(item.expected as Record<string, unknown>);
+    } else if (!item.valid) {
       const structural = result.structural as { errors: { kind: string }[] };
       expect(structural.errors[0]?.kind).toBe(item.code as string);
     }
