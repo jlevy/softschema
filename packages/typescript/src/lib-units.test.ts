@@ -316,6 +316,46 @@ describe("compile: write mode + build", () => {
     const { schema, sha } = buildCanonicalSchema(Sample, "x:S/v1");
     expect((schema["x-softschema"] as Record<string, unknown>).schema_sha256).toBe(sha);
   });
+  test("normalizes ISO formats and preserves authored patterns", () => {
+    const model = z.strictObject({
+      day: z
+        .string()
+        .regex(/^[0-9]{4}$/)
+        .meta({ format: "date" }),
+      isoDay: z.iso.date().regex(/^2026-/),
+      isoDuration: z.iso.duration().regex(/^P1/),
+      isoTime: z.iso.time().regex(/^12:/),
+    });
+    const { schema } = buildCanonicalSchema(model, "x:PatternDate/v1");
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+
+    expect(properties.day?.format).toBe("date");
+    expect(properties.day?.pattern).toBe("^[0-9]{4}$");
+    expect(properties.isoDay?.format).toBe("date");
+    expect(properties.isoDay?.allOf).toEqual([{ pattern: "^2026-" }]);
+    expect(properties.isoDuration?.format).toBe("duration");
+    expect(properties.isoDuration?.allOf).toEqual([{ pattern: "^P1" }]);
+    expect(properties.isoTime?.format).toBe("time");
+    expect(properties.isoTime?.allOf).toEqual([{ pattern: "^12:" }]);
+  });
+  test("semantic datetime options do not change the structural schema digest", () => {
+    const variants = [
+      z.iso.datetime(),
+      z.iso.datetime({ offset: true }),
+      z.iso.datetime({ local: true }),
+      z.iso.datetime({ precision: 3 }),
+    ];
+    const compiled = variants.map((variant) =>
+      buildCanonicalSchema(z.strictObject({ at: variant }), "x:DateTimeOptions/v1"),
+    );
+
+    expect(new Set(compiled.map((result) => result.sha)).size).toBe(1);
+    expect(
+      compiled.map(
+        (result) => (result.schema.properties as Record<string, Record<string, unknown>>).at,
+      ),
+    ).toEqual(variants.map(() => ({ format: "date-time", title: "At", type: "string" })));
+  });
   test("shared generated-title vectors", () => {
     const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
       string,

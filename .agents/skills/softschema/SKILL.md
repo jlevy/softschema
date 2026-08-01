@@ -64,6 +64,9 @@ consume some values reliably.
 
 - YAML/frontmatter is authoritative for any consumed value.
   Do not parse Markdown body prose or tables for structured fields.
+- Date- and timestamp-shaped YAML scalars are portable strings, quoted or unquoted.
+  JSON Schema `format` is annotation-only; use a semantic model or an explicit
+  structural assertion when date validity matters.
 - The `softschema:` block is the self-description quartet: `contract` (the payload
   contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
   key), `status` (strictness).

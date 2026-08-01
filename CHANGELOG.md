@@ -4,6 +4,68 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### Features
+
+- **Portable YAML timestamp strings**: Bare dates and timestamps now decode to their
+  string content in both implementations instead of being rejected.
+  Existing quoted values remain unchanged, and no artifact rewrite is required when
+  upgrading. Validation results retain strings; date validity remains the responsibility
+  of a semantic model or explicit structural assertion.
+- **Canonical temporal-schema parity**: Corresponding Pydantic temporal fields and Zod
+  ISO date, datetime, time, and duration strings now compile to the same format-only
+  schema and digest. JSON Schema `format` remains annotation-only; explicitly authored
+  patterns remain structural assertions.
+  Model-specific coercions and Zod ISO options remain semantic constraints outside the
+  structural digest.
+
+### Guidelines and Content
+
+- **Agent timestamp guidance**: The bundled skill now tells agents that date-shaped YAML
+  values are portable strings and that calendar validation belongs in the bound contract
+  or model.
+
+### Documentation
+
+- **Date migration guidance**: The guide, spec, and language design references now
+  distinguish portable string decoding from Pydantic, Zod, and JSON Schema date
+  validation, including the annotation-only format policy.
+
+## v0.3.0—2026-07-12
+
+### Features
+
+- **Paired portable-value boundary**: Python and TypeScript now share bounded UTF-8 and
+  YAML input rules, safe-number limits, canonical schema digests, and structurally
+  comparable validation results.
+- **Contract and schema identity**: Compilers require a logical contract ID, keep an
+  optional JSON Schema resource ID separate, and produce matching canonical compiled
+  schemas and `schema_sha256` values.
+- **Explicit skill installation**: `softschema skill --install` now requires a scope and
+  agent target, supports dry-run previews, and protects unmanaged files.
+
+### Fixes
+
+- **Portable validation parity**: Aligned frontmatter delimiters, YAML structure limits,
+  schema and pattern failures, strict-extra handling, error records, and compiler drift
+  checks across both runtimes.
+- **Bounded document resources**: Document-declared schemas and installed package
+  resources now resolve within their intended trust boundaries.
+
+### Guidelines and Content
+
+- **Installed agent resources**: The source skill and generated portable Agent Skills
+  and Claude mirrors now use one managed, drift-checked installation flow.
+
+### Documentation
+
+- **Hardening documentation**: Updated the guide, spec, language design references, and
+  development workflow to describe the paired runtime and release boundary accurately.
+
+**Full commit history**:
+[v0.2.2 … v0.3.0](https://github.com/jlevy/softschema/compare/v0.2.2...v0.3.0)
+
 ## v0.2.2—2026-06-15
 
 ### Features

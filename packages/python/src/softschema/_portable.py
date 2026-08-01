@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import math
-import re
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml.constructor import SafeConstructor
 from ruamel.yaml.events import (
     AliasEvent,
     MappingEndEvent,
@@ -17,13 +17,26 @@ from ruamel.yaml.events import (
     SequenceEndEvent,
     SequenceStartEvent,
 )
+from ruamel.yaml.nodes import ScalarNode
 
 MAX_INPUT_BYTES = 1_048_576
 MAX_DEPTH = 64
 MAX_NODES = 100_000
 MAX_SCALAR_BYTES = 262_144
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
-_TIMESTAMP_SHAPE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[Tt \t]|$)")
+
+
+def _construct_timestamp_as_string(_constructor: SafeConstructor, node: ScalarNode) -> str:
+    """Keep implicit YAML timestamps inside the portable string domain."""
+    return node.value
+
+
+class _PortableConstructor(SafeConstructor):
+    """Safe constructor overrides scoped to softschema parser instances."""
+
+
+# The first subclass registration copies ruamel's inherited constructor registry.
+_PortableConstructor.add_constructor("tag:yaml.org,2002:timestamp", _construct_timestamp_as_string)
 
 
 class PortableInputError(ValueError):
@@ -50,6 +63,7 @@ def read_utf8(path: Path) -> str:
 def parse_yaml(text: str) -> Any:
     """Parse YAML with the existing library after a representation preflight."""
     yaml = YAML(typ="safe")
+    yaml.Constructor = _PortableConstructor
     stack: list[tuple[str, bool]] = []
     nodes = 0
     has_alias = False
@@ -71,10 +85,6 @@ def parse_yaml(text: str) -> Any:
                     raise PortableInputError("yaml_limit", "YAML scalar exceeds the size limit")
                 if stack and stack[-1] == ("map", True) and event.value == "<<":
                     raise PortableInputError("yaml_merge_key", "YAML merge keys are not supported")
-                if event.style is None and _TIMESTAMP_SHAPE.match(event.value):
-                    raise PortableInputError(
-                        "yaml_unsupported_scalar", "timestamps are not supported"
-                    )
                 consume_parent_slot()
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
                 nodes += 1
@@ -128,8 +138,11 @@ def _check_value(root: Any) -> None:
             if value.hex() == "-0x0.0p+0":
                 raise PortableInputError("number_negative_zero", "negative zero is not supported")
             continue
-        if isinstance(value, (date, datetime)):
-            raise PortableInputError("yaml_unsupported_scalar", "timestamps are not supported")
+        if isinstance(value, date):
+            raise PortableInputError(
+                "yaml_unsupported_scalar",
+                "host-native date and datetime values are not portable; use an ISO string",
+            )
         if isinstance(value, list):
             stack.extend((item, depth + 1) for item in value)
             continue

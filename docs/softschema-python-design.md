@@ -182,6 +182,32 @@ A relative `schema_path` is resolved against only the document directory and the
 working directory, so resolution is predictable and never binds to an unrelated compiled
 schema in a parent directory.
 
+### Portable YAML Parsing
+
+`softschema._portable` owns frontmatter and pure-YAML value decoding after the document
+boundary has been identified.
+It preflights parser events for limits and unsupported YAML features, then checks the
+constructed result against the JSON-compatible portable domain defined by the spec.
+
+ruamel.yaml normally constructs implicit date- and timestamp-shaped scalars as Python
+`date` and `datetime` objects.
+The softschema parser assigns a private `SafeConstructor` subclass that returns the
+decoded scalar content for the timestamp tag.
+The override is registered on the subclass, not through a `YAML` instance, because an
+instance registration mutates inherited constructor state and changes unrelated
+ruamel.yaml consumers in the same process.
+Parsed dates therefore remain strings without timezone normalization or fractional
+precision loss.
+
+The constructed-value guard still rejects host-native `date` and `datetime` objects that
+reach an internal portable metadata path.
+`validate_values` accepts already-extracted host data and does not parse or normalize it
+as YAML.
+
+Structural validation constructs `Draft202012Validator` without a `FormatChecker`. This
+preserves the canonical profile’s annotation-only treatment of `format`; a portable
+`pattern` remains an ordinary structural assertion.
+
 ### Engine-Neutral Structural Errors
 
 Structural validation runs through `jsonschema`, but the error records it returns are
@@ -309,6 +335,12 @@ one compiled from the equivalent Zod schema converge to the same canonical schem
 content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the
 YAML serialization bytes may differ).
 
+This identity covers the structural contract only.
+Pydantic coercion and other semantic model behavior that does not appear in JSON Schema
+can change accepted values without changing the compiled sidecar or its digest.
+Cross-runtime projects that require the same semantic accept set must align and test
+their Pydantic and Zod validators.
+
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
 for the TypeScript package.
@@ -421,9 +453,9 @@ The first Python release does not implement generic companion-data loading; call
 should keep consumed values in frontmatter unless a host project owns a clearer
 companion-data convention.
 
-The package depends on `frontmatter-format` for Markdown frontmatter and YAML reading.
-That dependency owns frontmatter mechanics; softschema owns the contract, envelope,
-contract, and validation semantics.
+Softschema owns Markdown frontmatter extraction and portable YAML parsing.
+The package uses `frontmatter-format`’s configured YAML writer when serializing compiled
+schemas; that dependency does not own the artifact parsing boundary.
 Do not treat `frontmatter-format` as a generic softschema companion-data runtime.
 
 ## Dependency Boundary

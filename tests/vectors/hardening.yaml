@@ -30,9 +30,13 @@ portable_values:
       enabled: true
       empty: null
     valid: true
-  - { id: timestamp, text: "value: 2026-07-11", valid: false, code: yaml_unsupported_scalar }
-  - { id: invalid_timestamp, text: "value: 2001-13-99", valid: false, code: yaml_unsupported_scalar }
-  - { id: spaced_timestamp, text: "value: 2001-12-14 21:59:43", valid: false, code: yaml_unsupported_scalar }
+  - { id: timestamp, text: "value: 2026-07-11", valid: true, expected: { value: "2026-07-11" } }
+  - { id: invalid_timestamp, text: "value: 2001-13-99", valid: true, expected: { value: "2001-13-99" } }
+  - { id: spaced_timestamp, text: "value: 2001-12-14 21:59:43", valid: true, expected: { value: "2001-12-14 21:59:43" } }
+  - { id: offset_timestamp, text: "value: 2026-05-16T13:10:10-07:00", valid: true, expected: { value: "2026-05-16T13:10:10-07:00" } }
+  - { id: precise_timestamp, text: "value: 2026-05-12 13:10:10.123456789 +05:30", valid: true, expected: { value: "2026-05-12 13:10:10.123456789 +05:30" } }
+  - { id: quoted_timestamp, text: "value: '2026-07-11'", valid: true, expected: { value: "2026-07-11" } }
+  - { id: timestamp_key, text: "2026-07-11: value", valid: true, expected: { "2026-07-11": value } }
   - id: duplicate_key
     text: "value: first\nvalue: second"
     valid: false
@@ -60,6 +64,15 @@ structural:
     schema: { type: string, format: email }
     value: not-an-email
     valid: true
+  - id: date_format_is_annotation
+    schema: { type: string, format: date }
+    value: "2001-13-99"
+    valid: true
+  - id: date_pattern_is_assertion
+    schema: { type: string, format: date, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])-[0-9]{2}$" }
+    value: "2001-13-99"
+    valid: false
+    code: schema_violation
   - id: portable_pattern
     schema: { type: string, pattern: "^[a-z]+$" }
     value: abc

@@ -92,14 +92,6 @@ export function parsePortableYaml(text: string): unknown {
     }
     if (
       isScalar(node) &&
-      node.type === "PLAIN" &&
-      typeof node.source === "string" &&
-      /^\d{4}-\d{2}-\d{2}(?:[Tt \t]|$)/u.test(node.source)
-    ) {
-      throw new PortableInputError("yaml_unsupported_scalar", "timestamps are not supported");
-    }
-    if (
-      isScalar(node) &&
       typeof node.value === "number" &&
       Number.isInteger(node.value) &&
       Math.abs(node.value) > MAX_SAFE_INTEGER &&
@@ -167,6 +159,13 @@ export function checkPortableValue(root: unknown): void {
       continue;
     }
     if (typeof value === "object") {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new PortableInputError(
+          "yaml_unsupported_scalar",
+          `host-native ${value.constructor?.name ?? "object"} values are not portable; use JSON-compatible values`,
+        );
+      }
       stack.push(...Object.values(value).map((item): [unknown, number] => [item, depth + 1]));
       continue;
     }

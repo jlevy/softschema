@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { Contract } from "./models.js";
+import { softFieldMeta } from "./softField.js";
 import {
   readFrontmatter,
   validateArtifact,
+  validateSemantic,
   validateStructural,
   validateValues,
   YamlParseError,
@@ -49,6 +51,66 @@ describe("validateValues", () => {
     const r = validateValues({ name: "hi", count: -1 }, { schema: SAMPLE_SCHEMA });
     expect(r.structural.ok).toBe(false);
     expect(r.structural.errors[0]?.validator).toBe("minimum");
+  });
+});
+
+describe("date-shaped portable values", () => {
+  const TimestampModel = z.strictObject({
+    dateValue: z.iso.date(),
+    datetimeValue: z.iso.datetime({ offset: true }),
+  });
+
+  test("Zod ISO schemas validate portable timestamp strings", () => {
+    const valid = validateSemantic(
+      {
+        dateValue: "2026-07-11",
+        datetimeValue: "2026-05-16T13:10:10-07:00",
+      },
+      TimestampModel,
+    );
+    const invalid = validateSemantic(
+      { dateValue: "2001-13-99", datetimeValue: "not-a-datetime" },
+      TimestampModel,
+    );
+
+    expect(valid.ok).toBe(true);
+    expect(invalid.ok).toBe(false);
+  });
+
+  test("host-native object metadata is outside the portable domain", () => {
+    const hostValues = [
+      new Date("2026-07-11T00:00:00Z"),
+      new Map([["value", 1]]),
+      new Set([1]),
+      /value/u,
+      new Error("value"),
+      new URL("https://example.com"),
+      new (class Example {})(),
+    ];
+
+    for (const value of hostValues) {
+      expect(() =>
+        softFieldMeta({
+          description: "Host value example.",
+          group: "portable-values",
+          examples: [value],
+        }),
+      ).toThrow("values are not portable");
+    }
+  });
+
+  test("plain and null-prototype object metadata remains portable", () => {
+    const nullPrototype = Object.assign(Object.create(null) as Record<string, unknown>, {
+      value: "example",
+    });
+
+    expect(() =>
+      softFieldMeta({
+        description: "Plain object examples.",
+        group: "portable-values",
+        examples: [{ value: "example" }, nullPrototype],
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -182,7 +244,10 @@ test("shared portable YAML and artifact-input vectors", () => {
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);
     expect(result.ok).toBe(item.valid as boolean);
-    if (!item.valid) {
+    if ("expected" in item) {
+      expect(result.values).toEqual(item.expected as Record<string, unknown>);
+    }
+    if ("code" in item) {
       const structural = result.structural as { errors: { kind: string }[] };
       expect(structural.errors[0]?.kind).toBe(item.code as string);
     }

@@ -628,6 +628,43 @@ movie:
 The table stays for readers but is no longer the source of truth.
 The consumer reads YAML now.
 
+### Dates and Timestamps Are Strings
+
+Date- and timestamp-shaped YAML values remain portable strings, whether they are quoted
+or unquoted:
+
+```yaml
+run:
+  started_on: 2026-07-11
+  reviewed_on: "2026-07-12"
+```
+
+Both values above decode as strings.
+Existing quoted values need no edit, and artifacts that use bare date-shaped values do
+not need a normalization pass.
+After upgrading softschema, refresh any installed skill mirrors and validate the
+artifact corpus before making optional style-only changes.
+
+Portable decoding does not decide whether `2001-13-99` is a valid date.
+Use a Pydantic `date`, `time`, `datetime`, or `timedelta` field, or the corresponding
+Zod `z.iso.date()`, `z.iso.time()`, `z.iso.datetime()`, or `z.iso.duration()` string
+schema, when temporal validity matters.
+These model choices are not accept-set equivalents: Pydantic and Zod accept different
+spellings and coercions, and Zod datetime options further configure its accepted
+strings. A project that needs identical cross-runtime semantics must define and test
+aligned model validators or refinements in both implementations.
+The `format: date`, `format: date-time`, `format: time`, and `format: duration` values
+in a compiled schema are annotations, not structural assertions.
+For schema-only lexical rejection, add a portable `pattern` explicitly.
+The compiler removes Zod’s intrinsic ISO date, datetime, time, and duration patterns so
+structurally corresponding Pydantic and Zod fields produce the same format-only sidecar;
+an authored Zod regex remains intact.
+The sidecar and its digest therefore describe structural parity, not equality of every
+semantic model option.
+The validation result’s `values` mapping remains portable strings; host code that needs
+native date objects should construct its model explicitly from that mapping.
+See [Portable YAML Values](softschema-spec.md#portable-yaml-values) for the exact rule.
+
 For each migration, set `status: soft` or `permissive` initially.
 Tighten only after existing instances validate cleanly.
 
