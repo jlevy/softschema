@@ -9,7 +9,10 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
-**Status:** In progress
+**Status:** Complete.
+Release PR [#24](https://github.com/jlevy/softschema/pull/24) merged, annotated tag
+`v0.4.0` points to its green merge commit, both OIDC publications succeeded, and the
+registry artifacts and published quickstart were externally verified.
 
 **Tracking:** release epic `ss-fyvp`; audit `ss-jrrg`; release notes `ss-quvj`;
 validation `ss-1ey5`; `frontmatter-format` adoption `ss-2p2l`; publication `ss-m443`;
@@ -189,21 +192,21 @@ publish URLs, registry versions, and smoke-test output.
 
 ## Completion Criteria
 
-- The dependency gate and every local and CI validation gate pass on the final tree.
-- The release PR is merged and `v0.4.0` points to its merge commit.
-- The GitHub release and both registry versions are public and mutually consistent.
-- Clean external installs report `softschema 0.4.0`, and the published quickstart
-  validates successfully.
-- The release review contains the complete evidence record.
-- All release beads are closed and synchronized.
+- [x] The dependency gate and every local and CI validation gate pass on the final tree.
+- [x] The release PR is merged and `v0.4.0` points to its merge commit.
+- [x] The GitHub release and both registry versions are public and mutually consistent.
+- [x] Clean external installs report `softschema 0.4.0`, and the published quickstart
+  validates successfully under both implementations.
+- [x] The release review contains the complete evidence record.
+- [x] All release beads are closed and synchronized.
 
 ## Open Questions
 
-None. The upstream release is a sequencing gate, not an unresolved design decision.
+None. All sequencing gates completed without changing the resolved design.
 
 ## References
 
-- [Portable YAML Timestamp Strings](../done/plan-2026-07-31-portable-yaml-timestamps.md)
+- [Portable YAML Timestamp Strings](plan-2026-07-31-portable-yaml-timestamps.md)
 - [softschema Guide](../../../softschema-guide.md)
 - [softschema Spec](../../../softschema-spec.md)
 - [Publishing](../../../publishing.md)
