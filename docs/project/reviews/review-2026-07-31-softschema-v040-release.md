@@ -142,7 +142,7 @@ No risk requires a compatibility shim or another product mechanism.
 | Check | Result |
 | --- | --- |
 | Upstream tag, release, PyPI version, and commit | Pending release |
-| v0.3.0 to v0.4.0 source, release-note, and dependency review | Pass at release-branch commit `9d06bf0`; final tag comparison pending |
+| v0.3.0 to v0.4.0 source, release-note, and dependency review | Pass at release-branch commit `f586298`; final tag comparison pending |
 | Date/timestamp contract consistency | Pass; generic YAML-native values and softschema portable strings are explicitly separated |
 | `new_yaml` compatibility and upstream tests | Pass; 51 upstream tests plus exact v0.4.0 wheel and sdist validation and installation |
 | Softschema minimum, cool-off exception, and lock update | Pending release |
