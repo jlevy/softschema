@@ -16,6 +16,13 @@ FLOWMARK := uvx --no-config --exclude-newer-package 'flowmark-rs=2026-06-02' flo
 # Generated-resource commands use the committed environment without resolving or
 # inheriting user-level uv configuration.
 UV_RUN := uv run --frozen --no-config
+# A global UV_EXCLUDE_NEWER replaces pyproject's per-package map. Pin the complete
+# reviewed boundary here so `make install` is frozen, ignores ambient config, and has
+# the same exceptions as CI.
+UV_SYNC := uv sync --all-extras --frozen --no-config \
+	--exclude-newer 2026-06-02T00:00:00Z \
+	--exclude-newer-package frontmatter-format=2026-08-01T01:26:20.316336Z \
+	--exclude-newer-package strif=2026-06-03T00:00:00Z
 
 default: install format lint test
 
@@ -24,7 +31,7 @@ default: install format lint test
 # lockfile-backed local binary instead of fetching one). GitHub Actions call uv / bun /
 # npx directly, not this Makefile.
 install:
-	uv sync --all-extras
+	$(UV_SYNC)
 	npm install --silent
 	cd packages/typescript && bun install --frozen-lockfile
 
@@ -65,13 +72,13 @@ format-check:
 	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 
 lint:
-	uv run python devtools/lint.py
+	$(UV_RUN) python devtools/lint.py
 
 lint-check:
-	uv run python devtools/lint.py --check
+	$(UV_RUN) python devtools/lint.py --check
 
 test:
-	uv run pytest
+	$(UV_RUN) pytest
 
 upgrade:
 	uv sync --upgrade --all-extras --dev

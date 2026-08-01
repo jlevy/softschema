@@ -127,8 +127,9 @@ PR is finalized:
    repository provides them.
 4. Set `frontmatter-format>=0.4.0`, update `uv.lock`, and record the release timestamp
    in `[tool.uv].exclude-newer-package`.
-5. Re-pass the same exception in every CI `uv sync` command because the global
-   `UV_EXCLUDE_NEWER` environment override replaces the project exception map.
+5. Re-pass the same exception in every CI `uv sync` command and the local `make install`
+   path because the global `UV_EXCLUDE_NEWER` environment override replaces the project
+   exception map.
 6. Run focused compiler/writer tests before the complete release matrix.
 
 The gate fails if v0.4.0 changes or removes the writer contract softschema consumes,

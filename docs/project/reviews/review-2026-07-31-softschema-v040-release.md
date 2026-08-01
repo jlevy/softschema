@@ -96,6 +96,8 @@ The standard cool-off remains in place.
 The new `frontmatter-format` version receives a narrow, timestamped exception because it
 is first-party and explicitly approved.
 CI must repeat the exception anywhere `UV_EXCLUDE_NEWER` replaces the project map.
+The local `make install` path repeats the fixed boundary and both exceptions, installs
+from the frozen lock, and ignores ambient uv configuration.
 
 The final TypeScript audit also found two high-severity host-confusion advisories in
 Ajv’s locked `fast-uri` 3.1.2 dependency: GHSA-4c8g-83qw-93j6 (CVE-2026-13676) and
@@ -209,7 +211,7 @@ These results are from the final dependency locks and release tree.
 
 The exact simulated v0.4.0 candidates have SHA-256 values
 `97a039d94328835284de990b13e56ed858b44bcebfe908b7a7cf106618cb63c7` for the wheel,
-`338fa9869ec23dff8928c7aac045132321bbaf52de234f0f470a65e581429078` for the source
+`bd8f59b4fa52263091fd7cc5de4319f94af22ba986148023598ce0f0e5291b90` for the source
 distribution, and `740992b3d09d0d1601d596952a223ba1c46d886169d1142e8e250bcb25f7df97` for
 the npm tarball. Hosted release candidates are rebuilt from the green commit and carry
 their own transferred checksum record; these local hashes prove the candidate shape

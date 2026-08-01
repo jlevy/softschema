@@ -52,8 +52,8 @@ dev = [
 # RFC3339 timestamp -- a date-only string fails to parse and uv silently drops the
 # setting. CI sets a global UV_EXCLUDE_NEWER (14 days ago) that overrides
 # `exclude-newer` here, and because that env override also replaces the per-package map,
-# ci.yml re-passes both exceptions on the CLI. Bump only the timestamp for the reviewed
-# package release being adopted.
+# ci.yml and `make install` re-pass both exceptions on the CLI. Bump only the timestamp
+# for the reviewed package release being adopted.
 exclude-newer = "2026-06-02T00:00:00Z"
 exclude-newer-package = { frontmatter-format = "2026-08-01T01:26:20.316336Z", strif = "2026-06-03T00:00:00Z" }
 
