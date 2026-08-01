@@ -3,14 +3,16 @@ type: is
 id: is-01kyxb3fvtre5e1vq5fqe847zw
 title: "PR #23 review S4: Make Zod compiler coupling explicit"
 kind: bug
-status: open
+status: closed
 priority: 3
-version: 1
+version: 3
 labels:
   - pr-23-review
 dependencies: []
 parent_id: is-01kyxb2jmbakcvq711fj9yfdde
 created_at: 2026-08-01T00:20:38.904Z
-updated_at: 2026-08-01T00:20:38.904Z
+updated_at: 2026-08-01T00:35:43.525Z
+closed_at: 2026-08-01T00:35:43.525Z
+close_reason: Fixed in 59d2289; full local validation and all 19 PR checks passed.
 ---
 Review suggestion S4 at packages/typescript/src/compile.ts:130. Reduce or explicitly document reliance on Zod internals, retain upgrade regression coverage, and record why removing a duplicate authored regex with the exact intrinsic source is semantically harmless.
