@@ -9,7 +9,7 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
-**Status:** Ready for the release PR; publication waits on required hosted CI.
+**Status:** Released and externally verified.
 
 **Tracking:** release epic `ss-fyvp`
 
@@ -18,12 +18,12 @@ author: Codex, with maintainer direction from Joshua Levy
 The merged timestamp design and final dependency graph are suitable for a minor release.
 Its public contract is coherent, the migration is bounded, and the paired implementation
 has direct unit, vector, golden, and cross-runtime coverage.
-Local release approval is complete.
-Publication remains conditioned on the release PR’s required CI and the immutable tag
-and registry checks below.
+Local and hosted release approval is complete.
+The reviewed merge commit is tagged, both registry publications succeeded from the
+checksummed workflow candidates, and clean external consumers passed the published
+smokes below.
 
-No design decision remains open.
-The outstanding entries are execution evidence, not deferred product questions.
+No design decision or release gate remains open.
 
 ## Scope Reviewed
 
@@ -221,27 +221,43 @@ rather than predict cross-run archive bytes.
 
 | Check | Result |
 | --- | --- |
-| Release PR and required CI | Pending |
-| `v0.4.0` tag and GitHub release | Pending |
-| Publish workflow and candidate checksums | Pending |
-| PyPI exact-version install | Pending |
-| npm exact-version install | Pending |
-| Published quickstart | Pending |
+| Release PR and required CI | Pass; [PR #24](https://github.com/jlevy/softschema/pull/24) merged as `c81e4a6`, with the PR and [post-merge CI](https://github.com/jlevy/softschema/actions/runs/30681000944) fully green |
+| `v0.4.0` tag and GitHub release | Pass; annotated tag `d311365` peels to merge commit `c81e4a6` and tree `30e1d6b`; [softschema 0.4.0](https://github.com/jlevy/softschema/releases/tag/v0.4.0) is public |
+| Publish workflow and candidate checksums | Pass; [run 30681078342](https://github.com/jlevy/softschema/actions/runs/30681078342) built once, verified the transferred checksums, smoked all candidates, and completed both OIDC jobs |
+| PyPI exact-version install | Pass; clean Python 3.14 install reports softschema 0.4.0 and `frontmatter-format` 0.4.0 |
+| npm exact-version install | Pass; clean install reports softschema 0.4.0, resolves Ajv 8.20.0 to patched `fast-uri` 3.1.5, and audits with zero vulnerabilities |
+| Published quickstart | Pass; Python and Node artifacts both validate, their generated artifact and schema bytes match, and the published temporal smoke returns bare valid and invalid date-shaped values as strings |
 
-## Release Approval Gate
+The registry files are byte-identical to the checksummed candidates downloaded from the
+publish workflow. Their SHA-256 values are
+`a42d8e74703aa1cbd3aaff93e81a6eee73218f7c4b53aa0c319169775175571c` for the wheel,
+`bd8f59b4fa52263091fd7cc5de4319f94af22ba986148023598ce0f0e5291b90` for the source
+distribution, and `740992b3d09d0d1601d596952a223ba1c46d886169d1142e8e250bcb25f7df97` for
+the npm tarball. PyPI uploaded the wheel at `2026-08-01T03:00:03.300445Z` and the source
+distribution at `2026-08-01T03:00:04.671664Z`.
 
-Approve publication only when every table row is complete, the final aggregate diff has
-no unexplained file, the worktree is clean, the tag target is the green release PR merge
-commit, and the public release notes match the changelog’s behavior and migration steps.
+The published temporal smoke validates `2026-07-11` and `2001-13-99` through both
+implementations with byte-identical results.
+Both decoded values are strings, and the invalid calendar spelling passes the
+format-only structural schema as designed.
+
+## Release Completion
+
+Every approval row is complete.
+The final aggregate diff has no unexplained file, the tag targets the green release PR
+merge commit, the public release notes match the changelog’s behavior and migration
+steps, and both registry artifacts match the checksummed workflow candidates.
 
 ## References
 
-- [v0.4.0 Release Plan](../specs/active/plan-2026-07-31-softschema-v040-release.md)
+- [v0.4.0 Release Plan](../specs/done/plan-2026-07-31-softschema-v040-release.md)
 - [Portable YAML Timestamp Strings](../specs/done/plan-2026-07-31-portable-yaml-timestamps.md)
 - [End-to-End Testing Runbook](../../e2e-testing.runbook.md)
 - [Publishing](../../publishing.md)
 - [Changelog](../../../CHANGELOG.md)
 - [Merged implementation PR #23](https://github.com/jlevy/softschema/pull/23)
+- [Release PR #24](https://github.com/jlevy/softschema/pull/24)
+- [softschema 0.4.0](https://github.com/jlevy/softschema/releases/tag/v0.4.0)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
