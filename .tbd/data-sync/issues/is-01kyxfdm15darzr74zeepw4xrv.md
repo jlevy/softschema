@@ -5,13 +5,13 @@ title: Remove vulnerable fast-uri from the v0.4.0 npm graph
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-07-31-softschema-v040-release.md
 labels: []
 dependencies: []
 parent_id: is-01kyxcr75ap5xpcsm46p8edsq7
 created_at: 2026-08-01T01:36:05.153Z
-updated_at: 2026-08-01T02:07:20.587Z
+updated_at: 2026-08-01T03:09:10.474Z
 closed_at: 2026-08-01T02:07:20.587Z
 close_reason: "Completed on release commit e21f309: exact frontmatter-format 0.4.0 adoption, fast-uri 3.1.4 security hardening with approved exception, and full local release validation all passed."
 ---

@@ -5,13 +5,13 @@ title: "PR #24 review R1: pass uv cool-off exceptions in make install"
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-31-softschema-v040-release.md
 labels: []
 dependencies: []
 parent_id: is-01kyxhhawjbbekecccfyn08s5e
 created_at: 2026-08-01T02:13:10.290Z
-updated_at: 2026-08-01T02:55:17.107Z
+updated_at: 2026-08-01T03:09:10.896Z
 closed_at: 2026-08-01T02:55:17.106Z
 close_reason: "Complete: commit 569340d fixed local uv cool-off parity; failure-case and full-suite validation passed; final CI is green and the PR thread is resolved."
 ---

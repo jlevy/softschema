@@ -5,14 +5,14 @@ title: Keep formatter checks isolated from user uv config
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-31-softschema-v040-release.md
 labels:
   - release-v0.4.0
 dependencies: []
 parent_id: is-01kyxcr75ap5xpcsm46p8edsq7
 created_at: 2026-08-01T01:04:15.998Z
-updated_at: 2026-08-01T01:05:25.460Z
+updated_at: 2026-08-01T03:09:10.059Z
 closed_at: 2026-08-01T01:05:25.459Z
 close_reason: Formatter and generated-resource commands now ignore ambient uv config and use the frozen environment; direct run and pre-commit hook both leave uv.lock unchanged.
 ---

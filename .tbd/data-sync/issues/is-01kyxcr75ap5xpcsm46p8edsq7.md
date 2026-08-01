@@ -5,8 +5,8 @@ title: Release softschema v0.4.0 end to end
 kind: task
 status: closed
 priority: 1
-version: 14
-spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
+version: 15
+spec_path: docs/project/specs/done/plan-2026-07-31-softschema-v040-release.md
 labels:
   - release-v0.4.0
 dependencies: []
@@ -21,7 +21,7 @@ child_order_hints:
   - is-01kyxfdm15darzr74zeepw4xrv
   - is-01kyxkv93b09k077rn2zx9fw48
 created_at: 2026-08-01T00:49:26.694Z
-updated_at: 2026-08-01T03:08:57.092Z
+updated_at: 2026-08-01T03:09:08.624Z
 closed_at: 2026-08-01T03:08:57.091Z
 close_reason: "Complete: all v0.4.0 design, documentation, validation, dependency, review, publication, registry verification, evidence, and tracking work is finished."
 ---

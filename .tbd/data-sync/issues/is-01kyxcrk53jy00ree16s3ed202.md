@@ -5,14 +5,14 @@ title: Run v0.4.0 release candidate validation
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-07-31-softschema-v040-release.md
 labels:
   - release-v0.4.0
 dependencies: []
 parent_id: is-01kyxcr75ap5xpcsm46p8edsq7
 created_at: 2026-08-01T00:49:38.978Z
-updated_at: 2026-08-01T02:07:20.568Z
+updated_at: 2026-08-01T03:09:09.427Z
 closed_at: 2026-08-01T02:07:20.567Z
 close_reason: "Completed on release commit e21f309: exact frontmatter-format 0.4.0 adoption, fast-uri 3.1.4 security hardening with approved exception, and full local release validation all passed."
 ---

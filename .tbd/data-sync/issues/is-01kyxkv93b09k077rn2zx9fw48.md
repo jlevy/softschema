@@ -5,15 +5,15 @@ title: "Senior engineering review: PR #24 release readiness"
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-31-softschema-v040-release.md
 labels:
   - review
   - release
 dependencies: []
 parent_id: is-01kyxcr75ap5xpcsm46p8edsq7
 created_at: 2026-08-01T02:53:27.018Z
-updated_at: 2026-08-01T02:55:16.891Z
+updated_at: 2026-08-01T03:09:10.685Z
 closed_at: 2026-08-01T02:55:16.890Z
 close_reason: "Complete: full senior engineering review published on PR #24 with approve verdict and no findings."
 ---
