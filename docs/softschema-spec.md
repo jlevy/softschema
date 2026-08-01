@@ -461,9 +461,11 @@ two do not collide (see Compatibility).
   Both softschema implementations implement the same `---` subset and are held to it by
   the shared corpus. Comment-style fences for other file types (HTML, Python, Rust, CSS,
   SQL) that frontmatter-format also defines are out of scope here.
-  Where the implementations would differ from frontmatter-format’s Markdown rules,
-  frontmatter-format is authoritative (for example, non-mapping frontmatter is
-  rejected).
+  Frontmatter-format is authoritative for the Markdown fence syntax and requirement that
+  parsed frontmatter be a mapping (for example, non-mapping frontmatter is rejected).
+  It is not authoritative for the portable YAML value domain: its generic Python readers
+  may materialize YAML timestamps as `date` or `datetime` objects, while this spec
+  requires implicit date- and timestamp-shaped scalars to remain strings.
 - **sidematter-format.** This spec does not adopt
   [sidematter-format](https://github.com/jlevy/sidematter-format)’s per-document
   companion convention (`doc.md` → `doc.meta.yml` / `doc.assets/`). The term “sidecar”

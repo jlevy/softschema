@@ -4,7 +4,10 @@
 
 **Author:** Claude Code, from maintainer feedback by Joshua Levy
 
-**Status:** Draft
+**Status:** Superseded (historical).
+The terminology and linkage design shipped in the v0.2 series, and the current public
+surface is defined by the spec and guide.
+Unchecked items below preserve the original proposal; they are not open release work.
 
 ## Overview
 

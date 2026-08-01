@@ -8,9 +8,21 @@
 # Pinned for stability — bump deliberately. flowmark-rs is a first-party package
 # (github.com/jlevy/flowmark); the --exclude-newer-package exception admits the pinned
 # release past the repo's supply-chain cool-off, mirroring the strif handling in
-# pyproject.toml and the practical-prose repo. Bump the version and the date together.
+# pyproject.toml and the practical-prose repo. --no-config prevents user-level uv
+# settings from changing the project lock during formatting. Bump the version and the
+# date together.
 FLOWMARK_VERSION := 0.3.1
-FLOWMARK := uvx --exclude-newer-package 'flowmark-rs=2026-06-02' flowmark-rs@$(FLOWMARK_VERSION)
+FLOWMARK := uvx --no-config --exclude-newer-package 'flowmark-rs=2026-06-02' flowmark-rs@$(FLOWMARK_VERSION)
+# Generated-resource commands use the committed environment without resolving or
+# inheriting user-level uv configuration.
+UV_RUN := uv run --frozen --no-config
+# A global UV_EXCLUDE_NEWER replaces pyproject's per-package map. Pin the complete
+# reviewed boundary here so `make install` is frozen, ignores ambient config, and has
+# the same exceptions as CI.
+UV_SYNC := uv sync --all-extras --frozen --no-config \
+	--exclude-newer 2026-06-02T00:00:00Z \
+	--exclude-newer-package frontmatter-format=2026-08-01T01:26:20.316336Z \
+	--exclude-newer-package strif=2026-06-03T00:00:00Z
 
 default: install format lint test
 
@@ -19,7 +31,7 @@ default: install format lint test
 # lockfile-backed local binary instead of fetching one). GitHub Actions call uv / bun /
 # npx directly, not this Makefile.
 install:
-	uv sync --all-extras
+	$(UV_SYNC)
 	npm install --silent
 	cd packages/typescript && bun install --frozen-lockfile
 
@@ -42,8 +54,8 @@ hooks-install: install
 # generate / skill-mirror drift tests fail after a format-only pass.
 format:
 	$(FLOWMARK) --auto .
-	uv run softschema generate examples/movie_page/README.md
-	uv run softschema skill --install --scope project --agent portable --agent claude
+	$(UV_RUN) softschema generate examples/movie_page/README.md
+	$(UV_RUN) softschema skill --install --scope project --agent portable --agent claude
 
 # CI-mode Markdown check: run the FULL format pipeline, then fail if it would
 # change anything. flowmark-rs has no native --check, so we approximate via git
@@ -54,19 +66,19 @@ format:
 # on an otherwise-canonical tree. Requires a clean working tree before running.
 format-check:
 	$(FLOWMARK) --auto .
-	uv run softschema generate examples/movie_page/README.md
-	uv run softschema skill --install --scope project --agent portable --agent claude
+	$(UV_RUN) softschema generate examples/movie_page/README.md
+	$(UV_RUN) softschema skill --install --scope project --agent portable --agent claude
 	@git diff --exit-code -- '*.md' || \
 	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 
 lint:
-	uv run python devtools/lint.py
+	$(UV_RUN) python devtools/lint.py
 
 lint-check:
-	uv run python devtools/lint.py --check
+	$(UV_RUN) python devtools/lint.py --check
 
 test:
-	uv run pytest
+	$(UV_RUN) pytest
 
 upgrade:
 	uv sync --upgrade --all-extras --dev

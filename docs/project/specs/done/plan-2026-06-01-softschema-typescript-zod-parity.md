@@ -4,7 +4,10 @@
 
 **Author:** Joshua Levy (with agent assistance)
 
-**Status:** Draft
+**Status:** Superseded (historical).
+The paired TypeScript implementation shipped, and the current public surface is defined
+by the spec, language design docs, and subsequent hardening plan.
+Unchecked items below preserve the original proposal; they are not open release work.
 
 ## Overview
 

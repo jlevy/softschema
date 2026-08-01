@@ -645,6 +645,14 @@ not need a normalization pass.
 After upgrading softschema, refresh any installed skill mirrors and validate the
 artifact corpus before making optional style-only changes.
 
+This value rule is deliberately stricter than the general-purpose reader in
+`frontmatter-format`, which accepts YAML timestamps and may materialize them as Python
+`date` or `datetime` values.
+softschema owns artifact extraction and portable YAML parsing; the Python package uses
+`frontmatter-format` only as the configured writer for compiled-schema YAML. Its fence
+conventions remain compatible, but its generic value materialization does not replace
+the softschema portable-value rules.
+
 Portable decoding does not decide whether `2001-13-99` is a valid date.
 Use a Pydantic `date`, `time`, `datetime`, or `timedelta` field, or the corresponding
 Zod `z.iso.date()`, `z.iso.time()`, `z.iso.datetime()`, or `z.iso.duration()` string

@@ -6,6 +6,53 @@ version number.
 
 ## Unreleased
 
+## v0.4.0—2026-07-31
+
+v0.4.0 makes YAML date- and timestamp-shaped scalars portable strings in both
+implementations. It also aligns canonical schemas compiled from corresponding Pydantic
+and Zod temporal fields.
+
+### Upgrade
+
+1. Upgrade every softschema implementation the project uses to `0.4.0`, then refresh its
+   lockfiles. Projects that use both implementations must update them together.
+   Python lockfiles should resolve `frontmatter-format>=0.4.0`; that first-party release
+   is an intentional exception to the normal dependency cool-off.
+   TypeScript lockfiles should resolve `fast-uri>=3.1.4` through Ajv; versions before
+   3.1.4 have high-severity URI host-confusion advisories.
+
+2. Validate the project’s full artifact corpus.
+   No artifact rewrite is required: quoted and unquoted date-shaped YAML values remain
+   strings, and bare dates that v0.3.0 rejected are now accepted.
+
+3. Regenerate committed compiled schemas from Zod models that use ISO date, datetime,
+   time, or duration helpers.
+   Their digest may change once because compiler-intrinsic patterns are removed.
+   Review and commit that generated diff.
+
+4. If a workflow relied on a Zod-generated temporal pattern for structural rejection,
+   add an explicit portable JSON Schema `pattern`. The default JSON Schema `format`
+   vocabulary remains annotation-only in softschema.
+
+5. Test the bound Pydantic and Zod semantic validators with the application’s accepted
+   and rejected temporal values.
+   Canonical schema parity does not promise identical semantic accept sets across the
+   two model libraries.
+
+6. Treat validation-result values as strings.
+   Host code that needs `date`, `datetime`, or JavaScript `Date` objects must construct
+   them explicitly after validation.
+
+7. If the bundled project skill is installed, refresh its managed mirrors:
+
+   ```bash
+   softschema skill --install --scope project --agent portable --agent claude
+   ```
+
+The
+[Dates and Timestamps Are Strings](docs/softschema-guide.md#dates-and-timestamps-are-strings)
+guide section gives the complete authoring and migration rationale.
+
 ### Features
 
 - **Portable YAML timestamp strings**: Bare dates and timestamps now decode to their
@@ -20,6 +67,21 @@ version number.
   Model-specific coercions and Zod ISO options remain semantic constraints outside the
   structural digest.
 
+### Dependencies
+
+- **`frontmatter-format` v0.4.0**: The Python package adopts the deterministic,
+  alias-free writer used for compiled-schema YAML. Its general-purpose readers retain
+  YAML-native timestamp behavior; softschema does not use them for artifacts and
+  continues to own the stricter portable-string parsing boundary.
+  The dependency upgrade therefore requires no artifact rewrite and does not cause the
+  timestamp behavior change described above.
+- **Patched TypeScript URI resolver**: The checked-in TypeScript dependency graph
+  constrains Ajv’s `fast-uri` dependency to reviewed version 3.1.4, removing two
+  high-severity host-confusion advisories.
+  The exact pin is a maintainer-approved exception to the normal dependency cool-off.
+  Refresh and verify application lockfiles against the same safe floor; no softschema
+  API or artifact change is involved.
+
 ### Guidelines and Content
 
 - **Agent timestamp guidance**: The bundled skill now tells agents that date-shaped YAML
@@ -31,6 +93,9 @@ version number.
 - **Date migration guidance**: The guide, spec, and language design references now
   distinguish portable string decoding from Pydantic, Zod, and JSON Schema date
   validation, including the annotation-only format policy.
+
+**Full commit history**:
+[v0.3.0 … v0.4.0](https://github.com/jlevy/softschema/compare/v0.3.0...v0.4.0)
 
 ## v0.3.0—2026-07-12
 

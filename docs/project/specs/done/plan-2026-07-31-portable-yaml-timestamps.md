@@ -9,7 +9,9 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
-**Status:** Implemented
+**Status:** Complete.
+Implementation and review fixes merged in PR
+[#23](https://github.com/jlevy/softschema/pull/23).
 
 **Tracking:** GitHub issue [#22](https://github.com/jlevy/softschema/issues/22),
 delivery epic `ss-xuw3`; original implementation bead `ss-lri7`
