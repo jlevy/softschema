@@ -6,6 +6,7 @@ requires-python = ">=3.11, <4.0"
 exclude-newer = "2026-06-02T00:00:00Z"
 
 [options.exclude-newer-package]
+frontmatter-format = "2026-08-01T01:26:20.316336Z"
 strif = "2026-06-03T00:00:00Z"
 
 [[package]]
@@ -58,14 +59,14 @@ wheels = [
 
 [[package]]
 name = "frontmatter-format"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ruamel-yaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/bf/eb850cd4d32cafc342dbb3a8b64058511da188c7270a61219788ac141ca6/frontmatter_format-0.3.0.tar.gz", hash = "sha256:4ebd3d3068315945d418dfd320ce6ed727b90e1605473c6244039d34cbcb0253", size = 439709, upload-time = "2026-02-28T22:37:37.068Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/ea/e71223bb3eb80354cd15d4c4895f6ff28941d46750945d81ac11c48c6391/frontmatter_format-0.4.0.tar.gz", hash = "sha256:dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a", size = 17068, upload-time = "2026-08-01T01:26:20.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/67/b003f8d851679714e00cc5353dd772027529d893b346f91279d0b9f17f17/frontmatter_format-0.3.0-py3-none-any.whl", hash = "sha256:55c1dafbcb0ca5dee5ff3e1dcb6c3fbde6d18860a2250c9d67779fd91c86c81e", size = 13824, upload-time = "2026-02-28T22:37:35.821Z" },
+    { url = "https://files.pythonhosted.org/packages/10/a1/0f9fdbe478d31b3b804e58b9436c4e53d89166c472fefff6990df4da39da/frontmatter_format-0.4.0-py3-none-any.whl", hash = "sha256:71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76", size = 15676, upload-time = "2026-08-01T01:26:19.434Z" },
 ]
 
 [[package]]
@@ -535,7 +536,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "frontmatter-format", specifier = ">=0.3.0" },
+    { name = "frontmatter-format", specifier = ">=0.4.0" },
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "pydantic", specifier = ">=2" },
     { name = "ruamel-yaml", specifier = ">=0.18" },

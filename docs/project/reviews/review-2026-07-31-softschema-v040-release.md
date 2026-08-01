@@ -5,22 +5,22 @@ author: Codex, with maintainer direction from Joshua Levy
 ---
 # Review: softschema v0.4.0 Release
 
-**Date:** 2026-07-31 (last updated 2026-07-31)
+**Date:** 2026-07-31 (last updated 2026-08-01)
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
-**Status:** In progress; release approval waits on the final dependency and validation
-evidence below.
+**Status:** Ready for the release PR; publication waits on required hosted CI.
 
 **Tracking:** release epic `ss-fyvp`
 
 ## Decision
 
-The merged timestamp design is suitable for a minor release.
+The merged timestamp design and final dependency graph are suitable for a minor release.
 Its public contract is coherent, the migration is bounded, and the paired implementation
 has direct unit, vector, golden, and cross-runtime coverage.
-Publication is approved only after the `frontmatter-format` v0.4.0 gate and the final
-validation record are complete.
+Local release approval is complete.
+Publication remains conditioned on the release PR’s required CI and the immutable tag
+and registry checks below.
 
 No design decision remains open.
 The outstanding entries are execution evidence, not deferred product questions.
@@ -97,6 +97,21 @@ The new `frontmatter-format` version receives a narrow, timestamped exception be
 is first-party and explicitly approved.
 CI must repeat the exception anywhere `UV_EXCLUDE_NEWER` replaces the project map.
 
+The final TypeScript audit also found two high-severity host-confusion advisories in
+Ajv’s locked `fast-uri` 3.1.2 dependency: GHSA-4c8g-83qw-93j6 (CVE-2026-13676) and
+GHSA-v2hh-gcrm-f6hx (CVE-2026-16221). Version 3.1.4 is the first 3.x release that
+contains both upstream fixes.
+The exact tag and security patch, npm publisher and integrity, and advisory ranges were
+reviewed. The maintainer explicitly approved a one-package release-age exception.
+An exact root override now forces every Ajv edge in the checked-in Bun graph to 3.1.4;
+users refresh their application lockfiles during the documented upgrade and verify the
+same minimum. The reviewed v3.1.4 tag is commit `6aeece6`; its security change is commit
+`2d50fba`. npm published it at `2026-07-19T07:42:54.497Z` with integrity
+`sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==`.
+The authoritative advisory records are
+[GHSA-4c8g-83qw-93j6](https://github.com/advisories/GHSA-4c8g-83qw-93j6) and
+[GHSA-v2hh-gcrm-f6hx](https://github.com/advisories/GHSA-v2hh-gcrm-f6hx).
+
 ### Related-Format and Timestamp Consistency
 
 The two v0.4 releases have compatible but deliberately different value contracts.
@@ -129,6 +144,7 @@ release bytes locally.
 | Zod schema digest changes | Explicit regeneration and diff review | One-time generated-file churn |
 | Pydantic and Zod semantics differ | Require application-level semantic tests | Model libraries remain independently configurable |
 | New first-party dependency regression | Tagged-source review, focused tests, lock review, full package smokes | Ordinary upstream maintenance risk |
+| Vulnerable transitive TypeScript URI parser | Exact 3.1.4 override, source review, audit, clean-install tree check | Applications must refresh old lockfiles |
 | Package versions diverge | Commit npm `0.4.0`; publish guard checks tag and artifacts | None after guard passes |
 | Only one registry publishes | Rerun failed jobs using the retained candidate | Temporary registry skew |
 | Registry index propagation lags | Query API/simple index and retry refreshed exact version | Short verification delay |
@@ -141,49 +157,63 @@ No risk requires a compatibility shim or another product mechanism.
 
 | Check | Result |
 | --- | --- |
-| Upstream tag, release, PyPI version, and commit | Pending release |
-| v0.3.0 to v0.4.0 source, release-note, and dependency review | Pass at release-branch commit `f586298`; final tag comparison pending |
+| Upstream tag, release, PyPI version, and commit | Pass; tag and release target `78e0dd4`, and PyPI reports v0.4.0 |
+| v0.3.0 to v0.4.0 source, release-note, and dependency review | Pass; tagged tree equals reviewed release-branch commit `f586298` |
 | Date/timestamp contract consistency | Pass; generic YAML-native values and softschema portable strings are explicitly separated |
 | `new_yaml` compatibility and upstream tests | Pass; 51 upstream tests plus exact v0.4.0 wheel and sdist validation and installation |
-| Softschema minimum, cool-off exception, and lock update | Pending release |
+| Softschema minimum, cool-off exception, and lock update | Pass; minimum is v0.4.0, lock resolves v0.4.0, and all three CI syncs pass both exact exceptions |
+| TypeScript URI dependency | Pass; reviewed `fast-uri` 3.1.4 override replaces vulnerable 3.1.2 and `bun audit` is clean |
 
-The simulated v0.4.0 artifacts from the reviewed release branch had SHA-256 values
+The PyPI v0.4.0 artifacts have SHA-256 values
 `71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76` for the wheel and
 `dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a` for the source
-distribution. An isolated integration probe installed that wheel with the softschema
-wheel and verified all four boundary properties: the generic reader constructs a Python
-`date`, the generic writer quotes a date-looking string, softschema retains the same
-plain scalar as a string, and the new writer emits shared compiled-schema values without
-anchors. The final tagged artifacts are rebuilt and rechecked; these branch-candidate
-hashes are evidence, not expected registry hashes.
+distribution. They exactly match the candidates built from the reviewed branch before
+release.
+The unannotated tag points to merge commit `78e0dd4`, whose tree is identical to
+`f586298`; the GitHub release targets that commit.
+PyPI uploaded the final source distribution at `2026-08-01T01:26:20.316336Z`, the
+timestamp used for the narrow first-party cool-off exception.
+The existing `strif` CI exception now also uses its full RFC3339 timestamp, avoiding
+timezone-dependent normalization of the previous date-only CLI value.
+
+Isolated probes installed both registry artifacts.
+The wheel probe verified that the generic reader constructs a Python `date` and the
+generic writer quotes a date-looking string.
+The earlier cross-package probe additionally verified that softschema retains the same
+plain scalar as a string and that the new writer emits shared compiled-schema values
+without anchors.
 
 ### Local Automated and Parity Checks
 
 | Check | Result |
 | --- | --- |
-| Lint and type checks | Preliminary pass; lint, Ruff, BasedPyright, Biome, and TypeScript clean |
-| Python unit tests | Preliminary pass; 167 passed on Python 3.14.6 |
-| TypeScript unit tests and coverage | Preliminary pass; 171 passed; 96.06% functions and 96.35% lines |
-| Python, Node, and Bun golden corpora | Preliminary pass; 38, 36, and 38 journeys |
-| Direct cross-implementation comparison | Preliminary pass; all 20 command comparisons equal |
-| Python and TypeScript builds plus `publint` | Preliminary pass; wheel, sdist, npm build, and `publint` succeeded |
-| Markdown and generated-resource drift | Preliminary formatter pass complete; final idempotence check pending dependency |
+| Lint and type checks | Pass; codespell, Ruff, BasedPyright, Biome, and TypeScript clean |
+| Python unit tests | Pass; 167 passed on Python 3.14.6 with `frontmatter-format` 0.4.0 installed |
+| TypeScript unit tests and coverage | Pass; 171 passed; 96.06% functions and 96.35% lines |
+| Python, Node, and Bun golden corpora | Pass; 38, 36, and 38 journeys |
+| Direct cross-implementation comparison | Pass; all 20 command comparisons equal |
+| Python and TypeScript builds plus `publint` | Pass; wheel, sdist, npm build, and `publint` succeeded |
+| Dependency audits | Pass; hash-locked Python runtime, frozen Bun graph, and clean npm consumer report no known vulnerabilities |
+| Markdown and generated-resource drift | Pass; formatter, generated section, and managed skill mirrors are idempotent |
 
-These are dependency-independent baseline results from the release branch.
-The complete table is rerun and replaced with final evidence after `frontmatter-format`
-v0.4.0 is locked.
+These results are from the final dependency locks and release tree.
 
 ### Clean Product Smokes
 
 | Check | Result |
 | --- | --- |
-| Built wheel and sdist | Preliminary pass; clean wheel install reported the expected pre-tag development version |
-| Built npm tarball under plain Node | Preliminary pass; clean tarball install reported `softschema 0.4.0` |
-| README quickstart under both implementations | Preliminary pass from clean temporary directories |
-| Project skill installation | Preliminary pass; portable and Claude mirrors created in a scratch Git repository |
+| Built wheel and sdist | Pass; exact v0.4.0 candidates install separately, report both softschema and `frontmatter-format` 0.4.0, and load bundled docs |
+| Built npm tarball under plain Node | Pass; exact v0.4.0 candidate installs, reports 0.4.0, exposes the ESM library and CLI, resolves `fast-uri` 3.1.4, and audits clean |
+| README quickstart under both implementations | Pass; exact installed candidates validate with zero flags and emit byte-identical artifacts and schemas |
+| Project skill installation | Pass; exact wheel creates byte-identical portable and Claude mirrors reporting version 0.4.0 |
 
-The clean product smokes are repeated against the final dependency and release
-candidates before publication.
+The exact simulated v0.4.0 candidates have SHA-256 values
+`97a039d94328835284de990b13e56ed858b44bcebfe908b7a7cf106618cb63c7` for the wheel,
+`338fa9869ec23dff8928c7aac045132321bbaf52de234f0f470a65e581429078` for the source
+distribution, and `740992b3d09d0d1601d596952a223ba1c46d886169d1142e8e250bcb25f7df97` for
+the npm tarball. Hosted release candidates are rebuilt from the green commit and carry
+their own transferred checksum record; these local hashes prove the candidate shape
+rather than predict cross-run archive bytes.
 
 ### Hosted Release Evidence
 

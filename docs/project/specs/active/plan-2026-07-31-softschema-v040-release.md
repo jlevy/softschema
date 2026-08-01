@@ -5,7 +5,7 @@ author: Codex, with maintainer direction from Joshua Levy
 ---
 # Release: softschema v0.4.0
 
-**Date:** 2026-07-31 (last updated 2026-07-31)
+**Date:** 2026-07-31 (last updated 2026-08-01)
 
 **Author:** Codex, with maintainer direction from Joshua Levy
 
@@ -13,7 +13,8 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Tracking:** release epic `ss-fyvp`; audit `ss-jrrg`; release notes `ss-quvj`;
 validation `ss-1ey5`; `frontmatter-format` adoption `ss-2p2l`; publication `ss-m443`;
-formatter isolation `ss-5sh9`; related-format consistency `ss-lsw0`
+formatter isolation `ss-5sh9`; related-format consistency `ss-lsw0`; TypeScript
+dependency hardening `ss-g0kp`
 
 ## Overview
 
@@ -38,7 +39,9 @@ The public change from v0.3.0 is intentionally narrow:
 - The bundled skill, guide, spec, and language design docs explain the portable string
   boundary and where structural and semantic validation belong.
 - The Python package requires `frontmatter-format>=0.4.0`, subject to the release gate
-  below. The TypeScript package has no corresponding dependency.
+  below. The TypeScript package has no corresponding `frontmatter-format` dependency.
+- The checked-in TypeScript graph resolves Ajv’s URI parser to `fast-uri` 3.1.4, the
+  first reviewed 3.x release that fixes both current host-confusion advisories.
 
 Release bookkeeping, completed-plan archival, isolated formatter tooling, and
 publishing-runbook corrections are included because they make the release auditable.
@@ -74,6 +77,14 @@ Every decision needed to publish is settled:
 - **Dependency compatibility:** softschema adopts v0.4.0 as its minimum and does not
   carry a v0.3 compatibility range.
   This minor release is the clean upgrade boundary.
+- **TypeScript security floor:** the project uses an exact root override for `fast-uri`
+  3.1.4 because Ajv’s compatible range otherwise retained vulnerable 3.1.2 in the
+  checked-in Bun graph.
+  The maintainer explicitly approved this one-package security exception before the
+  normal cool-off elapsed, after the exact tag, patch, registry identity, and advisory
+  fixes were reviewed.
+  npm consumers refresh their lockfiles on upgrade and verify `fast-uri>=3.1.4`; no
+  package API is exposed or bundled differently.
 - **Related-format boundary:** `frontmatter-format` remains a general YAML/frontmatter
   library whose readers accept timestamp types.
   softschema owns the stricter artifact parser and uses that dependency only for
@@ -133,14 +144,15 @@ the final dependency lock and release tree:
 
 1. Lint, typecheck, Python tests, TypeScript tests and coverage, both builds, and
    `publint`.
-2. Golden corpora under Python, Node, and Bun, plus the direct cross-implementation
+2. Python runtime audit, Bun audit, and clean npm dependency-tree verification.
+3. Golden corpora under Python, Node, and Bun, plus the direct cross-implementation
    parity comparison.
-3. Markdown formatting and generated-resource drift checks.
-4. Clean wheel and npm-tarball installs outside the checkout.
-5. The README quickstart as written under both implementations.
-6. Project-scope skill installation into a scratch Git repository.
-7. Release-candidate checksum, version, contents, and installed-artifact checks in CI.
-8. After publication, exact-version registry checks and the published Python quickstart.
+4. Markdown formatting and generated-resource drift checks.
+5. Clean wheel and npm-tarball installs outside the checkout.
+6. The README quickstart as written under both implementations.
+7. Project-scope skill installation into a scratch Git repository.
+8. Release-candidate checksum, version, contents, and installed-artifact checks in CI.
+9. After publication, exact-version registry checks and the published Python quickstart.
 
 The release review records command results, counts, artifact names and hashes, CI and
 publish URLs, registry versions, and smoke-test output.

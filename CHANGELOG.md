@@ -18,6 +18,8 @@ and Zod temporal fields.
    lockfiles. Projects that use both implementations must update them together.
    Python lockfiles should resolve `frontmatter-format>=0.4.0`; that first-party release
    is an intentional exception to the normal dependency cool-off.
+   TypeScript lockfiles should resolve `fast-uri>=3.1.4` through Ajv; versions before
+   3.1.4 have high-severity URI host-confusion advisories.
 
 2. Validate the project’s full artifact corpus.
    No artifact rewrite is required: quoted and unquoted date-shaped YAML values remain
@@ -73,6 +75,12 @@ guide section gives the complete authoring and migration rationale.
   continues to own the stricter portable-string parsing boundary.
   The dependency upgrade therefore requires no artifact rewrite and does not cause the
   timestamp behavior change described above.
+- **Patched TypeScript URI resolver**: The checked-in TypeScript dependency graph
+  constrains Ajv’s `fast-uri` dependency to reviewed version 3.1.4, removing two
+  high-severity host-confusion advisories.
+  The exact pin is a maintainer-approved exception to the normal dependency cool-off.
+  Refresh and verify application lockfiles against the same safe floor; no softschema
+  API or artifact change is involved.
 
 ### Guidelines and Content
 
