@@ -97,6 +97,22 @@ The new `frontmatter-format` version receives a narrow, timestamped exception be
 is first-party and explicitly approved.
 CI must repeat the exception anywhere `UV_EXCLUDE_NEWER` replaces the project map.
 
+### Related-Format and Timestamp Consistency
+
+The two v0.4 releases have compatible but deliberately different value contracts.
+`frontmatter-format` defines general frontmatter fences and YAML handling: its readers
+accept aliases and YAML timestamps, Python `date` and `datetime` inputs serialize as
+timestamps, and ISO date-looking strings remain quoted strings.
+Its v0.4 release changes automatic alias output and adds raw in-memory splitting; it
+does not change timestamp semantics or define a JSON-compatible value subset.
+
+softschema defines a stricter artifact profile.
+It owns frontmatter extraction and portable YAML parsing, retains implicit date- and
+timestamp-shaped scalars as strings, and uses `frontmatter-format` only to write
+compiled-schema YAML. Consequently the softschema timestamp change does not depend on or
+contradict the dependency’s generic reader behavior.
+The spec, guide, Python design, and release notes now state this boundary explicitly.
+
 ### Failure Recovery
 
 Before tagging, failures return to the release branch.
@@ -126,9 +142,20 @@ No risk requires a compatibility shim or another product mechanism.
 | Check | Result |
 | --- | --- |
 | Upstream tag, release, PyPI version, and commit | Pending release |
-| v0.3.0 to v0.4.0 source and dependency review | Pending release |
-| `new_yaml` compatibility and upstream tests | Pending release |
+| v0.3.0 to v0.4.0 source, release-note, and dependency review | Pass at release-branch commit `9d06bf0`; final tag comparison pending |
+| Date/timestamp contract consistency | Pass; generic YAML-native values and softschema portable strings are explicitly separated |
+| `new_yaml` compatibility and upstream tests | Pass; 51 upstream tests plus exact v0.4.0 wheel and sdist validation and installation |
 | Softschema minimum, cool-off exception, and lock update | Pending release |
+
+The simulated v0.4.0 artifacts from the reviewed release branch had SHA-256 values
+`71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76` for the wheel and
+`dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a` for the source
+distribution. An isolated integration probe installed that wheel with the softschema
+wheel and verified all four boundary properties: the generic reader constructs a Python
+`date`, the generic writer quotes a date-looking string, softschema retains the same
+plain scalar as a string, and the new writer emits shared compiled-schema values without
+anchors. The final tagged artifacts are rebuilt and rechecked; these branch-candidate
+hashes are evidence, not expected registry hashes.
 
 ### Local Automated and Parity Checks
 

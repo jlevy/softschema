@@ -453,10 +453,13 @@ The first Python release does not implement generic companion-data loading; call
 should keep consumed values in frontmatter unless a host project owns a clearer
 companion-data convention.
 
-Softschema owns Markdown frontmatter extraction and portable YAML parsing.
+softschema owns Markdown frontmatter extraction and portable YAML parsing.
 The package uses `frontmatter-format`’s configured YAML writer when serializing compiled
 schemas; that dependency does not own the artifact parsing boundary.
-Do not treat `frontmatter-format` as a generic softschema companion-data runtime.
+In particular, `frontmatter-format` readers may construct Python `date` and `datetime`
+values from YAML timestamps, while softschema’s scoped parser retains their scalar text
+as strings. Do not treat `frontmatter-format` as a generic softschema companion-data
+runtime.
 
 ## Dependency Boundary
 

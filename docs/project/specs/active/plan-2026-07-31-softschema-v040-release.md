@@ -13,7 +13,7 @@ author: Codex, with maintainer direction from Joshua Levy
 
 **Tracking:** release epic `ss-fyvp`; audit `ss-jrrg`; release notes `ss-quvj`;
 validation `ss-1ey5`; `frontmatter-format` adoption `ss-2p2l`; publication `ss-m443`;
-formatter isolation `ss-5sh9`
+formatter isolation `ss-5sh9`; related-format consistency `ss-lsw0`
 
 ## Overview
 
@@ -74,6 +74,12 @@ Every decision needed to publish is settled:
 - **Dependency compatibility:** softschema adopts v0.4.0 as its minimum and does not
   carry a v0.3 compatibility range.
   This minor release is the clean upgrade boundary.
+- **Related-format boundary:** `frontmatter-format` remains a general YAML/frontmatter
+  library whose readers accept timestamp types.
+  softschema owns the stricter artifact parser and uses that dependency only for
+  compiled-schema writing.
+  The upstream alias-free writer and softschema’s timestamp-string parser are compatible
+  but independent v0.4 changes.
 - **Agent resources:** managed project skill mirrors are refreshed after upgrading.
 
 No other public API, CLI, or artifact-format break is planned.

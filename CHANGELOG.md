@@ -65,6 +65,15 @@ guide section gives the complete authoring and migration rationale.
   Model-specific coercions and Zod ISO options remain semantic constraints outside the
   structural digest.
 
+### Dependencies
+
+- **`frontmatter-format` v0.4.0**: The Python package adopts the deterministic,
+  alias-free writer used for compiled-schema YAML. Its general-purpose readers retain
+  YAML-native timestamp behavior; softschema does not use them for artifacts and
+  continues to own the stricter portable-string parsing boundary.
+  The dependency upgrade therefore requires no artifact rewrite and does not cause the
+  timestamp behavior change described above.
+
 ### Guidelines and Content
 
 - **Agent timestamp guidance**: The bundled skill now tells agents that date-shaped YAML
