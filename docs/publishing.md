@@ -125,6 +125,13 @@ For each release of version `X.Y.Z`:
    gh run watch <run-id> --exit-status
    ```
 
+   If only one registry job fails, keep the tag and GitHub release unchanged and rerun
+   only failed jobs with `gh run rerun <run-id> --failed`. The successful registry
+   version is immutable, and the failed job reuses the checksummed candidate from the
+   same workflow run. Do not rebuild locally, move the tag, or create the same version
+   again. If the published bytes themselves are defective, fix forward with a patch
+   release.
+
 8. **Verify both registries** have the new version, then smoke-test the published
    artifacts (end-to-end runbook Phase 5):
 

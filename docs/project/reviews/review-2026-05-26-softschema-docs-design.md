@@ -52,8 +52,8 @@ CI recipes, and examples of how to use the convention and tool.
 
 ### 1. The Standalone Design Doc Conflicts With The Plan
 
-`docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md` says not to
-add a standalone language-neutral `docs/softschema-design.md` for now, and says broad
+`docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md` says not to add
+a standalone language-neutral `docs/softschema-design.md` for now, and says broad
 product-design notes should stay in the plan.
 `docs/softschema-design.md` says the opposite: it presents itself as the durable design
 reference.

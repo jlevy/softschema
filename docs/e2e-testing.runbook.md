@@ -65,8 +65,8 @@ bun run publint
 cd ../..
 
 SOFTSCHEMA_IMPL=py     bash tests/golden/run.sh
-SOFTSCHEMA_IMPL=ts     bash tests/golden/run.sh   # 44
-SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh   # 46
+SOFTSCHEMA_IMPL=ts     bash tests/golden/run.sh
+SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
 bash tests/golden/cross-impl-diff.sh              # "cross-impl parity OK"
 
 make format-check   # flowmark drift; requires a Markdown-clean working tree

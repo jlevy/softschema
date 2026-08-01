@@ -383,8 +383,8 @@ The main problem is staleness from the TypeScript port:
 
 ### Workflow and Project Docs
 
-- **HIGH.** `docs/project/specs/active/plan-2026-05-24-softschema-public-readiness.md`
-  is marked Complete but describes a pre-TypeScript world (TypeScript as “placeholder
+- **HIGH.** `docs/project/specs/done/plan-2026-05-24-softschema-public-readiness.md` is
+  marked Complete but describes a pre-TypeScript world (TypeScript as “placeholder
   only,” a “Future TypeScript/Zod Package” section, deferred decisions that have since
   been decided). Mark it superseded with a pointer to the parity plan, or move it out of
   `active/`.
@@ -598,7 +598,7 @@ which is the strongest argument for adding them as a shared fixture corpus.
 The priorities below group findings by impact.
 The execution sequence (quick fixes first, then the parity/test safety net, then the
 major design changes, then remaining cleanups) is planned in
-[plan-2026-06-10-softschema-review-remediation.md](../specs/active/plan-2026-06-10-softschema-review-remediation.md).
+[plan-2026-06-10-softschema-review-remediation.md](../specs/done/plan-2026-06-10-softschema-review-remediation.md).
 
 P1 (correctness and user-facing breakage):
 
