@@ -5,7 +5,7 @@ title: Release softschema v0.4.0 end to end
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-07-31-softschema-v040-release.md
 labels:
   - release-v0.4.0
@@ -19,7 +19,8 @@ child_order_hints:
   - is-01kyxdkbm6tt4aqx37sb9stek2
   - is-01kyxe5tez08bz604285b2fam6
   - is-01kyxfdm15darzr74zeepw4xrv
+  - is-01kyxkv93b09k077rn2zx9fw48
 created_at: 2026-08-01T00:49:26.694Z
-updated_at: 2026-08-01T01:36:05.153Z
+updated_at: 2026-08-01T02:53:27.018Z
 ---
 Audit merged main for release readiness; finalize v0.4.0 release notes and upgrade guidance; reconcile specs and versions; run the complete local and clean-package validation matrix; publish the tag-driven Python and TypeScript release; verify both registries and GitHub release; record evidence; close and sync all release tracking.
