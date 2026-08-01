@@ -12,7 +12,8 @@ author: Codex, with maintainer direction from Joshua Levy
 **Status:** In progress
 
 **Tracking:** release epic `ss-fyvp`; audit `ss-jrrg`; release notes `ss-quvj`;
-validation `ss-1ey5`; `frontmatter-format` adoption `ss-2p2l`; publication `ss-m443`
+validation `ss-1ey5`; `frontmatter-format` adoption `ss-2p2l`; publication `ss-m443`;
+formatter isolation `ss-5sh9`
 
 ## Overview
 
@@ -39,8 +40,8 @@ The public change from v0.3.0 is intentionally narrow:
 - The Python package requires `frontmatter-format>=0.4.0`, subject to the release gate
   below. The TypeScript package has no corresponding dependency.
 
-Release bookkeeping, completed-plan archival, and publishing-runbook corrections are
-included because they make the release auditable.
+Release bookkeeping, completed-plan archival, isolated formatter tooling, and
+publishing-runbook corrections are included because they make the release auditable.
 They do not add product behavior.
 
 ## Resolved Design and Compatibility Decisions

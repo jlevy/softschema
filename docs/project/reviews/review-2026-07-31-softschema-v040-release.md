@@ -33,7 +33,8 @@ The aggregate release delta begins at tag `v0.3.0` and includes:
   examples, agent guidance, and public documentation;
 - the shared package version bump and v0.4.0 release notes;
 - adoption of first-party `frontmatter-format` v0.4.0 after source review;
-- project-spec archival and release-runbook corrections.
+- project-spec archival, release-runbook corrections, and formatter isolation from
+  ambient uv configuration.
 
 The review covers the artifact contract, both library and CLI surfaces, generated
 schemas, migration guidance, documentation ownership, dependency policy, package

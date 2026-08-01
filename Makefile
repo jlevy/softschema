@@ -8,9 +8,14 @@
 # Pinned for stability — bump deliberately. flowmark-rs is a first-party package
 # (github.com/jlevy/flowmark); the --exclude-newer-package exception admits the pinned
 # release past the repo's supply-chain cool-off, mirroring the strif handling in
-# pyproject.toml and the practical-prose repo. Bump the version and the date together.
+# pyproject.toml and the practical-prose repo. --no-config prevents user-level uv
+# settings from changing the project lock during formatting. Bump the version and the
+# date together.
 FLOWMARK_VERSION := 0.3.1
-FLOWMARK := uvx --exclude-newer-package 'flowmark-rs=2026-06-02' flowmark-rs@$(FLOWMARK_VERSION)
+FLOWMARK := uvx --no-config --exclude-newer-package 'flowmark-rs=2026-06-02' flowmark-rs@$(FLOWMARK_VERSION)
+# Generated-resource commands use the committed environment without resolving or
+# inheriting user-level uv configuration.
+UV_RUN := uv run --frozen --no-config
 
 default: install format lint test
 
@@ -42,8 +47,8 @@ hooks-install: install
 # generate / skill-mirror drift tests fail after a format-only pass.
 format:
 	$(FLOWMARK) --auto .
-	uv run softschema generate examples/movie_page/README.md
-	uv run softschema skill --install --scope project --agent portable --agent claude
+	$(UV_RUN) softschema generate examples/movie_page/README.md
+	$(UV_RUN) softschema skill --install --scope project --agent portable --agent claude
 
 # CI-mode Markdown check: run the FULL format pipeline, then fail if it would
 # change anything. flowmark-rs has no native --check, so we approximate via git
@@ -54,8 +59,8 @@ format:
 # on an otherwise-canonical tree. Requires a clean working tree before running.
 format-check:
 	$(FLOWMARK) --auto .
-	uv run softschema generate examples/movie_page/README.md
-	uv run softschema skill --install --scope project --agent portable --agent claude
+	$(UV_RUN) softschema generate examples/movie_page/README.md
+	$(UV_RUN) softschema skill --install --scope project --agent portable --agent claude
 	@git diff --exit-code -- '*.md' || \
 	  (echo "Markdown formatting drift; run 'make format' and commit." && exit 1)
 
