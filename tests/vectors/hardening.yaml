@@ -60,6 +60,10 @@ portable_values:
   - { id: hostile_depth, generated: deep_sequence, depth: 50000, valid: false, code: yaml_limit }
 
 structural:
+  - id: format_is_annotation
+    schema: { type: string, format: email }
+    value: not-an-email
+    valid: true
   - id: date_format_is_annotation
     schema: { type: string, format: date }
     value: "2001-13-99"

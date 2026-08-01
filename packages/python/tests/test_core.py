@@ -458,9 +458,9 @@ def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
         path.write_text(text)
         result = validate_artifact(path, contract=contract)
         assert result.ok is case["valid"], case["id"]
-        if case.get("expected") is not None:
+        if "expected" in case:
             assert result.values == case["expected"], case["id"]
-        elif not case["valid"]:
+        if "code" in case:
             assert result.structural.errors[0]["kind"] == case["code"], case["id"]
 
 

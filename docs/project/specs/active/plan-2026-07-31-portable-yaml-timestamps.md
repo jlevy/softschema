@@ -34,8 +34,8 @@ YAML decoder or a `format` annotation by itself.
   fractional-second rounding.
 - Keep explicit tags and the other portable-input restrictions unchanged.
 - Avoid process-wide mutation of ruamel.yaml constructor state.
-- Keep Pydantic and Zod date fields aligned in canonical compiled schemas without
-  activating implementation-dependent JSON Schema format checking.
+- Keep corresponding Pydantic and Zod temporal fields aligned in canonical compiled
+  schemas without activating implementation-dependent JSON Schema format checking.
 - Give users and agents an accurate upgrade path that does not require rewriting
   existing artifacts.
 - Assign each documentation fact to one authoritative document and keep higher-level
@@ -89,11 +89,12 @@ The current Python validator constructs `Draft202012Validator` without a
 `FormatChecker`, and the TypeScript validator constructs Ajv with
 `validateFormats: false`. Those settings are retained deliberately.
 
-Pydantic emits `type: string` plus `format: date` or `date-time` for native date fields.
-Zod’s `z.iso.date()` and `z.iso.datetime()` emit the same format plus an intrinsic
-regular expression.
-That extra generated expression is a compiler-adapter difference, not
-an authored portable contract constraint, and must not make the canonical sidecar
+Pydantic emits `type: string` plus a format annotation for native `date`, `datetime`,
+`time`, and `timedelta` fields.
+Zod’s `z.iso.date()`, `z.iso.datetime()`, `z.iso.time()`, and `z.iso.duration()` schemas
+emit the corresponding format plus an intrinsic regular expression.
+That extra generated expression is a compiler-adapter difference, not an authored
+portable contract constraint, and must not make the canonical sidecar
 language-dependent.
 
 ## Design
@@ -132,17 +133,19 @@ Remove the plain-scalar timestamp-shape rejection from `parsePortableYaml`. The
 configured `yaml` parser already returns the scalar content as a string, so no
 replacement parser hook is required.
 
-Reject JavaScript `Date` values inside the internal portable-value checker used for
-programmatic metadata.
-This mirrors Python’s host-native date guard without changing `validateValues`, whose
+Reject host-native JavaScript objects inside the internal portable-value checker used
+for programmatic metadata.
+Arrays, plain objects, and null-prototype objects remain in the portable domain; values
+such as `Date`, `Map`, `Set`, `RegExp`, `Error`, `URL`, and class instances do not.
+This mirrors Python’s host-native value guard without changing `validateValues`, whose
 input is already-extracted host data rather than parsed YAML.
 
 ### Structural Format Policy
 
 The canonical softschema profile uses JSON Schema Draft 2020-12’s default
 Format-Annotation vocabulary.
-`format: date` and `format: date-time` describe a string’s intended meaning but do not
-make structural validation fail.
+`format: date`, `format: date-time`, `format: time`, and `format: duration` describe a
+string’s intended meaning but do not make structural validation fail.
 Unknown formats have the same annotation-only behavior.
 This policy is unconditional: document status, CLI flags, and host runtime do not change
 it.
@@ -162,28 +165,37 @@ The layers therefore behave as follows:
 | explicit-tag `!!timestamp 2026-07-11` | rejected | not reached | not reached |
 
 The TypeScript compiler removes only the intrinsic JSON Schema `pattern` emitted for
-`z.ZodISODate` and `z.ZodISODateTime` nodes.
-Use Zod’s `toJSONSchema` override callback and the public schema classes to identify
-those nodes before canonicalization.
+`z.ZodISODate`, `z.ZodISODateTime`, `z.ZodISOTime`, and `z.ZodISODuration` nodes.
+Use Zod’s `toJSONSchema` override callback, public schema classes, and public classic
+`def.pattern` to identify those nodes before canonicalization.
 Do not remove `pattern` based only on the presence of a date format: an explicitly
 authored `z.string().regex(...)` constraint must remain structural.
 
-The Python and TypeScript parity fixtures include equivalent date and date-time fields.
+The Python and TypeScript parity fixtures include structurally corresponding date,
+datetime, time, and duration fields.
 After adapter normalization, both models compile to `type: string` plus `format`, with
 no generated pattern, and retain the same `schema_sha256`.
 
 ### Semantic Date Models
 
-Pydantic `date` and `datetime` fields may validate the portable strings and expose
-native values to host code that explicitly constructs a model.
+Pydantic `date`, `datetime`, `time`, and `timedelta` fields may validate the portable
+strings and expose native values to host code that explicitly constructs a model.
 
-The TypeScript counterpart is `z.iso.date()` or `z.iso.datetime({ offset: true })`,
-which validates a string semantically.
-The TypeScript compiler normalizes their intrinsic JSON Schema patterns out of the
-canonical sidecar, leaving the same format annotation Pydantic emits.
+TypeScript hosts may use `z.iso.date()`, `z.iso.datetime()`, `z.iso.time()`, or
+`z.iso.duration()` to validate temporal strings semantically.
+These Pydantic and Zod choices are not accept-set equivalents: their accepted spellings
+and coercions differ, and Zod datetime options can further narrow or expand the accepted
+strings. Projects that require identical cross-runtime semantics must align and test
+validators in both models.
+The TypeScript compiler normalizes the intrinsic JSON Schema patterns out of the
+canonical sidecar, leaving the corresponding format annotation Pydantic emits.
 `z.date()` and `z.coerce.date()` produce JavaScript `Date` values and cannot be compiled
-by Zod to the package’s canonical JSON Schema; they are not portable contract
-counterparts.
+by Zod to the package’s canonical JSON Schema; they are not portable contract types.
+
+The canonical sidecar and `schema_sha256` identify structural constraints only.
+Model-specific coercions and Zod ISO options that are not emitted as JSON Schema remain
+outside that identity, so a semantic accept-set change does not necessarily cause
+structural schema drift.
 
 `ArtifactValidationResult.values` remains the decoded portable mapping in both runtimes.
 Semantic validation reports success or failure but does not replace those values with a
@@ -198,7 +210,7 @@ remains available for unsupported constructed values and lone surrogates.
 This is an intentional input-domain expansion for the next minor release.
 Every previously valid artifact keeps the same decoded value; previously rejected bare
 timestamp-shaped scalars become strings.
-Canonical schemas compiled from Zod ISO date fields may drift once because their
+Canonical schemas compiled from Zod ISO temporal fields may drift once because their
 language-specific generated patterns are removed.
 
 ## Documentation Plan
@@ -210,9 +222,9 @@ avoid duplicated explanations, use concrete examples, and retain the standard fo
 | Document | Update | Ownership Boundary |
 | --- | --- | --- |
 | `docs/softschema-spec.md` | Replace timestamp rejection with the normative string-decoding rule. State that implicit date-shaped scalars must not become host-native date objects, invalid date-shaped text remains a string, explicit tags remain rejected, and calendar validity is outside portable decoding. Define `format` as annotation-only and distinguish it from explicit assertions such as `pattern`. Correct the compatibility section so it does not claim that the Python implementation delegates frontmatter parsing to `frontmatter-format`; softschema implements the documented subset and uses its own portable parser. | Exact language-neutral artifact and validator requirements only; no migration or runtime implementation detail. |
-| `docs/softschema-guide.md` | Add a concise date and datetime subsection to the artifact-migration playbook. Explain that existing quoted values need no edit, previously rejected bare values work after upgrading, raw result values remain strings, `format` alone does not reject invalid dates, and model validation is required for calendar semantics. Include Pydantic and Zod model guidance at the existing language-specific depth. | User and agent adoption, authoring, and migration guidance. Link to the spec for the exact rule. |
+| `docs/softschema-guide.md` | Add a concise temporal-string subsection to the artifact-migration playbook. Explain that existing quoted values need no edit, previously rejected bare values work after upgrading, raw result values remain strings, `format` alone does not reject invalid dates, and model validation is required for calendar semantics. State that Pydantic and Zod temporal models are not accept-set equivalents and that hosts requiring identical semantics must align their validators. | User and agent adoption, authoring, and migration guidance. Link to the spec for the exact rule. |
 | `docs/softschema-python-design.md` | Add a short portable YAML parsing subsection under Validation. Document the scoped `SafeConstructor` subclass, why process-global registration is forbidden, why native dates remain outside parsed values, and why structural validation does not install a `FormatChecker`. Correct the dependency-boundary text: softschema owns frontmatter extraction and portable YAML parsing; `frontmatter-format` supplies the configured YAML writer used for compiled schemas. | Python implementation mechanism, parser ownership, and process-isolation invariant. Do not repeat the full portable-value list. |
-| `docs/softschema-typescript-design.md` | Add `portable` to the module table and a short portable YAML parsing subsection. Document that the `yaml` parser already yields strings, the redundant lexical rejection is absent, Ajv keeps `validateFormats: false`, portable date models use Zod ISO strings rather than `z.date()`, and the compiler adapter removes only Zod’s intrinsic ISO patterns. | TypeScript implementation and Zod-specific choices. Link to the spec for language-neutral semantics. |
+| `docs/softschema-typescript-design.md` | Add `portable` to the module table and a short portable YAML parsing subsection. Document that the `yaml` parser already yields strings, the redundant lexical rejection is absent, Ajv keeps `validateFormats: false`, portable date models use Zod ISO strings rather than `z.date()`, and the compiler adapter removes only the four public Zod ISO schemas’ intrinsic patterns. Explain the plain-object host boundary and that semantic options remain outside the structural digest. | TypeScript implementation and Zod-specific choices. Link to the spec for language-neutral semantics. |
 | `skills/softschema/SKILL.md` | Add one operating-brief bullet: date- and datetime-shaped YAML values are portable strings, `format` is annotation-only, and agents should rely on a semantic model or explicit structural assertion for date validity. | Actionable agent guidance only. Do not copy migration or constructor details. |
 | `.agents/skills/softschema/SKILL.md` and `.claude/skills/softschema/SKILL.md` | Regenerate both managed mirrors from the source skill and verify byte-for-byte drift tests. | Generated discovery surfaces; never edit independently. |
 | `CHANGELOG.md` | Restore the missing v0.3.0 entry from the completed release plan and tag before adding the next minor release entry. The new entry describes the accepted input, unchanged quoted values, portable string result, rewrite-free artifact upgrade, annotation-only format policy, and possible one-time Zod compiled-schema drift. | Versioned behavior and compatibility history. Do not restate implementation internals. |
@@ -244,9 +256,9 @@ The following documents need no content change:
 - Distinguish portable parsing from structural and semantic date validation.
 - State directly that `format` is annotation-only in softschema.
   A schema must use `pattern` or another assertion for structural rejection.
-- Recommend `z.iso.date()` and `z.iso.datetime({ offset: true })` for portable Zod
-  models; do not imply that `z.date()` accepts the raw string or compiles to JSON
-  Schema.
+- Recommend Zod ISO string schemas for portable temporal models; do not imply that they
+  accept exactly the same strings as Pydantic, or that `z.date()` accepts the raw string
+  or compiles to JSON Schema.
 - Keep compatibility history in the guide’s migration section, the changelog, and the
   two linked plan documents.
   Write the spec and language design docs in present tense.
@@ -276,11 +288,11 @@ The following documents need no content change:
 
 - [x] Add shared structural vectors proving that an invalid calendar string passes a
   format-only schema and fails when an explicit portable `pattern` rejects it.
-- [x] Add Pydantic `date` and `datetime` fields plus matching Zod ISO fields to the
-  compiler parity fixture; confirm the TypeScript side initially differs because of its
-  intrinsic patterns.
+- [x] Add Pydantic `date`, `datetime`, `time`, and `timedelta` fields plus structurally
+  corresponding Zod ISO fields to the compiler parity fixture; confirm the TypeScript
+  side initially differs because of its intrinsic patterns.
 - [x] Add a TypeScript `toJSONSchema` override that removes the intrinsic pattern only
-  from `z.ZodISODate` and `z.ZodISODateTime` nodes.
+  from the four public Zod ISO temporal schema classes.
 - [x] Add a TypeScript regression proving an authored `z.string().regex(...)` pattern is
   preserved, including when metadata also declares a date format.
 - [x] Update every documentation surface in the table with the final annotation-only
@@ -288,17 +300,35 @@ The following documents need no content change:
 - [x] Regenerate managed skill mirrors and the reviewed `skill --brief` golden.
 - [x] Re-run the full local validation and package-smoke matrix from Phase 1.
 
+### Phase 3: Harden the Review Boundary
+
+- [x] Reject every non-plain JavaScript object from programmatic portable metadata and
+  retain arrays, plain objects, and null-prototype objects.
+- [x] Restore generic `format` annotation coverage alongside the temporal vector.
+- [x] Prove that Zod ISO datetime semantic options do not alter the structural sidecar
+  or digest.
+- [x] Remove assertion precedence from both shared-vector harnesses so `expected` and
+  `code` can be checked independently.
+- [x] Document the structural-digest boundary and the non-equivalent Pydantic and Zod
+  semantic accept sets in the spec, guide, language design docs, changelog, and plan.
+- [x] Explain Python constructor-registry isolation and use Zod’s public classic-schema
+  definition surface in the compiler adapter.
+- [x] Re-run documentation lint, both unit suites, three CLI golden suites,
+  cross-runtime conformance, builds, package lint, and clean-install smoke tests.
+
 ## Testing Strategy
 
 The shared YAML vector is the primary owner of portable timestamp decoding.
 Adapter tests cover only runtime-specific integration:
 
 - Python constructor isolation from unrelated ruamel.yaml instances
-- Python Pydantic date and datetime semantic acceptance and rejection
-- TypeScript Zod ISO date and datetime semantic acceptance and rejection
-- TypeScript host-native `Date` rejection in portable metadata
+- Python Pydantic temporal semantic acceptance and rejection
+- TypeScript Zod ISO temporal semantic acceptance and rejection
+- TypeScript non-plain host-object rejection in portable metadata
 - Shared format-only versus explicit-pattern structural behavior
-- Cross-language compiled-schema and digest parity for date and date-time fields
+- Cross-language compiled-schema and digest parity for date, datetime, time, and
+  duration fields
+- Structural-digest stability across Zod ISO datetime semantic options
 - Preservation of explicitly authored Zod regex constraints
 
 The implementation does not add a timestamp-specific CLI golden because the shared
@@ -334,9 +364,9 @@ No artifact rewrite is required:
   command after upgrading.
 - Projects should validate their artifact corpus with the upgraded runtime before any
   optional style-only reformatting.
-- Projects that compile Zod ISO date schemas should regenerate committed sidecars once;
-  only Zod’s intrinsic date patterns are removed, so the resulting sidecars match the
-  Pydantic format-only form.
+- Projects that compile Zod ISO temporal schemas should regenerate committed sidecars
+  once; only Zod’s intrinsic date, datetime, time, and duration patterns are removed, so
+  the resulting sidecars match the Pydantic format-only form.
 
 There is no successful v0.3 timestamp parse whose return type must be migrated: bare
 values were rejected, while quoted values already returned strings.
@@ -352,8 +382,11 @@ portable artifact result.
 - `format` remains annotation-only in every status and runtime.
 - Semantic models own calendar-aware validation.
 - Explicit portable JSON Schema assertions such as `pattern` remain structural.
-- The TypeScript compiler removes only Zod’s intrinsic ISO date and date-time patterns
-  so equivalent Pydantic and Zod fields produce the same canonical sidecar.
+- The TypeScript compiler removes only Zod’s intrinsic ISO date, datetime, time, and
+  duration patterns so structurally corresponding Pydantic and Zod fields produce the
+  same canonical sidecar.
+- The sidecar digest proves structural identity, not equal Pydantic and Zod semantic
+  accept sets; projects that require both align and test their model validators.
 - No migration command or artifact rewrite is needed.
 - Zod projects regenerate compiled sidecars after upgrading.
 

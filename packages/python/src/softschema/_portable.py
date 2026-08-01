@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,7 @@ class _PortableConstructor(SafeConstructor):
     """Safe constructor overrides scoped to softschema parser instances."""
 
 
+# The first subclass registration copies ruamel's inherited constructor registry.
 _PortableConstructor.add_constructor("tag:yaml.org,2002:timestamp", _construct_timestamp_as_string)
 
 
@@ -137,7 +138,7 @@ def _check_value(root: Any) -> None:
             if value.hex() == "-0x0.0p+0":
                 raise PortableInputError("number_negative_zero", "negative zero is not supported")
             continue
-        if isinstance(value, (date, datetime)):
+        if isinstance(value, date):
             raise PortableInputError(
                 "yaml_unsupported_scalar",
                 "host-native date and datetime values are not portable; use an ISO string",

@@ -35,6 +35,8 @@ export const KitchenSink = z
     active: z.boolean(),
     calendar_date: z.iso.date(),
     calendar_datetime: z.iso.datetime({ offset: true }),
+    calendar_duration: z.iso.duration(),
+    calendar_time: z.iso.time(),
     kind: z.enum(["alpha", "beta", "gamma"]),
     priority: z.int().default(1),
     label: z.string().default("none"),

@@ -13,10 +13,12 @@ version number.
   Existing quoted values remain unchanged, and no artifact rewrite is required when
   upgrading. Validation results retain strings; date validity remains the responsibility
   of a semantic model or explicit structural assertion.
-- **Canonical date-schema parity**: Pydantic and Zod ISO date fields now compile to the
-  same format-only schema and digest.
-  JSON Schema `format` remains annotation-only; explicitly authored patterns remain
-  structural assertions.
+- **Canonical temporal-schema parity**: Corresponding Pydantic temporal fields and Zod
+  ISO date, datetime, time, and duration strings now compile to the same format-only
+  schema and digest. JSON Schema `format` remains annotation-only; explicitly authored
+  patterns remain structural assertions.
+  Model-specific coercions and Zod ISO options remain semantic constraints outside the
+  structural digest.
 
 ### Guidelines and Content
 

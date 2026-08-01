@@ -51,19 +51,32 @@ portable domain. The configured parser already decodes implicit date- and
 timestamp-shaped scalars as strings, so softschema does not apply a separate lexical
 rejection or timestamp constructor.
 
-Host-native JavaScript `Date` objects are outside the portable domain and are rejected
-when programmatic field metadata is checked.
-For semantic validation of portable date strings, use `z.iso.date()` or
-`z.iso.datetime({ offset: true })`. `z.date()` and `z.coerce.date()` produce JavaScript
-`Date` values and cannot represent the package’s portable artifact boundary or compile
-to its JSON Schema output.
+Host-native JavaScript objects are outside the portable domain and are rejected when
+programmatic field metadata is checked.
+Arrays, plain objects, and null-prototype objects remain portable; values such as
+`Date`, `Map`, `Set`, `RegExp`, `Error`, `URL`, and class instances do not silently
+collapse to empty JSON objects.
+For semantic validation of portable temporal strings, use `z.iso.date()`,
+`z.iso.datetime()`, `z.iso.time()`, or `z.iso.duration()`. `z.date()` and
+`z.coerce.date()` produce JavaScript `Date` values and cannot represent the package’s
+portable artifact boundary or compile to its JSON Schema output.
 
-Zod emits intrinsic regex patterns when its ISO date schemas are converted to JSON
+These Zod schemas define their own accepted string spellings and are not semantic
+equivalents of Pydantic’s temporal types.
+Cross-runtime projects that need identical semantic acceptance must align and test model
+validators in both implementations.
+
+Zod emits intrinsic regex patterns when its ISO temporal schemas are converted to JSON
 Schema, while Pydantic emits only a format annotation.
-The compiler’s `toJSONSchema` override removes the intrinsic pattern from `z.ZodISODate`
-and `z.ZodISODateTime` nodes before canonicalization.
+The compiler’s `toJSONSchema` override identifies `z.ZodISODate`, `z.ZodISODateTime`,
+`z.ZodISOTime`, and `z.ZodISODuration` nodes through their public classic-schema
+`def.pattern` and removes the intrinsic pattern before canonicalization.
 An authored `z.string().regex(...)` pattern remains intact, including when its metadata
 also declares a date format.
+
+Zod ISO datetime options such as offset, local-time, and precision affect semantic
+validation but are not represented in the canonical sidecar or `schema_sha256`. The
+digest proves structural parity; it does not prove identical semantic accept sets.
 
 Ajv runs with `validateFormats: false`, matching JSON Schema Draft 2020-12’s default
 Format-Annotation vocabulary and the Python runtime.

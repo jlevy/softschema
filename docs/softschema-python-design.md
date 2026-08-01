@@ -335,6 +335,12 @@ one compiled from the equivalent Zod schema converge to the same canonical schem
 content with an equal `schema_sha256` (the hashed canonical JSON is byte-identical; the
 YAML serialization bytes may differ).
 
+This identity covers the structural contract only.
+Pydantic coercion and other semantic model behavior that does not appear in JSON Schema
+can change accepted values without changing the compiled sidecar or its digest.
+Cross-runtime projects that require the same semantic accept set must align and test
+their Pydantic and Zod validators.
+
 `x-softschema` is annotation metadata, not a second validation language.
 Implementation-specific invariants belong in Pydantic for Python and in Zod refinements
 for the TypeScript package.

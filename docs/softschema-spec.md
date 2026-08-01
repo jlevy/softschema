@@ -340,8 +340,8 @@ pair with a single document.
 This spec does not standardize a companion-data discovery mechanism (see Compatibility).
 
 The canonical profile uses JSON Schema Draft 2020-12’s default Format-Annotation
-vocabulary. A `format` value, including `date` or `date-time`, is descriptive metadata
-and does not make structural validation fail.
+vocabulary. A `format` value, including `date`, `date-time`, `time`, or `duration`, is
+descriptive metadata and does not make structural validation fail.
 This rule is the same in every runtime and for every document status.
 A schema that needs structural lexical enforcement must use an assertion such as a
 portable `pattern`; calendar-aware validation belongs in a semantic model.
@@ -355,6 +355,12 @@ The `schema_sha256` preimage uses canonical JSON: object keys sort by UTF-16 cod
 and binary floating-point values use the ECMAScript shortest round-trip spelling.
 A Python arbitrary-precision integer outside the portable safe range is rejected rather
 than hashed into an identity the TypeScript runtime cannot represent.
+
+The compiled schema and `schema_sha256` identify the structural contract only.
+Semantic model constraints that are not emitted as JSON Schema—such as Pydantic coercion
+or Zod ISO datetime offset, local-time, and precision options—are outside that identity.
+Changing one of those constraints can change a model’s accepted values without causing
+structural schema drift.
 
 ## Validation Expectations
 

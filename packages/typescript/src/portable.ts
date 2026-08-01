@@ -154,17 +154,18 @@ export function checkPortableValue(root: unknown): void {
       }
       continue;
     }
-    if (value instanceof Date) {
-      throw new PortableInputError(
-        "yaml_unsupported_scalar",
-        "host-native Date values are not portable; use an ISO string",
-      );
-    }
     if (Array.isArray(value)) {
       stack.push(...value.map((item): [unknown, number] => [item, depth + 1]));
       continue;
     }
     if (typeof value === "object") {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new PortableInputError(
+          "yaml_unsupported_scalar",
+          `host-native ${value.constructor?.name ?? "object"} values are not portable; use JSON-compatible values`,
+        );
+      }
       stack.push(...Object.values(value).map((item): [unknown, number] => [item, depth + 1]));
       continue;
     }

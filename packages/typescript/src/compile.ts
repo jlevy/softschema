@@ -121,14 +121,26 @@ export function buildCanonicalSchema(
     // inline. "inline" extracts by id, not by repetition, matching Pydantic's $defs shape.
     reused: "inline",
     unrepresentable: "throw",
-    // Pydantic date fields emit a format annotation without a pattern. Zod ISO nodes
-    // validate semantically with an intrinsic regex, but that implementation detail must
-    // not leak into the canonical cross-language sidecar. Authored regex constraints use
-    // ordinary ZodString nodes and remain untouched.
+    // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
+    // validate semantically with an intrinsic regex, but that model-specific constraint
+    // must not leak into the canonical cross-language sidecar.
     override: ({ zodSchema: source, jsonSchema }) => {
-      if (source instanceof z.ZodISODate || source instanceof z.ZodISODateTime) {
-        const intrinsicPattern = source._zod.def.pattern?.source;
-        jsonSchema.format = source instanceof z.ZodISODate ? "date" : "date-time";
+      if (
+        source instanceof z.ZodISODate ||
+        source instanceof z.ZodISODateTime ||
+        source instanceof z.ZodISODuration ||
+        source instanceof z.ZodISOTime
+      ) {
+        const format =
+          source instanceof z.ZodISODate
+            ? "date"
+            : source instanceof z.ZodISODateTime
+              ? "date-time"
+              : source instanceof z.ZodISODuration
+                ? "duration"
+                : "time";
+        const intrinsicPattern = source.def.pattern?.source;
+        jsonSchema.format = format;
         if (intrinsicPattern !== undefined && jsonSchema.pattern === intrinsicPattern) {
           delete jsonSchema.pattern;
         }

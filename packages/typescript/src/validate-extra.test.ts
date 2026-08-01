@@ -77,14 +77,40 @@ describe("date-shaped portable values", () => {
     expect(invalid.ok).toBe(false);
   });
 
-  test("host-native Date metadata is outside the portable domain", () => {
+  test("host-native object metadata is outside the portable domain", () => {
+    const hostValues = [
+      new Date("2026-07-11T00:00:00Z"),
+      new Map([["value", 1]]),
+      new Set([1]),
+      /value/u,
+      new Error("value"),
+      new URL("https://example.com"),
+      new (class Example {})(),
+    ];
+
+    for (const value of hostValues) {
+      expect(() =>
+        softFieldMeta({
+          description: "Host value example.",
+          group: "portable-values",
+          examples: [value],
+        }),
+      ).toThrow("values are not portable");
+    }
+  });
+
+  test("plain and null-prototype object metadata remains portable", () => {
+    const nullPrototype = Object.assign(Object.create(null) as Record<string, unknown>, {
+      value: "example",
+    });
+
     expect(() =>
       softFieldMeta({
-        description: "Date example.",
-        group: "dates",
-        examples: [new Date("2026-07-11T00:00:00Z")],
+        description: "Plain object examples.",
+        group: "portable-values",
+        examples: [{ value: "example" }, nullPrototype],
       }),
-    ).toThrow("host-native Date values are not portable");
+    ).not.toThrow();
   });
 });
 
@@ -218,9 +244,10 @@ test("shared portable YAML and artifact-input vectors", () => {
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);
     expect(result.ok).toBe(item.valid as boolean);
-    if (item.expected !== undefined) {
+    if ("expected" in item) {
       expect(result.values).toEqual(item.expected as Record<string, unknown>);
-    } else if (!item.valid) {
+    }
+    if ("code" in item) {
       const structural = result.structural as { errors: { kind: string }[] };
       expect(structural.errors[0]?.kind).toBe(item.code as string);
     }
