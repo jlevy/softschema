@@ -6,6 +6,8 @@ version number.
 
 ## Unreleased
 
+## v0.6.0—2026-08-04
+
 Validation accepts an already-parsed document root on both profiles, not just
 `frontmatter-md`. A consumer whose artifacts are pure YAML previously had no way to
 reuse its own parse: the parameter existed but that profile ignored it and re-read the
@@ -36,6 +38,39 @@ implementations now publish the readers that produce it.
    the single-read path.
    That workaround traded a correctness hazard for a performance one and is no longer
    needed.
+
+### Breaking
+
+- **The pre-parse parameter is renamed** in both implementations, with no alias: Python
+  `validate_artifact(..., frontmatter=)` is now `document=`, and TypeScript
+  `validateArtifact(..., { preParsed })` is now `{ document }`. The parameter carries
+  the parsed document root for either profile, so a caller holding one no longer has to
+  know which profile it is on to avoid a second parse.
+- **TypeScript type and reader renames**: the exported `RawFrontmatter` is now
+  `ParsedDocument`, and `readFrontmatter` is now `readFrontmatterDoc`, matching the
+  Python names.
+- Minor rather than patch: these rename public API in both packages, which is what
+  `publishing.md` reserves a minor bump for.
+  A missed callsite fails loudly (a `TypeError` in Python, a compile error in
+  TypeScript) rather than silently ignoring the option, so the break is visible at
+  upgrade time rather than at runtime.
+
+### Features
+
+- **Pure-yaml validation honors a pre-parsed root** in both implementations.
+  The parameter previously existed but reached only the frontmatter profile; a pure-yaml
+  contract ignored it and always re-read the file, so the optimization was unreachable
+  for exactly the consumers whose artifacts are pure YAML. TypeScript had the same
+  defect and is fixed in the same release.
+- **The decoders are exported**: `read_frontmatter_doc` and `read_yaml_doc` in Python,
+  `readFrontmatterDoc` and `readYamlDoc` in TypeScript.
+  Neither package previously published a way to decode an artifact, so a caller
+  producing a `document` root had no supported parser and would reach for a host YAML
+  library, silently losing the portable rules.
+  `read_yaml_doc` replaces the private `_read_yaml`.
+- **The trust boundary is documented** in the spec, both design docs, and the
+  `validate_artifact` docstrings: a supplied root is trusted as already decoded and is
+  not re-checked against the portable YAML rules.
 
 ## v0.5.0—2026-08-04
 
