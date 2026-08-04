@@ -370,14 +370,16 @@ def validate_artifact(
     contract_id: str | None = None,
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
-    frontmatter: Any = _UNREAD,
+    document: Any = _UNREAD,
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
 
-    ``frontmatter`` is an optional already-parsed frontmatter mapping. When supplied for
-    a frontmatter-md contract the document is not re-read. The CLI passes its binding
-    parse to keep validation single-read. ``None`` is a valid value (no frontmatter);
-    the sentinel ``_UNREAD`` means "read the file".
+    ``document`` is an optional already-parsed document root: frontmatter for a
+    frontmatter-md contract, the YAML root for a pure-yaml one. When supplied the file is
+    not re-read, which is what lets a caller that already parsed the artifact validate it
+    without paying for a second parse. The CLI passes its binding parse for exactly that
+    reason. ``None`` is a valid value (no frontmatter); the sentinel ``_UNREAD`` means
+    "read the file".
     """
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
@@ -404,8 +406,8 @@ def validate_artifact(
 
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode)
-    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, frontmatter)
+        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode, document)
+    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, document)
 
 
 def _validate_frontmatter_artifact(
@@ -413,8 +415,9 @@ def _validate_frontmatter_artifact(
     contract: Contract,
     warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
-    frontmatter: Any = _UNREAD,
+    document: Any = _UNREAD,
 ) -> ArtifactValidationResult:
+    frontmatter = document
     if frontmatter is _UNREAD:
         try:
             _content, frontmatter = read_frontmatter_doc(doc_path)
@@ -531,6 +534,7 @@ def _validate_pure_yaml_artifact(
     contract: Contract,
     warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
+    document: Any = _UNREAD,
 ) -> ArtifactValidationResult:
     """Validate a pure-yaml artifact.
 
@@ -543,12 +547,15 @@ def _validate_pure_yaml_artifact(
     the structured payload" (e.g. a companion data file), so single-key inference and
     ambiguity rejection do not apply.
     """
-    try:
-        raw = _read_yaml(doc_path)
-    except OSError as exc:
-        return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
-    except PortableInputError as exc:
-        return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
+    if document is _UNREAD:
+        try:
+            raw = _read_yaml(doc_path)
+        except OSError as exc:
+            return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
+        except PortableInputError as exc:
+            return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
+    else:
+        raw = document
     if not isinstance(raw, dict):
         return _artifact_failure(
             doc_path,

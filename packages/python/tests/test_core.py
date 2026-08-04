@@ -600,7 +600,32 @@ def test_validate_artifact_uses_preread_frontmatter_without_reopening(tmp_path: 
     }
 
     result = validate_artifact(
-        tmp_path / "does-not-exist.md", contract=contract, frontmatter=preread
+        tmp_path / "does-not-exist.md", contract=contract, document=preread
+    )
+
+    assert result.ok
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_validate_artifact_uses_preread_pure_yaml_without_reopening(tmp_path: Path) -> None:
+    """A pure-yaml artifact honours a pre-parsed document too.
+
+    Both profiles take the same parameter: a caller holding the parsed root should never
+    have to know which profile it is on to avoid a second parse.
+    """
+    contract = Contract(
+        id="example:Sample/v1",
+        model=SampleModel,
+        envelope_key="sample",
+        profile=SchemaProfile.pure_yaml,
+    )
+    preread = {
+        "softschema": {"contract": "example:Sample/v1"},
+        "sample": {"name": "hello", "direction": "up", "delta": 1.5},
+    }
+
+    result = validate_artifact(
+        tmp_path / "does-not-exist.yaml", contract=contract, document=preread
     )
 
     assert result.ok
