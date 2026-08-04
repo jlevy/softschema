@@ -6,6 +6,17 @@ version number.
 
 ## Unreleased
 
+### Dependencies
+
+- **Patched TypeScript URI resolver**: The checked-in TypeScript dependency graph now
+  constrains Ajv’s `fast-uri` dependency to reviewed version 3.1.5, removing a further
+  high-severity host-confusion advisory that also covers the previously pinned 3.1.4.
+  The exact pin carries the same one-package release-age exception as the 3.1.4 pin it
+  replaces, because the patched release is the only way to clear the advisory and no 3.x
+  version outside the affected range exists.
+  Refresh and verify application lockfiles against the same safe floor; no softschema
+  API or artifact change is involved.
+
 ## v0.4.0—2026-07-31
 
 v0.4.0 makes YAML date- and timestamp-shaped scalars portable strings in both
