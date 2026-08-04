@@ -6,6 +6,84 @@ version number.
 
 ## Unreleased
 
+## v0.5.0—2026-08-04
+
+v0.5.0 removes the parser’s input, scalar, and node size ceilings, so softschema no
+longer refuses a large artifact after its caller has already written it.
+The nesting depth rule stays, reclassified as a portability rule rather than a resource
+guard. Compiled schemas are also now cached per schema file, which cuts a large
+validation run’s wall clock substantially.
+
+### Upgrade
+
+1. Upgrade every softschema implementation the project uses to `0.5.0`, then refresh its
+   lockfiles. Projects that use both implementations must update them together.
+   TypeScript lockfiles should resolve `fast-uri>=3.1.5` through Ajv; versions before
+   3.1.5 have high-severity URI host-confusion advisories.
+
+2. Remove any handling of the `artifact_too_large` error kind.
+   It no longer exists, and no validation result can return it.
+   Code that branched on it is now dead; code that treated it as “the artifact was
+   rejected” needs no replacement, because such artifacts now validate normally.
+
+3. Re-check any workflow that depended on softschema rejecting large artifacts.
+   Inputs over 1 MiB, scalars over 256 KiB, and documents over 100,000 nodes were
+   previously rejected with `outcome: input_error` and are now parsed and validated like
+   any other artifact. If a pipeline used softschema as its size guard, that guard must
+   move to the code that writes or accepts the artifact, where it can reject before the
+   work is done rather than after.
+
+4. Leave nesting depth alone.
+   The 64-collection depth rule is unchanged and still reports `yaml_limit`. It is now
+   documented as a portability rule, in the same category as `MAX_SAFE_INTEGER`: without
+   it the two runtimes disagree by an order of magnitude about how deep a document may
+   be, because CPython and V8 have very different stack budgets.
+
+5. No artifact rewrite is required, and no compiled schema needs regenerating.
+   Every artifact valid under v0.4.0 remains valid under v0.5.0.
+
+### Breaking
+
+- **`artifact_too_large` is removed** from the error taxonomy in both implementations,
+  along with the internal `input_too_large` mapping and the shared `too_large`
+  conformance vector. An artifact that v0.4.0 rejected with
+  `outcome: input_error, kind: artifact_too_large` now returns a normal `valid` or
+  `invalid` result. This widens the accepted artifact set; it never narrows it, so no
+  previously valid artifact is affected.
+
+### Features
+
+- **Parser resource ceilings removed**: `MAX_INPUT_BYTES` (1 MiB), `MAX_SCALAR_BYTES`
+  (256 KiB), and `MAX_NODES` (100,000) are gone from both implementations.
+  They only answered whether a hostile document could exhaust the parser, and softschema
+  reads artifacts its own callers just wrote.
+  A cap that can only fire after the artifact is written destroys completed work rather
+  than rejecting bad input, and none of the three was overridable by a parameter,
+  profile, or environment setting.
+- **Compiled validators are cached** (Python): `validate_structural` no longer reparses
+  and recompiles the JSON Schema validator on every call.
+  The cache is keyed on the schema text itself, so a regenerated schema can never be
+  served from a stale entry and two paths holding identical bytes share one entry.
+  Validation that passes `resources` is left uncached, and compile failures are not
+  cached. Measured on a downstream suite: 361s to 262s, a 28% reduction.
+- **`clear_validator_cache()`** (Python) is exported for long-lived processes that
+  regenerate compiled schemas in place, such as a watch mode or a language server.
+  Ordinary callers never need it, because a rewritten schema misses the cache on its
+  own. The TypeScript implementation has no corresponding export because it does not yet
+  cache compilation.
+
+### Fixes and hardening
+
+- **Python maps `RecursionError` to `yaml_limit`**, mirroring the TypeScript
+  `RangeError` path. The depth preflight makes this unreachable for ordinary callers, but
+  a caller already deep in its own stack can exhaust the budget at a legal depth, and
+  that must stay a structured result rather than an exception escaping
+  `validate_artifact`.
+- **Depth rule documented as a portability rule**: `MAX_DEPTH` (64) is unchanged in
+  value and behavior, but the spec and both implementations now explain that it bounds
+  what survives a round trip through a host parser, alongside `MAX_SAFE_INTEGER`, which
+  bounds what survives a round trip through a JS number.
+
 ### Dependencies
 
 - **Patched TypeScript URI resolver**: The checked-in TypeScript dependency graph now
