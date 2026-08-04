@@ -327,10 +327,7 @@ function buildResult(args: {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
   const firstKind = structural.errors[0]?.kind;
-  const inputCodes = new Set([
-    "artifact_unreadable",
-    "artifact_invalid_utf8",
-  ]);
+  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
   const result = {
     contract: contractToOutput(contract),
     contract_id: contract.id,

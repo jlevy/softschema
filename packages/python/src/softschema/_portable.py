@@ -20,12 +20,28 @@ from ruamel.yaml.events import (
 from ruamel.yaml.nodes import ScalarNode
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
-"""Largest integer that survives a round trip through a JS number.
+"""Largest integer that survives a round trip through a JS number."""
 
-A portability rule, not a resource guard. Size and shape ceilings were removed: they
-only answered whether a hostile document could exhaust the parser, and softschema reads
-artifacts its own callers just wrote. The portable-value rules below stay, because they
-are what makes a document mean the same thing in both runtimes.
+MAX_DEPTH = 64
+"""Simultaneously open collections, including the root.
+
+A portability rule, not a resource guard, which is why it survives while the input,
+node, and scalar ceilings did not. Those three only answered whether a hostile document
+could exhaust the parser, and softschema reads artifacts its own callers just wrote.
+Depth answers a different question: how deep a document still means the same thing in
+both runtimes.
+
+Without an explicit rule the host stack decides, and the two hosts disagree by an order
+of magnitude. CPython's default recursion limit of 1,000 lets this constructor reach
+depth 491 from an empty caller stack — less from a real one, since the caller's own
+frames come out of the same budget — while V8 parses past 10,000. A document between
+those two bounds would be valid in TypeScript and a crash in Python, which is exactly
+what the shared vectors exist to prevent.
+
+64 is far above any real artifact and leaves roughly 7x headroom under the measured
+ceiling, so the check below always fires before the recursion does. Raising it is safe
+only while that headroom holds; past a few hundred the Python guard stops being reachable
+and `RecursionError` takes over.
 """
 
 
@@ -85,6 +101,8 @@ def parse_yaml(text: str) -> Any:
                 stack.append(
                     ("map", True) if isinstance(event, MappingStartEvent) else ("seq", False)
                 )
+                if len(stack) > MAX_DEPTH:
+                    raise PortableInputError("yaml_limit", "YAML nesting exceeds the depth limit")
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
         if has_alias:
@@ -92,6 +110,12 @@ def parse_yaml(text: str) -> Any:
         value = yaml.load(text)
     except PortableInputError:
         raise
+    except RecursionError as exc:
+        # The preflight above rejects anything past MAX_DEPTH, so construction should
+        # never recurse this far. Mirror the TypeScript RangeError handler anyway: a
+        # caller already deep in its own stack can exhaust the budget at a legal depth,
+        # and that has to stay a structured result rather than escape validate_artifact.
+        raise PortableInputError("yaml_limit", "YAML nesting exhausted the parser stack") from exc
     except YAMLError as exc:
         code = "yaml_duplicate_key" if "duplicate key" in str(exc).lower() else "yaml_parse_error"
         raise PortableInputError(code, str(exc)) from exc

@@ -1,15 +1,25 @@
 /** Portable YAML input shared by artifact and schema reads.
  *
- * Size and shape ceilings were removed. They only answered whether a hostile document
- * could exhaust the parser, and softschema reads artifacts its own callers just wrote.
- * The portable-value rules here stay, because they are what makes a document mean the
- * same thing in both runtimes.
+ * The input, node, and scalar ceilings were removed. They only answered whether a
+ * hostile document could exhaust the parser, and softschema reads artifacts its own
+ * callers just wrote. The portable-value rules here stay, because they are what makes a
+ * document mean the same thing in both runtimes.
  */
 import { readFileSync } from "node:fs";
 import { isAlias, isCollection, isPair, isScalar, parseDocument, visit } from "yaml";
 
 /** Largest integer that survives a round trip through a JS number. */
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
+
+/** Simultaneously open collections, including the root.
+ *
+ * A portability rule rather than a resource guard, and the reason it outlived the three
+ * ceilings above. Left to the host, V8 parses past depth 10,000 while CPython's default
+ * recursion limit stops the Python constructor around 491, so any document between those
+ * bounds would be valid here and a crash there. Keep this value identical to `MAX_DEPTH`
+ * in the Python `_portable` module; the shared depth vectors check that they agree.
+ */
+const MAX_DEPTH = 64;
 
 export class PortableInputError extends Error {
   constructor(
@@ -59,7 +69,12 @@ export function parsePortableYaml(text: string): unknown {
   }
 
   let hasAlias = false;
-  visit(document, (_key, node) => {
+  visit(document, (_key, node, path) => {
+    // `path` is bounded by MAX_DEPTH, because exceeding it throws on the next node.
+    const depth = path.reduce((total, ancestor) => total + (isCollection(ancestor) ? 1 : 0), 0);
+    if (depth > MAX_DEPTH) {
+      throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
+    }
     if (isPair(node)) {
       if (!isScalar(node.key) || typeof node.key.value !== "string") {
         throw new PortableInputError("yaml_non_string_key", "mapping keys must be strings");

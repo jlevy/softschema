@@ -110,10 +110,16 @@ date or timestamp; a semantic model or explicit structural assertion may impose 
 constraint. An explicit tag such as `!!timestamp` remains unsupported under the
 explicit-tag rule.
 
-One input is at most 1 MiB, one scalar is at most 256 KiB, and one YAML document has at
-most 100,000 scalar or collection nodes and 64 simultaneously open collections,
-including the root. Exceeding a structure limit is `yaml_limit`, including a host YAML
-parser stack overflow caused by hostile nesting.
+One YAML document has at most 64 simultaneously open collections, including the root.
+Exceeding that depth is `yaml_limit`, as is a host YAML parser stack overflow.
+The depth rule is a portability rule rather than a resource ceiling: left to the host,
+the two runtimes disagree by an order of magnitude about how deep a document may be, so
+a fixed bound is what makes depth mean the same thing in both.
+
+Input size, scalar size, and node count are not bounded.
+Those ceilings only answered whether a hostile document could exhaust the parser, and
+softschema reads artifacts its own callers just wrote; a cap that can only fire after
+the artifact is written destroys completed work rather than rejecting bad input.
 
 For `frontmatter-md`, the opening and closing delimiters begin at column one and contain
 `---` plus optional trailing whitespace.
