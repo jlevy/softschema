@@ -255,7 +255,6 @@ test("shared portable YAML and artifact-input vectors", () => {
   for (const item of vectors.artifact_input ?? []) {
     const path = join(mkdtempSync(join(tmpdir(), "softschema-input-")), `${String(item.id)}.yaml`);
     if (item.source === "invalid_utf8") writeFileSync(path, Buffer.from([0xff]));
-    if (item.source === "too_large") writeFileSync(path, Buffer.alloc(1_048_577, 0x78));
     if (item.text !== undefined) writeFileSync(path, String(item.text));
     const result = validateArtifact(path, portableContract);
     const structural = result.structural as { errors: { kind: string }[] };

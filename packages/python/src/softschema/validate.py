@@ -83,7 +83,7 @@ class ArtifactValidationResult:
     outcome: Literal["valid", "invalid", "input_error"] = field(init=False)
 
     def __post_init__(self) -> None:
-        input_codes = {"artifact_unreadable", "artifact_invalid_utf8", "artifact_too_large"}
+        input_codes = {"artifact_unreadable", "artifact_invalid_utf8"}
         first_kind = self.structural.errors[0].get("kind") if self.structural.errors else None
         outcome = "valid" if self.ok else "input_error" if first_kind in input_codes else "invalid"
         object.__setattr__(self, "outcome", outcome)
@@ -747,8 +747,6 @@ def _portable_error_kind(error: Exception) -> str:
         return "yaml_parse_error"
     if error.code == "invalid_utf8":
         return "artifact_invalid_utf8"
-    if error.code == "input_too_large":
-        return "artifact_too_large"
     return error.code
 
 

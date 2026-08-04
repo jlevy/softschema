@@ -1,12 +1,25 @@
-/** Bounded UTF-8 and portable YAML input shared by artifact and schema reads. */
-import { readFileSync, statSync } from "node:fs";
+/** Portable YAML input shared by artifact and schema reads.
+ *
+ * The input, node, and scalar ceilings were removed. They only answered whether a
+ * hostile document could exhaust the parser, and softschema reads artifacts its own
+ * callers just wrote. The portable-value rules here stay, because they are what makes a
+ * document mean the same thing in both runtimes.
+ */
+import { readFileSync } from "node:fs";
 import { isAlias, isCollection, isPair, isScalar, parseDocument, visit } from "yaml";
 
-export const MAX_INPUT_BYTES = 1_048_576;
-const MAX_DEPTH = 64;
-const MAX_NODES = 100_000;
-const MAX_SCALAR_BYTES = 262_144;
+/** Largest integer that survives a round trip through a JS number. */
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
+
+/** Simultaneously open collections, including the root.
+ *
+ * A portability rule rather than a resource guard, and the reason it outlived the three
+ * ceilings above. Left to the host, V8 parses past depth 10,000 while CPython's default
+ * recursion limit stops the Python constructor around 491, so any document between those
+ * bounds would be valid here and a crash there. Keep this value identical to `MAX_DEPTH`
+ * in the Python `_portable` module; the shared depth vectors check that they agree.
+ */
+const MAX_DEPTH = 64;
 
 export class PortableInputError extends Error {
   constructor(
@@ -18,13 +31,6 @@ export class PortableInputError extends Error {
 }
 
 export function readUtf8(path: string): string {
-  const size = statSync(path).size;
-  if (size > MAX_INPUT_BYTES) {
-    throw new PortableInputError(
-      "input_too_large",
-      `input is ${size} bytes; limit is ${MAX_INPUT_BYTES}`,
-    );
-  }
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
   } catch (error) {
@@ -62,9 +68,9 @@ export function parsePortableYaml(text: string): unknown {
     );
   }
 
-  let nodes = 0;
   let hasAlias = false;
   visit(document, (_key, node, path) => {
+    // `path` is bounded by MAX_DEPTH, because exceeding it throws on the next node.
     const depth = path.reduce((total, ancestor) => total + (isCollection(ancestor) ? 1 : 0), 0);
     if (depth > MAX_DEPTH) {
       throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
@@ -100,16 +106,6 @@ export function parsePortableYaml(text: string): unknown {
     ) {
       throw new PortableInputError("number_out_of_range", "integer exceeds the safe range");
     }
-    if (isScalar(node) || isCollection(node)) nodes += 1;
-    if (nodes > MAX_NODES) {
-      throw new PortableInputError("yaml_limit", "YAML exceeds the node limit");
-    }
-    if (
-      isScalar(node) &&
-      Buffer.byteLength(String(node.source ?? node.value), "utf8") > MAX_SCALAR_BYTES
-    ) {
-      throw new PortableInputError("yaml_limit", "YAML scalar exceeds the size limit");
-    }
   });
   if (hasAlias) {
     throw new PortableInputError("yaml_alias", "YAML aliases and anchors are not supported");
@@ -121,14 +117,9 @@ export function parsePortableYaml(text: string): unknown {
 }
 
 export function checkPortableValue(root: unknown): void {
-  const stack: Array<[unknown, number]> = [[root, 0]];
-  let nodes = 0;
+  const stack: unknown[] = [root];
   while (stack.length > 0) {
-    const [value, depth] = stack.pop() as [unknown, number];
-    nodes += 1;
-    if (nodes > MAX_NODES || depth > MAX_DEPTH) {
-      throw new PortableInputError("yaml_limit", "YAML value exceeds the structure limit");
-    }
+    const value = stack.pop();
     if (value === null || typeof value === "boolean") continue;
     if (typeof value === "string") {
       for (let index = 0; index < value.length; index += 1) {
@@ -155,7 +146,7 @@ export function checkPortableValue(root: unknown): void {
       continue;
     }
     if (Array.isArray(value)) {
-      stack.push(...value.map((item): [unknown, number] => [item, depth + 1]));
+      stack.push(...value);
       continue;
     }
     if (typeof value === "object") {
@@ -166,7 +157,7 @@ export function checkPortableValue(root: unknown): void {
           `host-native ${value.constructor?.name ?? "object"} values are not portable; use JSON-compatible values`,
         );
       }
-      stack.push(...Object.values(value).map((item): [unknown, number] => [item, depth + 1]));
+      stack.push(...Object.values(value));
       continue;
     }
     throw new PortableInputError(

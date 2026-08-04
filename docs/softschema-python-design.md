@@ -287,7 +287,6 @@ The current first-release kinds:
 | --- | --- |
 | `artifact_unreadable` | The artifact cannot be opened. |
 | `artifact_invalid_utf8` | The artifact is not valid UTF-8. |
-| `artifact_too_large` | The artifact exceeds the bounded input size. |
 | `yaml_parse_error` | YAML or frontmatter could not be parsed. |
 | `no_frontmatter` | Frontmatter block is missing in a Markdown artifact. |
 | `frontmatter_not_mapping` | Frontmatter parsed but is not a mapping at the top level. |

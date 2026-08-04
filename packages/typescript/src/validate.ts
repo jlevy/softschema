@@ -327,11 +327,7 @@ function buildResult(args: {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
   const firstKind = structural.errors[0]?.kind;
-  const inputCodes = new Set([
-    "artifact_unreadable",
-    "artifact_invalid_utf8",
-    "artifact_too_large",
-  ]);
+  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
   const result = {
     contract: contractToOutput(contract),
     contract_id: contract.id,
@@ -786,6 +782,5 @@ export { readFrontmatter };
 
 function portableArtifactKind(error: PortableInputError): string {
   if (error.code === "invalid_utf8") return "artifact_invalid_utf8";
-  if (error.code === "input_too_large") return "artifact_too_large";
   return error.code;
 }
