@@ -24,8 +24,8 @@ import { stableStringify } from "./settings.js";
 import {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
-  type RawFrontmatter,
-  readFrontmatter,
+  type ParsedDocument,
+  readFrontmatterDoc,
   validateArtifact,
   YamlParseError,
 } from "./validate.js";
@@ -371,7 +371,7 @@ function readFrontmatterRaw(path: string): Record<string, unknown> | null {
   // malformed-YAML failure as a usage error (exit 2) with the message, mirroring the
   // Python CLI's FmFormatError handling, rather than letting it escape as a stack trace.
   try {
-    const fm = readFrontmatter(path);
+    const fm = readFrontmatterDoc(path);
     return fm.hasFence ? (fm.value as Record<string, unknown>) : null;
   } catch (err) {
     if (err instanceof YamlParseError) {
@@ -450,10 +450,10 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     // Read the document once here; both binding inference and validateArtifact reuse
-    // this parse (passed as `preParsed`), so the file is parsed a single time.
-    let parsed: RawFrontmatter;
+    // this parse (passed as `document`), so the file is parsed a single time.
+    let parsed: ParsedDocument;
     try {
-      parsed = readFrontmatter(path);
+      parsed = readFrontmatterDoc(path);
     } catch (err) {
       if (err instanceof YamlParseError) {
         throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
@@ -485,7 +485,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
       profile: "frontmatter-md",
       schemaPath: opts.schema ?? null,
     };
-    const result = validateArtifact(path, contract, { semanticModel, preParsed: parsed });
+    const result = validateArtifact(path, contract, { semanticModel, document: parsed });
     if (result.outcome === "input_error") {
       throw new Error("pre-parsed CLI validation returned an input error");
     }

@@ -214,6 +214,12 @@ reach an internal portable metadata path.
 `validate_values` accepts already-extracted host data and does not parse or normalize it
 as YAML.
 
+`read_frontmatter_doc` and `read_yaml_doc` are the public decoders, exported so a caller
+that wants to parse an artifact once and pass the root to `validate_artifact` as
+`document` gets the same portable decoding the disk path applies.
+A supplied `document` is trusted, so it is the caller’s only way to stay equivalent: a
+root decoded by ruamel or PyYAML directly keeps none of these rules.
+
 Structural validation constructs `Draft202012Validator` without a `FormatChecker`. This
 preserves the canonical profile’s annotation-only treatment of `format`; a portable
 `pattern` remains an ordinary structural assertion.

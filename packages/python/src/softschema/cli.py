@@ -314,7 +314,7 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         schema_path=args.schema,
         status=status,
     )
-    result = validate_artifact(args.path, contract=contract, frontmatter=frontmatter)
+    result = validate_artifact(args.path, contract=contract, document=frontmatter)
     if result.outcome == "input_error":
         raise RuntimeError("pre-parsed CLI validation returned an input error")
     print(_json(result))

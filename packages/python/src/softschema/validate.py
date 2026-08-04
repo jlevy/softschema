@@ -370,14 +370,26 @@ def validate_artifact(
     contract_id: str | None = None,
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
-    frontmatter: Any = _UNREAD,
+    document: Any = _UNREAD,
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
 
-    ``frontmatter`` is an optional already-parsed frontmatter mapping. When supplied for
-    a frontmatter-md contract the document is not re-read. The CLI passes its binding
-    parse to keep validation single-read. ``None`` is a valid value (no frontmatter);
-    the sentinel ``_UNREAD`` means "read the file".
+    ``document`` is an optional already-parsed document root: frontmatter for a
+    frontmatter-md contract, the YAML root for a pure-yaml one. When supplied the file is
+    not re-read, which is what lets a caller that already parsed the artifact validate it
+    without paying for a second parse. The CLI passes its binding parse for exactly that
+    reason. Omitting it means "read the file".
+
+    A supplied ``document`` is trusted as already decoded, so it bypasses the portable
+    YAML rules (merge keys, explicit tags, aliases, the nesting depth bound) that reading
+    from disk enforces. Parse it with :func:`read_frontmatter_doc` or
+    :func:`read_yaml_doc` to keep the two paths equivalent; a root decoded by a host YAML
+    library directly may validate here and be rejected by another softschema
+    implementation reading the same file.
+
+    ``None`` means the document has no frontmatter, which a frontmatter-md contract
+    reports as ``no_frontmatter``; a pure-yaml contract reports it as ``yaml_not_mapping``
+    like any other non-mapping root.
     """
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
@@ -404,8 +416,8 @@ def validate_artifact(
 
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode)
-    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, frontmatter)
+        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode, document)
+    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, document)
 
 
 def _validate_frontmatter_artifact(
@@ -531,6 +543,7 @@ def _validate_pure_yaml_artifact(
     contract: Contract,
     warnings: list[SchemaWarning],
     metadata_mode: Literal["enforced", "advisory"],
+    raw: Any = _UNREAD,
 ) -> ArtifactValidationResult:
     """Validate a pure-yaml artifact.
 
@@ -543,12 +556,13 @@ def _validate_pure_yaml_artifact(
     the structured payload" (e.g. a companion data file), so single-key inference and
     ambiguity rejection do not apply.
     """
-    try:
-        raw = _read_yaml(doc_path)
-    except OSError as exc:
-        return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
-    except PortableInputError as exc:
-        return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
+    if raw is _UNREAD:
+        try:
+            raw = read_yaml_doc(doc_path)
+        except OSError as exc:
+            return _artifact_failure(doc_path, contract, "artifact_unreadable", str(exc))
+        except PortableInputError as exc:
+            return _artifact_failure(doc_path, contract, _portable_error_kind(exc), str(exc))
     if not isinstance(raw, dict):
         return _artifact_failure(
             doc_path,
@@ -794,6 +808,14 @@ def _artifact_failure(
 
 
 def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
+    """Read a frontmatter-md artifact into its body text and parsed frontmatter mapping.
+
+    This is the supported way to produce the ``document`` argument of
+    :func:`validate_artifact` for a frontmatter-md contract: the frontmatter is decoded
+    with softschema's portable YAML rules, so validating the result is equivalent to
+    letting ``validate_artifact`` read the file itself. Returns ``None`` for the mapping
+    when the document has no frontmatter.
+    """
     text = read_utf8(path)
     lines = text.splitlines()
     if not lines or lines[0].rstrip() != "---":
@@ -815,7 +837,14 @@ def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
     return "\n".join(lines[end + 1 :]), value
 
 
-def _read_yaml(path: Path) -> Any:
+def read_yaml_doc(path: Path) -> Any:
+    """Read a pure-yaml artifact into its parsed document root.
+
+    The pure-yaml counterpart to :func:`read_frontmatter_doc`, and the supported way to
+    produce the ``document`` argument of :func:`validate_artifact` for a pure-yaml
+    contract. Decoding goes through softschema's portable YAML rules, which a host YAML
+    library does not enforce; see :func:`validate_artifact` on why that matters.
+    """
     return parse_yaml(read_utf8(path))
 
 

@@ -6,6 +6,37 @@ version number.
 
 ## Unreleased
 
+Validation accepts an already-parsed document root on both profiles, not just
+`frontmatter-md`. A consumer whose artifacts are pure YAML previously had no way to
+reuse its own parse: the parameter existed but that profile ignored it and re-read the
+file. On a downstream workload publishing 1,274 files, validation drops from 171.1s to
+69.2s because each artifact is now parsed once rather than twice.
+
+The parameter is renamed to reflect what it carries on either profile, and both
+implementations now publish the readers that produce it.
+
+### Upgrade
+
+1. Rename the argument at every callsite.
+   Python `validate_artifact(..., frontmatter=root)` becomes `document=root`; TypeScript
+   `validateArtifact(..., { preParsed })` becomes `{ document }`, whose type
+   `RawFrontmatter` is renamed `ParsedDocument`. No alias is kept, so a missed callsite
+   is a `TypeError` in Python and a compile error in TypeScript rather than a silently
+   ignored option.
+
+2. Produce the root with softschema’s own readers, now exported: `read_frontmatter_doc`
+   and `read_yaml_doc` in Python, `readFrontmatterDoc` and `readYamlDoc` in TypeScript.
+   A supplied root is trusted as already decoded and bypasses the portable YAML rules
+   (merge keys, explicit tags, aliases, the 64-collection depth bound) that reading from
+   disk enforces. A root decoded by a host YAML library directly may validate in one
+   implementation and be rejected by the other reading the same file, which is the
+   divergence those rules exist to prevent.
+
+3. Drop any `profile: frontmatter-md` declared on a pure-yaml artifact purely to reach
+   the single-read path.
+   That workaround traded a correctness hazard for a performance one and is no longer
+   needed.
+
 ## v0.5.0—2026-08-04
 
 v0.5.0 removes the parser’s input, scalar, and node size ceilings, so softschema no
