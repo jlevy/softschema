@@ -63,7 +63,15 @@ export interface ArtifactValidationResult {
 
 export type MetadataMode = "enforced" | "advisory";
 
-export interface RawFrontmatter {
+/**
+ * A document root already decoded by `readFrontmatterDoc` or `readYamlDoc`, ready to
+ * hand to `validateArtifact` as `document` without the file being read a second time.
+ */
+export interface ParsedDocument {
+  /**
+   * Frontmatter-md only: false when the document has no fence, which validation reports
+   * as `no_frontmatter`. Pure-yaml has no fence to speak of and ignores this.
+   */
   hasFence: boolean;
   value: unknown;
 }
@@ -91,8 +99,12 @@ function parseYaml(text: string): unknown {
  * `hasFence: false` with a null value when there is no fence or the fence is empty (the
  * caller then treats the file as pure YAML). Throws `YamlParseError` on an unterminated
  * fence or non-mapping frontmatter with the portable error contract.
+ *
+ * This is the supported way to produce the `document` option of `validateArtifact` for a
+ * frontmatter-md contract: decoding goes through the portable YAML rules, so validating
+ * the result is equivalent to letting `validateArtifact` read the file itself.
  */
-function readFrontmatter(path: string): RawFrontmatter {
+function readFrontmatterDoc(path: string): ParsedDocument {
   const text = readUtf8(path);
   const lines = text.split(/\r?\n/);
   if (lines[0]?.trimEnd() !== "---") return { hasFence: false, value: null };
@@ -118,6 +130,16 @@ function readFrontmatter(path: string): RawFrontmatter {
     );
   }
   return { hasFence: true, value: parsed };
+}
+
+/**
+ * Read a pure-yaml artifact into its parsed document root, the counterpart to
+ * `readFrontmatterDoc` and the supported way to produce the `document` option of
+ * `validateArtifact` for a pure-yaml contract. Decoding goes through the portable YAML
+ * rules, which a host YAML library does not enforce; see `validateArtifact`.
+ */
+function readYamlDoc(path: string): ParsedDocument {
+  return { hasFence: false, value: parsePortableYaml(readUtf8(path)) };
 }
 
 function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
@@ -573,7 +595,15 @@ function checkMetadata(
   return { metadata };
 }
 
-/** Validate an artifact against a contract (frontmatter-md or pure-yaml). */
+/**
+ * Validate an artifact against a contract (frontmatter-md or pure-yaml).
+ *
+ * A supplied `document` is trusted as already decoded, so it bypasses the portable YAML
+ * rules (merge keys, explicit tags, aliases, the nesting depth bound) that reading from
+ * disk enforces. Parse it with `readFrontmatterDoc` or `readYamlDoc` to keep the two
+ * paths equivalent; a root decoded by a host YAML library directly may validate here and
+ * be rejected by another softschema implementation reading the same file.
+ */
 export function validateArtifact(
   docPath: string,
   contract: Contract,
@@ -581,11 +611,12 @@ export function validateArtifact(
     semanticModel?: z.ZodType;
     metadataMode?: MetadataMode;
     /**
-     * An already-parsed frontmatter (from `readFrontmatter`); when supplied for a
-     * frontmatter-md contract the document is not re-read. The CLI passes what it
-     * parsed for binding inference so the file is read once.
+     * An already-parsed document root, from `readFrontmatterDoc` or `readYamlDoc`. When
+     * supplied the file is not re-read, on either profile, which is what lets a caller
+     * that already parsed the artifact validate it without paying for a second parse.
+     * The CLI passes what it parsed for binding inference so the file is read once.
      */
-    preParsed?: RawFrontmatter;
+    document?: ParsedDocument;
   } = {},
 ): ArtifactValidationResult {
   checkContractId(contract.id);
@@ -593,26 +624,30 @@ export function validateArtifact(
   const metadataMode = options.metadataMode ?? "enforced";
   if (contract.profile === "pure-yaml") {
     let raw: unknown;
-    try {
-      raw = parsePortableYaml(readUtf8(docPath));
-    } catch (err) {
-      if (err instanceof PortableInputError) {
-        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+    if (options.document !== undefined) {
+      raw = options.document.value;
+    } else {
+      try {
+        raw = readYamlDoc(docPath).value;
+      } catch (err) {
+        if (err instanceof PortableInputError) {
+          return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+        }
+        if (
+          err instanceof Error &&
+          "code" in err &&
+          (err.code === "ENOENT" || err.code === "EACCES")
+        ) {
+          return failure(
+            docPath,
+            contract,
+            null,
+            "artifact_unreadable",
+            (err as NodeJS.ErrnoException).message,
+          );
+        }
+        throw err;
       }
-      if (
-        err instanceof Error &&
-        "code" in err &&
-        (err.code === "ENOENT" || err.code === "EACCES")
-      ) {
-        return failure(
-          docPath,
-          contract,
-          null,
-          "artifact_unreadable",
-          (err as NodeJS.ErrnoException).message,
-        );
-      }
-      throw err;
     }
     if (!isMapping(raw)) {
       return failure(
@@ -671,12 +706,12 @@ export function validateArtifact(
     );
   }
 
-  let parsed: RawFrontmatter;
-  if (options.preParsed !== undefined) {
-    parsed = options.preParsed;
+  let parsed: ParsedDocument;
+  if (options.document !== undefined) {
+    parsed = options.document;
   } else {
     try {
-      parsed = readFrontmatter(docPath);
+      parsed = readFrontmatterDoc(docPath);
     } catch (err) {
       if (err instanceof PortableInputError) {
         return failure(docPath, contract, null, portableArtifactKind(err), err.message);
@@ -778,7 +813,7 @@ export function validateArtifact(
   return validateExtracted(docPath, contract, values, metadata, warnings, options.semanticModel);
 }
 
-export { readFrontmatter };
+export { readFrontmatterDoc, readYamlDoc };
 
 function portableArtifactKind(error: PortableInputError): string {
   if (error.code === "invalid_utf8") return "artifact_invalid_utf8";

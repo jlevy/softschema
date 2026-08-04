@@ -23,7 +23,7 @@ test; see the parity development process in [development.md](development.md).
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
 | `errors` | Engine-neutral structural error records and ajv normalization |
-| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic` |
+| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, and the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a compiled schema |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |

@@ -18,13 +18,15 @@ from softschema import (
     clear_validator_cache,
     compile_model,
     parse_schema_metadata,
+    read_frontmatter_doc,
+    read_yaml_doc,
     validate_artifact,
     validate_semantic,
     validate_structural,
     validate_values,
 )
 from softschema import validate as validate_module
-from softschema._portable import parse_yaml
+from softschema._portable import PortableInputError, parse_yaml
 
 
 class SampleModel(BaseModel):
@@ -81,6 +83,8 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "compile_model",
         "infer_envelope_key",
         "parse_schema_metadata",
+        "read_frontmatter_doc",
+        "read_yaml_doc",
         "regenerate",
         "validate_artifact",
         "validate_semantic",
@@ -609,17 +613,20 @@ def test_validate_artifact_uses_preread_pure_yaml_without_reopening(tmp_path: Pa
     """A pure-yaml artifact honours a pre-parsed document too.
 
     Both profiles take the same parameter: a caller holding the parsed root should never
-    have to know which profile it is on to avoid a second parse.
+    have to know which profile it is on to avoid a second parse. No `envelope_key`, so
+    this also covers the rule that separates the profiles: the root minus the metadata
+    block IS the payload.
     """
     contract = Contract(
         id="example:Sample/v1",
         model=SampleModel,
-        envelope_key="sample",
         profile=SchemaProfile.pure_yaml,
     )
     preread = {
         "softschema": {"contract": "example:Sample/v1"},
-        "sample": {"name": "hello", "direction": "up", "delta": 1.5},
+        "name": "hello",
+        "direction": "up",
+        "delta": 1.5,
     }
 
     result = validate_artifact(
@@ -628,6 +635,24 @@ def test_validate_artifact_uses_preread_pure_yaml_without_reopening(tmp_path: Pa
 
     assert result.ok
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_document_readers_apply_portable_yaml_rules(tmp_path: Path) -> None:
+    """The public readers are what make a pre-parsed `document` equivalent to a disk read.
+
+    A caller who decodes with a host YAML library instead loses these rules silently, so
+    the readers must keep enforcing them.
+    """
+    merge_key_doc = "defaults: &d\n  name: hello\nsample:\n  <<: *d\n"
+    yaml_path = tmp_path / "merge.yaml"
+    yaml_path.write_text(merge_key_doc)
+    md_path = tmp_path / "merge.md"
+    md_path.write_text(f"---\n{merge_key_doc}---\n\nbody\n")
+
+    for reader, path in ((read_yaml_doc, yaml_path), (read_frontmatter_doc, md_path)):
+        with pytest.raises(PortableInputError) as caught:
+            reader(path)
+        assert caught.value.code == "yaml_merge_key"
 
 
 @pytest.mark.parametrize(

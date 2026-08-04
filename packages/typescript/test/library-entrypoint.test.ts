@@ -80,6 +80,8 @@ describe("library entrypoint (issue #16)", () => {
       "compileSchema",
       "inferEnvelopeKey",
       "parseSchemaMetadata",
+      "readFrontmatterDoc",
+      "readYamlDoc",
       "regenerate",
       "softField",
       "validateArtifact",

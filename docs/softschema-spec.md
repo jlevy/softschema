@@ -121,6 +121,15 @@ Those ceilings only answered whether a hostile document could exhaust the parser
 softschema reads artifacts its own callers just wrote; a cap that can only fire after
 the artifact is written destroys completed work rather than rejecting bad input.
 
+These rules bind when an implementation decodes an artifact.
+An implementation may let a caller supply a document root it already decoded, so the
+artifact is not parsed twice; such a root is trusted as-is and is not re-checked against
+these rules.
+An implementation that offers this must also publish the readers that decode
+a document under them, so “parse it yourself” does not mean “lose the guarantees”: a
+root decoded by a host YAML library directly may validate in one implementation and be
+rejected by another reading the same file.
+
 For `frontmatter-md`, the opening and closing delimiters begin at column one and contain
 `---` plus optional trailing whitespace.
 An indented `---` is YAML content, so a block scalar may contain it without ending

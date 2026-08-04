@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { Contract } from "./models.js";
 import { softFieldMeta } from "./softField.js";
 import {
-  readFrontmatter,
+  readFrontmatterDoc,
   validateArtifact,
   validateSemantic,
   validateStructural,
@@ -140,10 +140,10 @@ describe("validateArtifact: frontmatter_not_mapping", () => {
     // Reading a non-mapping document from disk is a parse_error (see the ss-7cbb tests
     // below, matching Python's fmf_read). The frontmatter_not_mapping kind is reached
     // only when a caller supplies an already-parsed non-mapping value (Python parity:
-    // validate_artifact(..., frontmatter=[...]) → frontmatter_not_mapping).
+    // validate_artifact(..., document=[...]) → frontmatter_not_mapping).
     const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
     const result = validateArtifact(doc, contract({ envelopeKey: "sample" }), {
-      preParsed: { hasFence: true, value: [1, 2, 3] },
+      document: { hasFence: true, value: [1, 2, 3] },
     });
     expect(result.ok).toBe(false);
     const err = result.structural as { errors: { kind: string }[] };
@@ -208,16 +208,16 @@ describe("validateArtifact: missing/unreadable document file", () => {
 });
 
 describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
-  test("readFrontmatter throws YamlParseError on a list frontmatter", () => {
+  test("readFrontmatterDoc throws YamlParseError on a list frontmatter", () => {
     const doc = tmpFile("doc.md", "---\n- a\n- b\n---\nbody\n");
-    expect(() => readFrontmatter(doc)).toThrow(YamlParseError);
-    expect(() => readFrontmatter(doc)).toThrow("got list");
+    expect(() => readFrontmatterDoc(doc)).toThrow(YamlParseError);
+    expect(() => readFrontmatterDoc(doc)).toThrow("got list");
   });
 
-  test("readFrontmatter throws YamlParseError on a scalar frontmatter", () => {
+  test("readFrontmatterDoc throws YamlParseError on a scalar frontmatter", () => {
     const doc = tmpFile("doc.md", "---\njust a string\n---\nbody\n");
-    expect(() => readFrontmatter(doc)).toThrow(YamlParseError);
-    expect(() => readFrontmatter(doc)).toThrow("got str");
+    expect(() => readFrontmatterDoc(doc)).toThrow(YamlParseError);
+    expect(() => readFrontmatterDoc(doc)).toThrow("got str");
   });
 
   test("validateArtifact returns yaml_parse_error for non-mapping frontmatter", () => {

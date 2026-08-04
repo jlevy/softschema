@@ -166,13 +166,26 @@ describe("pure-yaml metadata rules", () => {
   });
 });
 
-describe("validateArtifact preParsed (single read)", () => {
-  test("uses pre-parsed frontmatter without reopening the file", () => {
-    // A nonexistent path proves the document is not re-read when preParsed is supplied.
+describe("validateArtifact document (single read)", () => {
+  test("uses a pre-parsed frontmatter root without reopening the file", () => {
+    // A nonexistent path proves the document is not re-read when `document` is supplied.
     const result = validateArtifact("/does/not/exist.md", mkContract({ envelopeKey: "payload" }), {
-      preParsed: {
+      document: {
         hasFence: true,
         value: { softschema: { contract: "t:X/v1" }, payload: { name: "hi" } },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.values).toEqual({ name: "hi" });
+  });
+
+  test("uses a pre-parsed pure-yaml root without reopening the file", () => {
+    // No envelopeKey, so this also covers the rule that separates the profiles: the root
+    // minus the metadata block IS the payload.
+    const result = validateArtifact("/does/not/exist.yaml", mkContract({ profile: "pure-yaml" }), {
+      document: {
+        hasFence: false,
+        value: { softschema: { contract: "t:X/v1" }, name: "hi" },
       },
     });
     expect(result.ok).toBe(true);
