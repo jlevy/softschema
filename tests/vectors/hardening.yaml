@@ -4,7 +4,6 @@
 artifact_input:
   - { id: missing, source: missing, outcome: input_error, code: artifact_unreadable }
   - { id: invalid_utf8, source: invalid_utf8, outcome: input_error, code: artifact_invalid_utf8 }
-  - { id: too_large, source: too_large, outcome: input_error, code: artifact_too_large }
   - { id: malformed_yaml, text: "movie: [", outcome: invalid, code: yaml_parse_error }
 
 frontmatter:

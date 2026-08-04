@@ -330,7 +330,6 @@ function buildResult(args: {
   const inputCodes = new Set([
     "artifact_unreadable",
     "artifact_invalid_utf8",
-    "artifact_too_large",
   ]);
   const result = {
     contract: contractToOutput(contract),
@@ -786,6 +785,5 @@ export { readFrontmatter };
 
 function portableArtifactKind(error: PortableInputError): string {
   if (error.code === "invalid_utf8") return "artifact_invalid_utf8";
-  if (error.code === "input_too_large") return "artifact_too_large";
   return error.code;
 }
