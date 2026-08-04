@@ -599,9 +599,7 @@ def test_validate_artifact_uses_preread_frontmatter_without_reopening(tmp_path: 
         "sample": {"name": "hello", "direction": "up", "delta": 1.5},
     }
 
-    result = validate_artifact(
-        tmp_path / "does-not-exist.md", contract=contract, document=preread
-    )
+    result = validate_artifact(tmp_path / "does-not-exist.md", contract=contract, document=preread)
 
     assert result.ok
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
