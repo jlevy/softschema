@@ -169,6 +169,16 @@ free-form mappings are unaffected.
 The overlay is validation-time only; compiled schemas never change.
 `validate_structural` exposes the same behavior via its `strict_extras` keyword.
 
+Compiling a schema is a pure function of the schema text and `strict_extras`, so
+`validate_structural` memoizes it rather than reparsing and recompiling on every call.
+The cache is keyed on the schema text itself, not on the file’s path or stat, so a
+regenerated schema can never be served from a stale entry and identical bytes at two
+paths share one entry.
+Validation that passes `resources` builds a fresh validator, because that mapping is
+neither hashable nor cheap to fingerprint, and compile failures are not cached.
+`clear_validator_cache` drops every entry, for a long-lived process that regenerates
+compiled schemas in place; ordinary callers never need it.
+
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
 a structured-output adapter, a fixture).
