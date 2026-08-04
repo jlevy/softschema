@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from softschema import (
     Contracts,
     SchemaProfile,
     SchemaStatus,
+    clear_validator_cache,
     compile_model,
     parse_schema_metadata,
     validate_artifact,
@@ -75,6 +77,7 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "StructuralResult",
         "ValidationResult",
         "WarningCode",
+        "clear_validator_cache",
         "compile_model",
         "infer_envelope_key",
         "parse_schema_metadata",
@@ -664,21 +667,22 @@ def test_repeated_validation_reuses_one_compiled_validator(
     Recompiling per call — parse, dialect check, enforced overlay, registry
     crawl — dominated large suites well ahead of the actual validation work.
     """
+    clear_validator_cache()
     schema = tmp_path / "sample.schema.yaml"
     _write_schema(schema, required_field="name")
 
-    reads: list[Path] = []
-    original = validate_module._read_yaml
+    parses: list[str] = []
+    original = parse_yaml
 
-    def counting_read(path: Path) -> Any:
-        reads.append(Path(path))
-        return original(path)
+    def counting_parse(text: str) -> Any:
+        parses.append(text)
+        return original(text)
 
-    monkeypatch.setattr(validate_module, "_read_yaml", counting_read)
+    monkeypatch.setattr(validate_module, "parse_yaml", counting_parse)
     for _ in range(5):
         assert validate_structural({"name": "ok"}, schema).ok
 
-    assert reads.count(schema) <= 1, "compiled schema should be parsed at most once"
+    assert parses.count(schema.read_text()) == 1, "compiled schema should be parsed once"
 
 
 def test_rewriting_a_schema_is_not_served_from_the_cache(tmp_path: Path) -> None:
@@ -688,12 +692,83 @@ def test_rewriting_a_schema_is_not_served_from_the_cache(tmp_path: Path) -> None
     assert validate_structural({"name": "ok"}, schema).ok
     assert not validate_structural({"other": "ok"}, schema).ok
 
-    # Recompiled with a different required field; size differs, so the entry
-    # is invalidated even on a filesystem with coarse mtime granularity.
     _write_schema(schema, required_field="other_name")
 
     assert validate_structural({"other_name": "ok"}, schema).ok
     assert not validate_structural({"name": "ok"}, schema).ok
+
+
+def test_same_size_rewrite_with_preserved_mtime_is_not_served_from_the_cache(
+    tmp_path: Path,
+) -> None:
+    """Content decides the entry, so no stat pair can alias two schemas.
+
+    A key of (path, mtime, size) served a stale validator here: the rewrite is
+    the same length, and restoring the original mtime is what ``cp -p``,
+    ``rsync -t``, ``tar -x``, and a restored CI cache all do.
+    """
+    clear_validator_cache()
+    schema = tmp_path / "sample.schema.yaml"
+    _write_schema(schema, required_field="aaaa")
+    before = schema.stat()
+    assert validate_structural({"aaaa": "ok"}, schema).ok
+
+    _write_schema(schema, required_field="cccc")  # identical length
+    os.utime(schema, ns=(before.st_mtime_ns, before.st_mtime_ns))
+    after = schema.stat()
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+
+    assert validate_structural({"cccc": "ok"}, schema).ok
+    assert not validate_structural({"aaaa": "ok"}, schema).ok
+
+
+def test_identical_schemas_at_two_paths_share_one_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keying on content means a copied schema costs nothing to compile twice."""
+    clear_validator_cache()
+    first = tmp_path / "first.schema.yaml"
+    second = tmp_path / "second.schema.yaml"
+    _write_schema(first, required_field="name")
+    _write_schema(second, required_field="name")
+
+    parses: list[str] = []
+    original = parse_yaml
+
+    def counting_parse(text: str) -> Any:
+        parses.append(text)
+        return original(text)
+
+    monkeypatch.setattr(validate_module, "parse_yaml", counting_parse)
+    assert validate_structural({"name": "ok"}, first).ok
+    assert validate_structural({"name": "ok"}, second).ok
+
+    assert parses.count(first.read_text()) == 1
+
+
+def test_clear_validator_cache_forces_a_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The escape hatch exists for processes that regenerate schemas in place."""
+    clear_validator_cache()
+    schema = tmp_path / "sample.schema.yaml"
+    _write_schema(schema, required_field="name")
+    assert validate_structural({"name": "ok"}, schema).ok
+
+    parses: list[str] = []
+    original = parse_yaml
+
+    def counting_parse(text: str) -> Any:
+        parses.append(text)
+        return original(text)
+
+    monkeypatch.setattr(validate_module, "parse_yaml", counting_parse)
+    assert validate_structural({"name": "ok"}, schema).ok
+    assert parses == [], "a warm entry should not reparse"
+
+    clear_validator_cache()
+    assert validate_structural({"name": "ok"}, schema).ok
+    assert parses.count(schema.read_text()) == 1
 
 
 def test_strict_extras_is_part_of_the_cache_key(tmp_path: Path) -> None:

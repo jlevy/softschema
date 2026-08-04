@@ -98,18 +98,30 @@ class ArtifactValidationResult:
         return [warning.code for warning in self.warnings]
 
 
+class _SchemaRootNotAMapping(Exception):
+    """A compiled schema file did not parse to a mapping."""
+
+
+_VALIDATOR_CACHE_SIZE = 256
+"""Compiled validators to retain.
+
+Sized well above the number of distinct compiled schemas a large run touches — a
+downstream suite validated 521 documents against far fewer schemas — so a whole
+run reuses entries rather than evicting them.
+"""
+
+
 def _build_validator(
-    schema_yaml_path: Path,
+    schema_text: str,
     strict_extras: bool,
     resources: Mapping[str, dict[str, Any]] | None,
 ) -> Draft202012Validator:
-    """Read a compiled schema and build the validator that enforces it.
+    """Build the validator a compiled schema describes.
 
-    Every step here is a pure function of the schema file's bytes plus
-    ``strict_extras`` and ``resources`` — nothing depends on the document
-    being validated.
+    Every step here is a pure function of ``schema_text`` plus ``strict_extras``
+    and ``resources`` — nothing depends on the document being validated.
     """
-    schema = _read_yaml(schema_yaml_path)
+    schema = parse_yaml(schema_text)
     if not isinstance(schema, dict):
         raise _SchemaRootNotAMapping
     _check_patterns(schema)
@@ -127,30 +139,38 @@ def _build_validator(
     return Draft202012Validator(schema, registry=registry.crawl())
 
 
-class _SchemaRootNotAMapping(Exception):
-    """A compiled schema file did not parse to a mapping."""
-
-
-@lru_cache(maxsize=256)
-def _cached_validator(
-    resolved_path: str,
-    _mtime_ns: int,
-    _size: int,
-    strict_extras: bool,
-) -> Draft202012Validator:
+@lru_cache(maxsize=_VALIDATOR_CACHE_SIZE)
+def _cached_validator(schema_text: str, strict_extras: bool) -> Draft202012Validator:
     """Memoize :func:`_build_validator` for the no-``resources`` case.
 
-    A compiled schema is a build output, so parsing it, checking it against
-    the dialect, applying the ``enforced`` overlay, and crawling the registry
-    produce the same validator every time. Doing that work per validation call
-    dominated large suites: one schema file was recompiled 137 times in a
-    single run, and schema compilation accounted for roughly a quarter of a
-    consumer's total test wall clock.
+    A compiled schema is a build output, so parsing it, checking it against the
+    dialect, applying the ``enforced`` overlay, and crawling the registry produce
+    the same validator every time. Doing that work per validation call dominated
+    large suites: one schema file was recompiled 137 times in a single run, and
+    schema compilation accounted for roughly a quarter of a consumer's total test
+    wall clock.
 
-    Keyed on the file's identity *and* its mtime and size, so regenerating a
-    schema invalidates the entry rather than serving a stale validator.
+    Keyed on the schema text itself rather than on the file's path and stat, so a
+    rewritten schema can never be served from a stale entry: a file whose mtime
+    and size both survive an edit — a same-length rewrite, or any restore that
+    preserves timestamps, such as ``cp -p``, ``rsync -t``, ``tar -x``, or a CI
+    cache — still hashes differently and misses. Two paths holding identical
+    bytes correctly share one entry.
+
+    Reading and hashing the text is negligible against what a hit avoids: the
+    YAML parse, the dialect check, the overlay, and the registry crawl.
     """
-    return _build_validator(Path(resolved_path), strict_extras, None)
+    return _build_validator(schema_text, strict_extras, None)
+
+
+def clear_validator_cache() -> None:
+    """Drop every memoized validator.
+
+    Only needed by a long-lived process that regenerates compiled schemas in
+    place, such as a watch mode or a language server; ordinary callers never have
+    to call this, because a rewritten schema misses the cache on its own.
+    """
+    _cached_validator.cache_clear()
 
 
 def _validator_for(
@@ -159,20 +179,13 @@ def _validator_for(
     resources: Mapping[str, dict[str, Any]] | None,
 ) -> Draft202012Validator:
     """Return a validator, reusing a cached one when it is safe to do so."""
+    schema_text = read_utf8(schema_yaml_path)
     if resources:
         # `resources` is a plain mapping of dicts, so it is neither hashable
         # nor cheap to fingerprint. Registry-backed validation is the rare
         # path; build it fresh rather than risk a wrong cache key.
-        return _build_validator(schema_yaml_path, strict_extras, resources)
-    try:
-        stat = schema_yaml_path.stat()
-    except OSError:
-        # Let the uncached path raise, so the caller maps the failure to the
-        # same structured error it always has.
-        return _build_validator(schema_yaml_path, strict_extras, None)
-    return _cached_validator(
-        str(schema_yaml_path.resolve()), stat.st_mtime_ns, stat.st_size, strict_extras
-    )
+        return _build_validator(schema_text, strict_extras, resources)
+    return _cached_validator(schema_text, strict_extras)
 
 
 def validate_structural(
