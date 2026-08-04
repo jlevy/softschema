@@ -19,11 +19,30 @@ from ruamel.yaml.events import (
 )
 from ruamel.yaml.nodes import ScalarNode
 
-MAX_INPUT_BYTES = 1_048_576
-MAX_DEPTH = 64
-MAX_NODES = 100_000
-MAX_SCALAR_BYTES = 262_144
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
+"""Largest integer that survives a round trip through a JS number."""
+
+MAX_DEPTH = 64
+"""Simultaneously open collections, including the root.
+
+A portability rule, not a resource guard, which is why it survives while the input,
+node, and scalar ceilings did not. Those three only answered whether a hostile document
+could exhaust the parser, and softschema reads artifacts its own callers just wrote.
+Depth answers a different question: how deep a document still means the same thing in
+both runtimes.
+
+Without an explicit rule the host stack decides, and the two hosts disagree by an order
+of magnitude. CPython's default recursion limit of 1,000 lets this constructor reach
+depth 491 from an empty caller stack — less from a real one, since the caller's own
+frames come out of the same budget — while V8 parses past 10,000. A document between
+those two bounds would be valid in TypeScript and a crash in Python, which is exactly
+what the shared vectors exist to prevent.
+
+64 is far above any real artifact and leaves roughly 7x headroom under the measured
+ceiling, so the check below always fires before the recursion does. Raising it is safe
+only while that headroom holds; past a few hundred the Python guard stops being reachable
+and `RecursionError` takes over.
+"""
 
 
 def _construct_timestamp_as_string(_constructor: SafeConstructor, node: ScalarNode) -> str:
@@ -48,12 +67,7 @@ class PortableInputError(ValueError):
 
 
 def read_utf8(path: Path) -> str:
-    """Read one modest UTF-8 file after checking its byte size."""
-    size = path.stat().st_size
-    if size > MAX_INPUT_BYTES:
-        raise PortableInputError(
-            "input_too_large", f"input is {size} bytes; limit is {MAX_INPUT_BYTES}"
-        )
+    """Read one UTF-8 artifact."""
     try:
         return path.read_bytes().decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
@@ -65,7 +79,6 @@ def parse_yaml(text: str) -> Any:
     yaml = YAML(typ="safe")
     yaml.Constructor = _PortableConstructor
     stack: list[tuple[str, bool]] = []
-    nodes = 0
     has_alias = False
 
     def consume_parent_slot() -> None:
@@ -80,14 +93,10 @@ def parse_yaml(text: str) -> Any:
             if getattr(event, "tag", None) is not None:
                 raise PortableInputError("yaml_custom_tag", "explicit YAML tags are not supported")
             if isinstance(event, ScalarEvent):
-                nodes += 1
-                if len(event.value.encode("utf-8", errors="surrogatepass")) > MAX_SCALAR_BYTES:
-                    raise PortableInputError("yaml_limit", "YAML scalar exceeds the size limit")
                 if stack and stack[-1] == ("map", True) and event.value == "<<":
                     raise PortableInputError("yaml_merge_key", "YAML merge keys are not supported")
                 consume_parent_slot()
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
-                nodes += 1
                 consume_parent_slot()
                 stack.append(
                     ("map", True) if isinstance(event, MappingStartEvent) else ("seq", False)
@@ -96,13 +105,17 @@ def parse_yaml(text: str) -> Any:
                     raise PortableInputError("yaml_limit", "YAML nesting exceeds the depth limit")
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
-            if nodes > MAX_NODES:
-                raise PortableInputError("yaml_limit", "YAML exceeds the node limit")
         if has_alias:
             raise PortableInputError("yaml_alias", "YAML aliases and anchors are not supported")
         value = yaml.load(text)
     except PortableInputError:
         raise
+    except RecursionError as exc:
+        # The preflight above rejects anything past MAX_DEPTH, so construction should
+        # never recurse this far. Mirror the TypeScript RangeError handler anyway: a
+        # caller already deep in its own stack can exhaust the budget at a legal depth,
+        # and that has to stay a structured result rather than escape validate_artifact.
+        raise PortableInputError("yaml_limit", "YAML nesting exhausted the parser stack") from exc
     except YAMLError as exc:
         code = "yaml_duplicate_key" if "duplicate key" in str(exc).lower() else "yaml_parse_error"
         raise PortableInputError(code, str(exc)) from exc
@@ -113,13 +126,9 @@ def parse_yaml(text: str) -> Any:
 
 
 def _check_value(root: Any) -> None:
-    stack: list[tuple[Any, int]] = [(root, 0)]
-    nodes = 0
+    stack: list[Any] = [root]
     while stack:
-        value, depth = stack.pop()
-        nodes += 1
-        if nodes > MAX_NODES or depth > MAX_DEPTH:
-            raise PortableInputError("yaml_limit", "YAML value exceeds the structure limit")
+        value = stack.pop()
         if value is None or isinstance(value, bool):
             continue
         if isinstance(value, str):
@@ -144,13 +153,13 @@ def _check_value(root: Any) -> None:
                 "host-native date and datetime values are not portable; use an ISO string",
             )
         if isinstance(value, list):
-            stack.extend((item, depth + 1) for item in value)
+            stack.extend(value)
             continue
         if isinstance(value, dict):
             for key, item in value.items():
                 if not isinstance(key, str):
                     raise PortableInputError("yaml_non_string_key", "mapping keys must be strings")
-                stack.append((item, depth + 1))
+                stack.append(item)
             continue
         raise PortableInputError(
             "yaml_unsupported_scalar", f"unsupported YAML value: {type(value).__name__}"

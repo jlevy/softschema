@@ -519,8 +519,6 @@ def test_shared_artifact_input_vectors(tmp_path: Path) -> None:
         path = tmp_path / f"{case['id']}.yaml"
         if case.get("source") == "invalid_utf8":
             path.write_bytes(b"value: \xff")
-        elif case.get("source") == "too_large":
-            path.write_bytes(b"x" * 1_048_577)
         elif "text" in case:
             path.write_text(case["text"])
         result = validate_artifact(path, contract=contract)
