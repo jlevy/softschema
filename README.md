@@ -130,7 +130,7 @@ decides: optimizing a program, tuning prompts against an eval, comparing librari
 Each iteration produces a record with two halves that resist a single format: numbers a
 tool must read, and reasoning only the author can write.
 In one project’s performance work, each of 51 experiments is one artifact whose enforced
-frontmatter carries the hypothesis id, the host and subject fingerprints, the measured
+frontmatter carries the hypothesis ID, the host and subject fingerprints, the measured
 medians with confidence intervals, and a verdict drawn from a fixed set, while the
 Markdown body explains what the profiler suggested, what was tried, and why the numbers
 meant what they said.
