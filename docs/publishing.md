@@ -103,6 +103,21 @@ For each release of version `X.Y.Z`:
    the next step create the tag: passing `--target` with the merge-commit SHA to
    `gh release create` creates the tag at that commit as part of publishing the release.
 
+   Two traps in that situation, both verified in a Claude Code Cloud session:
+
+   - **`git push --dry-run` is not a test.** It reports `[new tag]` for a tag ref the
+     server then refuses with `403`, because the dry run stops at ref advertisement,
+     before receive-pack.
+     Never conclude from it that the real push will work.
+   - **`gh` may need the direct channel.** Where a session proxy intercepts GitHub, `gh`
+     is answered by the proxy rather than GitHub, and can fail while the network is fine
+     — `gh auth status` in particular reports a valid token as invalid, because it
+     resolves identity over GraphQL. Diagnose and fix with
+     `tbd shortcut setup-github-cli` (“Proxied Remote Sessions”): a response carrying an
+     `x-github-request-id` header came from GitHub, one without it came from the proxy.
+     The remedy is a `NO_PROXY` scoped to GitHub hosts only, leaving `HTTPS_PROXY` set
+     for all other traffic and TLS verification untouched.
+
 6. **Create the GitHub release** (this triggers the publish workflow, which publishes to
    both PyPI and npm over OIDC in one run):
 
