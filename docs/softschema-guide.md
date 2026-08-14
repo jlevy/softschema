@@ -708,6 +708,92 @@ A few patterns help agents do the right thing:
   `status: permissive`. Once the agent emits consistently good documents, flip to
   `enforced`.
 
+## Playbook: Record a Research Loop
+
+A research loop is any process that repeatedly proposes an idea, measures it, and
+decides: optimizing a program’s performance, tuning prompts against an eval, comparing
+libraries. Each iteration produces a record with two halves.
+An accept rule and a roll-up report must read the numbers, while the hypothesis and the
+interpretation are prose only the author can write.
+The failures are worth as much as the successes, but only if they stay findable.
+
+Give each iteration one artifact.
+Promote the values the loop’s own tooling consumes; leave the reasoning in the body:
+
+```markdown
+---
+softschema:
+  contract: myproj.perf:Experiment/v1
+  schema: experiment.schema.yaml
+  envelope: experiment
+  status: enforced
+experiment:
+  id: exp-012
+  hypotheses:
+    - H7
+  method:
+    control: serial directory walk
+    candidate: bounded parallel producer
+    trials: 12
+  results:
+    - job: cold-scan
+      metrics:
+        wall_ns:
+          change_pct: -12.0
+          ci95_low_pct: -16.5
+          ci95_high_pct: -8.4
+  verdict:
+    decision: accepted
+    reason: Interval clear of zero and past the 3% bar for 40 lines of code.
+---
+# Bounded parallel producer
+
+## Hypothesis
+
+The walk is serial, so one core works while nine idle. Feeding a single index consumer
+from a bounded pool of directory readers should cut wall time several-fold.
+
+## What the numbers said
+
+The interval is clear of zero at every trial count we ran, and total CPU stayed flat,
+so the gain is parallelism rather than less work.
+
+## Verdict
+
+**ACCEPTED:** the paired median beats the 3% bar and the change adds no new failure
+mode.
+```
+
+This pattern comes from a real loop of 51 CLI performance experiments, whose entire rig
+is a model, a recorder, and a regenerated ledger.
+Four habits make the record compound rather than accumulate:
+
+- **Compile the contract from a model.** The Pydantic (or Zod) model is the source of
+  truth, and the model’s field descriptions become the documentation every artifact
+  ships with. Run `--check` in CI to catch drift:
+
+  ```bash
+  softschema compile myproj.perf.experiment:Experiment \
+    --out experiment.schema.yaml \
+    --contract myproj.perf:Experiment/v1 --check
+  ```
+
+- **Record measurements mechanically; ask the operator only for judgment.** A small
+  recorder lifts medians and intervals straight from the raw run output into the
+  frontmatter, then prompts for what a measurement cannot supply: the hypothesis, the
+  complexity cost, the verdict, and one sentence of reasoning.
+  Numbers that are never retyped are never mistyped.
+
+- **Regenerate the ledger from validated artifacts.** The roll-up report is a view, not
+  a document: it reads each payload through `softschema validate`, so an artifact that
+  stops matching the contract fails the build instead of quietly contributing a wrong
+  row. Because `decision: rejected` is an ordinary value rather than a note buried in
+  prose, the ledger can also list the dead ends nobody should re-run.
+
+- **Let the record be the loop’s memory.** An agent resuming the loop months later reads
+  back what was tried and why it was dropped without re-running anything, so the loop
+  survives the session that produced it.
+
 ## Common Mistakes
 
 - **Parsing the Markdown body.** Body tables and prose exist for human readers.

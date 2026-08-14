@@ -123,6 +123,33 @@ Keeping prose and structured values in one artifact is more convenient and
 context-efficient. A reader (human or agent) has only one place to look, and information
 can stay as loose prose until a downstream consumer needs it in more formal schemas.
 
+## Example: Recording a Research Loop
+
+A research loop is any process that repeatedly proposes an idea, measures it, and
+decides: optimizing a program, tuning prompts against an eval, comparing libraries.
+Each iteration produces a record with two halves that resist a single format: numbers a
+tool must read, and reasoning only the author can write.
+In one project’s performance work, each of 51 experiments is one artifact whose enforced
+frontmatter carries the hypothesis ID, the host and subject fingerprints, the measured
+medians with confidence intervals, and a verdict drawn from a fixed set, while the
+Markdown body explains what the profiler suggested, what was tried, and why the numbers
+meant what they said.
+Code reads the YAML to apply the accept rule and regenerate a ledger; humans and agents
+read the prose.
+
+- **Negative results survive.** A refuted hypothesis costs one artifact and stays
+  queryable, so the ledger can lead with its failures, which are the most reusable part
+  of a research record and the part loose session notes never retain.
+- **Reports become views.** The ledger is regenerated from validated artifacts, so it
+  cannot drift from the record; an artifact that stops matching the contract fails the
+  build instead of quietly contributing a wrong row.
+- **Agents get durable memory.** A session picking the loop up months later reads back
+  what was tried and why it was dropped, without re-running anything.
+
+See
+[Playbook: Record a Research Loop](docs/softschema-guide.md#playbook-record-a-research-loop)
+for the artifact shape and the four habits that keep the record and the report in sync.
+
 ## The Artifact Shape
 
 The default shape is Markdown with YAML frontmatter.
