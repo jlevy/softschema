@@ -708,6 +708,81 @@ A few patterns help agents do the right thing:
   `status: permissive`. Once the agent emits consistently good documents, flip to
   `enforced`.
 
+## Playbook: Record a Research Loop
+
+A research loop is any process that repeatedly proposes an idea, measures it, and
+decides: optimizing a program’s performance, tuning prompts against an eval, comparing
+libraries. Its record is exactly the mixed artifact softschema exists for.
+An accept rule and a roll-up report must read each iteration’s numbers, while the
+hypothesis and the interpretation are prose only the author can write — and the failures
+are worth as much as the successes, but only if they stay findable.
+
+Give each iteration one artifact.
+Promote the values the loop’s own tooling consumes; leave the reasoning in the body:
+
+```markdown
+---
+softschema:
+  contract: myproj.perf:Experiment/v1
+  schema: experiment.schema.yaml
+  envelope: experiment
+  status: enforced
+experiment:
+  id: exp-012
+  hypotheses: [H7]
+  method:
+    control: serial directory walk
+    candidate: bounded parallel producer
+    trials: 12
+  results:
+    - job: cold-scan
+      metrics:
+        wall_ns:
+          change_pct: -12.0
+          ci95_low_pct: -16.5
+          ci95_high_pct: -8.4
+  verdict:
+    decision: accepted
+    reason: Interval clear of zero and past the 3% bar for 40 lines of code.
+---
+# Bounded parallel producer
+
+## Hypothesis
+
+The walk is serial, so one core works while nine idle...
+
+## What the numbers said
+
+...what surprised us, and why the number means what we say it means.
+
+## Verdict
+
+**ACCEPTED** — ...
+```
+
+This pattern comes from a real loop — fifty-odd experiments of CLI performance work
+whose entire rig was a few prompts of agent work.
+The habits that made it compound:
+
+- **Compile the contract from a model.** The Pydantic (or Zod) model is the source of
+  truth;
+  `softschema compile myproj.perf.experiment:Experiment --out experiment.schema.yaml --contract myproj.perf:Experiment/v1`
+  with `--check` in CI catches drift, and the model’s field descriptions become the
+  documentation every artifact ships with.
+- **Record measurements mechanically; ask the operator only for judgment.** A small
+  recorder lifts medians and intervals straight from the raw run output into the
+  frontmatter and prompts for what a measurement cannot supply: the hypothesis, the
+  complexity cost, the verdict, and one sentence of reasoning.
+- **Regenerate the ledger from validated artifacts.** The roll-up report of every
+  experiment is a view, not a document: it reads each payload through
+  `softschema validate`, so an artifact that stops matching the contract fails the build
+  instead of quietly contributing a wrong row.
+  And because `decision: rejected` is a first-class value, the ledger can lead with the
+  dead ends nobody should re-run.
+- **Let the record be the loop’s memory.** An agent resuming the loop months later reads
+  back what was tried and why it was dropped without re-running anything; the loop
+  survives the session that produced it.
+
 ## Common Mistakes
 
 - **Parsing the Markdown body.** Body tables and prose exist for human readers.

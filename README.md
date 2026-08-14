@@ -123,6 +123,34 @@ Keeping prose and structured values in one artifact is more convenient and
 context-efficient. A reader (human or agent) has only one place to look, and information
 can stay as loose prose until a downstream consumer needs it in more formal schemas.
 
+## Example: Recording a Research Loop
+
+One use case where soft schemas punch far above their weight is a research loop: any
+process that repeatedly proposes an idea, measures it, and decides.
+Each iteration’s record has two halves that resist a single format: values a tool must
+read, and reasoning only the author can write.
+In one project’s performance work, every experiment is a soft-schema artifact whose
+enforced frontmatter carries the hypothesis id, the host and subject fingerprints, the
+measured medians with confidence intervals, and a verdict from a fixed set (`accepted`,
+`rejected`, `superseded`, ...), while the Markdown body explains what the profiler
+suggested, what was tried, and why the numbers meant what they said.
+The accept rule and the roll-up ledger consume the YAML; humans and agents read the
+prose. The whole rig — a Pydantic model, a recorder, a regenerated ledger — took a few
+prompts to build, because no piece of it needed inventing.
+
+- **Negative results survive.** A refuted hypothesis costs one artifact and stays
+  queryable, so the ledger can lead with its failures — the most reusable part of a
+  research record, and the part that never survives loose session notes.
+- **Reports become views.** The ledger is regenerated from validated artifacts, so it
+  cannot drift from the record; an artifact that stops matching the contract fails the
+  build instead of quietly contributing a wrong row.
+- **Agents get durable memory.** A session picking the loop up months later reads back
+  what was tried and why it was dropped, without re-running anything.
+
+See
+[Playbook: Record a Research Loop](docs/softschema-guide.md#playbook-record-a-research-loop)
+for the workflow.
+
 ## The Artifact Shape
 
 The default shape is Markdown with YAML frontmatter.
