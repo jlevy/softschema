@@ -63,7 +63,7 @@ Documentation rules:
 - Include the standard documentation footer in repo docs.
   Do not add it to authored softschema example artifacts.
 
-<!-- BEGIN TBD INTEGRATION format=f06 surface=agents-md -->
+<!-- BEGIN TBD INTEGRATION format=f07 surface=agents-md -->
 ## tbd
 
 This repository uses **tbd** for git-native issue tracking (beads), spec-driven
