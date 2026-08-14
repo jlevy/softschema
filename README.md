@@ -125,22 +125,21 @@ can stay as loose prose until a downstream consumer needs it in more formal sche
 
 ## Example: Recording a Research Loop
 
-One use case where soft schemas punch far above their weight is a research loop: any
-process that repeatedly proposes an idea, measures it, and decides.
-Each iteration’s record has two halves that resist a single format: values a tool must
-read, and reasoning only the author can write.
-In one project’s performance work, every experiment is a soft-schema artifact whose
-enforced frontmatter carries the hypothesis id, the host and subject fingerprints, the
-measured medians with confidence intervals, and a verdict from a fixed set (`accepted`,
-`rejected`, `superseded`, ...), while the Markdown body explains what the profiler
-suggested, what was tried, and why the numbers meant what they said.
-The accept rule and the roll-up ledger consume the YAML; humans and agents read the
-prose. The whole rig — a Pydantic model, a recorder, a regenerated ledger — took a few
-prompts to build, because no piece of it needed inventing.
+A research loop is any process that repeatedly proposes an idea, measures it, and
+decides: optimizing a program, tuning prompts against an eval, comparing libraries.
+Each iteration produces a record with two halves that resist a single format: numbers a
+tool must read, and reasoning only the author can write.
+In one project’s performance work, each of 51 experiments is one artifact whose enforced
+frontmatter carries the hypothesis id, the host and subject fingerprints, the measured
+medians with confidence intervals, and a verdict drawn from a fixed set, while the
+Markdown body explains what the profiler suggested, what was tried, and why the numbers
+meant what they said.
+Code reads the YAML to apply the accept rule and regenerate a ledger; humans and agents
+read the prose.
 
 - **Negative results survive.** A refuted hypothesis costs one artifact and stays
-  queryable, so the ledger can lead with its failures — the most reusable part of a
-  research record, and the part that never survives loose session notes.
+  queryable, so the ledger can lead with its failures, which are the most reusable part
+  of a research record and the part loose session notes never retain.
 - **Reports become views.** The ledger is regenerated from validated artifacts, so it
   cannot drift from the record; an artifact that stops matching the contract fails the
   build instead of quietly contributing a wrong row.
@@ -149,7 +148,7 @@ prompts to build, because no piece of it needed inventing.
 
 See
 [Playbook: Record a Research Loop](docs/softschema-guide.md#playbook-record-a-research-loop)
-for the workflow.
+for the artifact shape and the four habits that keep the record and the report in sync.
 
 ## The Artifact Shape
 

@@ -712,10 +712,10 @@ A few patterns help agents do the right thing:
 
 A research loop is any process that repeatedly proposes an idea, measures it, and
 decides: optimizing a program’s performance, tuning prompts against an eval, comparing
-libraries. Its record is exactly the mixed artifact softschema exists for.
-An accept rule and a roll-up report must read each iteration’s numbers, while the
-hypothesis and the interpretation are prose only the author can write — and the failures
-are worth as much as the successes, but only if they stay findable.
+libraries. Each iteration produces a record with two halves.
+An accept rule and a roll-up report must read the numbers, while the hypothesis and the
+interpretation are prose only the author can write.
+The failures are worth as much as the successes, but only if they stay findable.
 
 Give each iteration one artifact.
 Promote the values the loop’s own tooling consumes; leave the reasoning in the body:
@@ -729,7 +729,8 @@ softschema:
   status: enforced
 experiment:
   id: exp-012
-  hypotheses: [H7]
+  hypotheses:
+    - H7
   method:
     control: serial directory walk
     candidate: bounded parallel producer
@@ -749,38 +750,48 @@ experiment:
 
 ## Hypothesis
 
-The walk is serial, so one core works while nine idle...
+The walk is serial, so one core works while nine idle. Feeding a single index consumer
+from a bounded pool of directory readers should cut wall time several-fold.
 
 ## What the numbers said
 
-...what surprised us, and why the number means what we say it means.
+The interval is clear of zero at every trial count we ran, and total CPU stayed flat,
+so the gain is parallelism rather than less work.
 
 ## Verdict
 
-**ACCEPTED** — ...
+**ACCEPTED:** the paired median beats the 3% bar and the change adds no new failure
+mode.
 ```
 
-This pattern comes from a real loop — fifty-odd experiments of CLI performance work
-whose entire rig was a few prompts of agent work.
-The habits that made it compound:
+This pattern comes from a real loop of 51 CLI performance experiments, whose entire rig
+is a model, a recorder, and a regenerated ledger.
+Four habits make the record compound rather than accumulate:
 
 - **Compile the contract from a model.** The Pydantic (or Zod) model is the source of
-  truth;
-  `softschema compile myproj.perf.experiment:Experiment --out experiment.schema.yaml --contract myproj.perf:Experiment/v1`
-  with `--check` in CI catches drift, and the model’s field descriptions become the
-  documentation every artifact ships with.
+  truth, and the model’s field descriptions become the documentation every artifact
+  ships with. Run `--check` in CI to catch drift:
+
+  ```bash
+  softschema compile myproj.perf.experiment:Experiment \
+    --out experiment.schema.yaml \
+    --contract myproj.perf:Experiment/v1 --check
+  ```
+
 - **Record measurements mechanically; ask the operator only for judgment.** A small
   recorder lifts medians and intervals straight from the raw run output into the
-  frontmatter and prompts for what a measurement cannot supply: the hypothesis, the
+  frontmatter, then prompts for what a measurement cannot supply: the hypothesis, the
   complexity cost, the verdict, and one sentence of reasoning.
-- **Regenerate the ledger from validated artifacts.** The roll-up report of every
-  experiment is a view, not a document: it reads each payload through
-  `softschema validate`, so an artifact that stops matching the contract fails the build
-  instead of quietly contributing a wrong row.
-  And because `decision: rejected` is a first-class value, the ledger can lead with the
-  dead ends nobody should re-run.
+  Numbers that are never retyped are never mistyped.
+
+- **Regenerate the ledger from validated artifacts.** The roll-up report is a view, not
+  a document: it reads each payload through `softschema validate`, so an artifact that
+  stops matching the contract fails the build instead of quietly contributing a wrong
+  row. Because `decision: rejected` is an ordinary value rather than a note buried in
+  prose, the ledger can also list the dead ends nobody should re-run.
+
 - **Let the record be the loop’s memory.** An agent resuming the loop months later reads
-  back what was tried and why it was dropped without re-running anything; the loop
+  back what was tried and why it was dropped without re-running anything, so the loop
   survives the session that produced it.
 
 ## Common Mistakes
