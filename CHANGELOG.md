@@ -6,6 +6,34 @@ version number.
 
 ## Unreleased
 
+## v0.6.1—2026-08-14
+
+Documentation only. Both packages are unchanged in behavior, so no code, CLI surface, or
+schema output differs from v0.6.0; the release exists to ship the new guidance with the
+docs bundled in the wheel and the npm tarball.
+
+Adds a worked example of using soft schemas to record a **research loop** — any process
+that repeatedly proposes an idea, measures it, and decides, such as performance work,
+prompt tuning against an eval, or a library comparison.
+Each iteration is one artifact whose frontmatter carries the values the loop’s own
+tooling consumes (hypothesis ID, fingerprints, measured medians with confidence
+intervals, a verdict from a fixed set) while the body keeps the reasoning only the
+author can write.
+
+### Documentation
+
+- **New guide playbook, “Record a Research Loop”** (`docs/softschema-guide.md`): the
+  artifact shape as a complete annotated example, plus the four habits that keep the
+  record and its roll-up report in sync — compile the contract from a model and
+  `--check` it in CI, record measurements mechanically and ask the operator only for
+  judgment, regenerate the ledger from validated artifacts, and let the record be the
+  loop’s memory across sessions.
+- **New README section, “Example: Recording a Research Loop”**: a short subset of the
+  playbook that links to it, keeping the README a summary rather than a second copy.
+  It covers why negative results survive as queryable artifacts, why a regenerated
+  report cannot drift from the record, and why an agent resuming the loop months later
+  can read back what was tried without re-running anything.
+
 ## v0.6.0—2026-08-04
 
 Validation accepts an already-parsed document root on both profiles, not just
