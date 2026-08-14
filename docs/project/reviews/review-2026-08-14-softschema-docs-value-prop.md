@@ -9,8 +9,8 @@ author: Claude, with maintainer direction from Joshua Levy
 
 **Author:** Claude, with maintainer direction from Joshua Levy
 
-**Status:** Review complete.
-Nothing here is implemented; this document proposes the changes.
+**Status:** Review complete; PR #37 contains a focused implementation.
+See the status addendum for the disposition of each finding.
 
 **Scope:** Public presentation surfaces only: `README.md`, the opening sections of the
 guide, both package READMEs, package metadata, and the GitHub repository description.
@@ -399,6 +399,37 @@ docs-only patch release under the same rule that produced v0.6.1.
   addition; the guide’s task-based playbooks are correct for a reader who has already
   decided to adopt.
 - **`SKILL.md`’s functional description.** Skills are routed by task match.
+
+## Status Addendum
+
+**Date:** 2026-08-14
+
+PR #37 implements the findings where they improve the public explanation and records the
+two places where the current docs already address the concern:
+
+1. **Fixed: surface the agent behavior.** The README now explains the failure mode,
+   gives the authoritative-YAML rule, and names the workflows that follow from it.
+   The guide expands that rule into a six-step agent playbook.
+2. **Fixed for versioned surfaces: align descriptions.** The root README, guide, package
+   READMEs, `pyproject.toml`, and npm metadata now share the same present-state
+   description at appropriate lengths.
+   The GitHub repository description is external to this PR and can be updated after the
+   wording merges.
+3. **Fixed: describe outcomes instead of eligibility.** The README’s eligibility list is
+   replaced by explicit capabilities and concrete workflow shapes.
+   The guide retains the adoption criteria, where they help a reader make a decision.
+4. **Fixed: add workflow examples.** The README summarizes four shapes, and the guide
+   owns the fuller explanations, including what belongs in frontmatter, what remains
+   prose, and which consumer reads the payload.
+5. **Rebutted: replace the movie example.** The research-loop scenario already appears
+   before the movie artifact and is the README’s substantive use case.
+   The movie remains the compact, copyable format and CLI example because it exercises
+   more schema shapes without domain setup.
+6. **Rebutted: add more numerical evidence.** The 51-experiment source is already named
+   in the README and guide.
+   The 1,274-artifact benchmark measures validator performance, not the effect of the
+   authoring convention on agent workflows, so adding it here would weaken the
+   explanation rather than support it.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

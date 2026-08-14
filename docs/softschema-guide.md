@@ -1,8 +1,10 @@
 # softschema Guide
 
-Soft schemas are a practice for adding structure gradually to artifacts that mix human
-context and machine-readable values.
-This guide is the operational reference for humans and coding agents adopting the
+`softschema` applies gradual contracts to Markdown and YAML artifacts.
+In Markdown, consumed values live in YAML frontmatter under a named contract; the body
+remains prose. A field becomes structured only when a consumer needs it, and validation
+tightens as the shape settles.
+This guide is the operational reference for humans and coding agents adopting that
 pattern.
 
 For the exact file format and validation rules, see
@@ -21,6 +23,8 @@ To set up softschema in a repository with an agent, tell the agent:
 
 The help output points the agent to the repo-local skill install command and the bundled
 docs it should read next.
+The skill teaches an authoring rule, not just CLI syntax: YAML is authoritative for any
+value a consumer reads, and the body remains reader-facing prose.
 
 ## What softschema Is
 
@@ -85,6 +89,35 @@ prose
 
 You can stop at any step.
 Many useful artifacts stay in the middle indefinitely.
+
+## Common Workflow Shapes
+
+The pattern is useful wherever a document crosses a boundary and a consumer needs only
+part of it as data:
+
+- **Agent pipeline handoffs.** An artifact carries status, identifiers, routing
+  decisions, dependencies, and output paths in frontmatter.
+  The body explains the work, unresolved questions, and caveats.
+  An orchestrator or later agent step validates the payload before choosing what to do
+  next.
+- **Extraction and harmonization.** Each source produces an artifact with normalized
+  fields and source identifiers in frontmatter.
+  Provenance, ambiguities, and source-specific cleanup decisions stay in prose.
+  Aggregation code reads only the validated payload and can reject a malformed source
+  record at the boundary.
+- **Research and evaluation loops.** Measurements, confidence intervals, and a verdict
+  from a fixed set belong in frontmatter.
+  The hypothesis, method notes, and interpretation stay in prose.
+  Acceptance rules and roll-up reports consume the structured values; the full playbook
+  appears below.
+- **Document-backed application data.** Fields used by a UI, check, search index, or
+  build step live in frontmatter.
+  Background and long-form content stay in the body.
+  A new field acquires a contract when a component starts reading it rather than before
+  the need is known.
+
+The design test is concrete: name the consumer and the exact values it reads.
+If there is no consumer yet, leave the content as prose.
 
 ## The Basic Artifact Pattern
 
@@ -678,35 +711,49 @@ Tighten only after existing instances validate cleanly.
 
 ## Playbook: Use softschema with Agents
 
-softschema is built for documents that humans and coding agents both write.
-A few patterns help agents do the right thing:
+A coding agent’s current context is temporary; the artifacts it writes persist.
+If consumed values remain in prose, the next step or session must infer them again.
+If those values live in a validated payload, later agents and ordinary code can read
+them directly while the body preserves the reasoning behind them.
 
-- **Point the agent at the skill and docs.** When the CLI is installed:
+Explaining soft schemas therefore changes more than output formatting.
+It gives the agent a design rule it can apply while planning a workflow, choosing file
+boundaries, writing artifacts, implementing consumers, and adding CI checks.
 
-  ```bash
-  softschema skill --brief
-  softschema docs --list --json
-  softschema docs guide
-  softschema docs spec
-  softschema docs example-artifact
-  ```
+Use this sequence:
 
-  These commands print bundled material from the installed wheel; no source checkout is
-  needed.
+1. **Point the agent at the skill and bundled docs.** When the CLI is installed:
 
-- **Tell the agent to write YAML, not body tables.** The most common failure mode is an
-  agent that adds nicely-formatted Markdown tables to the body instead of populating the
-  YAML payload. The rule is one-line: structured values go in YAML; the body is
-  reader-facing only.
+   ```bash
+   softschema skill --brief
+   softschema docs --list --json
+   softschema docs guide
+   softschema docs spec
+   softschema docs example-artifact
+   ```
 
-- **Run validation in the agent’s feedback loop.** When an agent emits an artifact,
-  immediately call `softschema validate ...` and feed the structured error report back.
-  Validation failures named in JSON are more actionable than free-text “your output was
-  wrong.”
+   These commands work from the installed package; no source checkout is needed.
 
-- **Start permissive, then enforce.** When piloting agent-authored artifacts, set
-  `status: permissive`. Once the agent emits consistently good documents, flip to
-  `enforced`.
+2. **Name the consumer before designing the payload.** Ask which code path, agent step,
+   QA check, or report will read the artifact and list the exact values it needs.
+   Promote those values into YAML. Leave everything else as prose.
+
+3. **Keep one authoritative boundary.** Consumers read the YAML payload and never parse
+   body prose or tables.
+   A body table may repeat values for a reader, but it is not an input to the workflow.
+
+4. **Validate and repair at each handoff.** Run `softschema validate ...` immediately
+   after an agent writes an artifact and return the JSON result to the agent.
+   Separate structural and semantic errors identify the field or invariant that needs
+   repair.
+
+5. **Build derived views from validated payloads.** Indexes, ledgers, dashboards, and
+   summaries should read YAML only and be regenerated rather than maintained as a second
+   source of truth.
+
+6. **Start permissive, then enforce.** Use `status: permissive` while the artifact shape
+   is settling. Move to `enforced` when undeclared fields represent authoring errors
+   rather than useful exploration.
 
 ## Playbook: Record a Research Loop
 

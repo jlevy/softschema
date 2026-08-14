@@ -1,6 +1,6 @@
 [project]
 name = "softschema"
-description = "Soft schema conventions and validation tools for Markdown/YAML artifacts"
+description = "Gradual contracts for Markdown and YAML artifacts that mix prose with values code reads"
 authors = [{ name = "Joshua Levy" }]
 readme = "README.md"
 license = "MIT"
