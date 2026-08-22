@@ -166,13 +166,16 @@ For each release of version `X.Y.Z`:
    and pass `--refresh` so uv does not serve a cached index that predates the publish
    (see runbook Phase 5).
 
-   Allow for publish propagation: PyPI updates its JSON API
-   (`pypi.org/pypi/softschema/json`) before the **simple index** uv resolves against
-   (`pypi.org/simple/softschema/`), so the first `uvx` run right after the workflow
-   turns green can fail with `no version of softschema==X.Y.Z` even though the release
-   is live. `--refresh` clears uv’s own cache but not PyPI’s CDN edge, so if that
-   happens, wait for the simple index to list the new `.whl`/`.tar.gz` and retry
-   (usually a few seconds).
+   Allow for publish propagation: the first `uvx` run right after the workflow turns
+   green can fail with `no version of softschema==X.Y.Z` even though the release is
+   live. `--refresh` clears uv’s own cache but not PyPI’s CDN edge, and the JSON API
+   (`pypi.org/pypi/softschema/json`) and the **simple index** uv resolves against
+   (`pypi.org/simple/softschema/`) can each lag the other: v0.6.1 saw the JSON API lead,
+   v0.6.2 saw the simple index lead while the JSON API still reported the previous
+   version as latest. Do not use one to infer the other’s state.
+   To tell propagation from a real failure, query the simple index directly and look for
+   the new `.whl`/`.tar.gz`; that is what uv resolves against, so once it lists them,
+   retry (usually a few seconds).
    npm propagates quickly and rarely shows this gap.
 
 <!-- This document follows common-doc-guidelines.md.
