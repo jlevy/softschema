@@ -6,6 +6,70 @@ version number.
 
 ## Unreleased
 
+## v0.6.2—2026-08-22
+
+Fixes a validation gap that could pass a build while checking nothing: the CLI bound
+every artifact to the `frontmatter-md` profile, so a conforming `pure-yaml` artifact —
+including the spec’s own example — could not be validated at all.
+
+### Fixed
+
+- **`validate` and `inspect` resolve the artifact profile instead of assuming
+  `frontmatter-md`** ([#38](https://github.com/jlevy/softschema/issues/38)). Both CLIs
+  read every artifact with the frontmatter reader and built a `Contract` with no
+  `profile`, so the pure-yaml branch of `validate_artifact` was unreachable from the
+  command line and any pure-YAML file failed with `no_frontmatter`. The library was
+  correct throughout; only the binding was wrong.
+
+  The gap was silent rather than loud, which is what made it worth a patch: a project
+  could adopt pure-YAML datasets, mark them `status: enforced`, wire
+  `softschema validate` into CI, and get a passing build that validated nothing — the
+  exact failure `status` exists to prevent.
+  An `enforced` pure-yaml artifact that violates its bound schema now fails with exit 1.
+
+  Profile resolution is `--profile` flag > a `*.yaml`/`*.yml` file name > a fenceless
+  document whose root mapping carries a `softschema:` block > `frontmatter-md`. The name
+  is checked before the fence because a YAML document may open with the `---`
+  document-start marker that the frontmatter reader would otherwise scan as a fence.
+  Requiring the metadata block for the content case keeps prose that happens to parse as
+  YAML on `frontmatter-md`, so a Markdown document without frontmatter reports
+  `no_frontmatter` exactly as before.
+
+- **Envelope inference no longer applies to pure-yaml artifacts.** The spec exempts the
+  profile from single-key inference and multi-key ambiguity rejection, because a
+  pure-yaml artifact’s whole root minus the metadata block is the payload.
+  Reaching that branch through the CLI would otherwise have rejected a two-key pure-yaml
+  document as ambiguous.
+
+### Features
+
+- **`--profile {frontmatter-md,pure-yaml}` on `validate` and `inspect`** in both
+  implementations: the explicit escape hatch for an artifact whose name and content do
+  not settle its shape.
+
+- **`inspect` reports the resolved `profile`**, and reads a pure-yaml artifact’s root
+  metadata block rather than reporting `metadata: null` for it.
+  `has_frontmatter` stays literal — a pure-yaml artifact has none — and `profile` is
+  what explains the populated metadata beside it.
+  This adds one key to the `inspect` JSON output.
+
+- **`clearValidatorCache` is exported from the TypeScript package**, matching Python’s
+  `clear_validator_cache`.
+
+### Performance
+
+- **TypeScript compiled schemas are memoized**, closing the last gap with the Python
+  cache shipped in v0.5.0. `validateStructural` constructed a fresh Ajv instance and
+  recompiled the schema on every call, so a suite validating many artifacts against one
+  schema paid full compilation each time; on a repeated validation of the movie example
+  the per-call cost drops from roughly 17ms to 0.03ms.
+
+  Both runtimes now key the cache on the schema’s own content plus the `enforced`
+  overlay, so a rewritten schema can never be served a stale entry and two paths holding
+  identical schemas share one.
+  Validation with `resources` supplied builds fresh in both, rather than risk a wrong
+  key.
+
 ## v0.6.1—2026-08-14
 
 Documentation only. Both packages are unchanged in behavior, so no code, CLI surface, or
