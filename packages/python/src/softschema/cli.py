@@ -18,14 +18,16 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 from strif import atomic_write_text
 
+from softschema._portable import PortableInputError
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
-from softschema.models import Contract, SchemaStatus, parse_schema_metadata
+from softschema.models import Contract, SchemaProfile, SchemaStatus, parse_schema_metadata
 from softschema.validate import (
     EnvelopeAmbiguityError,
     infer_envelope_key,
     read_frontmatter_doc,
+    read_yaml_doc,
     validate_artifact,
 )
 
@@ -207,6 +209,15 @@ def main(argv: list[str] | None = None) -> int:
         choices=[status.value for status in SchemaStatus],
         help="Override the document status.",
     )
+    validate_parser.add_argument(
+        "--profile",
+        choices=[profile.value for profile in SchemaProfile],
+        help=(
+            "Override the artifact profile. Optional; without it a *.yaml/*.yml file, "
+            "or a fenceless document whose root carries a softschema: block, is read "
+            "as pure-yaml and anything else as frontmatter-md."
+        ),
+    )
     validate_parser.set_defaults(func=_validate_cmd)
 
     compile_parser = subparsers.add_parser("compile", help="Compile a Pydantic model.")
@@ -225,6 +236,11 @@ def main(argv: list[str] | None = None) -> int:
 
     inspect_parser = subparsers.add_parser("inspect", help="Inspect artifact metadata.")
     inspect_parser.add_argument("path", type=Path)
+    inspect_parser.add_argument(
+        "--profile",
+        choices=[profile.value for profile in SchemaProfile],
+        help="Override the artifact profile; detected from the document when omitted.",
+    )
     inspect_parser.set_defaults(func=_inspect_cmd)
 
     docs_parser = subparsers.add_parser("docs", help="Print bundled docs and examples.")
@@ -298,14 +314,75 @@ def main(argv: list[str] | None = None) -> int:
     return _run_cmd(args.command, args.func, args)
 
 
+# Extensions that settle the profile on the file name alone. Checked before the
+# frontmatter fence, because a YAML document may legitimately open with the `---`
+# document-start marker that would otherwise scan as the start of a fence.
+_YAML_SUFFIXES = frozenset({".yaml", ".yml"})
+
+
+@dataclass(frozen=True)
+class _ArtifactRead:
+    """A document read once, together with the profile it was read under."""
+
+    profile: SchemaProfile
+    document: Any
+
+
+def _read_artifact(path: Path, profile: SchemaProfile | None) -> _ArtifactRead:
+    """Read an artifact under a declared profile, or detect its profile and read it.
+
+    Detection, when no profile is declared:
+
+    1. A `*.yaml`/`*.yml` file is pure-yaml on its name alone.
+    2. A document with a frontmatter fence is frontmatter-md.
+    3. A fenceless document whose whole text parses to a mapping carrying a
+       `softschema:` block is pure-yaml. That block is the spec's metadata block, so
+       finding it at the root of a fenceless document is what separates a pure-yaml
+       artifact from prose that happens to parse as YAML.
+    4. Anything else stays frontmatter-md and reports the same `no_frontmatter` it did
+       before detection existed.
+
+    Case 3 reads the file a second time rather than re-implementing the fence scan
+    here; it applies only to a fenceless document that is not named `*.yaml`, which
+    without detection could not validate at all.
+    """
+    if profile is SchemaProfile.pure_yaml:
+        return _ArtifactRead(profile, read_yaml_doc(path))
+    if profile is SchemaProfile.frontmatter_md:
+        _content, frontmatter = read_frontmatter_doc(path)
+        return _ArtifactRead(profile, frontmatter)
+    if path.suffix.lower() in _YAML_SUFFIXES:
+        return _ArtifactRead(SchemaProfile.pure_yaml, read_yaml_doc(path))
+    _content, frontmatter = read_frontmatter_doc(path)
+    if frontmatter is not None:
+        return _ArtifactRead(SchemaProfile.frontmatter_md, frontmatter)
+    root = _yaml_root_or_none(path)
+    if isinstance(root, dict) and "softschema" in root:
+        return _ArtifactRead(SchemaProfile.pure_yaml, root)
+    return _ArtifactRead(SchemaProfile.frontmatter_md, None)
+
+
+def _yaml_root_or_none(path: Path) -> Any:
+    """Parse a fenceless document as YAML, or return ``None`` when it is not YAML.
+
+    Only used to spot a pure-yaml artifact that is not named `*.yaml`. A failure here
+    means "not a pure-yaml artifact", not an error to report: the document stays
+    frontmatter-md and validation emits its own diagnostic for it.
+    """
+    try:
+        return read_yaml_doc(path)
+    except (OSError, PortableInputError):
+        return None
+
+
 def _validate_cmd(args: argparse.Namespace) -> int:
-    # Without --model/--schema this is a metadata-only check: frontmatter parses,
+    # Without --model/--schema this is a metadata-only check: the document parses,
     # the softschema: block is well-formed, and the envelope resolves; structural
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Read the document once here; both binding inference and validate_artifact
-    # reuse this frontmatter, so the file is parsed a single time.
-    _content, frontmatter = read_frontmatter_doc(args.path)
-    contract_id, status, envelope_key = _infer_validation_binding(args, frontmatter)
+    # reuse that parse, so the file is parsed a single time.
+    read = _read_artifact(args.path, _profile_from_args(args))
+    contract_id, status, envelope_key = _infer_validation_binding(args, read.document, read.profile)
     model = _load_model(args.model) if args.model else None
     contract = Contract(
         id=contract_id,
@@ -313,8 +390,9 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         envelope_key=envelope_key,
         schema_path=args.schema,
         status=status,
+        profile=read.profile,
     )
-    result = validate_artifact(args.path, contract=contract, document=frontmatter)
+    result = validate_artifact(args.path, contract=contract, document=read.document)
     if result.outcome == "input_error":
         raise RuntimeError("pre-parsed CLI validation returned an input error")
     print(_json(result))
@@ -323,15 +401,20 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     return 1
 
 
+def _profile_from_args(args: argparse.Namespace) -> SchemaProfile | None:
+    profile = getattr(args, "profile", None)
+    return SchemaProfile(profile) if profile is not None else None
+
+
 def _infer_validation_binding(
-    args: argparse.Namespace, frontmatter: Any
+    args: argparse.Namespace, document: Any, profile: SchemaProfile
 ) -> tuple[str, SchemaStatus, str | None]:
-    if not isinstance(frontmatter, dict):
+    if not isinstance(document, dict):
         if args.contract is None:
-            raise UsageError("missing --contract because the document has no YAML frontmatter")
+            raise UsageError(_missing_contract_reason(profile))
         return args.contract, _status_from_args(args, None), args.envelope
 
-    metadata = parse_schema_metadata(frontmatter.get("softschema"))
+    metadata = parse_schema_metadata(document.get("softschema"))
     contract_id = args.contract or (metadata.contract_id if metadata is not None else None)
     if contract_id is None:
         raise UsageError("missing --contract because the document has no softschema.contract")
@@ -339,8 +422,14 @@ def _infer_validation_binding(
     return (
         contract_id,
         _status_from_args(args, metadata),
-        _envelope_from_args(args, frontmatter, metadata),
+        _envelope_from_args(args, document, metadata, profile),
     )
+
+
+def _missing_contract_reason(profile: SchemaProfile) -> str:
+    if profile is SchemaProfile.pure_yaml:
+        return "missing --contract because the document root is not a YAML mapping"
+    return "missing --contract because the document has no YAML frontmatter"
 
 
 def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
@@ -352,15 +441,23 @@ def _status_from_args(args: argparse.Namespace, metadata: Any) -> SchemaStatus:
 
 
 def _envelope_from_args(
-    args: argparse.Namespace, frontmatter: dict[str, Any], metadata: Any
+    args: argparse.Namespace,
+    document: dict[str, Any],
+    metadata: Any,
+    profile: SchemaProfile,
 ) -> str | None:
     # Envelope precedence: --envelope flag > document softschema.envelope > inference.
     if args.envelope is not None:
         return args.envelope
     if metadata is not None and metadata.envelope is not None:
         return metadata.envelope
+    if profile is SchemaProfile.pure_yaml:
+        # The spec exempts pure-yaml from single-key inference and multi-key ambiguity
+        # rejection: with nothing designated, the whole root minus the metadata block
+        # is the payload, which is what an undesignated envelope key means downstream.
+        return None
     try:
-        return infer_envelope_key(frontmatter)
+        return infer_envelope_key(document)
     except EnvelopeAmbiguityError as exc:
         raise UsageError(
             "multiple top-level frontmatter keys; pass --envelope to designate the "
@@ -384,17 +481,22 @@ def _compile_cmd(args: argparse.Namespace) -> int:
 
 
 def _inspect_cmd(args: argparse.Namespace) -> int:
-    _content, frontmatter = read_frontmatter_doc(args.path)
+    # Reads under the same profile detection as `validate`, so the two never disagree
+    # about what a given file is. `has_frontmatter` stays literal: a pure-yaml artifact
+    # has none, and `profile` is what explains its populated metadata.
+    read = _read_artifact(args.path, _profile_from_args(args))
     metadata = None
     envelope_keys: list[str] = []
-    if isinstance(frontmatter, dict):
-        metadata = parse_schema_metadata(frontmatter.get("softschema"))
-        envelope_keys = [str(key) for key in frontmatter if key != "softschema"]
+    if isinstance(read.document, dict):
+        metadata = parse_schema_metadata(read.document.get("softschema"))
+        envelope_keys = [str(key) for key in read.document if key != "softschema"]
     print(
         _json(
             {
                 "path": args.path,
-                "has_frontmatter": frontmatter is not None,
+                "profile": read.profile,
+                "has_frontmatter": read.profile is SchemaProfile.frontmatter_md
+                and read.document is not None,
                 "metadata": metadata,
                 "envelope_keys": envelope_keys,
             }

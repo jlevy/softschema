@@ -1,0 +1,5 @@
+softschema:
+  contract: test.runs:Reading/v1
+  schema: lenient.schema.yaml
+  status: enforced
+name: 42
