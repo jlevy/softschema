@@ -100,6 +100,11 @@ cd "$tmp"
 venv/bin/softschema docs example-artifact > spirited-away.md
 venv/bin/softschema docs example-schema   > movie-page.schema.yaml
 venv/bin/softschema validate spirited-away.md   # exit 0, structural ok, zero flags
+
+# Cover both profiles: the CLI resolves the profile from the artifact, and v0.6.2 fixed
+# a binding that made pure-yaml unvalidatable from an installed package specifically.
+printf 'softschema:\n  contract: mycorp.runs:BacktestReport/v1\nrun_id: run-1\n' > backtest.yaml
+venv/bin/softschema validate backtest.yaml      # exit 0, "profile": "pure-yaml"
 cd - && rm -rf "$tmp"
 ```
 
@@ -118,6 +123,8 @@ node ./node_modules/softschema/dist/cli.js --help   # or: ./node_modules/.bin/so
 node ./node_modules/softschema/dist/cli.js docs example-artifact > spirited-away.md
 node ./node_modules/softschema/dist/cli.js docs example-schema   > movie-page.schema.yaml
 node ./node_modules/softschema/dist/cli.js validate spirited-away.md   # exit 0
+printf 'softschema:\n  contract: mycorp.runs:BacktestReport/v1\nrun_id: run-1\n' > backtest.yaml
+node ./node_modules/softschema/dist/cli.js validate backtest.yaml      # exit 0, pure-yaml
 cd - && rm -rf "$tmp" "$abs"
 ```
 
