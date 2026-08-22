@@ -5,6 +5,7 @@
  */
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import type { ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
 import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
@@ -159,27 +160,104 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
   return { code, message, severity: "warning" };
 }
 
+const VALIDATOR_CACHE_SIZE = 256;
+const validatorCache = new Map<string, ValidateFunction>();
+
+/**
+ * Check a compiled schema, apply the `enforced` overlay, and compile it with Ajv.
+ *
+ * Every step is a pure function of the schema, the overlay flag, and the resources, so
+ * a cache hit may legitimately skip all of them: a schema that passed the identity and
+ * pattern checks once passes them again. Throws propagate to `validateStructural`,
+ * which turns them into a `schema_invalid` result, and only a schema that compiles is
+ * ever cached.
+ */
+function buildValidator(
+  schemaObject: Record<string, unknown>,
+  strictExtras: boolean,
+  resources: Record<string, Record<string, unknown>>,
+): ValidateFunction {
+  checkSchemaIdentities(schemaObject, resources);
+  checkPatterns(schemaObject);
+  const schema = strictExtras
+    ? (applyEnforcedExtras(schemaObject) as Record<string, unknown>)
+    : schemaObject;
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: false,
+    verbose: true,
+    validateFormats: false,
+  });
+  for (const [key, resource] of Object.entries(resources)) {
+    ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
+  }
+  return ajv.compile(schema);
+}
+
+/**
+ * Memoize `buildValidator` for the no-`resources` case, mirroring the Python
+ * `_cached_validator`.
+ *
+ * A compiled schema is a build output, so checking it, applying the overlay, and
+ * compiling it produce the same validator every time. Doing that work per call
+ * dominated large suites, which is what the Python cache already fixed; without this
+ * the two runtimes had the same schema and very different cost.
+ *
+ * Keyed on the schema's own content rather than on a file path and stat, so a rewritten
+ * schema can never be served from a stale entry and two paths holding identical schemas
+ * correctly share one. Serializing to build the key is negligible against what a hit
+ * avoids. Least-recently-used entries are evicted past `VALIDATOR_CACHE_SIZE`.
+ */
+function cachedValidator(
+  schemaObject: Record<string, unknown>,
+  strictExtras: boolean,
+  resources: Record<string, Record<string, unknown>>,
+): ValidateFunction {
+  if (Object.keys(resources).length > 0) {
+    // `resources` is a plain object of schemas, so it is neither cheap to fingerprint
+    // nor the common path; build fresh rather than risk a wrong cache key. Same call
+    // this made before the cache existed, and the same choice Python makes.
+    return buildValidator(schemaObject, strictExtras, resources);
+  }
+  const key = `${strictExtras ? "1" : "0"}\u0000${JSON.stringify(schemaObject)}`;
+  const hit = validatorCache.get(key);
+  if (hit !== undefined) {
+    // Re-insert to mark this entry most recently used; Map iterates in insertion order.
+    validatorCache.delete(key);
+    validatorCache.set(key, hit);
+    return hit;
+  }
+  const built = buildValidator(schemaObject, strictExtras, resources);
+  validatorCache.set(key, built);
+  if (validatorCache.size > VALIDATOR_CACHE_SIZE) {
+    const oldest = validatorCache.keys().next();
+    if (!oldest.done) validatorCache.delete(oldest.value);
+  }
+  return built;
+}
+
+/**
+ * Drop every memoized validator, the counterpart to Python's `clear_validator_cache`.
+ *
+ * Only needed by a long-lived process that regenerates compiled schemas in place, such
+ * as a watch mode or a language server; ordinary callers never have to call it, because
+ * a rewritten schema misses the cache on its own.
+ */
+export function clearValidatorCache(): void {
+  validatorCache.clear();
+}
+
 export function validateStructural(
   values: unknown,
   schemaObject: Record<string, unknown>,
   options: { strictExtras?: boolean; resources?: Record<string, Record<string, unknown>> } = {},
 ): StructuralResult {
   try {
-    checkSchemaIdentities(schemaObject, options.resources ?? {});
-    checkPatterns(schemaObject);
-    const schema = options.strictExtras
-      ? (applyEnforcedExtras(schemaObject) as Record<string, unknown>)
-      : schemaObject;
-    const ajv = new Ajv2020({
-      allErrors: true,
-      strict: false,
-      verbose: true,
-      validateFormats: false,
-    });
-    for (const [key, resource] of Object.entries(options.resources ?? {})) {
-      ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
-    }
-    const validateFn = ajv.compile(schema);
+    const validateFn = cachedValidator(
+      schemaObject,
+      options.strictExtras ?? false,
+      options.resources ?? {},
+    );
     const ok = validateFn(values);
     const errors: StructuralErrorRecord[] = ok
       ? []

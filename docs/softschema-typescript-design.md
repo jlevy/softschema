@@ -23,7 +23,7 @@ test; see the parity development process in [development.md](development.md).
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
 | `errors` | Engine-neutral structural error records and ajv normalization |
-| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, and the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root |
+| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, `clearValidatorCache`, and the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a compiled schema |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
@@ -95,6 +95,7 @@ are identical.
 | `validate_artifact` | `validateArtifact` | same result fields, `outcome`, error kinds, and warnings |
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping |
 | `validate_structural` | `validateStructural` | jsonschema ↔ ajv; identical error records |
+| `clear_validator_cache` | `clearValidatorCache` | drop memoized compiled validators; both cache on schema content, keyed with the enforced overlay, and skip the cache when `resources` are supplied |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
 | `compile_model` | `compileSchema` | content-identical canonical compiled schema, equal `schema_sha256` |
 | `Contracts` | `Contracts` | `register`/`resolve`/`all`; dup-id error |

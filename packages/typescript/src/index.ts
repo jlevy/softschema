@@ -29,6 +29,7 @@ export {
 } from "./softField.js";
 export {
   type ArtifactValidationResult,
+  clearValidatorCache,
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type ParsedDocument,

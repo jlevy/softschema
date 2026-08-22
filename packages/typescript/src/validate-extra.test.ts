@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { Contract } from "./models.js";
 import { softFieldMeta } from "./softField.js";
 import {
+  clearValidatorCache,
   readFrontmatterDoc,
   validateArtifact,
   validateSemantic,
@@ -292,4 +293,50 @@ test("shared structural vectors", () => {
       if (item.reason !== undefined) expect(error?.reason).toBe(item.reason as string);
     }
   }
+});
+
+describe("compiled validator cache", () => {
+  // The cache is keyed on the schema's own content, so these cover the ways a wrong key
+  // would show up as a wrong answer rather than as a slow one.
+  const base = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: { name: { type: "string" } },
+    required: ["name"],
+  } as Record<string, unknown>;
+
+  test("a schema edited between calls is not served a stale validator", () => {
+    clearValidatorCache();
+    expect(validateStructural({ name: "ok" }, base).ok).toBe(true);
+    const edited = { ...base, required: ["name", "absent"] };
+    expect(validateStructural({ name: "ok" }, edited).ok).toBe(false);
+    // The first schema must still answer for itself, not inherit the edit.
+    expect(validateStructural({ name: "ok" }, base).ok).toBe(true);
+  });
+
+  test("strictExtras keys separately from the lenient entry", () => {
+    clearValidatorCache();
+    const withExtra = { name: "ok", undeclared: 1 };
+    expect(validateStructural(withExtra, base, { strictExtras: false }).ok).toBe(true);
+    expect(validateStructural(withExtra, base, { strictExtras: true }).ok).toBe(false);
+    // Same two answers when the enforced call populates the cache first.
+    clearValidatorCache();
+    expect(validateStructural(withExtra, base, { strictExtras: true }).ok).toBe(false);
+    expect(validateStructural(withExtra, base, { strictExtras: false }).ok).toBe(true);
+  });
+
+  test("an invalid schema stays invalid on every call", () => {
+    clearValidatorCache();
+    const bad = { ...base, properties: { name: { type: "string", pattern: "(?<bad" } } };
+    const first = validateStructural({ name: "ok" }, bad);
+    const second = validateStructural({ name: "ok" }, bad);
+    expect(first.ok).toBe(false);
+    expect(second.errors[0]?.kind).toBe(first.errors[0]?.kind);
+  });
+
+  test("clearValidatorCache does not change any answer", () => {
+    const before = validateStructural({ name: "ok" }, base);
+    clearValidatorCache();
+    expect(validateStructural({ name: "ok" }, base)).toEqual(before);
+  });
 });
