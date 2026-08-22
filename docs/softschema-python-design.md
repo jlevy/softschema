@@ -106,6 +106,14 @@ The CLI reads `softschema.contract`, `softschema.status`, and a single top-level
 envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
+**Profile resolution**: `--profile` flag > a `*.yaml`/`*.yml` file name > a fenceless
+document whose root mapping carries a `softschema:` block > `frontmatter-md`. The name
+is checked before the fence because a YAML document may open with the `---`
+document-start marker, which the frontmatter reader would otherwise scan as a fence.
+The content check requires the metadata block, so prose that happens to parse as YAML
+stays `frontmatter-md` and still reports `no_frontmatter`. `validate` and `inspect`
+resolve the profile identically, so the two never disagree about what a given file is.
+
 **Schema precedence** (host over document): `--schema` flag > registry
 `Contract.schema_path` (library only) > `softschema.schema` (document metadata) >
 metadata-only (no structural validation).
@@ -113,7 +121,9 @@ metadata-only (no structural validation).
 **Envelope precedence**: `--envelope` flag > registry `envelope_key` >
 `softschema.envelope` (document metadata) > single-key inference (the single
 non-`softschema` top-level key; zero or several candidates are rejected as
-`envelope_missing` / `envelope_ambiguous`).
+`envelope_missing` / `envelope_ambiguous`). Inference and ambiguity rejection are
+`frontmatter-md` only: the spec exempts `pure-yaml`, where an undesignated envelope
+means the whole root minus the metadata block is the payload.
 
 Document-declared `schema` paths are relative-only, resolved from the document’s
 directory, bounded to the document directory and the current working directory.

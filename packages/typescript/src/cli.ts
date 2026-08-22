@@ -19,13 +19,22 @@ import { Command, CommanderError } from "commander";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
-import { type Contract, isSchemaStatus, metadataToOutput, parseSchemaMetadata } from "./models.js";
+import {
+  type Contract,
+  isSchemaProfile,
+  isSchemaStatus,
+  metadataToOutput,
+  parseSchemaMetadata,
+  type SchemaProfile,
+} from "./models.js";
+import { PortableInputError } from "./portable.js";
 import { stableStringify } from "./settings.js";
 import {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type ParsedDocument,
   readFrontmatterDoc,
+  readYamlDoc,
   validateArtifact,
   YamlParseError,
 } from "./validate.js";
@@ -365,20 +374,100 @@ function doctorText(report: DoctorReport): string {
   return lines.join("\n");
 }
 
-function readFrontmatterRaw(path: string): Record<string, unknown> | null {
+/**
+ * Extensions that settle the profile on the file name alone. Checked before the
+ * frontmatter fence, because a YAML document may legitimately open with the `---`
+ * document-start marker that would otherwise scan as the start of a fence.
+ */
+const YAML_SUFFIXES = [".yaml", ".yml"];
+
+/** A document read once, together with the profile it was read under. */
+interface ArtifactRead {
+  profile: SchemaProfile;
+  document: ParsedDocument;
+}
+
+/**
+ * Read an artifact under a declared profile, or detect its profile and read it.
+ *
+ * Detection, when no profile is declared:
+ *
+ * 1. A `*.yaml`/`*.yml` file is pure-yaml on its name alone.
+ * 2. A document with a frontmatter fence is frontmatter-md.
+ * 3. A fenceless document whose whole text parses to a mapping carrying a
+ *    `softschema:` block is pure-yaml. That block is the spec's metadata block, so
+ *    finding it at the root of a fenceless document is what separates a pure-yaml
+ *    artifact from prose that happens to parse as YAML.
+ * 4. Anything else stays frontmatter-md and reports the same `no_frontmatter` it did
+ *    before detection existed.
+ *
+ * Case 3 reads the file a second time rather than re-implementing the fence scan here;
+ * it applies only to a fenceless document that is not named `*.yaml`, which without
+ * detection could not validate at all. Kept in lockstep with the Python
+ * `_read_artifact` so the two CLIs never disagree about what a given file is.
+ */
+function readArtifact(path: string, profile: SchemaProfile | undefined): ArtifactRead {
   // Reuse the single frontmatter parser from validate.ts so the fence-scanning and
   // empty-frontmatter handling cannot drift between the two entry points. Surface a
   // malformed-YAML failure as a usage error (exit 2) with the message, mirroring the
   // Python CLI's FmFormatError handling, rather than letting it escape as a stack trace.
   try {
-    const fm = readFrontmatterDoc(path);
-    return fm.hasFence ? (fm.value as Record<string, unknown>) : null;
+    if (profile === "pure-yaml") return { profile, document: readYamlDoc(path) };
+    if (profile === "frontmatter-md") return { profile, document: readFrontmatterDoc(path) };
+    if (YAML_SUFFIXES.includes(fileSuffix(path))) {
+      return { profile: "pure-yaml", document: readYamlDoc(path) };
+    }
+    const parsed = readFrontmatterDoc(path);
+    if (parsed.hasFence) return { profile: "frontmatter-md", document: parsed };
+    const root = yamlRootOrNull(path);
+    if (isRecord(root) && "softschema" in root) {
+      return { profile: "pure-yaml", document: { hasFence: false, value: root } };
+    }
+    return { profile: "frontmatter-md", document: parsed };
   } catch (err) {
     if (err instanceof YamlParseError) {
       throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
     }
     throw err;
   }
+}
+
+/**
+ * The lowercased final extension of a path, matching Python's `Path.suffix`.
+ *
+ * A leading dot is part of the name rather than an extension, so a file named exactly
+ * `.yaml` has no suffix in either runtime and is detected by its content instead.
+ */
+function fileSuffix(path: string): string {
+  const base = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot).toLowerCase() : "";
+}
+
+/**
+ * Parse a fenceless document as YAML, or return null when it is not YAML.
+ *
+ * Only used to spot a pure-yaml artifact that is not named `*.yaml`. A failure here
+ * means "not a pure-yaml artifact", not an error to report: the document stays
+ * frontmatter-md and validation emits its own diagnostic for it.
+ */
+function yamlRootOrNull(path: string): unknown {
+  try {
+    return readYamlDoc(path).value;
+  } catch (err) {
+    if (err instanceof YamlParseError || err instanceof PortableInputError) return null;
+    throw err;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The document root as a mapping, or null when it is absent or not a mapping. */
+function rootMapping(read: ArtifactRead): Record<string, unknown> | null {
+  if (read.profile === "frontmatter-md" && !read.document.hasFence) return null;
+  return isRecord(read.document.value) ? read.document.value : null;
 }
 
 function envelopeKeys(frontmatter: Record<string, unknown>): string[] {
@@ -388,15 +477,22 @@ function envelopeKeys(frontmatter: Record<string, unknown>): string[] {
 class UsageError extends Error {}
 
 function inferEnvelope(
-  frontmatter: Record<string, unknown>,
+  document: Record<string, unknown>,
   override: string | undefined,
   declared: string | null,
+  profile: SchemaProfile,
 ): string | null {
   // Envelope precedence: --envelope flag > document softschema.envelope > inference.
   if (override !== undefined) return override;
   if (declared !== null) return declared;
+  if (profile === "pure-yaml") {
+    // The spec exempts pure-yaml from single-key inference and multi-key ambiguity
+    // rejection: with nothing designated, the whole root minus the metadata block is
+    // the payload, which is what an undesignated envelope key means downstream.
+    return null;
+  }
   try {
-    return inferEnvelopeKey(frontmatter);
+    return inferEnvelopeKey(document);
   } catch (err) {
     if (err instanceof EnvelopeAmbiguityError) {
       throw new UsageError(
@@ -411,8 +507,21 @@ interface ValidateOptions {
   contract?: string;
   envelope?: string;
   model?: string;
+  profile?: string;
   schema?: string;
   status?: string;
+}
+
+function profileFromOpts(opts: { profile?: string }): SchemaProfile | undefined {
+  if (opts.profile === undefined) return undefined;
+  if (!isSchemaProfile(opts.profile)) throw new UsageError(`invalid profile: ${opts.profile}`);
+  return opts.profile;
+}
+
+function missingContractReason(profile: SchemaProfile): string {
+  return profile === "pure-yaml"
+    ? "missing --contract because the document root is not a YAML mapping"
+    : "missing --contract because the document has no YAML frontmatter";
 }
 
 /** Import `path:export` and confirm the export is a Zod schema before use. */
@@ -450,21 +559,13 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     // Read the document once here; both binding inference and validateArtifact reuse
-    // this parse (passed as `document`), so the file is parsed a single time.
-    let parsed: ParsedDocument;
-    try {
-      parsed = readFrontmatterDoc(path);
-    } catch (err) {
-      if (err instanceof YamlParseError) {
-        throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
-      }
-      throw err;
+    // that parse (passed as `document`), so the file is parsed a single time.
+    const read = readArtifact(path, profileFromOpts(opts));
+    const root = rootMapping(read);
+    if (root === null && opts.contract === undefined) {
+      throw new UsageError(missingContractReason(read.profile));
     }
-    const frontmatter = parsed.hasFence ? (parsed.value as Record<string, unknown>) : null;
-    if (frontmatter === null && opts.contract === undefined) {
-      throw new UsageError("missing --contract because the document has no YAML frontmatter");
-    }
-    const fm = frontmatter ?? {};
+    const fm = root ?? {};
     const metadata = parseSchemaMetadata(fm.softschema ?? null);
     const contractId = opts.contract ?? metadata?.contractId;
     if (contractId === undefined) {
@@ -480,12 +581,15 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     const contract: Contract = {
       id: contractId,
       model: opts.model ?? null,
-      envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null),
+      envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null, read.profile),
       status,
-      profile: "frontmatter-md",
+      profile: read.profile,
       schemaPath: opts.schema ?? null,
     };
-    const result = validateArtifact(path, contract, { semanticModel, document: parsed });
+    const result = validateArtifact(path, contract, {
+      semanticModel,
+      document: read.document,
+    });
     if (result.outcome === "input_error") {
       throw new Error("pre-parsed CLI validation returned an input error");
     }
@@ -501,15 +605,20 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
   }
 }
 
-function runInspect(path: string): number {
+function runInspect(path: string, opts: { profile?: string }): number {
   try {
-    const frontmatter = readFrontmatterRaw(path);
-    const metadata = frontmatter ? parseSchemaMetadata(frontmatter.softschema ?? null) : null;
+    // Reads under the same profile detection as `validate`, so the two never disagree
+    // about what a given file is. `has_frontmatter` stays literal: a pure-yaml artifact
+    // has none, and `profile` is what explains its populated metadata.
+    const read = readArtifact(path, profileFromOpts(opts));
+    const root = rootMapping(read);
+    const metadata = root ? parseSchemaMetadata(root.softschema ?? null) : null;
     const output = {
-      envelope_keys: frontmatter ? envelopeKeys(frontmatter) : [],
-      has_frontmatter: frontmatter !== null,
+      envelope_keys: root ? envelopeKeys(root) : [],
+      has_frontmatter: read.profile === "frontmatter-md" && read.document.hasFence,
       metadata: metadataToOutput(metadata),
       path,
+      profile: read.profile,
     };
     writeText(stableStringify(output));
     return 0;
@@ -698,6 +807,12 @@ export async function main(argv: string[] = process.argv): Promise<number> {
         "document's softschema.schema binding is used when present",
     )
     .option("--status <status>", "override the document status")
+    .option(
+      "--profile <profile>",
+      "override the artifact profile. Optional; without it a *.yaml/*.yml file, or a " +
+        "fenceless document whose root carries a softschema: block, is read as " +
+        "pure-yaml and anything else as frontmatter-md",
+    )
     .action(async (path: string, opts: ValidateOptions) => {
       exitCode = await runValidate(path, opts);
     });
@@ -706,8 +821,12 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     .command("inspect")
     .description("Inspect artifact metadata")
     .argument("<path>")
-    .action((path: string) => {
-      exitCode = runInspect(path);
+    .option(
+      "--profile <profile>",
+      "override the artifact profile; detected from the document when omitted",
+    )
+    .action((path: string, opts: { profile?: string }) => {
+      exitCode = runInspect(path, opts);
     });
 
   program

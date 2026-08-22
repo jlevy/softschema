@@ -92,6 +92,23 @@ run_id: run-2026-04-12T18-03-00Z
 summary: regression vs baseline
 ```
 
+The profile is not declared in the metadata block; it is a property of the artifact’s
+shape, which an implementation resolves from the artifact itself.
+A caller may designate it explicitly (the `--profile` flag, or the profile argument of a
+library call). Otherwise an implementation must resolve it as:
+
+1. A `*.yaml` or `*.yml` file name means `pure-yaml`. The name is checked before the
+   frontmatter fence, because a YAML document may open with the `---` document-start
+   marker that would otherwise scan as the start of a fence.
+2. A document with a frontmatter fence is `frontmatter-md`.
+3. A fenceless document whose whole text parses to a mapping carrying a root
+   `softschema:` block is `pure-yaml`.
+4. Anything else is `frontmatter-md`.
+
+Requiring the metadata block in step 3 is what separates a pure-yaml artifact from prose
+that happens to parse as YAML: a Markdown document without frontmatter stays
+`frontmatter-md` and is rejected for having none.
+
 ## Portable YAML Values
 
 YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite

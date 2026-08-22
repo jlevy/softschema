@@ -1,0 +1,6 @@
+softschema:
+  contract: test.runs:Reading/v1
+  schema: lenient.schema.yaml
+  envelope: reading
+reading:
+  name: sensor-7

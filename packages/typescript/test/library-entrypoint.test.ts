@@ -77,6 +77,7 @@ describe("library entrypoint (issue #16)", () => {
       "Contracts",
       "EnvelopeAmbiguityError",
       "SchemaView",
+      "clearValidatorCache",
       "compileSchema",
       "inferEnvelopeKey",
       "parseSchemaMetadata",
