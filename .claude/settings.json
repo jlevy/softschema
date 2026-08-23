@@ -6,6 +6,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash .claude/scripts/ensure-dev-env.sh",
+            "timeout": 600
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash .claude/scripts/ensure-gh-cli.sh",
             "timeout": 120
           }

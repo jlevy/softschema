@@ -53,6 +53,19 @@ Bypass for an emergency commit with `git commit --no-verify` (avoid in PRs).
 flowmark runs across the whole tree (it honors `.flowmarkignore` only relative to its
 target arg), so staging any `*.md` reformats all Markdown; this is fast and idempotent.
 
+**Format Markdown with `make format`, never by calling flowmark yourself.** The target
+is three steps, and flowmark is only the first: it also regenerates the
+`softschema:generated` sections and reinstalls the skill mirrors.
+A bare `flowmark-rs --auto .` reflows the generated block in
+`examples/movie_page/README.md` without regenerating it, which fails
+`test_movie_example_marker_is_in_sync_with_committed_schema` — a confusing failure to
+land in, because the file it names is one you never meant to edit.
+
+Remote Claude Code sessions install the hooks automatically:
+`.claude/scripts/ensure-dev-env.sh` runs `make hooks-install` on SessionStart, so an
+agent working in a fresh container gets the same pre-commit contract a developer has.
+Without it the hook directory is empty and the formatting rules are advisory at best.
+
 ## TypeScript Package
 
 The TypeScript/Zod package lives in `packages/typescript` and builds with bun (bunup and
