@@ -6,6 +6,102 @@ version number.
 
 ## Unreleased
 
+Composed schemas — `allOf`, `if`/`then`, `dependentSchemas` — now validate under
+`status: enforced` instead of being refused.
+Structural error records gain a stable `code` field, which is the one change that asks
+something of consumers.
+
+### Breaking for consumers matching `validator`
+
+Read this if any code inspects `structural.errors[*].validator`.
+
+An undeclared key now reports `additionalProperties` on a simple schema and
+`unevaluatedProperties` on a composed one.
+A check written as `validator == "additionalProperties"` does not crash — it silently
+stops matching composed schemas.
+That is the one failure this change cannot make loud from inside the library, so it
+leads here.
+
+| Matching on | Before | After |
+| --- | --- | --- |
+| `validator == "additionalProperties"` | catches every undeclared key | misses composed schemas — **migrate to `code`** |
+| `kind == "enforcement_unsupported"` | fires for composed schemas | never fires; the kind is gone |
+| `code == "undeclared_property"` | not available | catches every undeclared key |
+
+`kind` + `code` + `path` is the documented match surface from this release on.
+`validator` and `validator_value` remain, and remain useful for diagnostics, but they
+name the mechanism rather than the category.
+The `code` values are `undeclared_property`, `missing_property`, `invalid_value`, and
+`unmapped_keyword`.
+
+Everything else about the change is loud: `EnforcementUnsupportedError` is gone from
+both packages, so an import of it is an `ImportError`.
+
+### Fixed
+
+- **`enforced` validates composed schemas instead of refusing them**
+  ([#41](https://github.com/jlevy/softschema/issues/41)). A schema composing constraints
+  with `allOf`, `if`/`then`, or `dependentSchemas` failed with `enforcement_unsupported`
+  for *every* document, valid or not.
+  Adding a cross-field rule to a schema did not gain a check — it lost the ability to
+  check that artifact at all, and a genuine violation was reported with the same generic
+  message as a conforming document.
+
+  The refusal was not gratuitous.
+  `additionalProperties` is lexical: it constrains only the properties named in the same
+  schema object and is blind to those a sibling subschema contributes, so closing a
+  composed schema with it rejects documents the author’s schema accepts.
+  What the refusal missed is that JSON Schema 2020-12 has a keyword for exactly this.
+
+  Applicators are now split by what their subschemas mean.
+  `anyOf`/`oneOf` are *alternatives* — each branch describes the instance completely, so
+  each closes on its own terms, as before.
+  `allOf`, `if`, `then`, `else`, `not`, and `dependentSchemas` are *fragments* — each
+  contributes part of one instance’s constraints, so none is closed internally, and the
+  composition root closes with annotation-aware `unevaluatedProperties` instead.
+  `$defs` resets this: a definition is a complete declaration reached by `$ref`.
+
+  Schemas that do not compose are unaffected, down to the byte: they keep
+  `additionalProperties`, and the explicit-wins rule is unchanged.
+  Compiled schemas and `schema_sha256` are untouched — the overlay remains
+  validation-time only.
+
+- **A `unevaluatedProperties` violation renders a real message.** It previously fell to
+  the generic branch and spilled the entire payload into the text
+  (`value {...} failed unevaluatedProperties constraint False`). It now emits the same
+  string as `additionalProperties`: one category, one code, one message.
+
+### Added
+
+- **`code` on structural error records.** See the migration note above.
+
+- **Documented cross-implementation deviations.** Two cases where `jsonschema` and `ajv`
+  reach the same verdict through a different record set, and no normalization removes
+  the difference cleanly, are now pinned in the `engine_deviations` vectors rather than
+  left latent: `dependentSchemas` closure, and the pre-existing `anyOf` branch
+  multiplicity. Each runtime asserts its own record set exactly, so a listed deviation
+  passes while drift on either side — or any unlisted divergence — fails.
+
+### Removed
+
+- **`enforcement_unsupported` and `EnforcementUnsupportedError`.** Unreachable under the
+  new closure rule. Neither was exported by either package, and the error string appeared
+  in no spec, guide, README, or changelog entry.
+
+### Compatibility
+
+Documents that were uniformly `invalid` against a composed schema now report their real
+status, so exit codes move for anyone who pinned the broken behavior.
+No document silently becomes valid: an undeclared key against a composed schema was
+`invalid` before (for the wrong reason) and is `invalid` after (for the right one).
+
+One widening is worth knowing rather than discovering.
+`unevaluatedProperties` is annotation-based, so a property named in an `if` matcher is
+*evaluated* when the matcher succeeds and is therefore admitted.
+Given `if: {properties: {secret: {const: "x"}}}` and no `secret` in the root’s
+`properties`, `{"secret": "x"}` passes closure while `{"secret": "other"}` is rejected.
+That is correct 2020-12 behavior, and it is the price of annotation-aware closure.
+
 ## v0.6.2—2026-08-22
 
 Fixes a validation gap that could pass a build while checking nothing: the CLI bound

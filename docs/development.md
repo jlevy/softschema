@@ -208,6 +208,31 @@ Semantic invariants that JSON Schema cannot express (Pydantic validators ↔ Zod
 refinements) are implementation-specific by design and tested per-language, not in the
 shared corpus.
 
+### Documented deviations
+
+Cross-implementation output is identical, with one exception: a deviation explicitly
+checked in as a documented diff.
+**The Python goldens are the reference output.**
+
+The exception exists because `jsonschema` and `ajv` sometimes reach the same verdict
+through a different number of records, and normalizing the difference away would cost
+real information. Two cases ship today, both in the `engine_deviations` section of
+`tests/vectors/hardening.yaml`: `dependentSchemas` (ajv adds a closure record for a
+property that top-level `properties` already evaluated) and `anyOf` multiplicity (ajv
+reports each branch’s failure alongside the `anyOf`).
+
+The mechanism is deliberately not a tolerance.
+Each runtime asserts *its own* listed record set exactly, so:
+
+- a listed deviation passes;
+- drift on either side fails, including drift that makes the engines agree;
+- an unlisted divergence has nothing to pass against, and fails.
+
+Add an entry only after establishing that no normalization removes the difference
+cleanly, and say why in the entry’s `why` field.
+Prefer normalizing in `errors.ts` — `collapseUndeclaredProperties` and
+`dropConditionalWrappers` are both cases where that was the right answer.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

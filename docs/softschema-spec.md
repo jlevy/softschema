@@ -318,12 +318,51 @@ It is not required to be an import path or a class name.
 - `soft` and `permissive` do not change validation behavior; whether a model allows
   extra fields is configured on the source model.
 - `enforced` makes the schema authoritative at the boundary: a conforming validator
-  treats every object schema that declares `properties` but omits `additionalProperties`
-  as `additionalProperties: false`. An explicit `additionalProperties` value in the
+  treats an object schema that declares properties but omits closure as closed.
+  Which keyword closes it depends on whether the schema composes constraints (see
+  below). An explicit `additionalProperties` or `unevaluatedProperties` value in the
   schema (true, false, or a subschema) always wins, so a schema can opt specific objects
-  out of strictness. Object schemas without `properties` (free-form mappings) are
-  unaffected. The overlay applies at validation time only; it never changes the compiled
-  schema.
+  out of strictness. Object schemas that declare no properties anywhere (free-form
+  mappings) are unaffected.
+  The overlay applies at validation time only; it never changes the compiled schema.
+
+### Closure under `enforced`
+
+Closure is not a single-keyword rule, because a schema that *composes* constraints
+cannot be closed the same way as one that declares them in a single place.
+`additionalProperties` is lexical: it constrains only the properties named in the same
+schema object and is blind to properties a sibling subschema contributes.
+Closing a composed schema with it would reject documents the author’s schema accepts.
+
+A conforming validator therefore splits applicators into two kinds:
+
+| Kind | Keywords | Each subschema | Treatment |
+| --- | --- | --- | --- |
+| Alternatives | `anyOf`, `oneOf` | describes the instance completely | closed on its own terms |
+| Fragments | `allOf`, `if`, `then`, `else`, `not`, `dependentSchemas` | contributes part of one instance’s constraints | never closed; closed at the composition root instead |
+
+Three clauses follow:
+
+1. Closure is never injected inside a fragment subtree.
+   Closing an `allOf` branch would reject keys its sibling declares; closing an `if`
+   matcher would stop the conditional from firing at all.
+   `$defs` resets this — a definition is a complete declaration reached by `$ref`, so it
+   closes on its own terms even when the reference sits inside a fragment.
+2. A node declares properties if it carries `properties`, *or* if a fragment applicator
+   under it does. A schema may declare every property inside its `allOf` branches, and
+   would otherwise be enforced nowhere.
+3. Such a node is closed with `unevaluatedProperties: false` when it carries a fragment
+   applicator, and `additionalProperties: false` otherwise.
+
+`unevaluatedProperties` is annotation-aware: properties evaluated by `properties`, by an
+`allOf` branch, by a successful `if`, by `then`, `else`, `dependentSchemas`, or through
+`$ref` all count as declared, so only genuinely undeclared keys fail.
+
+One consequence is worth knowing rather than discovering.
+A property named in an `if` matcher is *evaluated* when the matcher succeeds, so it is
+admitted. Given `if: {properties: {secret: {const: "x"}}}` and no `secret` in the root’s
+`properties`, `{"secret": "x"}` passes closure while `{"secret": "other"}` is rejected.
+That is correct 2020-12 behavior, and it is the price of the annotation model.
 
 The effective status is resolved by the caller (for example a registry contract or a
 `--status` flag), falling back to the document’s declared `softschema.status`.
@@ -423,6 +462,28 @@ Across implementations, structural error records have the same engine-neutral fi
 portable meaning, and machine-readable JSON is compared as parsed data rather than as
 presentation bytes. The portable value domain accepts integers only within the IEEE-754
 safe-integer range (`abs < 2^53`) so both runtimes retain the same numeric value.
+
+### Matching on structural error records
+
+A structural error record carries both the JSON Schema keyword that failed and a
+softschema-owned category:
+
+| `code` | Emitted for | Meaning |
+| --- | --- | --- |
+| `undeclared_property` | `additionalProperties`, `unevaluatedProperties` | a key the schema does not declare |
+| `missing_property` | `required` | a declared key the document omits |
+| `invalid_value` | every other mapped keyword | a value the schema rejects |
+| `unmapped_keyword` | a keyword with no template yet | a gap in the message table, not a category |
+
+**`kind` + `code` + `path` is the surface to match on.** `validator` and
+`validator_value` name the *mechanism* and are diagnostic; `message` wording may improve
+within a minor release.
+
+The distinction matters most for closure.
+One authoring mistake — an undeclared key — reports `additionalProperties` on a simple
+schema and `unevaluatedProperties` on a composed one, so a consumer matching `validator`
+sees only half the cases.
+Both report `code: undeclared_property`, and both render the same message.
 
 ## Generated Sections
 

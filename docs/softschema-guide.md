@@ -258,8 +258,9 @@ Bugs that used to silently break the consumer now fail loudly.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
 real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
-fields at the structural boundary (object schemas that are silent about
-`additionalProperties` are treated as closed; an explicit `additionalProperties` in the
+fields at the structural boundary (an object schema silent about closure is treated as
+closed — with `unevaluatedProperties` when it composes constraints with `allOf` or
+`if`/`then`, and `additionalProperties` otherwise; an explicit value for either in the
 schema still wins). Setting the source model to `extra="forbid"` additionally compiles
 that strictness into the compiled schema itself and enforces it at the semantic layer.
 
@@ -793,6 +794,51 @@ Four habits make the record compound rather than accumulate:
 - **Let the record be the loop’s memory.** An agent resuming the loop months later reads
   back what was tried and why it was dropped without re-running anything, so the loop
   survives the session that produced it.
+
+## Playbook: Express Cross-Field Rules
+
+Some contracts are not about individual field types but about how fields relate: *a
+record marked `decision: abandoned` must also say what it cost.* Write that in the
+schema, with a plain JSON Schema conditional, rather than in a separate checker:
+
+```yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: example.research:Experiment/v1
+type: object
+required: [decision]
+properties:
+  decision:
+    enum: [pending, adopted, abandoned]
+  budget_spent:
+    type: number
+allOf:
+- if:
+    properties:
+      decision:
+        const: abandoned
+    required: [decision]
+  then:
+    required: [budget_spent]
+```
+
+Under `enforced`, a record with `decision: abandoned` and no `budget_spent` fails with
+`required property ['budget_spent'] is missing` — the actionable error, naming the field
+the author forgot. A record with `decision: pending` does not trigger the rule at all,
+and an undeclared key is still rejected.
+
+Two things make this work, and both are worth knowing:
+
+- **Fragments are never closed internally.** The `if` block is a *matcher*, not a
+  declaration of what the document may contain, so the validator does not close it.
+  If it did, the conditional would silently stop firing.
+- **The composition root closes with `unevaluatedProperties`.** That keyword is
+  annotation-aware, so a property declared in any branch counts as declared.
+  Closing the root with `additionalProperties` instead would reject `budget_spent`,
+  since that keyword cannot see the `then` branch.
+
+The payoff is that the schema stays the single statement of the contract.
+Reimplementing cross-field rules in a separate checker is exactly the split soft schemas
+exist to avoid: two places to update, and only one of them runs in CI.
 
 ## Common Mistakes
 

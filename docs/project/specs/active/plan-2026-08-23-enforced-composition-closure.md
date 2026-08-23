@@ -9,8 +9,8 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Proposed.
-Design validated against a working prototype; not implemented.
+**Status:** Implemented, pending release.
+All four phases landed; the spec moves to `done/` when the release ships.
 
 **Tracking:** `ss-r9u8` (enforced-closure epic), from GitHub issue
 [#41](https://github.com/jlevy/softschema/issues/41)
@@ -373,7 +373,7 @@ failing vector first, then Python, then the TypeScript port, then both golden ru
 | `code` is stable across both closure keywords | vector assertion that a simple and a composed undeclared key both report `undeclared_property` |
 | No keyword falls through unmapped | unit assertion that every keyword in the message table maps to a code other than `unmapped_keyword` |
 | Engine-neutral records | golden corpus run twice via `SOFTSCHEMA_IMPL`, plus `cross-impl-diff.sh` |
-| Known engine deviations | checked-in documented diffs against the Python golden reference, validated by `cross-impl-diff.sh` — covering the `dependentSchemas` record set and the pre-existing `anyOf` multiplicity, so an unlisted divergence still fails |
+| Known engine deviations | the `engine_deviations` vector section, where each runtime asserts its own record set exactly — covering the `dependentSchemas` record set and the pre-existing `anyOf` multiplicity, so drift on either side and any unlisted divergence still fail |
 
 Both refusal-pinning tests are rewritten rather than deleted: they become the assertions
 that these shapes are now *supported*, which keeps the regression visible if the rule
@@ -438,6 +438,28 @@ vector field fails the shared vector load.
 | Delete `enforcement_unsupported` rather than reserve it | It becomes unreachable and has no official surface: the string appears in no spec, guide, README, or changelog, and `EnforcementUnsupportedError` is exported by neither package. An output string is not a symbol — a consumer matching it loses that branch the moment emission stops, whether or not a constant remains in source. |
 | Report the true keyword in `validator`, and add `code` for matching | Maintainer direction. `validator` is documented as the JSON Schema keyword, so normalizing it away would hide which closure fired; a softschema-owned category gives consumers something stable to match without that cost. |
 | Support `dependentSchemas`, pinning engine deviations as documented diffs | Maintainer direction: functionally equivalent, language-native differences are fine when tests record them; Python goldens are the reference. |
+
+## Implementation Notes
+
+Landed as specified, with two deltas worth recording.
+
+**The deviation mechanism is a vector section, not a checked-in diff.**
+`cross-impl-diff.sh` compares CLI output, and no CLI fixture reaches the
+`dependentSchemas` or `anyOf` divergences — both are library-level.
+`engine_deviations` in `tests/vectors/hardening.yaml` pins each engine’s record set
+separately, which is a stricter pin than a tolerated diff: drift *toward* agreement
+fails too, so the entry cannot rot silently.
+The three composed CLI cases were added to `cross-impl-diff.sh` regardless, and are
+byte-identical.
+
+**A sibling bug surfaced and was left out of scope** (`ss-p32o`). The same lexical
+blindness affects `anyOf`/`oneOf` when a node declares its own `properties` alongside
+alternatives that declare more — and the refusal never covered that shape, so it ships
+today. Verified on `main`:
+`{properties: {a}, anyOf: [{properties: {b}}, {properties: {c}}]}` rejects `{a, b}`,
+which the raw schema accepts.
+The root is fixable the same way, but the branch closure needs a maintainer decision
+rather than a port, so it is tracked separately.
 
 ## Open Questions
 
