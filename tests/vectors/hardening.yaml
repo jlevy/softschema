@@ -170,12 +170,83 @@ enforcement:
         - { $ref: "#/$defs/Address" }
       $defs:
         Address: { type: object, properties: { street: { type: string } } }
-    # The fragment carries only a `$ref`, which is not a lexical `properties`
-    # declaration, so the root has nothing to close. The definition still closes on its
-    # own terms: `$defs` resets the fragment flag.
-    closure: none
+    # Every reference to Address runs through a fragment, so Address is a fragment by
+    # use and is left open; the root closes over it instead, which annotations make
+    # correct. Following the `$ref` is what lets the root know it declares anything.
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: ref_extension_idiom
+    # The commonest composed shape in the wild: extend a base definition with one more
+    # branch. Closing Address lexically would reject `extra`, declared one branch over.
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Address" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: ref_from_both_contexts
+    # Reached from a fragment *and* from `properties`. The definition still closes,
+    # because the non-fragment use has nothing else to enforce it; the fragment use
+    # then carries the lexical-blindness residual. Documented, not silent.
+    schema:
+      type: object
+      properties:
+        addr: { $ref: "#/$defs/Address" }
+      allOf:
+        - { $ref: "#/$defs/Address" }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: unevaluatedProperties
     defs_closure:
       Address: additionalProperties
+  - id: ref_to_free_form_def
+    # The reference resolves to a free-form mapping, so it declares nothing and the
+    # root must stay open. Assuming any `$ref` declares something would close this
+    # schema against every key.
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Anything" }
+      $defs:
+        Anything: { type: object }
+    closure: none
+    defs_closure:
+      Anything: none
+  - id: ref_adjacent_to_properties
+    # `$ref` is an in-place applicator, so its annotations reach the referring node.
+    # A node that both references and declares needs the annotation-aware keyword, and
+    # the definition it composes with must stay open for the same reason as the
+    # extension idiom above.
+    schema:
+      $ref: "#/$defs/Address"
+      properties: { extra: { type: string } }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: standalone_ref_closes_its_definition
+    # The only reference is a bare property value, so nothing else covers that instance
+    # location and the definition must close on its own terms.
+    schema:
+      type: object
+      properties:
+        addr: { $ref: "#/$defs/Address" }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: additionalProperties
+    defs_closure:
+      Address: additionalProperties
+  - id: prohibition_only
+    # `not` names what must be absent. Those properties are not declarations, and `not`
+    # contributes no annotations, so closing over them would admit nothing at all.
+    schema:
+      type: object
+      not: { properties: { b: { type: string } }, required: [b] }
+    closure: none
   - id: dependent_object
     schema:
       type: object
@@ -183,6 +254,41 @@ enforcement:
       dependentSchemas:
         a: { required: [b], properties: { b: { type: string } } }
     closure: unevaluatedProperties
+
+# Shapes `enforced` deliberately does not close, pinned as document outcomes so the gap
+# is visible and any later change is loud. Each is a conservative choice, not an
+# oversight: closing these lexically would reintroduce the sibling blindness the
+# applicator split exists to prevent, and root closure cannot reach a nested instance
+# location. See the "what enforced does not close" list in the spec.
+enforcement_gaps:
+  - id: nested_object_inside_fragment
+    why: >-
+      An object declared inline under a fragment is never closed. Root
+      `unevaluatedProperties` applies to the root instance only, and closing the nested
+      object lexically would reject keys a sibling fragment contributes to the same
+      location. Workaround: declare it in `$defs` and `$ref` it.
+    schema:
+      type: object
+      properties: { kind: { type: string } }
+      allOf:
+        - properties:
+            extra: { type: object, properties: { name: { type: string } } }
+    value: { kind: k, extra: { name: n, zzz: 1 } }
+    verdict: valid
+  - id: alternatives_inside_fragment
+    why: >-
+      Branches of an `anyOf` nested in a fragment inherit fragment status, so they are
+      not closed, and the declares-scan does not traverse alternatives, so the root does
+      not close either. Closing the root over hoisted branch declarations would give
+      union semantics that differ from top-level branch closure — the decision ss-p32o
+      is waiting on.
+    schema:
+      allOf:
+        - anyOf:
+            - { properties: { a: { type: string } } }
+            - { properties: { b: { type: string } } }
+    value: { a: "x", zzz: 1 }
+    verdict: valid
 
 # Cross-implementation error-record deviations that are accepted, not bugs.
 #

@@ -388,7 +388,10 @@ ever narrows again.
 - **A composed schema gains real enforcement.** A document with an undeclared key
   against a composed schema was `invalid` before (for the wrong reason) and is `invalid`
   after (for the right one).
-  No document silently becomes valid.
+  At a composition root, no document silently becomes valid.
+  Below one, two shapes the blanket refusal used to reject are now accepted — objects
+  declared inline inside a fragment, and alternatives nested inside a fragment.
+  Both are open by design and pinned as `enforcement_gaps` vectors.
 - **Non-composed schemas are bit-identical.** Clause 3 keeps `additionalProperties` for
   them, which is why the golden corpus passes untouched.
 - **Compiled schemas and `schema_sha256` are unaffected.** The overlay remains
@@ -452,6 +455,17 @@ fails too, so the entry cannot rot silently.
 The three composed CLI cases were added to `cross-impl-diff.sh` regardless, and are
 byte-identical.
 
+**Review findings folded in.** The published review of PR #42 found three composition
+shapes the first cut got wrong, all now fixed and pinned: a definition reached only
+through composed references was closed lexically and rejected keys its sibling branch
+declared (the `allOf: [{$ref: Base}, {properties: …}]` extension idiom, and the same
+shape with `$ref` adjacent to `properties`); and `not` was treated as a declaration, so
+a prohibition-only schema closed against everything.
+Clause 4 and the `_REFERENCE_KEYWORDS` handling exist because of those.
+Two shapes the review found *under*-enforced are deliberately left open and pinned as
+`enforcement_gaps` vectors rather than fixed — see the spec’s “What `enforced` does not
+close”.
+
 **A sibling bug surfaced and was left out of scope** (`ss-p32o`). The same lexical
 blindness affects `anyOf`/`oneOf` when a node declares its own `properties` alongside
 alternatives that declare more — and the refusal never covered that shape, so it ships
@@ -463,10 +477,14 @@ rather than a port, so it is tracked separately.
 
 ## Open Questions
 
-1. **Is `unevaluatedProperties`’s evaluation cost worth measuring?** It defeats some ajv
-   optimizations. It applies only to composed schemas under `enforced`, so the blast
-   radius is small, but the memoization added in 0.6.2 makes a before/after worth a
-   glance.
+*(none outstanding)*
+
+1. ~~**Is `unevaluatedProperties`’s evaluation cost worth measuring?**~~ Measured: with
+   the 0.6.2 memoization warm, a 20-property object costs ~113 µs/doc closed with
+   `additionalProperties` and ~221 µs/doc closed with `unevaluatedProperties` — roughly
+   2×, and only for composed schemas under `enforced`. Acceptable for a validation-time
+   overlay on artifact-sized documents; revisit only if `enforced` moves onto a hot
+   path.
 
 ## References
 

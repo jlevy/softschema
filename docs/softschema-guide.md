@@ -832,9 +832,10 @@ Two things make this work, and both are worth knowing:
   declaration of what the document may contain, so the validator does not close it.
   If it did, the conditional would silently stop firing.
 - **The composition root closes with `unevaluatedProperties`.** That keyword is
-  annotation-aware, so a property declared in any branch counts as declared.
-  Closing the root with `additionalProperties` instead would reject `budget_spent`,
-  since that keyword cannot see the `then` branch.
+  annotation-aware, so a property declared in *any* branch counts as declared.
+  Here `budget_spent` is declared in the root’s own `properties`, so either keyword
+  would admit it — but move a declaration into a branch (as schemas grow, they tend to
+  migrate there) and only `unevaluatedProperties` still sees it.
 
 The payoff is that the schema stays the single statement of the contract.
 Reimplementing cross-field rules in a separate checker is exactly the split soft schemas

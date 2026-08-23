@@ -172,10 +172,15 @@ Validation fails on malformed frontmatter, invalid `softschema:` metadata, missi
 envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
 When the contract’s status is `enforced`, structural validation applies the
-strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
-schemas that declare `properties` but omit `additionalProperties` are validated as
-`additionalProperties: false`, an explicit `additionalProperties` always wins, and
-free-form mappings are unaffected.
+strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): an object
+schema that declares properties but is silent about closure is validated as closed.
+Which keyword closes it depends on whether the schema composes — `unevaluatedProperties`
+for a composition root, `additionalProperties` otherwise — and fragments are never
+closed internally. An explicit value for either keyword always wins, and free-form
+mappings are unaffected.
+The applicator split, the definition rule, and the shapes `enforced` deliberately leaves
+open are specified in the softschema spec’s closure section; `apply_enforced_extras`’s
+docstring is the implementation-side reference.
 The overlay is validation-time only; compiled schemas never change.
 `validate_structural` exposes the same behavior via its `strict_extras` keyword.
 

@@ -92,8 +92,16 @@ both packages, so an import of it is an `ImportError`.
 
 Documents that were uniformly `invalid` against a composed schema now report their real
 status, so exit codes move for anyone who pinned the broken behavior.
-No document silently becomes valid: an undeclared key against a composed schema was
+At a composition root no document silently becomes valid: an undeclared key there was
 `invalid` before (for the wrong reason) and is `invalid` after (for the right one).
+
+Below a composition root, two shapes that the blanket refusal used to reject are now
+accepted — an object declared inline inside a fragment, and alternatives nested inside a
+fragment. Both are open by design (closing them lexically reintroduces the bug this
+release fixes), both are listed under “What `enforced` does not close” in the spec, and
+both are pinned in the shared vectors.
+If you rely on `enforced` to reject undeclared keys in objects declared inside
+`allOf`/`if`/`then` branches, move those objects into `$defs` and `$ref` them.
 
 One widening is worth knowing rather than discovering.
 `unevaluatedProperties` is annotation-based, so a property named in an `if` matcher is

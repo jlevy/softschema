@@ -210,9 +210,13 @@ shared corpus.
 
 ### Documented deviations
 
-Cross-implementation output is identical, with one exception: a deviation explicitly
-checked in as a documented diff.
+Across the golden corpus and the shared vectors, cross-implementation output is
+identical, with one exception: a deviation explicitly checked in as a documented diff.
 **The Python goldens are the reference output.**
+
+The invariant is scoped to what the corpus and vectors cover, not to arbitrary schemas —
+`jsonschema` and `ajv` diverge on record *sets* for shapes nothing exercises, and
+finding one is a reason to add a vector rather than evidence of a regression.
 
 The exception exists because `jsonschema` and `ajv` sometimes reach the same verdict
 through a different number of records, and normalizing the difference away would cost

@@ -233,15 +233,57 @@ test("fragments are never closed internally", () => {
   }
 });
 
-test("$defs close even when referenced from a fragment", () => {
+test("a definition reached only through a fragment stays open", () => {
+  // The `allOf: [{$ref: Base}, {properties: ...}]` extension idiom. Closing Address
+  // lexically rejects `extra`, which the sibling branch declares.
   const out = applyEnforcedExtras({
+    allOf: [{ $ref: "#/$defs/Address" }, { properties: { extra: { type: "string" } } }],
+    $defs: { Address: { type: "object", properties: { street: { type: "string" } } } },
+  } as Schema);
+
+  expect(mapping(out, "$defs", "Address")).not.toHaveProperty("additionalProperties");
+  expect(mapping(out, "$defs", "Address")).not.toHaveProperty("unevaluatedProperties");
+  // The root closes over the definition instead; annotations make that correct.
+  expect(out.unevaluatedProperties).toBe(false);
+});
+
+test("a definition reached outside a fragment still closes", () => {
+  const out = applyEnforcedExtras({
+    type: "object",
+    properties: { addr: { $ref: "#/$defs/Address" } },
     allOf: [{ $ref: "#/$defs/Address" }],
     $defs: { Address: { type: "object", properties: { street: { type: "string" } } } },
   } as Schema);
 
   expect(mapping(out, "$defs", "Address").additionalProperties).toBe(false);
-  // The fragment carries only a `$ref`, which declares no properties lexically, so the
-  // root has nothing to close.
+});
+
+test("a fragment $ref to a free-form definition does not close the root", () => {
+  // Treating any `$ref` as a declaration would close this schema against every key.
+  const out = applyEnforcedExtras({
+    allOf: [{ $ref: "#/$defs/Anything" }],
+    $defs: { Anything: { type: "object" } },
+  } as Schema);
+
+  expect(out).not.toHaveProperty("additionalProperties");
+  expect(out).not.toHaveProperty("unevaluatedProperties");
+});
+
+test("cyclic local references terminate", () => {
+  applyEnforcedExtras({
+    allOf: [{ $ref: "#/$defs/A" }],
+    $defs: { A: { $ref: "#/$defs/B" }, B: { $ref: "#/$defs/A" } },
+  } as Schema);
+});
+
+test("properties under not are prohibitions, not declarations", () => {
+  // `not` contributes no annotations, so closing over its properties would leave the
+  // schema admitting nothing at all.
+  const out = applyEnforcedExtras({
+    type: "object",
+    not: { properties: { b: { type: "string" } }, required: ["b"] },
+  } as Schema);
+
   expect(out).not.toHaveProperty("additionalProperties");
   expect(out).not.toHaveProperty("unevaluatedProperties");
 });
@@ -267,7 +309,15 @@ test("shared enforcement vectors", () => {
     expect(injected, item.id as string).toEqual(expected);
     const defsClosure = (item.defs_closure ?? {}) as Record<string, string>;
     for (const [name, keyword] of Object.entries(defsClosure)) {
-      expect(mapping(out, "$defs", name)[keyword], `${item.id}/${name}`).toBe(false);
+      const definition = mapping(out, "$defs", name);
+      if (keyword === "none") {
+        expect(
+          CLOSURE_KEYWORDS.filter((closure) => closure in definition),
+          `${item.id}/${name}`,
+        ).toEqual([]);
+      } else {
+        expect(definition[keyword], `${item.id}/${name}`).toBe(false);
+      }
     }
   }
 });
@@ -336,4 +386,40 @@ test("documented engine deviations", () => {
     }));
     expect(actual, item.id as string).toEqual(item.typescript as DeviationRecord[]);
   }
+});
+
+test("documented enforcement gaps", () => {
+  // Shapes enforced deliberately does not close. Pinned as document outcomes so the gap
+  // stays visible and any later change is loud rather than silent.
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.enforcement_gaps ?? []) {
+    const result = validateStructural(item.value, item.schema as Record<string, unknown>, {
+      strictExtras: true,
+    });
+    expect(result.ok, `${item.id}: ${JSON.stringify(result.errors)}`).toBe(
+      item.verdict === "valid",
+    );
+  }
+});
+
+test("multiple undeclared keys collapse to one record", () => {
+  // ajv emits one closure error per key; jsonschema emits one per object. With two
+  // undeclared keys the collapse is observable — with one it is indistinguishable from
+  // no collapse at all.
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  const item = (vectors.enforcement ?? []).find((candidate) => candidate.id === "composed_object");
+
+  const result = validateStructural(
+    { first: "Ada", last: "Lovelace", bogus: 1, other: 2 },
+    item?.schema as Record<string, unknown>,
+    { strictExtras: true },
+  );
+
+  expect(result.errors.map((error) => error.code)).toEqual(["undeclared_property"]);
 });

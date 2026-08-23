@@ -126,17 +126,64 @@ def test_fragments_are_never_closed_internally() -> None:
         assert "unevaluatedProperties" not in fragment
 
 
-def test_defs_close_even_when_referenced_from_a_fragment() -> None:
+def test_definition_reached_only_through_a_fragment_stays_open() -> None:
+    # The `allOf: [{$ref: Base}, {properties: ...}]` extension idiom. Closing Base
+    # lexically rejects `extra`, which the sibling branch declares.
     schema = {
-        "allOf": [{"$ref": "#/$defs/Address"}],
+        "allOf": [
+            {"$ref": "#/$defs/Address"},
+            {"properties": {"extra": {"type": "string"}}},
+        ],
         "$defs": {"Address": {"type": "object", "properties": {"street": {"type": "string"}}}},
     }
 
     out = apply_enforced_extras(schema)
 
-    assert out["$defs"]["Address"]["additionalProperties"] is False
-    # The fragment carries only a `$ref`, which declares no properties lexically, so
-    # the root has nothing to close.
+    assert "additionalProperties" not in out["$defs"]["Address"]
+    assert "unevaluatedProperties" not in out["$defs"]["Address"]
+    # The root closes over the definition instead; annotations make that correct.
+    assert out["unevaluatedProperties"] is False
+
+
+def test_definition_reached_outside_a_fragment_still_closes() -> None:
+    # Something has to enforce the non-fragment use, so the definition keeps its
+    # lexical closure even though a fragment also references it.
+    schema = {
+        "type": "object",
+        "properties": {"addr": {"$ref": "#/$defs/Address"}},
+        "allOf": [{"$ref": "#/$defs/Address"}],
+        "$defs": {"Address": {"type": "object", "properties": {"street": {"type": "string"}}}},
+    }
+
+    assert apply_enforced_extras(schema)["$defs"]["Address"]["additionalProperties"] is False
+
+
+def test_fragment_ref_to_a_free_form_definition_does_not_close_the_root() -> None:
+    # Treating any `$ref` as a declaration would close this schema against every key.
+    schema = {"allOf": [{"$ref": "#/$defs/Anything"}], "$defs": {"Anything": {"type": "object"}}}
+
+    out = apply_enforced_extras(schema)
+
+    assert "additionalProperties" not in out
+    assert "unevaluatedProperties" not in out
+
+
+def test_cyclic_local_references_terminate() -> None:
+    schema = {
+        "allOf": [{"$ref": "#/$defs/A"}],
+        "$defs": {"A": {"$ref": "#/$defs/B"}, "B": {"$ref": "#/$defs/A"}},
+    }
+
+    apply_enforced_extras(schema)
+
+
+def test_properties_under_not_are_prohibitions_not_declarations() -> None:
+    # `not` contributes no annotations, so closing over its properties would leave the
+    # schema admitting nothing at all.
+    schema = {"type": "object", "not": {"properties": {"b": {"type": "string"}}, "required": ["b"]}}
+
+    out = apply_enforced_extras(schema)
+
     assert "additionalProperties" not in out
     assert "unevaluatedProperties" not in out
 
@@ -162,7 +209,13 @@ def test_shared_enforcement_vectors() -> None:
         else:
             assert injected == [expected], case["id"]
         for name, keyword in (case.get("defs_closure") or {}).items():
-            assert out["$defs"][name][keyword] is False, f"{case['id']}/{name}"
+            definition = out["$defs"][name]
+            if keyword == "none":
+                assert not [key for key in _CLOSURE_KEYWORDS if key in definition], (
+                    f"{case['id']}/{name}"
+                )
+            else:
+                assert definition[keyword] is False, f"{case['id']}/{name}"
 
 
 def test_composed_schemas_validate_instead_of_refusing(tmp_path: Path) -> None:
@@ -216,3 +269,32 @@ def test_documented_engine_deviations(tmp_path: Path) -> None:
             for error in result.errors
         ]
         assert actual == case["python"], case["id"]
+
+
+def test_documented_enforcement_gaps(tmp_path: Path) -> None:
+    # Shapes enforced deliberately does not close. Pinned as document outcomes so the
+    # gap stays visible and any later change is loud rather than silent.
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["enforcement_gaps"]:
+        schema_path = tmp_path / f"{case['id']}.schema.yaml"
+        YAML().dump(case["schema"], schema_path)
+        result = validate_structural(case["value"], schema_path, strict_extras=True)
+        assert result.ok is (case["verdict"] == "valid"), (case["id"], result.errors)
+
+
+def test_multiple_undeclared_keys_collapse_to_one_record(tmp_path: Path) -> None:
+    # ajv emits one closure error per key; jsonschema emits one per object. With two
+    # undeclared keys the collapse is observable — with one it is indistinguishable
+    # from no collapse at all.
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    case = next(item for item in vectors["enforcement"] if item["id"] == "composed_object")
+    schema_path = tmp_path / "composed.schema.yaml"
+    YAML().dump(case["schema"], schema_path)
+
+    result = validate_structural(
+        {"first": "Ada", "last": "Lovelace", "bogus": 1, "other": 2},
+        schema_path,
+        strict_extras=True,
+    )
+
+    assert [error["code"] for error in result.errors] == ["undeclared_property"]

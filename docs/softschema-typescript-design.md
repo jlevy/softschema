@@ -113,7 +113,7 @@ are identical.
 `validateArtifact` returns the portable fields `contract`, `contract_id`,
 `document_metadata`, `outcome`, `path`, `profile`, `semantic`, `status`, `structural`,
 `values`, and `warnings`. Structural errors use engine-neutral records
-`{ kind, path, validator, validator_value, value, message }`, sorted by
+`{ kind, code, path, validator, validator_value, value, message }`, sorted by
 `(path, validator)`. Library results use `valid` / `invalid` / `input_error`. The CLI
 reads once to infer document binding: readable results map to exits `0` or `1`, while
 access and parse failures use its one-line stderr and exit-`2` input boundary.
@@ -122,7 +122,14 @@ presentation, not a byte-level wire contract.
 
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
 the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for
-every keyword; ajv’s per-key `additionalProperties` errors are collapsed to one.
+every keyword.
+Two ajv shapes are then normalized: `collapseUndeclaredProperties()` keeps
+one record per object path for the `undeclared_property` code (ajv reports one per
+disallowed key, for either closure keyword), and `dropConditionalWrappers()` removes the
+`if` record ajv adds alongside a failed conditional’s real cause, which jsonschema never
+emits.
+`code` is a pure function of `validator`, computed in the same shared layer as the
+message table so the engines cannot drift.
 
 Values are restricted to the shared portable domain.
 JSON object key order and runtime-native number spelling are not semantic; canonical
