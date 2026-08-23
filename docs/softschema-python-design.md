@@ -24,6 +24,7 @@ core package.
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
+| `softschema.enforcement` | Checked enforced-profile analysis and offline schema-resource graph preparation |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
@@ -156,11 +157,14 @@ JSON Schema carries the portable structural subset that another implementation c
 reuse.
 
 ```python
+from pathlib import Path
+
 from softschema import Contract, SchemaStatus, validate_artifact
 
 contract = Contract(
     id="example.movies:MoviePage/v1",
     model=MoviePage,
+    schema_path=Path("examples/movie_page/movie-page.schema.yaml"),
     envelope_key="movie",
     status=SchemaStatus.enforced,
 )
@@ -171,18 +175,23 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
-When the contract’s status is `enforced`, structural validation applies the
-strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): an object
-schema that declares properties but is silent about closure is validated as closed.
-Which keyword closes it depends on whether the schema composes — `unevaluatedProperties`
-for a composition root, `additionalProperties` otherwise — and fragments are never
-closed internally. An explicit value for either keyword always wins, and free-form
-mappings are unaffected.
-The applicator split, the definition rule, and the shapes `enforced` deliberately leaves
-open are specified in the softschema spec’s closure section; `apply_enforced_extras`’s
-docstring is the implementation-side reference.
+When the contract’s status is `enforced`, a structural schema is required.
+The validator checks the root and every supplied resource, prepares them as one offline
+graph, and applies the checked closure profile in `softschema.enforcement`. Simple
+object sites use `additionalProperties`; composed and referenced sites use
+`unevaluatedProperties`; reusable definitions stay open; and unsupported topologies
+return a structured `enforcement_unsupported` error.
+The normative behavior and reason codes are in the spec’s
+[support matrix](softschema-spec.md#support-matrix).
 The overlay is validation-time only; compiled schemas never change.
-`validate_structural` exposes the same behavior via its `strict_extras` keyword.
+
+`validate_structural` exposes the same behavior through `strict_extras=True` and accepts
+an optional `resources` mapping.
+`validate_values` accepts `status` and `resources`, so already-extracted values use the
+same boundary policy.
+An enforced artifact or values call without a structural schema returns
+`enforced_schema_required`; a semantic model is not a substitute because Pydantic and
+Zod have different unknown-key behavior.
 
 Compiling a schema is a pure function of the schema text and `strict_extras`, so
 `validate_structural` memoizes it rather than reparsing and recompiling on every call.
@@ -244,11 +253,18 @@ preserves the canonical profile’s annotation-only treatment of `format`; a por
 Structural validation runs through `jsonschema`, but the error records it returns are
 synthesized by softschema, not passed through from the library.
 Each violation becomes
-`{kind: "schema_violation", path, validator, validator_value, value, message}` where
-`message` comes from a shared template keyed on the JSON Schema keyword
-(`softschema.errors`). Records are sorted by `(path, validator)`. The TypeScript port
-returns the same structured meaning through `ajv`; semantic model errors remain
-implementation-specific.
+`{kind: "schema_violation", code, path, property?, validator, validator_value, value, message}`
+where `message` comes from a shared template keyed on the JSON Schema keyword
+(`softschema.errors`). Missing and undeclared-field records carry `property`, with one
+record per affected field.
+Records are sorted by `(path, validator, property)`. The TypeScript port returns the
+same verdict and structured meaning through Ajv; exact record-set differences are
+allowed only when pinned in the shared vectors as documented engine deviations.
+Semantic model errors remain implementation-specific.
+
+For field repair, match `{kind, code, path, property}`. `validator`, `validator_value`,
+and `value` name engine mechanisms and diagnostic context rather than the stable repair
+category.
 
 `ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
 `invalid`, or `input_error`. Library callers always receive this structured result.
@@ -331,6 +347,8 @@ The current first-release kinds:
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
 | `schema_missing` | A compiled schema is bound (a `schema_path` or `softschema.schema`) but the file does not exist, is unreadable, or fails bounded resolution (absolute path or path escaping the document directory and working directory). |
 | `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
+| `enforced_schema_required` | `status: enforced` was requested without a structural schema. |
+| `enforcement_unsupported` | The schema is valid Draft 2020-12, but its topology is outside the checked enforced profile; `reason` and `schema_path` identify the boundary. |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them

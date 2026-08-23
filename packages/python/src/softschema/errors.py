@@ -1,8 +1,8 @@
 """Engine-neutral structural error records.
 
-`jsonschema` (Python) and `ajv` (the future TypeScript port) word the same
-violation differently. To keep structural errors byte-identical across
-implementations, softschema does not surface the engine's native message.
+`jsonschema` (Python) and Ajv (the TypeScript port) word the same violation
+differently. To keep structural errors portable, softschema does not surface the
+engine's native message.
 Instead it normalizes each engine error into a stable record and synthesizes
 the human-readable ``message`` from a shared template keyed on the failing
 JSON Schema keyword (``validator``).
@@ -13,6 +13,7 @@ Record shape (every structural validation error):
         "kind": "schema_violation",
         "code": "invalid_value" | "undeclared_property" | ...,  # softschema category
         "path": ["properties", "..."] | [...],   # JSON path to the value
+        "property": "field_name",                 # field-repair records only
         "validator": "enum" | "minimum" | ...,    # the JSON Schema keyword
         "validator_value": <the keyword's value>,
         "value": <the offending instance value>,

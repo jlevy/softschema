@@ -398,6 +398,45 @@ R4-R6 can be sequenced as tracked follow-up work only if the public contract is 
 immediately and the open beads remain attached to the review epic.
 No code changes are proposed by this review.
 
+## Status Addendum — 2026-08-23
+
+The stacked remediation implements the checked-profile recommendation in commit
+`9d69517`. The original findings above remain as the historical review of PR #42 at
+`18946cb`; this addendum records their disposition after implementation and document
+reconciliation.
+
+| ID | Disposition | Resolution |
+| --- | --- | --- |
+| R1 | Fixed | Alternatives remain unchanged internally and close at their parent, preserving `anyOf` annotations and `oneOf` branch selection. |
+| R2 | Fixed | Reusable definitions and resources remain open; structured `$ref` application sites close independently. |
+| R3 | Fixed | Both runtimes check, index, transform, and compile the root and supplied resources as one offline graph. |
+| R4 | Fixed | Nonempty `patternProperties` participates in declaration analysis and graph-wide portable regex checks. |
+| R5 | Fixed | Enforced artifact and values APIs require a structural schema; both values APIs expose status and resources. |
+| R6 | Fixed | Missing and undeclared-field errors carry `property`, with one record per affected field. |
+| R7 | Fixed | The spec now owns one normative support matrix; the guide, implementation designs, development process, changelog, completed plan, and code agree with it. |
+
+The remediation restores a narrow, structured `enforcement_unsupported` result instead
+of claiming support for unproved topologies.
+Each reason has an author action in the spec.
+Shared semantic vectors cover supported graph equivalents and unsupported boundaries in
+Python and TypeScript; transformation-shape tests are secondary.
+
+The first non-blocking suggestion was adopted by moving the overlay from canonical
+schema normalization into dedicated `enforcement` modules.
+Vendoring the official JSON Schema Test Suite remains deferred: the checked policy
+vectors cover softschema’s language boundary, while the existing runtime suites and
+metaschema checks cover the current supported vocabulary.
+A machine-readable profile version is also deferred until the support matrix grows
+enough to require capability negotiation.
+
+Follow-up local validation passed 192 Python tests and 190 TypeScript tests, the 49
+Python, 47 Node, and 49 Bun golden journeys, both package builds, publint, lint, type
+checks, and the direct Python/TypeScript parity diff.
+
+**Final verdict:** Approved.
+All required findings are addressed in the stacked remediation; final GitHub CI evidence
+is recorded on the pull request.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

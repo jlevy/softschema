@@ -21,6 +21,7 @@ test; see the parity development process in [development.md](development.md).
 | `portable` | Bounded UTF-8 reading and portable YAML value decoding |
 | `registry` | `Contracts`: resolve contracts by id |
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
+| `enforcement` | Checked enforced-profile analysis and offline schema-resource graph preparation |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
 | `errors` | Engine-neutral structural error records and ajv normalization |
 | `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, `clearValidatorCache`, and the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root |
@@ -85,16 +86,44 @@ Calendar-aware rejection belongs in the Zod semantic model; an explicit portable
 `validateValues` accepts already-extracted host data and does not parse or normalize it
 as YAML.
 
+## Checked Enforced Profile
+
+When `status` is `enforced`, a structural schema is required.
+A Zod model alone is not a substitute because ordinary Zod objects and Pydantic models
+have different unknown-key defaults.
+`validateArtifact` and `validateValues` return `enforced_schema_required` when no
+structural schema is bound.
+
+Before Ajv compilation, `prepareSchemaGraph` checks the root and every supplied resource
+as one offline graph.
+It validates the Draft 2020-12 schemas and portable regular expressions, indexes URI
+identities, resolves the supported static `$ref` forms, and applies closure at the
+instance sites where annotation flow makes the overlay safe.
+Reusable definitions and resources stay open; structured reference application sites
+close independently.
+Unsupported topologies return a structured `enforcement_unsupported` record rather than
+a document verdict produced by a partial rewrite.
+The normative rules, reference boundary, and reason codes are in the spec’s
+[support matrix](softschema-spec.md#support-matrix).
+
+The overlay is validation-time only and does not affect the compiled schema or
+`schema_sha256`. `validateStructural` accepts supplied `resources`, and `validateValues`
+accepts both `status` and `resources`. Calls with resources bypass the
+compiled-validator cache because the graph is neither cheap nor safe to identify by the
+root schema alone.
+
 ## Library API Parity
 
-Names are idiomatic per language; shapes, semantics, error `kind`s, and warning codes
-are identical.
+Names are idiomatic per language; result meaning, verdicts for the checked profile,
+error `kind`s, and warning codes are identical.
+Native engines may emit different structural record sets only for deviations pinned
+explicitly in the shared vectors.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
 | `validate_artifact` | `validateArtifact` | same result fields, `outcome`, error kinds, and warnings |
-| `validate_values` | `validateValues` | combined structural and semantic on a values mapping |
-| `validate_structural` | `validateStructural` | jsonschema ↔ ajv; identical error records |
+| `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status` and offline `resources` |
+| `validate_structural` | `validateStructural` | jsonschema ↔ Ajv; shared record shape and meaning, with pinned native-engine deviations |
 | `clear_validator_cache` | `clearValidatorCache` | drop memoized compiled validators; both cache on schema content, keyed with the enforced overlay, and skip the cache when `resources` are supplied |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
 | `compile_model` | `compileSchema` | content-identical canonical compiled schema, equal `schema_sha256` |
@@ -113,23 +142,31 @@ are identical.
 `validateArtifact` returns the portable fields `contract`, `contract_id`,
 `document_metadata`, `outcome`, `path`, `profile`, `semantic`, `status`, `structural`,
 `values`, and `warnings`. Structural errors use engine-neutral records
-`{ kind, code, path, validator, validator_value, value, message }`, sorted by
-`(path, validator)`. Library results use `valid` / `invalid` / `input_error`. The CLI
-reads once to infer document binding: readable results map to exits `0` or `1`, while
-access and parse failures use its one-line stderr and exit-`2` input boundary.
+`{ kind, code, path, property?, validator, validator_value, value, message }`, sorted by
+`(path, validator, property)`. `property` is present for missing and undeclared-field
+records, with one record per affected field.
+Library results use `valid` / `invalid` / `input_error`. The CLI reads once to infer
+document binding: readable results map to exits `0` or `1`, while access and parse
+failures use its one-line stderr and exit-`2` input boundary.
 Cross-runtime tests compare JSON structurally; deterministic pretty printing is local
 presentation, not a byte-level wire contract.
 
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
-the analogues of jsonschema’s `validator_value`/`instance`, so records match Python for
-every keyword.
-Two ajv shapes are then normalized: `collapseUndeclaredProperties()` keeps
-one record per object path for the `undeclared_property` code (ajv reports one per
-disallowed key, for either closure keyword), and `dropConditionalWrappers()` removes the
-`if` record ajv adds alongside a failed conditional’s real cause, which jsonschema never
-emits.
+the analogues of jsonschema’s `validator_value`/`instance`, and extracts Ajv’s affected
+property detail into the shared `property` field.
+Two ajv shapes are then normalized: `collapseUndeclaredProperties()` keeps one record
+per object path and affected property for the `undeclared_property` code, and
+`dropConditionalWrappers()` removes the `if` record Ajv adds alongside a failed
+conditional’s real cause, which jsonschema never emits.
 `code` is a pure function of `validator`, computed in the same shared layer as the
 message table so the engines cannot drift.
+
+The checked profile guarantees equal validation verdicts in Python and TypeScript.
+It does not claim that arbitrary `jsonschema` and Ajv schemas produce the same native
+error-record set. The few accepted record-set differences are exact, named entries in
+`tests/vectors/hardening.yaml`’s `engine_deviations`; drift on either runtime still
+fails. For field repair, the stable match surface is `{kind, code, path, property}`.
+`validator`, `validator_value`, and `value` remain diagnostic details.
 
 Values are restricted to the shared portable domain.
 JSON object key order and runtime-native number spelling are not semantic; canonical

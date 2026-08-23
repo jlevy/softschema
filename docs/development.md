@@ -195,9 +195,9 @@ is compared structurally rather than as presentation bytes.
 When you change any behavior, follow this loop so the two never drift:
 
 1. **Choose one primary owner first.** Use a shared YAML vector for a portable library
-   rule, an adapter unit test for runtime-specific integration, or a golden journey for
-   public CLI output and exit behavior.
-   Do not add the same case at every layer.
+   rule, especially raw-versus-enforced schema semantics; an adapter unit test for
+   runtime-specific integration; or a golden journey for public CLI output and exit
+   behavior. Do not add the same case at every layer.
 2. **Implement in Python**, then `uv run pytest` and
    `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and
@@ -211,7 +211,8 @@ The parity invariants, and where each is enforced:
 | Invariant | Enforced by |
 | --- | --- |
 | Canonical schema (equal `schema_sha256`) | `compile` and the KitchenSink conformance test (`packages/typescript/test/conformance.test.ts`) and `examples/parity/` |
-| Engine-neutral structural errors | shared message templates (`errors`), the golden corpus |
+| Equal checked-profile verdicts | shared semantic vectors in `tests/vectors/hardening.yaml`, including root/resource and raw/enforced pairs |
+| Engine-neutral structural error meaning | shared message templates (`errors`), shared vectors, and the golden corpus |
 | Structurally equal JSON and exact stable human output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
 | Equal flag/command surface | per-impl and neutral golden scenarios |
 | Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
@@ -223,13 +224,15 @@ shared corpus.
 
 ### Documented deviations
 
-Across the golden corpus and the shared vectors, cross-implementation output is
-identical, with one exception: a deviation explicitly checked in as a documented diff.
+Across the golden corpus and ordinary shared vectors, cross-implementation output is
+identical. A native-engine record-set deviation is allowed only when it is explicitly
+checked in as a documented vector.
 **The Python goldens are the reference output.**
 
-The invariant is scoped to what the corpus and vectors cover, not to arbitrary schemas —
-`jsonschema` and `ajv` diverge on record *sets* for shapes nothing exercises, and
-finding one is a reason to add a vector rather than evidence of a regression.
+The verdict invariant applies to every schema admitted by the checked enforced profile.
+Exact diagnostic-record parity is scoped to what the corpus and vectors cover:
+`jsonschema` and Ajv can diverge on record *sets*, and finding an unlisted difference is
+a reason to characterize and resolve it before expanding the profile.
 
 The exception exists because `jsonschema` and `ajv` sometimes reach the same verdict
 through a different number of records, and normalizing the difference away would cost
@@ -249,6 +252,15 @@ Add an entry only after establishing that no normalization removes the differenc
 cleanly, and say why in the entry’s `why` field.
 Prefer normalizing in `errors.ts` — `collapseUndeclaredProperties` and
 `dropConditionalWrappers` are both cases where that was the right answer.
+
+For an enforced-profile change, add a semantic vector before changing the transformer.
+Each supported shape should prove that the overlay never makes a raw-invalid instance
+valid, preserves a raw-valid instance containing only evaluated properties, and rejects
+the same instance after one unmatched property is added.
+Test equivalent inline, pointer, anchor, and supplied-resource forms when the feature
+involves references.
+Transform-shape assertions are secondary implementation tests; they are not sufficient
+evidence that annotation flow or branch selection was preserved.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -6,109 +6,85 @@ version number.
 
 ## Unreleased
 
-Composed schemas — `allOf`, `if`/`then`, `dependentSchemas` — now validate under
-`status: enforced` instead of being refused.
-Structural error records gain a stable `code` field, which is the one change that asks
-something of consumers.
+`status: enforced` now uses a checked Draft 2020-12 schema-graph profile.
+Composed schemas that the validator can close without changing their authored meaning
+validate normally; topologies outside that profile return an explicit unsupported
+result.
 
-### Breaking for consumers matching `validator`
+### Breaking changes and migration
 
-Read this if any code inspects `structural.errors[*].validator`.
+Structural errors now identify both a stable category and, for field-level repairs, the
+affected property. Consumers that match engine keywords or assume one aggregate record
+per object should migrate:
 
-An undeclared key now reports `additionalProperties` on a simple schema and
-`unevaluatedProperties` on a composed one.
-A check written as `validator == "additionalProperties"` does not crash — it silently
-stops matching composed schemas.
-That is the one failure this change cannot make loud from inside the library, so it
-leads here.
+| Before | After |
+| --- | --- |
+| Match `validator == "additionalProperties"` | Match `code == "undeclared_property"`; composed sites report `unevaluatedProperties` |
+| Match `{kind, code, path}` for a field repair | Match `{kind, code, path, property}` |
+| Read one generic missing/extra record | Read one record per affected field, with a property-specific message |
+| Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the checked profile are refused |
+| Use an enforced semantic model without a schema | Bind a compiled structural schema; the result is now `enforced_schema_required` |
 
-| Matching on | Before | After |
-| --- | --- | --- |
-| `validator == "additionalProperties"` | catches every undeclared key | misses composed schemas — **migrate to `code`** |
-| `kind == "enforcement_unsupported"` | fires for composed schemas | never fires; the kind is gone |
-| `code == "undeclared_property"` | not available | catches every undeclared key |
-
-`kind` + `code` + `path` is the documented match surface from this release on.
-`validator` and `validator_value` remain, and remain useful for diagnostics, but they
-name the mechanism rather than the category.
 The `code` values are `undeclared_property`, `missing_property`, `invalid_value`, and
-`unmapped_keyword`.
+`unmapped_keyword`. `validator`, `validator_value`, and `value` remain diagnostic
+fields, not the field-repair match surface.
 
-Everything else about the change is loud: `EnforcementUnsupportedError` is gone from
-both packages, so an import of it is an `ImportError`.
+Callers that supply external resources must key each one by an absolute URI without a
+fragment. A resource root `$id`, when present, must resolve to that key.
+This makes Python and TypeScript resolve the same closed, offline graph rather than
+relying on engine-specific retrieval behavior.
 
 ### Fixed
 
-- **`enforced` validates composed schemas instead of refusing them**
-  ([#41](https://github.com/jlevy/softschema/issues/41)). A schema composing constraints
-  with `allOf`, `if`/`then`, or `dependentSchemas` failed with `enforcement_unsupported`
-  for *every* document, valid or not.
-  Adding a cross-field rule to a schema did not gain a check — it lost the ability to
-  check that artifact at all, and a genuine violation was reported with the same generic
-  message as a conforming document.
-
-  The refusal was not gratuitous.
-  `additionalProperties` is lexical: it constrains only the properties named in the same
-  schema object and is blind to those a sibling subschema contributes, so closing a
-  composed schema with it rejects documents the author’s schema accepts.
-  What the refusal missed is that JSON Schema 2020-12 has a keyword for exactly this.
-
-  Applicators are now split by what their subschemas mean.
-  `anyOf`/`oneOf` are *alternatives* — each branch describes the instance completely, so
-  each closes on its own terms, as before.
-  `allOf`, `if`, `then`, `else`, `not`, and `dependentSchemas` are *fragments* — each
-  contributes part of one instance’s constraints, so none is closed internally, and the
-  composition root closes with annotation-aware `unevaluatedProperties` instead.
-  `$defs` resets this: a definition is a complete declaration reached by `$ref`.
-
-  Schemas that do not compose are unaffected, down to the byte: they keep
-  `additionalProperties`, and the explicit-wins rule is unchanged.
-  Compiled schemas and `schema_sha256` are untouched — the overlay remains
-  validation-time only.
-
-- **A `unevaluatedProperties` violation renders a real message.** It previously fell to
-  the generic branch and spilled the entire payload into the text
-  (`value {...} failed unevaluatedProperties constraint False`). It now emits the same
-  string as `additionalProperties`: one category, one code, one message.
+- **Composed schemas validate under `enforced` when closure is provably safe**
+  ([#41](https://github.com/jlevy/softschema/issues/41)). `allOf`, `anyOf`, `oneOf`,
+  `if`/`then`/`else`, `dependentSchemas`, and supported `$ref` sites remain unchanged
+  internally and close at the parent with annotation-aware
+  `unevaluatedProperties: false`. This preserves alternative branch selection and
+  successful-branch annotations.
+  Direct lexical objects continue to use `additionalProperties: false`. Reusable
+  definitions and resources remain open while each structured reference site closes
+  independently. The offline graph supports local pointers, escaped tokens, anchors,
+  nested definitions, embedded `$id` resources, supplied resources, and literal or
+  pattern-based declarations.
+- **Enforced status no longer succeeds without structural enforcement.** Artifact
+  validation and the Python/TypeScript values APIs reject model-only enforced calls with
+  `enforced_schema_required`. Both values APIs accept `status` and offline `resources`.
+- **Field-level structural diagnostics identify the repair target.** Missing and
+  undeclared-property errors name the field and preserve one record per affected field.
+  `unevaluatedProperties` uses the same category and property-specific message as
+  `additionalProperties`.
 
 ### Added
 
-- **`code` on structural error records.** See the migration note above.
-
-- **Documented cross-implementation deviations.** Two cases where `jsonschema` and `ajv`
-  reach the same verdict through a different record set, and no normalization removes
-  the difference cleanly, are now pinned in the `engine_deviations` vectors rather than
-  left latent: `dependentSchemas` closure, and the pre-existing `anyOf` branch
-  multiplicity. Each runtime asserts its own record set exactly, so a listed deviation
-  passes while drift on either side — or any unlisted divergence — fails.
-
-### Removed
-
-- **`enforcement_unsupported` and `EnforcementUnsupportedError`.** Unreachable under the
-  new closure rule. Neither was exported by either package, and the error string appeared
-  in no spec, guide, README, or changelog entry.
+- **Stable `code` and `property` error fields.** `code` groups engine keywords by repair
+  category; `property` identifies the field for missing and undeclared-property records.
+- **A checked enforced-profile support matrix.** Dynamic references, unsafe nested
+  instance composition, conditionals whose matcher annotations escape the unconditional
+  declaration scope, directly applied structured embedded resources, and references to
+  directly applied non-reusable targets return `enforcement_unsupported` with stable
+  `reason`, `schema_path`, and `message` fields.
+  Malformed graphs remain `schema_invalid`.
+- **Semantic parity vectors.** Shared raw-versus-enforced vectors cover alternatives,
+  references, resources, patterns, conditionals, unsupported boundaries, and field-error
+  multiplicity in Python and TypeScript.
+- **Documented native-engine deviations.** The `engine_deviations` vectors pin the few
+  accepted `jsonschema`/Ajv record-set differences exactly.
+  Validation verdicts for the checked profile remain equal.
 
 ### Compatibility
 
-Documents that were uniformly `invalid` against a composed schema now report their real
-status, so exit codes move for anyone who pinned the broken behavior.
-At a composition root no document silently becomes valid: an undeclared key there was
-`invalid` before (for the wrong reason) and is `invalid` after (for the right one).
+Compiled schemas and `schema_sha256` are unchanged because the checked overlay remains
+validation-time only.
+Explicit `additionalProperties` or `unevaluatedProperties` at an instance site still
+wins, and mappings with no reachable declaration remain open.
 
-Below a composition root, two shapes that the blanket refusal used to reject are now
-accepted — an object declared inline inside a fragment, and alternatives nested inside a
-fragment. Both are open by design (closing them lexically reintroduces the bug this
-release fixes), both are listed under “What `enforced` does not close” in the spec, and
-both are pinned in the shared vectors.
-If you rely on `enforced` to reject undeclared keys in objects declared inside
-`allOf`/`if`/`then` branches, move those objects into `$defs` and `$ref` them.
-
-One widening is worth knowing rather than discovering.
-`unevaluatedProperties` is annotation-based, so a property named in an `if` matcher is
-*evaluated* when the matcher succeeds and is therefore admitted.
-Given `if: {properties: {secret: {const: "x"}}}` and no `secret` in the root’s
-`properties`, `{"secret": "x"}` passes closure while `{"secret": "other"}` is rejected.
-That is correct 2020-12 behavior, and it is the price of annotation-aware closure.
+Documents previously refused solely because they used supported composition now report
+their real valid or invalid outcome.
+A schema outside the supported matrix fails before document validation with an
+actionable reason rather than receiving a partial overlay.
+See the spec’s [support matrix](docs/softschema-spec.md#support-matrix) for the exact
+boundary and author workarounds.
 
 ## v0.6.2—2026-08-22
 

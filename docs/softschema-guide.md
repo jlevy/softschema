@@ -257,12 +257,17 @@ missing or malformed value, add a Pydantic model (or compiled schema), set
 Bugs that used to silently break the consumer now fail loudly.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
-real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
-fields at the structural boundary (an object schema silent about closure is treated as
-closed — with `unevaluatedProperties` when it composes constraints with `allOf` or
-`if`/`then`, and `additionalProperties` otherwise; an explicit value for either in the
-schema still wins). Setting the source model to `extra="forbid"` additionally compiles
-that strictness into the compiled schema itself and enforces it at the semantic layer.
+real authoring bugs, bind a compiled structural schema and flip `status: enforced`. The
+validator rejects undeclared fields at the structural boundary: a supported object site
+silent about closure receives `unevaluatedProperties` when declarations compose and
+`additionalProperties` otherwise.
+An explicit value for either keyword on the site still wins.
+A model without a structural schema is rejected because Pydantic and Zod have different
+unknown-key defaults.
+The checked profile returns `enforcement_unsupported` for a topology it cannot transform
+safely; see the [normative support matrix](softschema-spec.md#support-matrix).
+Setting the source model to `extra="forbid"` additionally compiles strictness into the
+schema and enforces it at the semantic layer.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -827,8 +832,8 @@ Under `enforced`, this behaves as follows — every row verified against both en
 | --- | --- | --- |
 | `{decision: pending}` | valid | the matcher does not fire, so the rule imposes nothing |
 | `{decision: abandoned, budget_spent: 12.5}` | valid | the rule fires and is satisfied |
-| `{decision: abandoned}` | invalid — `required property ['budget_spent'] is missing` | the rule fires; the error names the field the author forgot |
-| `{decision: pending, bogus: 1}` | invalid — `object has properties that are not allowed` | closure still bites on a composed schema |
+| `{decision: abandoned}` | invalid — `required property 'budget_spent' is missing` | the rule fires; the error names the field the author forgot |
+| `{decision: pending, bogus: 1}` | invalid — `property 'bogus' is not allowed` | closure still bites on a composed schema |
 
 The third row is the point: the error is actionable, not a generic complaint about
 `allOf`.
@@ -871,11 +876,13 @@ allOf:
 `additionalProperties` at the root would not: it sees only the root’s own `properties`
 and rejects a key the schema plainly declares.
 
-One caveat comes with the annotation model.
-Because only *successful* subschemas contribute, a property named **only** inside an
-`if` matcher is undeclared whenever the matcher does not fire.
-Declare anything you match on at the root too — `decision` above is declared at the root
-for exactly this reason.
+One profile rule comes with the annotation model.
+Python `jsonschema` and Ajv do not expose condition-matcher annotations consistently in
+every shape, so matcher fields must also be unconditionally evaluated at the closure
+site. Declare anything you match on there — `decision` above is declared at the root for
+exactly this reason.
+Otherwise enforced validation returns `enforcement_unsupported` with reason
+`conditional_annotation_scope`.
 
 The payoff is that the schema stays the single statement of the contract.
 Reimplementing cross-field rules in a separate checker is exactly the split soft schemas

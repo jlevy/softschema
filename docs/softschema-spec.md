@@ -318,13 +318,17 @@ It is not required to be an import path or a class name.
 - `soft` and `permissive` do not change validation behavior; whether a model allows
   extra fields is configured on the source model.
 - `enforced` makes the schema authoritative at the boundary: a conforming validator
-  treats an object schema that declares properties but omits closure as closed.
-  Which keyword closes it depends on whether the schema composes constraints (see
-  below). An explicit `additionalProperties` or `unevaluatedProperties` value in the
-  schema (true, false, or a subschema) always wins, so a schema can opt specific objects
-  out of strictness. Object schemas that declare no properties anywhere (free-form
-  mappings) are unaffected.
-  The overlay applies at validation time only; it never changes the compiled schema.
+  requires a structural schema and treats a supported object schema that declares
+  properties but omits closure as closed.
+  A model alone is insufficient: implementations return `enforced_schema_required`
+  rather than inheriting Pydantic’s or Zod’s different unknown-key defaults.
+  Which keyword closes an object depends on whether declarations compose at that
+  instance site. An explicit `additionalProperties` or `unevaluatedProperties` value on
+  the site always wins.
+  Free-form mappings remain open.
+  The checked overlay applies at validation time only; it never changes the compiled
+  schema or `schema_sha256`. A topology outside the checked profile returns
+  `enforcement_unsupported` rather than a guessed document verdict.
 
 ### Closure under `enforced`
 
@@ -409,112 +413,104 @@ Two properties of the annotation model drive every rule that follows:
 - **Only successful subschemas contribute.** A failing branch, a `not` whose subschema
   failed, or an `if` whose condition was false all contribute nothing.
 
-#### Which subschemas may be closed on their own
+#### Where closure belongs
 
-Given the above, a subschema can carry its own closure only if it is a **complete
-description** of its instance location — if nothing else contributes declarations there.
-Sorting the in-place applicators by that question:
+No in-place branch is assumed to be a complete object description.
+`allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `dependentSchemas`, and `$ref` all
+contribute at their parent’s instance location, so the overlay leaves their subschemas
+unchanged and closes at the parent with `unevaluatedProperties: false`.
 
-| Kind | Keywords | Is a branch a complete description? | Treatment |
-| --- | --- | --- | --- |
-| Alternatives | `anyOf`, `oneOf` | By convention yes — validation picks one branch, and the compiled shape of an optional field is `anyOf: [{$ref: …}, {"type": "null"}]` | Closed on its own terms |
-| Fragments | `allOf`, `if`, `then`, `else`, `not`, `dependentSchemas` | No — each contributes *part* of the constraints, and `if` contributes a *matcher* rather than a declaration | Never closed internally; the composition root closes instead |
-
-The alternatives row rests on an authoring convention, not a guarantee the spec makes: a
-node that declares `properties` *and* carries alternatives that declare more breaks it.
-That shape is a known defect rather than a supported one — see the tracked issues.
+This placement is especially important for alternatives.
+Every successful `anyOf` branch contributes annotations, while `oneOf` validity depends
+on exactly one branch succeeding.
+Closing branches independently can reject a valid multi-branch `anyOf` or make an
+invalid `oneOf` valid by changing which branches succeed.
+Parent closure preserves branch selection.
+`not` is also left unchanged, but its negated annotations do not declare fields for the
+parent.
 
 #### The rules
 
-Four rules implement the invariant.
-Each is a direct consequence of the two annotation properties above.
+The overlay implements these rules over the root and every explicitly supplied resource
+as one offline graph:
 
-1. **Never inject closure inside a fragment subtree.** Annotations do not travel
-   sideways, so a fragment cannot see what its siblings declare; closing it lexically
-   re-creates the failure in “Why the lexical answer works, until it doesn’t”. Closing
-   an `if` matcher is worse than wrong: it changes which documents the condition
-   matches, so the conditional silently stops firing instead of failing loudly.
+1. A schema site declares object fields when it has a `properties` map, a nonempty
+   `patternProperties` map, or a supported in-place applicator that reaches such a
+   declaration. `required`, `dependentRequired`, and `propertyNames` do not evaluate
+   property values and do not declare fields.
+   Declarations below `not` do not escape it.
+2. A self-contained lexical site receives `additionalProperties: false`. A site that
+   composes declarations through `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`,
+   `dependentSchemas`, or `$ref` receives `unevaluatedProperties: false`. No closure is
+   injected inside those branches.
+3. Reusable `$defs`, legacy `definitions`, embedded-resource roots, and
+   supplied-resource roots stay unchanged unless the author closed them explicitly.
+   A structured `$ref` application site receives annotation-aware closure independently,
+   so using one target in several contexts cannot make those sites interfere.
+4. An explicit `additionalProperties` or `unevaluatedProperties` on the site prevents
+   injection there. Explicit keywords inside referenced targets and composition branches
+   retain their ordinary Draft 2020-12 assertion and annotation behavior.
+   A schema with no declaration reachable at its site remains a free-form mapping.
 
-2. **A node declares properties if it carries `properties`, or if a fragment applicator
-   under it does.** The second half matters because a schema may declare every property
-   inside its `allOf` branches and nothing at the root; without it, such a schema would
-   be enforced nowhere.
-   The scan recurses through fragment applicators and follows local `$ref` targets, and
-   stops there — alternatives are not traversed, and `not` is excluded, since the
-   properties under it name what must be *absent*. Counting a prohibition as a
-   declaration would close the schema over keys that can never be evaluated, admitting
-   nothing at all.
+For example, the common extension shape leaves `Base` reusable and closes only where its
+annotations meet the sibling declaration:
 
-3. **Close such a node with `unevaluatedProperties: false` when it carries a fragment
-   applicator or a reference keyword, and `additionalProperties: false` otherwise.**
-   `$ref` and `$dynamicRef` are in-place applicators too, so their annotations reach the
-   referring node and the annotation-aware keyword is required there for the same
-   reason. A node with neither has all its declarations in one object, so the lexical
-   keyword is correct — and keeping it means non-composed schemas are unaffected, byte
-   for byte.
+```yaml
+allOf:
+  - $ref: "#/$defs/Base"
+  - properties: {extra: {type: string}}
+$defs:
+  Base: {type: object, properties: {street: {type: string}}}
+```
 
-4. **A definition closes on its own terms unless every reference to it is composed.** A
-   reference is *composed* when the referring node contributes constraints alongside it:
-   it declares sibling `properties`, carries a fragment applicator, or sits inside a
-   fragment. In each of those cases the referring node (or its composition root) is
-   itself closed with `unevaluatedProperties`, which already covers the definition’s
-   keys through the propagated annotation — so closing the definition lexically as well
-   would reject whatever the siblings declare.
-   That is precisely the ubiquitous extension idiom:
+#### Graph preparation and references
 
-   ```yaml
-   allOf:
-     - $ref: "#/$defs/Base"                    # declares `street`
-     - properties: {extra: {type: string}}
-   $defs:
-     Base: {type: object, properties: {street: {type: string}}}
-   ```
+Before either runtime compiles an enforced schema, it checks portable regex syntax and
+the Draft 2020-12 metaschema for the root and every supplied resource.
+It then indexes resource identities and resolves supported `$ref` targets.
+Supported spellings include:
 
-   A **standalone** reference — a bare `{"$ref": …}` in non-fragment position, such as a
-   property value — has nothing else covering that instance location, so the definition
-   must close itself. One standalone reference anywhere is enough to keep it closed; a
-   definition used both ways keeps its closure, and the composed use carries the
-   residual.
+- local JSON Pointers, including `~0` and `~1` escaping;
+- plain-name `$anchor` fragments;
+- nested `$defs` and legacy `definitions` targets;
+- embedded resources whose `$id` changes the base URI; and
+- supplied resources keyed by an absolute URI without a fragment.
 
-An explicit `additionalProperties` or `unevaluatedProperties` anywhere always wins, so a
-schema can opt any object out.
-Objects that declare no properties anywhere — free-form mappings — are never closed.
+A supplied resource’s root `$id`, when present, must resolve to its mapping key.
+All resources are supplied explicitly; neither runtime performs network retrieval.
+Valid `$dynamicRef` and `$dynamicAnchor` schemas are outside this profile.
 
-#### Consequences of the annotation model
+#### Support matrix
 
-These follow from “only successful subschemas contribute”, and are worth knowing rather
-than discovering.
+| Shape | Checked-profile behavior |
+| --- | --- |
+| Direct `properties` | Close lexically with `additionalProperties` |
+| Nonempty `patternProperties` | Close lexically; overlapping patterns keep native intersection semantics |
+| `allOf`, `anyOf`, `oneOf`, `dependentSchemas` | Leave branches unchanged and close their parent with `unevaluatedProperties` |
+| `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site |
+| `not` | Preserve the prohibition; declarations below it do not cause closure |
+| Supported `$ref` | Keep the reusable target open and close each structured application site |
+| Explicit closure on a site | Preserve it; do not inject another closure keyword there |
+| Free-form mapping | Leave open |
+| Supplied resources | Check, analyze, transform, and register offline with the root |
 
-A property named in an `if` matcher **is** evaluated when the matcher succeeds, so it is
-admitted. Given `if: {properties: {secret: {const: "x"}}}` and no `secret` at the root,
-`{"secret": "x"}` passes closure while `{"secret": "other"}` is rejected.
-The converse bites harder: a failing `if` contributes nothing, so a property named
-*only* in a matcher is undeclared whenever the matcher does not fire.
-**Declare matched properties at the root as well.**
+### Unsupported enforced shapes
 
-### What `enforced` does not close
+The checked profile returns one `enforcement_unsupported` record with stable `reason`,
+`schema_path`, and `message` fields when it cannot prove a safe placement.
+It does not validate the document against a partial overlay.
+Current reasons are:
 
-Closure applies at composition roots.
-Two shapes are deliberately left open, because closing them lexically would reintroduce
-exactly the failure the rules above prevent:
+| `reason` | Shape | Author action |
+| --- | --- | --- |
+| `dynamic_reference` | `$dynamicRef` or `$dynamicAnchor` | Use a supported static `$ref`, or author explicit closure and validate outside the overlay |
+| `nested_instance_composition` | An unclosed structured child instance appears below an in-place composition branch | Put explicit closure on that child schema, or hoist the complete child schema outside the composition |
+| `conditional_annotation_scope` | An `if` matcher evaluates fields not unconditionally evaluated at the closure site | Declare matcher fields at that site, directly or through an unconditional `$ref`/`allOf` path |
+| `embedded_resource_context` | A structured embedded `$id` resource is also applied directly at a nested site | Add explicit closure or move the reusable resource to `$defs` |
+| `reference_target_context` | A structured `$ref` target is also a directly applied, non-reusable schema | Move the target to `$defs` or a supplied resource, or close it explicitly |
 
-- **Objects declared inline inside a fragment.** Annotations propagate to the
-  composition root, and `unevaluatedProperties` there constrains the *root* instance
-  object only — it cannot reach a nested instance location.
-  An object declared under, say, `then.properties.extra` therefore stays open, and
-  closing it lexically would be blind to any sibling fragment constraining the same
-  nested location. To restore strictness, declare it as a `$defs` entry and `$ref` it:
-  rule 4 keeps a standalone reference’s definition closed.
-- **Alternatives nested inside a fragment.** In `allOf: [{anyOf: […]}]` the branches
-  inherit fragment status, so rule 1 leaves them open, and rule 2 does not traverse
-  alternatives, so the root does not close either.
-  The same `anyOf` at the top level does close its branches.
-  Closing the root over hoisted branch declarations would give union semantics that
-  differ from top-level branch closure, which is a contract decision rather than an
-  implementation gap.
-
-Both are pinned as document outcomes in the shared vectors, so a conforming validator
-cannot narrow them silently.
+Malformed or unresolved graphs use `schema_invalid`, not `enforcement_unsupported`.
+Stable reasons include `dialect`, `pattern`, `reference`, and `resource_identity`.
 
 The effective status is resolved by the caller (for example a registry contract or a
 `--status` flag), falling back to the document’s declared `softschema.status`.
@@ -604,6 +600,9 @@ A validator must reject:
   keys without an explicit envelope designation)
 - a missing or unreadable compiled schema when one is bound (`schema_missing`)
 - a bound file that is not a valid schema (`schema_invalid`)
+- `status: enforced` without a structural schema (`enforced_schema_required`)
+- a valid schema topology outside the checked enforced profile
+  (`enforcement_unsupported`)
 - a JSON Schema validation failure
 - a model validation failure
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
@@ -614,6 +613,10 @@ Across implementations, structural error records have the same engine-neutral fi
 portable meaning, and machine-readable JSON is compared as parsed data rather than as
 presentation bytes. The portable value domain accepts integers only within the IEEE-754
 safe-integer range (`abs < 2^53`) so both runtimes retain the same numeric value.
+Validation verdict parity is required for every shared vector.
+Error-record-set parity is required except for cases explicitly listed in the shared
+`engine_deviations` vectors; each runtime pins its own complete record set for those
+cases so unlisted drift fails.
 
 ### Matching on structural error records
 
@@ -627,15 +630,19 @@ softschema-owned category:
 | `invalid_value` | every other mapped keyword | a value the schema rejects |
 | `unmapped_keyword` | a keyword with no template yet | a gap in the message table, not a category |
 
-**`kind` + `code` + `path` is the surface to match on.** `validator` and
-`validator_value` name the *mechanism* and are diagnostic; `message` wording may improve
-within a minor release.
+For a field-level repair, match on **`kind` + `code` + `path` + `property`**. `property`
+is present on `missing_property` and `undeclared_property` records; one record is
+emitted per affected field.
+For errors that do not concern one field, match on `kind` + `code` + `path`. `validator`
+and `validator_value` name the *mechanism* and are diagnostic; `message` wording may
+improve within a minor release.
 
 The distinction matters most for closure.
 One authoring mistake — an undeclared key — reports `additionalProperties` on a simple
 schema and `unevaluatedProperties` on a composed one, so a consumer matching `validator`
 sees only half the cases.
-Both report `code: undeclared_property`, and both render the same message.
+Both report `code: undeclared_property`, and both name the affected field in `property`
+and `message`.
 
 ## Generated Sections
 

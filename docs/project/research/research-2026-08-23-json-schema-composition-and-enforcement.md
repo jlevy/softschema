@@ -544,15 +544,37 @@ comments. At minimum it should state:
 Every referenced tracking ID should resolve on the reviewed branch.
 A limitation without a real issue is not tracked merely because a comment names an ID.
 
+## Implementation Outcome
+
+The stacked remediation implements Option B in commit `9d69517`. Both runtimes now
+prepare the root and supplied resources as one checked offline graph, keep reusable
+targets open, and close structured application sites independently.
+The implementation covers static pointers, escaped pointer tokens, anchors, nested
+definitions, embedded resource identities, supplied resources, literal and pattern
+declarations, alternatives, conditionals, and dependent schemas within the profile
+specified in the main spec.
+
+The implementation also makes the boundary explicit.
+Dynamic references and the four instance-location shapes for which static analysis
+cannot prove safe annotation flow return `enforcement_unsupported` with a stable reason.
+Enforced model-only calls return `enforced_schema_required`. Missing and
+undeclared-field errors carry the affected `property`, with one record per field.
+
+Shared semantic vectors now compare raw and enforced outcomes across both runtimes,
+including reference/resource equivalents and each unsupported reason.
+Python and TypeScript agree on checked-profile verdicts.
+The remaining native-engine record-set differences are listed and asserted separately
+under `engine_deviations`; they are not treated as verdict differences.
+
 ## Next Steps
 
-- [ ] Resolve alternative-branch semantics (`ss-vy4t`).
-- [ ] Replace global definition closure with application-site policy (`ss-iq9w`).
-- [ ] Prepare and validate the complete schema resource graph (`ss-qr8j`).
-- [ ] Define `patternProperties` declaration behavior (`ss-w78w`).
-- [ ] Make enforced status a real API guarantee (`ss-4est`).
-- [ ] Preserve offending field identity in structural errors (`ss-5rjo`).
-- [ ] Reconcile the spec, design docs, examples, vectors, docstrings, and issue links
+- [x] Resolve alternative-branch semantics (`ss-vy4t`).
+- [x] Replace global definition closure with application-site policy (`ss-iq9w`).
+- [x] Prepare and validate the complete schema resource graph (`ss-qr8j`).
+- [x] Define `patternProperties` declaration behavior (`ss-w78w`).
+- [x] Make enforced status a real API guarantee (`ss-4est`).
+- [x] Preserve offending field identity in structural errors (`ss-5rjo`).
+- [x] Reconcile the spec, design docs, examples, vectors, docstrings, and issue links
   (`ss-pq0m`).
 
 ## Methodology

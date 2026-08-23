@@ -2,18 +2,20 @@
  * Engine-neutral structural error records. ajv words violations differently from
  * Python's jsonschema, so the message is synthesized here from the same template
  * table as the Python `errors.py`, and ajv errors are normalized into the same
- * record shape. Output must be byte-identical across implementations.
+ * record shape. Checked-profile verdicts must match; explicitly pinned native-engine
+ * record-set deviations are allowed.
  */
 import type { ErrorObject } from "ajv";
 
 export const SCHEMA_VIOLATION_KIND = "schema_violation";
 
 /**
- * `kind` + `code` + `path` is the documented match surface. `validator` names the
- * *mechanism* — which JSON Schema keyword fired — and is diagnostic: one authoring
- * mistake can reach a consumer through more than one keyword, because an undeclared key
- * reports `additionalProperties` on a simple schema and `unevaluatedProperties` on a
- * composed one. `code` names *what the author got wrong* and is stable across both.
+ * `kind` + `code` + `path` + `property` is the documented field-repair match surface.
+ * `validator` names the *mechanism* — which JSON Schema keyword fired — and is
+ * diagnostic: one authoring mistake can reach a consumer through more than one keyword,
+ * because an undeclared key reports `additionalProperties` on a simple schema and
+ * `unevaluatedProperties` on a composed one. `code` names *what the author got wrong*
+ * and is stable across both.
  */
 export interface StructuralErrorRecord {
   kind: string;

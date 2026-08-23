@@ -9,8 +9,7 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Remediated after senior design review; documentation and PR disposition in
-progress.
+**Status:** Complete; remediated after senior design review.
 
 **Tracking:** `ss-r9u8` (enforced-closure epic), from GitHub issue
 [#41](https://github.com/jlevy/softschema/issues/41)
@@ -20,8 +19,8 @@ progress.
 
 > **Design status:** The original implementation plan below is retained as decision
 > history, but its lexical tree-rewrite design is no longer normative.
-> The checked graph profile summarized here and specified in `docs/softschema-spec.md`
-> supersedes it.
+> The checked graph profile summarized here and specified in the
+> [softschema Spec](../../../softschema-spec.md) supersedes it.
 
 ## Senior-Review Remediation
 
@@ -53,14 +52,32 @@ preparation stage in both runtimes:
 
 Shared raw-versus-enforced vectors are the primary semantic oracle.
 Transform-shape assertions remain secondary.
-The remaining work is documentation reconciliation, the review status addendum, full
-package validation, CI, and final bead disposition.
+The normative docs, implementation designs, changelog, review addendum, and tracking
+records have been reconciled with the checked profile.
 
-## Overview
+## Backward Compatibility Requirements
 
-Under `status: enforced`, a schema that composes constraints with `allOf`, `if`/`then`,
-or `dependentSchemas` fails with `enforcement_unsupported` for every document, valid or
-not. The reporter’s case is exact and reproduces on `main`.
+- **Internal code:** No compatibility requirement.
+  The old lexical transformer is replaced, with thin wrappers retained only where
+  current internal imports use them.
+- **Library APIs:** Migrate.
+  Existing function names remain, but enforced model-only calls now fail, values APIs
+  accept new status/resource options, and field-error matching adds `property`. The
+  changelog provides the migration surface.
+- **Server APIs:** Not applicable.
+- **Plugin and extension APIs:** Not applicable.
+- **File formats:** Support both.
+  Authored artifacts and compiled schemas do not change; the validation-time overlay and
+  diagnostics change.
+- **Persisted client state:** Not applicable.
+- **Database schemas:** Not applicable.
+
+## Original Overview
+
+At the original implementation baseline, a schema that composed constraints with
+`allOf`, `if`/`then`, or `dependentSchemas` failed with `enforcement_unsupported` for
+every document, valid or not.
+The reporter’s case reproduced on `main` at that time.
 
 The refusal is not gratuitous: closing a composed schema with `additionalProperties`
 does change its meaning, and the
@@ -70,9 +87,9 @@ The defect is that the refusal is *over-broad*. It covers shapes that JSON Schem
 2020-12 can close correctly, using the keyword designed for precisely this problem:
 `unevaluatedProperties`.
 
-This plan replaces the refusal with an annotation-aware closure, splits applicators into
-the two kinds that need different treatment, and absorbs the engine-parity work that
-supporting these shapes newly exposes.
+The original plan proposed replacing the refusal with annotation-aware closure,
+splitting applicators into the two kinds it assumed needed different treatment, and
+absorbing the engine-parity work that supporting these shapes exposed.
 Because the closure now picks between two keywords, it also gives structural error
 records a stable `code` enum, so consumers match a category rather than a keyword.
 
@@ -507,14 +524,12 @@ Two shapes the review found *under*-enforced are deliberately left open and pinn
 `enforcement_gaps` vectors rather than fixed — see the spec’s “What `enforced` does not
 close”.
 
-**A sibling bug surfaced and was left out of scope** (`ss-p32o`). The same lexical
-blindness affects `anyOf`/`oneOf` when a node declares its own `properties` alongside
-alternatives that declare more — and the refusal never covered that shape, so it ships
-today. Verified on `main`:
-`{properties: {a}, anyOf: [{properties: {b}}, {properties: {c}}]}` rejects `{a, b}`,
-which the raw schema accepts.
-The root is fixable the same way, but the branch closure needs a maintainer decision
-rather than a port, so it is tracked separately.
+**A sibling alternative-closure bug surfaced in the first implementation.** The same
+lexical blindness affected `anyOf`/`oneOf` when a node declared its own `properties`
+alongside alternatives that declared more.
+The senior review tracked this as `ss-vy4t`. The checked graph remediation leaves
+alternative branches unchanged and closes at their parent, so the raw-valid `{a, b}`
+case remains valid while unmatched fields are rejected.
 
 ## Open Questions
 
