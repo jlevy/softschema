@@ -178,8 +178,9 @@ $ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fi
       {
         "code": "missing_property",
         "kind": "schema_violation",
-        "message": "required property ['title', 'year', 'extra'] is missing",
+        "message": "required property 'extra' is missing",
         "path": [],
+        "property": "extra",
         "validator": "required",
         "validator_value": [
           "title",

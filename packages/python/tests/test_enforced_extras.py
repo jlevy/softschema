@@ -45,7 +45,9 @@ def test_injects_closed_objects_where_properties_present() -> None:
 
     assert out["additionalProperties"] is False
     assert out["properties"]["meta"]["additionalProperties"] is False
-    assert out["$defs"]["Address"]["additionalProperties"] is False
+    assert out["properties"]["primary"]["unevaluatedProperties"] is False
+    assert out["properties"]["secondary"]["unevaluatedProperties"] is False
+    assert not [key for key in _CLOSURE_KEYWORDS if key in out["$defs"]["Address"]]
 
 
 def test_free_form_objects_without_properties_are_untouched() -> None:
@@ -66,7 +68,7 @@ def test_explicit_additional_properties_always_wins() -> None:
     assert out["properties"]["meta"]["additionalProperties"] == {"type": "string"}
 
 
-def test_recurses_into_anyof_branches() -> None:
+def test_closes_over_anyof_without_changing_its_branches() -> None:
     schema = {
         "anyOf": [
             {"type": "object", "properties": {"a": {"type": "string"}}},
@@ -76,9 +78,8 @@ def test_recurses_into_anyof_branches() -> None:
 
     out = apply_enforced_extras(schema)
 
-    assert out["anyOf"][0]["additionalProperties"] is False
-    # The whole-schema node has no `properties`, so nothing is injected at the root.
-    assert "additionalProperties" not in out
+    assert out["unevaluatedProperties"] is False
+    assert not [key for key in _CLOSURE_KEYWORDS if key in out["anyOf"][0]]
 
 
 def test_property_named_properties_is_not_treated_as_keyword() -> None:
@@ -145,9 +146,7 @@ def test_definition_reached_only_through_a_fragment_stays_open() -> None:
     assert out["unevaluatedProperties"] is False
 
 
-def test_definition_reached_outside_a_fragment_still_closes() -> None:
-    # Something has to enforce the non-fragment use, so the definition keeps its
-    # lexical closure even though a fragment also references it.
+def test_definition_reached_from_multiple_sites_stays_reusable() -> None:
     schema = {
         "type": "object",
         "properties": {"addr": {"$ref": "#/$defs/Address"}},
@@ -155,7 +154,10 @@ def test_definition_reached_outside_a_fragment_still_closes() -> None:
         "$defs": {"Address": {"type": "object", "properties": {"street": {"type": "string"}}}},
     }
 
-    assert apply_enforced_extras(schema)["$defs"]["Address"]["additionalProperties"] is False
+    out = apply_enforced_extras(schema)
+
+    assert not [key for key in _CLOSURE_KEYWORDS if key in out["$defs"]["Address"]]
+    assert out["properties"]["addr"]["unevaluatedProperties"] is False
 
 
 def test_fragment_ref_to_a_free_form_definition_does_not_close_the_root() -> None:
@@ -250,7 +252,8 @@ def test_conditional_reports_the_real_violation(tmp_path: Path) -> None:
     violation = validate_structural({"kind": "special"}, schema_path, strict_extras=True)
     assert not violation.ok
     assert [error["code"] for error in violation.errors] == ["missing_property"]
-    assert violation.errors[0]["message"] == "required property ['extra'] is missing"
+    assert violation.errors[0]["property"] == "extra"
+    assert violation.errors[0]["message"] == "required property 'extra' is missing"
 
 
 def test_documented_engine_deviations(tmp_path: Path) -> None:
@@ -271,21 +274,43 @@ def test_documented_engine_deviations(tmp_path: Path) -> None:
         assert actual == case["python"], case["id"]
 
 
-def test_documented_enforcement_gaps(tmp_path: Path) -> None:
-    # Shapes enforced deliberately does not close. Pinned as document outcomes so the
-    # gap stays visible and any later change is loud rather than silent.
+def test_shared_enforcement_semantics(tmp_path: Path) -> None:
+    # Raw-versus-enforced verdicts are the primary oracle: enforcement may narrow only
+    # around unevaluated properties and must fail explicitly when the checked profile
+    # cannot prove a safe placement.
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
-    for case in vectors["enforcement_gaps"]:
+    for case in vectors["enforcement_semantics"]:
         schema_path = tmp_path / f"{case['id']}.schema.yaml"
         YAML().dump(case["schema"], schema_path)
-        result = validate_structural(case["value"], schema_path, strict_extras=True)
-        assert result.ok is (case["verdict"] == "valid"), (case["id"], result.errors)
+        resources = case.get("resources")
+        if case["raw"] != "skip":
+            raw = validate_structural(case["value"], schema_path, resources=resources)
+            assert raw.ok is (case["raw"] == "valid"), (case["id"], raw.errors)
+
+        enforced = validate_structural(
+            case["value"], schema_path, strict_extras=True, resources=resources
+        )
+        expected = case["enforced"]
+        if expected == "unsupported":
+            assert not enforced.ok, case["id"]
+            assert enforced.errors[0]["kind"] == "enforcement_unsupported", case["id"]
+            assert enforced.errors[0]["reason"] == case["reason"], case["id"]
+        else:
+            assert enforced.ok is (expected == "valid"), (case["id"], enforced.errors)
+        if "kind" in case:
+            assert enforced.errors[0]["kind"] == case["kind"], case["id"]
+        if "reason" in case and expected != "unsupported":
+            assert enforced.errors[0]["reason"] == case["reason"], case["id"]
+        if "properties" in case:
+            actual = sorted(
+                error["property"]
+                for error in enforced.errors
+                if error.get("code") == "undeclared_property"
+            )
+            assert actual == case["properties"], case["id"]
 
 
-def test_multiple_undeclared_keys_collapse_to_one_record(tmp_path: Path) -> None:
-    # ajv emits one closure error per key; jsonschema emits one per object. With two
-    # undeclared keys the collapse is observable — with one it is indistinguishable
-    # from no collapse at all.
+def test_multiple_undeclared_keys_preserve_field_identity(tmp_path: Path) -> None:
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
     case = next(item for item in vectors["enforcement"] if item["id"] == "composed_object")
     schema_path = tmp_path / "composed.schema.yaml"
@@ -297,4 +322,8 @@ def test_multiple_undeclared_keys_collapse_to_one_record(tmp_path: Path) -> None
         strict_extras=True,
     )
 
-    assert [error["code"] for error in result.errors] == ["undeclared_property"]
+    assert [error["code"] for error in result.errors] == [
+        "undeclared_property",
+        "undeclared_property",
+    ]
+    assert [error["property"] for error in result.errors] == ["bogus", "other"]

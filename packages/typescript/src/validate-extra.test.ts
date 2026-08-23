@@ -53,6 +53,31 @@ describe("validateValues", () => {
     expect(r.structural.ok).toBe(false);
     expect(r.structural.errors[0]?.validator).toBe("minimum");
   });
+  test("enforced requires a structural schema", () => {
+    const r = validateValues(
+      { name: "hi", count: 1, bogus: 1 },
+      { model: Sample, status: "enforced" },
+    );
+    expect(r.structural.ok).toBe(false);
+    expect(r.structural.errors).toEqual([
+      {
+        kind: "enforced_schema_required",
+        message: "status 'enforced' requires a structural schema",
+      },
+    ]);
+  });
+});
+
+test("validateArtifact enforced model-only contracts require a schema", () => {
+  const doc = tmpFile("sample.yaml", "name: hi\ncount: 1\nbogus: 1\n");
+  const result = validateArtifact(
+    doc,
+    contract({ model: "./sample-model.mjs", profile: "pure-yaml", status: "enforced" }),
+    { semanticModel: Sample },
+  );
+
+  expect(result.ok).toBe(false);
+  expect(result.structural.errors[0]?.kind).toBe("enforced_schema_required");
 });
 
 describe("date-shaped portable values", () => {

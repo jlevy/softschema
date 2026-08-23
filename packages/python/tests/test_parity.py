@@ -43,7 +43,7 @@ def test_shared_hardening_vectors_are_readable() -> None:
         "structural",
         "canonicalization",
         "enforcement",
-        "enforcement_gaps",
+        "enforcement_semantics",
         "engine_deviations",
         "identity",
         "compiler_annotations",

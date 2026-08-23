@@ -8,7 +8,11 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
-import { applyEnforcedExtras } from "./canonicalize.js";
+import {
+  EnforcementUnsupportedError,
+  prepareSchemaGraph,
+  SchemaGraphError,
+} from "./enforcement.js";
 import {
   collapseUndeclaredProperties,
   compareStructuralRecords,
@@ -26,6 +30,7 @@ import {
   pyTypeName,
   type SchemaMetadata,
   SchemaMetadataError,
+  type SchemaStatus,
   type SchemaWarning,
 } from "./models.js";
 import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
@@ -178,21 +183,26 @@ function buildValidator(
   strictExtras: boolean,
   resources: Record<string, Record<string, unknown>>,
 ): ValidateFunction {
-  checkSchemaIdentities(schemaObject, resources);
-  checkPatterns(schemaObject);
-  const schema = strictExtras
-    ? (applyEnforcedExtras(schemaObject) as Record<string, unknown>)
-    : schemaObject;
   const ajv = new Ajv2020({
     allErrors: true,
     strict: false,
     verbose: true,
     validateFormats: false,
   });
-  for (const [key, resource] of Object.entries(resources)) {
+  for (const document of [schemaObject, ...Object.values(resources)]) {
+    checkPatterns(document);
+    if (!ajv.validateSchema(document)) {
+      throw new SchemaGraphError("dialect", `schema is invalid: ${ajv.errorsText(ajv.errors)}`);
+    }
+  }
+  if (!strictExtras) checkSchemaIdentities(schemaObject, resources);
+  const prepared = strictExtras
+    ? prepareSchemaGraph(schemaObject, resources)
+    : { root: schemaObject, resources };
+  for (const [key, resource] of Object.entries(prepared.resources)) {
     ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
   }
-  return ajv.compile(schema);
+  return ajv.compile(prepared.root);
 }
 
 /**
@@ -269,6 +279,22 @@ export function validateStructural(
     return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof EnforcementUnsupportedError) {
+      return {
+        ok: false,
+        errors: [
+          {
+            kind: "enforcement_unsupported",
+            reason: error.reason,
+            schema_path: error.schemaPath,
+            message,
+          },
+        ],
+        engine: "json_schema",
+        skipped_reason: null,
+      };
+    }
+    if (error instanceof SchemaGraphError) return schemaInvalid(error.reason, message);
     return schemaInvalid(schemaFailureReason(message), message);
   }
 }
@@ -396,14 +422,27 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
  */
 export function validateValues(
   values: unknown,
-  options: { model?: z.ZodType; schema?: Record<string, unknown> } = {},
+  options: {
+    model?: z.ZodType;
+    schema?: Record<string, unknown>;
+    status?: SchemaStatus;
+    resources?: Record<string, Record<string, unknown>>;
+  } = {},
 ): ValidationResult {
   if (options.model === undefined && options.schema === undefined) {
     throw new Error("validateValues() requires at least one of model or schema");
   }
-  const structural = options.schema
-    ? validateStructural(values, options.schema)
-    : { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
+  let structural: StructuralResult;
+  if (options.schema !== undefined) {
+    structural = validateStructural(values, options.schema, {
+      strictExtras: options.status === "enforced",
+      resources: options.resources,
+    });
+  } else if (options.status === "enforced") {
+    structural = enforcedSchemaRequired();
+  } else {
+    structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
+  }
   const semantic = options.model
     ? validateSemantic(values, options.model)
     : { ok: true, errors: [], skipped_reason: null };
@@ -573,10 +612,25 @@ function structuralForValues(
     }
     return structuralAgainstSchemaFile(bound.path, values, contract.status === "enforced");
   }
+  if (contract.status === "enforced") return enforcedSchemaRequired();
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
   }
   return { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
+}
+
+function enforcedSchemaRequired(): StructuralResult {
+  return {
+    ok: false,
+    errors: [
+      {
+        kind: "enforced_schema_required",
+        message: "status 'enforced' requires a structural schema",
+      },
+    ],
+    engine: "json_schema",
+    skipped_reason: null,
+  };
 }
 
 function validateExtracted(

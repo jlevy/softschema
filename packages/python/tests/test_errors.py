@@ -111,3 +111,25 @@ def test_validate_structural_emits_neutral_records(tmp_path: Path) -> None:
     assert error["kind"] == "schema_violation"
     assert error["validator"] == "maximum"
     assert "greater than the maximum" in error["message"]
+
+
+def test_field_level_errors_preserve_property_identity(tmp_path: Path) -> None:
+    schema_path = tmp_path / "fields.schema.yaml"
+    schema_path.write_text(
+        "type: object\nrequired: [a, b]\nproperties:\n  a: true\n  b: true\n"
+        "additionalProperties: false\n"
+    )
+
+    missing = validate_structural({}, schema_path)
+    extras = validate_structural({"bogus": 1, "other": 2}, schema_path)
+
+    assert [(error["code"], error["property"]) for error in missing.errors] == [
+        ("missing_property", "a"),
+        ("missing_property", "b"),
+    ]
+    assert [(error["code"], error["property"]) for error in extras.errors] == [
+        ("undeclared_property", "bogus"),
+        ("undeclared_property", "other"),
+        ("missing_property", "a"),
+        ("missing_property", "b"),
+    ]

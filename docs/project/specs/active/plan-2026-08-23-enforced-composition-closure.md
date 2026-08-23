@@ -9,11 +9,52 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Implemented, pending release.
-All four phases landed; the spec moves to `done/` when the release ships.
+**Status:** Remediated after senior design review; documentation and PR disposition in
+progress.
 
 **Tracking:** `ss-r9u8` (enforced-closure epic), from GitHub issue
 [#41](https://github.com/jlevy/softschema/issues/41)
+
+**Remediation tracking:** `ss-shpr` and children `ss-vy4t`, `ss-iq9w`, `ss-qr8j`,
+`ss-w78w`, `ss-4est`, `ss-5rjo`, and `ss-pq0m`.
+
+> **Design status:** The original implementation plan below is retained as decision
+> history, but its lexical tree-rewrite design is no longer normative.
+> The checked graph profile summarized here and specified in `docs/softschema-spec.md`
+> supersedes it.
+
+## Senior-Review Remediation
+
+The
+[senior design review](../../reviews/review-2026-08-23-pr-42-schema-composition-design.md)
+found that the first implementation could narrow valid alternatives, widen `oneOf`, make
+reusable-reference sites interfere, leave external resources and pattern-only objects
+open, and lose field identity in normalized errors.
+
+The remediation replaces that algorithm with a checked, validation-time schema-graph
+preparation stage in both runtimes:
+
+- `anyOf` and `oneOf` remain open internally and close at their parent with
+  `unevaluatedProperties`, preserving branch selection and successful-branch
+  annotations.
+- Reusable definitions and resources stay open; each structured `$ref` application site
+  closes independently.
+- JSON Pointers, escaped tokens, anchors, nested definitions, embedded `$id` resources,
+  and explicitly supplied absolute resources are indexed as one offline graph.
+- Nonempty `patternProperties` participates in property declaration and portable regex
+  checks cover every supplied resource.
+- `status: enforced` requires a structural schema in artifact and values APIs.
+- Missing and undeclared field errors carry a stable `property` field and preserve one
+  record per affected field.
+- Dynamic references, unsafe nested instance composition, conditional matcher fields
+  without unconditional site declarations, directly applied structured embedded
+  resources, and structured references to non-reusable targets fail with a stable
+  `enforcement_unsupported` result instead of returning a guessed verdict.
+
+Shared raw-versus-enforced vectors are the primary semantic oracle.
+Transform-shape assertions remain secondary.
+The remaining work is documentation reconciliation, the review status addendum, full
+package validation, CI, and final bead disposition.
 
 ## Overview
 

@@ -181,6 +181,22 @@ def test_validate_values_requires_a_model_or_schema() -> None:
         validate_values({"name": "hello"})
 
 
+def test_validate_values_enforced_requires_a_structural_schema() -> None:
+    result = validate_values(
+        {"name": "hello", "bogus": 1},
+        model=SampleModel,
+        status=SchemaStatus.enforced,
+    )
+
+    assert not result.ok
+    assert result.structural.errors == [
+        {
+            "kind": "enforced_schema_required",
+            "message": "status 'enforced' requires a structural schema",
+        }
+    ]
+
+
 def test_validate_artifact_without_envelope_key_infers_single_envelope(tmp_path: Path) -> None:
     """Per the spec, a contract with no envelope_key uses single-key inference."""
     schema_path = tmp_path / "sample.schema.yaml"
@@ -236,6 +252,8 @@ def test_validate_artifact_reports_non_mapping_envelope(tmp_path: Path) -> None:
 
 
 def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -> None:
+    schema_path = tmp_path / "sample.schema.yaml"
+    compile_model(SampleModel, schema_path, contract_id="example:Sample/v1")
     doc = tmp_path / "sample.md"
     write_doc(
         doc,
@@ -254,6 +272,7 @@ def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -
         model=SampleModel,
         envelope_key="sample",
         status=SchemaStatus.enforced,
+        schema_path=schema_path,
     )
 
     result = validate_artifact(doc, contract=contract)
@@ -264,8 +283,28 @@ def test_validate_artifact_uses_contract_metadata_and_envelope(tmp_path: Path) -
 
 
 def test_validate_artifact_accepts_pure_yaml(tmp_path: Path) -> None:
+    schema_path = tmp_path / "sample.schema.yaml"
+    compile_model(SampleModel, schema_path, contract_id="example:Sample/v1")
     doc = tmp_path / "sample.yaml"
     doc.write_text("name: hello\ndirection: up\ndelta: 1.5\n")
+    contract = Contract(
+        id="example:Sample/v1",
+        model=SampleModel,
+        profile=SchemaProfile.pure_yaml,
+        status=SchemaStatus.enforced,
+        schema_path=schema_path,
+    )
+
+    result = validate_artifact(doc, contract=contract)
+
+    assert result.ok
+    assert result.profile == SchemaProfile.pure_yaml
+    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+
+
+def test_validate_artifact_enforced_model_only_requires_schema(tmp_path: Path) -> None:
+    doc = tmp_path / "sample.yaml"
+    doc.write_text("name: hello\ndirection: up\ndelta: 1.5\nbogus: 1\n")
     contract = Contract(
         id="example:Sample/v1",
         model=SampleModel,
@@ -275,9 +314,8 @@ def test_validate_artifact_accepts_pure_yaml(tmp_path: Path) -> None:
 
     result = validate_artifact(doc, contract=contract)
 
-    assert result.ok
-    assert result.profile == SchemaProfile.pure_yaml
-    assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
+    assert not result.ok
+    assert result.structural.errors[0]["kind"] == "enforced_schema_required"
 
 
 def test_validate_artifact_rejects_contract_mismatch(tmp_path: Path) -> None:

@@ -43,12 +43,14 @@ describe("applyEnforcedExtras", () => {
   test("injects closed objects where properties are present", () => {
     const out = applyEnforcedExtras(baseSchema()) as {
       additionalProperties: unknown;
-      properties: { meta: Schema };
+      properties: { meta: Schema; primary: Schema; secondary: Schema };
       $defs: { Address: Schema };
     };
     expect(out.additionalProperties).toBe(false);
     expect(out.properties.meta.additionalProperties).toBe(false);
-    expect(out.$defs.Address.additionalProperties).toBe(false);
+    expect(out.properties.primary.unevaluatedProperties).toBe(false);
+    expect(out.properties.secondary.unevaluatedProperties).toBe(false);
+    expect(CLOSURE_KEYWORDS.filter((key) => key in out.$defs.Address)).toEqual([]);
   });
 
   test("free-form objects without properties are untouched", () => {
@@ -69,12 +71,12 @@ describe("applyEnforcedExtras", () => {
     expect(out.properties.meta.additionalProperties).toEqual({ type: "string" });
   });
 
-  test("recurses into anyOf branches", () => {
+  test("closes over anyOf without changing its branches", () => {
     const out = applyEnforcedExtras({
       anyOf: [{ type: "object", properties: { a: { type: "string" } } }, { type: "null" }],
-    }) as { anyOf: Schema[] };
-    expect(out.anyOf[0]?.additionalProperties).toBe(false);
-    expect("additionalProperties" in out).toBe(false);
+    }) as { anyOf: Schema[]; unevaluatedProperties: unknown };
+    expect(out.unevaluatedProperties).toBe(false);
+    expect(CLOSURE_KEYWORDS.filter((key) => key in (out.anyOf[0] as Schema))).toEqual([]);
   });
 
   test("a field named 'properties' is a name, not the keyword", () => {
@@ -247,7 +249,7 @@ test("a definition reached only through a fragment stays open", () => {
   expect(out.unevaluatedProperties).toBe(false);
 });
 
-test("a definition reached outside a fragment still closes", () => {
+test("a definition reached from multiple sites stays reusable", () => {
   const out = applyEnforcedExtras({
     type: "object",
     properties: { addr: { $ref: "#/$defs/Address" } },
@@ -255,7 +257,8 @@ test("a definition reached outside a fragment still closes", () => {
     $defs: { Address: { type: "object", properties: { street: { type: "string" } } } },
   } as Schema);
 
-  expect(mapping(out, "$defs", "Address").additionalProperties).toBe(false);
+  expect(CLOSURE_KEYWORDS.filter((key) => key in mapping(out, "$defs", "Address"))).toEqual([]);
+  expect(mapping(out, "properties", "addr").unevaluatedProperties).toBe(false);
 });
 
 test("a fragment $ref to a free-form definition does not close the root", () => {
@@ -364,7 +367,8 @@ test("a conditional reports the real violation", () => {
   // ajv also emits an `if` wrapper restating the cause; normalization drops it so the
   // record set matches Python's.
   expect(violation.errors.map((error) => error.code)).toEqual(["missing_property"]);
-  expect(violation.errors[0]?.message).toBe("required property ['extra'] is missing");
+  expect(violation.errors[0]?.property).toBe("extra");
+  expect(violation.errors[0]?.message).toBe("required property 'extra' is missing");
 });
 
 test("documented engine deviations", () => {
@@ -388,27 +392,56 @@ test("documented engine deviations", () => {
   }
 });
 
-test("documented enforcement gaps", () => {
-  // Shapes enforced deliberately does not close. Pinned as document outcomes so the gap
-  // stays visible and any later change is loud rather than silent.
+test("shared enforcement semantics", () => {
+  // Raw-versus-enforced verdicts are the primary oracle. Unsupported shapes must fail
+  // explicitly instead of silently returning an under- or over-enforced verdict.
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
     string,
     Array<Record<string, unknown>>
   >;
-  for (const item of vectors.enforcement_gaps ?? []) {
-    const result = validateStructural(item.value, item.schema as Record<string, unknown>, {
+  for (const item of vectors.enforcement_semantics ?? []) {
+    const resources = item.resources as Record<string, Record<string, unknown>> | undefined;
+    if (item.raw !== "skip") {
+      const raw = validateStructural(item.value, item.schema as Schema, { resources });
+      expect(raw.ok, `${item.id}/raw: ${JSON.stringify(raw.errors)}`).toBe(item.raw === "valid");
+    }
+
+    const enforced = validateStructural(item.value, item.schema as Schema, {
       strictExtras: true,
+      resources,
     });
-    expect(result.ok, `${item.id}: ${JSON.stringify(result.errors)}`).toBe(
-      item.verdict === "valid",
-    );
+    if (item.enforced === "unsupported") {
+      expect(enforced.ok, item.id as string).toBe(false);
+      expect(enforced.errors[0]?.kind, item.id as string).toBe("enforcement_unsupported");
+      expect(
+        (enforced.errors[0] as Record<string, unknown> | undefined)?.reason,
+        item.id as string,
+      ).toBe(item.reason);
+    } else {
+      expect(enforced.ok, `${item.id}/enforced: ${JSON.stringify(enforced.errors)}`).toBe(
+        item.enforced === "valid",
+      );
+    }
+    if (typeof item.kind === "string") {
+      expect(enforced.errors[0]?.kind, item.id as string).toBe(item.kind);
+    }
+    if (typeof item.reason === "string" && item.enforced !== "unsupported") {
+      expect(
+        (enforced.errors[0] as Record<string, unknown> | undefined)?.reason,
+        item.id as string,
+      ).toBe(item.reason);
+    }
+    if (Array.isArray(item.properties)) {
+      const actual = enforced.errors
+        .filter((error) => error.code === "undeclared_property")
+        .map((error) => error.property)
+        .sort();
+      expect(actual, item.id as string).toEqual(item.properties);
+    }
   }
 });
 
-test("multiple undeclared keys collapse to one record", () => {
-  // ajv emits one closure error per key; jsonschema emits one per object. With two
-  // undeclared keys the collapse is observable — with one it is indistinguishable from
-  // no collapse at all.
+test("multiple undeclared keys preserve field identity", () => {
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
     string,
     Array<Record<string, unknown>>
@@ -421,5 +454,9 @@ test("multiple undeclared keys collapse to one record", () => {
     { strictExtras: true },
   );
 
-  expect(result.errors.map((error) => error.code)).toEqual(["undeclared_property"]);
+  expect(result.errors.map((error) => error.code)).toEqual([
+    "undeclared_property",
+    "undeclared_property",
+  ]);
+  expect(result.errors.map((error) => error.property)).toEqual(["bogus", "other"]);
 });

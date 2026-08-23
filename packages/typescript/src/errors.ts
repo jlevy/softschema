@@ -19,6 +19,7 @@ export interface StructuralErrorRecord {
   kind: string;
   code: string;
   path: (string | number)[];
+  property?: string;
   validator: string;
   validator_value: unknown;
   value: unknown;
@@ -166,6 +167,7 @@ export function renderStructuralMessage(
   validator: string,
   validatorValue: unknown,
   value: unknown,
+  property?: string,
 ): string {
   switch (validator) {
     case "enum":
@@ -173,7 +175,7 @@ export function renderStructuralMessage(
     case "type":
       return `value ${pyRepr(value)} is not of type ${pyReprList(validatorValue)}`;
     case "required":
-      return `required property ${pyRepr(validatorValue)} is missing`;
+      return `required property ${pyRepr(property ?? validatorValue)} is missing`;
     case "minimum":
       return `value ${pyRepr(value)} is less than the minimum of ${pyRepr(validatorValue)}`;
     case "maximum":
@@ -196,7 +198,9 @@ export function renderStructuralMessage(
     // The generic fallback would otherwise spill the whole payload into the string.
     case "additionalProperties":
     case "unevaluatedProperties":
-      return "object has properties that are not allowed";
+      return property === undefined
+        ? "object has properties that are not allowed"
+        : `property ${pyRepr(property)} is not allowed`;
     case "multipleOf":
       return `value ${pyRepr(value)} is not a multiple of ${pyRepr(validatorValue)}`;
     default:
@@ -206,19 +210,27 @@ export function renderStructuralMessage(
 
 export function structuralErrorRecord(args: {
   path: (string | number)[];
+  property?: string;
   validator: string;
   validatorValue: unknown;
   value: unknown;
 }): StructuralErrorRecord {
-  return {
+  const record: StructuralErrorRecord = {
     kind: SCHEMA_VIOLATION_KIND,
     code: structuralErrorCode(args.validator),
     path: args.path,
     validator: args.validator,
     validator_value: args.validatorValue,
     value: args.value,
-    message: renderStructuralMessage(args.validator, args.validatorValue, args.value),
+    message: renderStructuralMessage(
+      args.validator,
+      args.validatorValue,
+      args.value,
+      args.property,
+    ),
   };
+  if (args.property !== undefined) record.property = args.property;
+  return record;
 }
 
 function decodePointerToken(token: string): string {
@@ -238,22 +250,36 @@ function decodePointerToken(token: string): string {
  */
 export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
   const path = error.instancePath.split("/").slice(1).map(decodePointerToken);
+  const property = ajvErrorProperty(error);
   return structuralErrorRecord({
     path,
+    property,
     validator: error.keyword,
     validatorValue: error.schema,
     value: error.data,
   });
 }
 
+/** Extract the affected field name from ajv's keyword-specific parameters. */
+function ajvErrorProperty(error: ErrorObject): string | undefined {
+  const params = error.params as Record<string, unknown>;
+  if (error.keyword === "required" && typeof params.missingProperty === "string") {
+    return params.missingProperty;
+  }
+  if (error.keyword === "additionalProperties" && typeof params.additionalProperty === "string") {
+    return params.additionalProperty;
+  }
+  if (error.keyword === "unevaluatedProperties" && typeof params.unevaluatedProperty === "string") {
+    return params.unevaluatedProperty;
+  }
+  return undefined;
+}
+
 /**
- * Collapse undeclared-property errors to one record per object path.
+ * Deduplicate undeclared-property errors by object path and affected property.
  *
- * ajv (with `allErrors`) reports one closure error per disallowed key, whereas Python
- * jsonschema reports a single error for the whole object. After normalization the ajv
- * records for the same object are byte-identical, so keeping the first per path
- * reproduces jsonschema's one-record shape. Other keywords (e.g. `required`, which
- * jsonschema also reports once per missing key) are left untouched.
+ * ajv can report the same closure violation through multiple evaluated branches. Keep
+ * one record for each affected field so consumers never lose field identity.
  *
  * Keyed on the `undeclared_property` code rather than a keyword list, so this stays
  * correct for both closure keywords: a simple schema reports `additionalProperties`
@@ -265,7 +291,7 @@ export function collapseUndeclaredProperties(
   const seen = new Set<string>();
   return records.filter((record) => {
     if (record.code !== "undeclared_property") return true;
-    const key = JSON.stringify(record.path);
+    const key = JSON.stringify([record.path, record.property ?? null]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -284,7 +310,7 @@ export function dropConditionalWrappers(records: StructuralErrorRecord[]): Struc
   return records.filter((record) => record.validator !== "if");
 }
 
-/** Deterministic, engine-independent order: by path (element-wise), then validator. */
+/** Deterministic, engine-independent order: path, keyword, then affected property. */
 export function compareStructuralRecords(
   a: StructuralErrorRecord,
   b: StructuralErrorRecord,
@@ -300,5 +326,9 @@ export function compareStructuralRecords(
   if (pa.length !== pb.length) return pa.length - pb.length;
   if (a.validator < b.validator) return -1;
   if (a.validator > b.validator) return 1;
+  const propertyA = a.property ?? "";
+  const propertyB = b.property ?? "";
+  if (propertyA < propertyB) return -1;
+  if (propertyA > propertyB) return 1;
   return 0;
 }

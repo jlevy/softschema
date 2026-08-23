@@ -94,6 +94,15 @@ structural:
     valid: false
     code: schema_invalid
     reason: pattern
+  - id: invalid_pattern_in_resource
+    schema: { $ref: "urn:example:pattern" }
+    resources:
+      urn:example:pattern:
+        { $id: "urn:example:pattern", type: string, pattern: "(?P<name>a)" }
+    value: a
+    valid: false
+    code: schema_invalid
+    reason: pattern
   - id: unresolved_remote_reference
     schema: { $ref: "https://example.invalid/remote-schema" }
     value: anything
@@ -131,10 +140,11 @@ canonicalization:
 
 # The enforced-closure overlay. `closure` is the keyword the overlay must inject at the
 # schema root (`none` = the root must stay open); `defs_closure` pins the same for named
-# `$defs` entries. Asserting the keyword, not merely that closure happened, is what keeps
-# the applicator split honest: fragments (allOf/if/then/else/not/dependentSchemas) are
-# never closed internally and force `unevaluatedProperties` at the composition root,
-# while everything else keeps the lexical `additionalProperties`.
+# `$defs` entries. Reusable definition roots stay open; each `$ref` application site is
+# closed independently. Asserting the keyword, not merely that closure happened, keeps
+# the applicator split honest: in-place applicators are never closed internally and
+# force `unevaluatedProperties` at their parent, while self-contained lexical objects
+# keep `additionalProperties`.
 enforcement:
   - id: simple_object
     schema: { type: object, properties: { name: { type: string } } }
@@ -159,8 +169,15 @@ enforcement:
         - if: { properties: { kind: { const: special } }, required: [kind] }
           then: { required: [extra] }
     closure: unevaluatedProperties
-  - id: bare_conditional
+  - id: alternative_object
     schema:
+      anyOf:
+        - { type: object, required: [a], properties: { a: { type: string } } }
+        - { type: object, required: [b], properties: { b: { type: string } } }
+    closure: unevaluatedProperties
+  - id: direct_conditional
+    schema:
+      properties: { kind: { enum: [plain, special] } }
       if: { properties: { kind: { const: special } }, required: [kind] }
       then: { properties: { extra: { type: string } } }
     closure: unevaluatedProperties
@@ -189,9 +206,8 @@ enforcement:
     defs_closure:
       Address: none
   - id: ref_from_both_contexts
-    # Reached from a fragment *and* from `properties`. The definition still closes,
-    # because the non-fragment use has nothing else to enforce it; the fragment use
-    # then carries the lexical-blindness residual. Documented, not silent.
+    # Reached from a fragment and from `properties`. The definition remains reusable
+    # and open; each referring site receives annotation-aware closure independently.
     schema:
       type: object
       properties:
@@ -202,7 +218,7 @@ enforcement:
         Address: { type: object, properties: { street: { type: string } } }
     closure: unevaluatedProperties
     defs_closure:
-      Address: additionalProperties
+      Address: none
   - id: ref_to_free_form_def
     # The reference resolves to a free-form mapping, so it declares nothing and the
     # root must stay open. Assuming any `$ref` declares something would close this
@@ -229,8 +245,8 @@ enforcement:
     defs_closure:
       Address: none
   - id: standalone_ref_closes_its_definition
-    # The only reference is a bare property value, so nothing else covers that instance
-    # location and the definition must close on its own terms.
+    # The only reference is a bare property value. The reference application site closes
+    # with `unevaluatedProperties`; the reusable definition itself remains open.
     schema:
       type: object
       properties:
@@ -239,7 +255,7 @@ enforcement:
         Address: { type: object, properties: { street: { type: string } } }
     closure: additionalProperties
     defs_closure:
-      Address: additionalProperties
+      Address: none
   - id: prohibition_only
     # `not` names what must be absent. Those properties are not declarations, and `not`
     # contributes no annotations, so closing over them would admit nothing at all.
@@ -254,19 +270,160 @@ enforcement:
       dependentSchemas:
         a: { required: [b], properties: { b: { type: string } } }
     closure: unevaluatedProperties
+  - id: pattern_object
+    schema:
+      type: object
+      patternProperties: { "^x_": { type: string } }
+    closure: additionalProperties
 
-# Shapes `enforced` deliberately does not close, pinned as document outcomes so the gap
-# is visible and any later change is loud. Each is a conservative choice, not an
-# oversight: closing these lexically would reintroduce the sibling blindness the
-# applicator split exists to prevent, and root closure cannot reach a nested instance
-# location. See the "what enforced does not close" list in the spec.
-enforcement_gaps:
+# Raw-versus-enforced outcomes are the primary semantic oracle. A valid authored schema
+# may narrow only because a present property is unevaluated; an invalid authored schema
+# must never become valid. `unsupported` is the checked profile's explicit answer when
+# it cannot prove a safe placement.
+enforcement_semantics:
+  - id: anyof_collects_all_successful_annotations
+    schema:
+      anyOf:
+        - { type: object, required: [a], properties: { a: { type: string } } }
+        - { type: object, required: [b], properties: { b: { type: string } } }
+    value: { a: x, b: y }
+    raw: valid
+    enforced: valid
+  - id: anyof_rejects_only_the_unevaluated_key
+    schema:
+      anyOf:
+        - { type: object, required: [a], properties: { a: { type: string } } }
+        - { type: object, required: [b], properties: { b: { type: string } } }
+    value: { a: x, b: y, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: oneof_branch_selection_is_preserved
+    schema:
+      oneOf:
+        - { type: object, properties: { a: { type: string } } }
+        - { type: object, properties: { b: { type: string } } }
+    value: { a: x }
+    raw: invalid
+    enforced: invalid
+  - id: mixed_reference_contexts_do_not_interfere
+    schema:
+      type: object
+      properties: { addr: { $ref: "#/$defs/Address" } }
+      allOf:
+        - { $ref: "#/$defs/Address" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: reference_site_explicit_opt_out
+    schema:
+      $ref: "#/$defs/Base"
+      unevaluatedProperties: true
+      $defs:
+        Base: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: 1 }
+    raw: valid
+    enforced: valid
+  - id: pattern_only_object
+    schema:
+      type: object
+      patternProperties: { "^x_": { type: string } }
+    value: { x_ok: yes, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: reference_with_sibling_pattern
+    schema:
+      $ref: "#/$defs/Base"
+      patternProperties: { "^x_": { type: string } }
+      $defs:
+        Base: { type: object, properties: { street: { type: string } } }
+    value: { street: s, x_ok: yes }
+    raw: valid
+    enforced: valid
+  - id: overlapping_patterns
+    schema:
+      type: object
+      patternProperties:
+        "^x": { type: string }
+        "ok$": { minLength: 2 }
+    value: { x_ok: yes }
+    raw: valid
+    enforced: valid
+  - id: anchor_reference_extension
+    schema:
+      allOf:
+        - { $ref: "#Base" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Base:
+          $anchor: Base
+          type: object
+          properties: { street: { type: string } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: escaped_pointer_extension
+    schema:
+      allOf:
+        - { $ref: "#/$defs/a~1b" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        a/b: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: nested_definition_extension
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Container/$defs/Base" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Container:
+          $defs:
+            Base: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: embedded_resource_extension
+    schema:
+      $id: "https://example.test/root"
+      allOf:
+        - { $ref: base }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Base:
+          $id: base
+          type: object
+          properties: { street: { type: string } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: external_resource_is_closed_at_the_reference_site
+    schema: { $ref: "urn:example:address" }
+    resources:
+      urn:example:address:
+        $id: "urn:example:address"
+        type: object
+        properties: { street: { type: string } }
+    value: { street: s, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: alternatives_nested_in_fragment
+    schema:
+      allOf:
+        - anyOf:
+            - { properties: { a: { type: string } } }
+            - { properties: { b: { type: string } } }
+    value: { a: x, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
   - id: nested_object_inside_fragment
-    why: >-
-      An object declared inline under a fragment is never closed. Root
-      `unevaluatedProperties` applies to the root instance only, and closing the nested
-      object lexically would reject keys a sibling fragment contributes to the same
-      location. Workaround: declare it in `$defs` and `$ref` it.
     schema:
       type: object
       properties: { kind: { type: string } }
@@ -274,21 +431,73 @@ enforcement_gaps:
         - properties:
             extra: { type: object, properties: { name: { type: string } } }
     value: { kind: k, extra: { name: n, zzz: 1 } }
-    verdict: valid
-  - id: alternatives_inside_fragment
-    why: >-
-      Branches of an `anyOf` nested in a fragment inherit fragment status, so they are
-      not closed, and the declares-scan does not traverse alternatives, so the root does
-      not close either. Closing the root over hoisted branch declarations would give
-      union semantics that differ from top-level branch closure — the decision ss-p32o
-      is waiting on.
+    raw: valid
+    enforced: unsupported
+    reason: nested_instance_composition
+  - id: nested_reference_inside_fragment
     schema:
+      type: object
       allOf:
-        - anyOf:
-            - { properties: { a: { type: string } } }
-            - { properties: { b: { type: string } } }
-    value: { a: "x", zzz: 1 }
-    verdict: valid
+        - properties:
+            extra: { $ref: "#/$defs/Nested" }
+      $defs:
+        Nested: { type: object, properties: { name: { type: string } } }
+    value: { extra: { name: n, zzz: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: nested_instance_composition
+  - id: conditional_matcher_requires_site_declaration
+    schema:
+      type: object
+      properties: { known: { type: string } }
+      if: { properties: { mode: { const: strict } } }
+    value: { known: yes, mode: strict }
+    raw: valid
+    enforced: unsupported
+    reason: conditional_annotation_scope
+  - id: embedded_resource_at_nested_application_site
+    schema:
+      type: object
+      properties:
+        child:
+          $id: "https://example.test/child"
+          type: object
+          properties: { name: { type: string } }
+    value: { child: { name: n, bogus: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: embedded_resource_context
+  - id: supplied_resource_identity_must_match_key
+    schema: { $ref: "https://example.test/retrieval" }
+    resources:
+      https://example.test/retrieval:
+        $id: "https://example.test/canonical"
+        type: object
+        properties: { name: { type: string } }
+    value: { name: n }
+    raw: skip
+    enforced: invalid
+    kind: schema_invalid
+    reason: resource_identity
+  - id: invalid_dynamic_reference_is_a_dialect_error
+    schema: { $dynamicRef: 42 }
+    value: { name: n }
+    raw: invalid
+    enforced: invalid
+    kind: schema_invalid
+    reason: dialect
+  - id: dynamic_reference_is_outside_the_profile
+    schema:
+      $dynamicRef: "#Node"
+      $defs:
+        Node:
+          $dynamicAnchor: Node
+          type: object
+          properties: { name: { type: string } }
+    value: { name: n }
+    raw: skip
+    enforced: unsupported
+    reason: dynamic_reference
 
 # Cross-implementation error-record deviations that are accepted, not bugs.
 #

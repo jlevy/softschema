@@ -99,8 +99,9 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
       {
         "code": "undeclared_property",
         "kind": "schema_violation",
-        "message": "object has properties that are not allowed",
+        "message": "property 'confidence' is not allowed",
         "path": [],
+        "property": "confidence",
         "validator": "additionalProperties",
         "validator_value": false,
         "value": {
@@ -115,10 +116,11 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
       {
         "code": "undeclared_property",
         "kind": "schema_violation",
-        "message": "object has properties that are not allowed",
+        "message": "property 'fetched_by' is not allowed",
         "path": [
           "meta"
         ],
+        "property": "fetched_by",
         "validator": "additionalProperties",
         "validator_value": false,
         "value": {
@@ -187,8 +189,9 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
       {
         "code": "undeclared_property",
         "kind": "schema_violation",
-        "message": "object has properties that are not allowed",
+        "message": "property 'confidence' is not allowed",
         "path": [],
+        "property": "confidence",
         "validator": "additionalProperties",
         "validator_value": false,
         "value": {
@@ -203,10 +206,11 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
       {
         "code": "undeclared_property",
         "kind": "schema_violation",
-        "message": "object has properties that are not allowed",
+        "message": "property 'fetched_by' is not allowed",
         "path": [
           "meta"
         ],
+        "property": "fetched_by",
         "validator": "additionalProperties",
         "validator_value": false,
         "value": {
@@ -318,8 +322,9 @@ $ softschema validate tests/golden/fixtures/conditional-violation.md --schema te
       {
         "code": "missing_property",
         "kind": "schema_violation",
-        "message": "required property ['extra'] is missing",
+        "message": "required property 'extra' is missing",
         "path": [],
+        "property": "extra",
         "validator": "required",
         "validator_value": [
           "extra"
@@ -379,8 +384,9 @@ $ softschema validate tests/golden/fixtures/conditional-undeclared.md --schema t
       {
         "code": "undeclared_property",
         "kind": "schema_violation",
-        "message": "object has properties that are not allowed",
+        "message": "property 'bogus' is not allowed",
         "path": [],
+        "property": "bogus",
         "validator": "additionalProperties",
         "validator_value": false,
         "value": {
@@ -449,11 +455,11 @@ $ softschema validate tests/golden/fixtures/composed-open-ok.md --schema tests/g
 ? 0
 ```
 
-# Test: injected closure reports one record for several undeclared keys
+# Test: injected closure preserves each undeclared key
 
-Two undeclared keys against the same object. ajv emits one closure error per key and
-jsonschema one per object, so this is where the collapse is observable — with a single
-key the two shapes are indistinguishable.
+Two undeclared keys against the same object produce two normalized records. Native
+jsonschema groups the keys while ajv reports them separately; normalization preserves
+one record per field in both runtimes.
 
 ```console
 $ softschema validate tests/golden/fixtures/composed-open-undeclared.md --schema tests/golden/fixtures/composed-open.schema.yaml
@@ -488,8 +494,24 @@ $ softschema validate tests/golden/fixtures/composed-open-undeclared.md --schema
       {
         "code": "undeclared_property",
         "kind": "schema_violation",
-        "message": "object has properties that are not allowed",
+        "message": "property 'bogus' is not allowed",
         "path": [],
+        "property": "bogus",
+        "validator": "unevaluatedProperties",
+        "validator_value": false,
+        "value": {
+          "bogus": 1,
+          "first": "Ada",
+          "last": "Lovelace",
+          "other": 2
+        }
+      },
+      {
+        "code": "undeclared_property",
+        "kind": "schema_violation",
+        "message": "property 'other' is not allowed",
+        "path": [],
+        "property": "other",
         "validator": "unevaluatedProperties",
         "validator_value": false,
         "value": {
