@@ -198,3 +198,21 @@ def test_conditional_reports_the_real_violation(tmp_path: Path) -> None:
     assert not violation.ok
     assert [error["code"] for error in violation.errors] == ["missing_property"]
     assert violation.errors[0]["message"] == "required property ['extra'] is missing"
+
+
+def test_documented_engine_deviations(tmp_path: Path) -> None:
+    # Each runtime asserts its own listed record set exactly, so a documented deviation
+    # passes while drift on either side fails. See the section comment in the vectors.
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    for case in vectors["engine_deviations"]:
+        schema_path = tmp_path / f"{case['id']}.schema.yaml"
+        YAML().dump(case["schema"], schema_path)
+        result = validate_structural(
+            case["value"], schema_path, strict_extras=case["strict_extras"]
+        )
+        assert result.ok is (case["verdict"] == "valid"), case["id"]
+        actual = [
+            {"code": error["code"], "validator": error["validator"], "path": error["path"]}
+            for error in result.errors
+        ]
+        assert actual == case["python"], case["id"]

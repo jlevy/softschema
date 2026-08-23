@@ -8,10 +8,11 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
-import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
+import { applyEnforcedExtras } from "./canonicalize.js";
 import {
-  collapseAdditionalProperties,
+  collapseUndeclaredProperties,
   compareStructuralRecords,
+  dropConditionalWrappers,
   normalizeAjvError,
   type StructuralErrorRecord,
 } from "./errors.js";
@@ -261,19 +262,13 @@ export function validateStructural(
     const ok = validateFn(values);
     const errors: StructuralErrorRecord[] = ok
       ? []
-      : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
+      : collapseUndeclaredProperties(
+          dropConditionalWrappers((validateFn.errors ?? []).map((e) => normalizeAjvError(e))),
+        );
     errors.sort(compareStructuralRecords);
     return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (error instanceof EnforcementUnsupportedError) {
-      return {
-        ok: false,
-        errors: [{ kind: "enforcement_unsupported", message }],
-        engine: "json_schema",
-        skipped_reason: null,
-      };
-    }
     return schemaInvalid(schemaFailureReason(message), message);
   }
 }

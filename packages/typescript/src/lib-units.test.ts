@@ -6,7 +6,7 @@ import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
-  collapseAdditionalProperties,
+  collapseUndeclaredProperties,
   normalizeAjvError,
   renderStructuralMessage,
   structuralErrorRecord,
@@ -276,7 +276,7 @@ describe("errors: every message template", () => {
     expect(rec.message).toBe("required property ['title', 'year'] is missing");
   });
 
-  test("collapseAdditionalProperties keeps one record per object path", () => {
+  test("collapseUndeclaredProperties keeps one record per object path", () => {
     // Regression for ss-b1l9: ajv emits one additionalProperties error per extra key.
     const base = structuralErrorRecord({
       path: [],
@@ -284,7 +284,7 @@ describe("errors: every message template", () => {
       validatorValue: false,
       value: { a: 1, b: 2 },
     });
-    expect(collapseAdditionalProperties([base, { ...base }])).toEqual([base]);
+    expect(collapseUndeclaredProperties([base, { ...base }])).toEqual([base]);
     const req = structuralErrorRecord({
       path: [],
       validator: "required",
@@ -292,7 +292,7 @@ describe("errors: every message template", () => {
       value: {},
     });
     // required duplicates are preserved (jsonschema also emits one per missing key).
-    expect(collapseAdditionalProperties([req, { ...req }])).toHaveLength(2);
+    expect(collapseUndeclaredProperties([req, { ...req }])).toHaveLength(2);
   });
 });
 

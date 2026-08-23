@@ -184,6 +184,57 @@ enforcement:
         a: { required: [b], properties: { b: { type: string } } }
     closure: unevaluatedProperties
 
+# Cross-implementation error-record deviations that are accepted, not bugs.
+#
+# The parity contract is that both engines produce identical output, with one exception:
+# a deviation explicitly listed here, where jsonschema and ajv report the same verdict
+# through a different number of records and no normalization removes the difference
+# cleanly. Python is the reference. Each runtime asserts ITS OWN listed record set
+# exactly, so a *listed* deviation passes while any drift — on either side — fails, and
+# an unlisted divergence has nothing to pass against.
+#
+# Records are compared on (code, validator, path); message and value are covered by the
+# golden corpus. `verdict` states the agreement that makes the deviation acceptable.
+engine_deviations:
+  - id: dependent_schema_closure
+    schema:
+      type: object
+      properties: { a: { type: string } }
+      dependentSchemas:
+        a: { required: [b], properties: { b: { type: string } } }
+    value: { a: "x" }
+    strict_extras: true
+    verdict: invalid
+    why: >-
+      When a dependent schema fails, ajv additionally reports the root closure as
+      unevaluated for a property that top-level `properties` already evaluated. Dropping
+      it would need closure-record suppression keyed on a sibling failure, which would
+      also hide genuine undeclared keys.
+    python:
+      - { code: missing_property, validator: required, path: [] }
+    typescript:
+      - { code: missing_property, validator: required, path: [] }
+      - { code: undeclared_property, validator: unevaluatedProperties, path: [] }
+  - id: anyof_branch_multiplicity
+    schema:
+      anyOf:
+        - { type: string }
+        - { type: integer }
+    value: { x: 1 }
+    strict_extras: true
+    verdict: invalid
+    why: >-
+      Pre-existing and unrelated to composition closure: jsonschema reports the failing
+      `anyOf` once, while ajv reports every branch's failure alongside it. Collapsing
+      branch records would discard which alternatives were tried. Pinned here because
+      this is the first vector set to cover it.
+    python:
+      - { code: invalid_value, validator: anyOf, path: [] }
+    typescript:
+      - { code: invalid_value, validator: anyOf, path: [] }
+      - { code: invalid_value, validator: type, path: [] }
+      - { code: invalid_value, validator: type, path: [] }
+
 identity:
   - { id: contract_and_schema_id, contract: "example.people:Person/v1", schema_id: "https://example.com/schemas/person-v1", valid: true }
   - { id: malformed_contract, contract: "bad id", valid: false, code: invalid_contract }

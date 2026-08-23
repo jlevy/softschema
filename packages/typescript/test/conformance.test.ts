@@ -36,6 +36,7 @@ test("shared hardening vectors are readable", () => {
     "structural",
     "canonicalization",
     "enforcement",
+    "engine_deviations",
     "identity",
     "compiler_annotations",
     "compiler_titles",

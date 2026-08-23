@@ -8,13 +8,66 @@ import type { ErrorObject } from "ajv";
 
 export const SCHEMA_VIOLATION_KIND = "schema_violation";
 
+/**
+ * `kind` + `code` + `path` is the documented match surface. `validator` names the
+ * *mechanism* — which JSON Schema keyword fired — and is diagnostic: one authoring
+ * mistake can reach a consumer through more than one keyword, because an undeclared key
+ * reports `additionalProperties` on a simple schema and `unevaluatedProperties` on a
+ * composed one. `code` names *what the author got wrong* and is stable across both.
+ */
 export interface StructuralErrorRecord {
   kind: string;
+  code: string;
   path: (string | number)[];
   validator: string;
   validator_value: unknown;
   value: unknown;
   message: string;
+}
+
+// The stable category for a structural violation, as a pure function of `validator`.
+// Keep in lockstep with the equivalent map in the Python `errors.py`.
+const UNDECLARED_PROPERTY_VALIDATORS = new Set(["additionalProperties", "unevaluatedProperties"]);
+const MISSING_PROPERTY_VALIDATORS = new Set(["required"]);
+
+// Every keyword the message table renders a specific template for. A keyword outside
+// this allowlist is reported as `unmapped_keyword` rather than silently folded into
+// `invalid_value`, so the gap is greppable instead of invisible.
+const INVALID_VALUE_VALIDATORS = new Set([
+  "enum",
+  "type",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "minItems",
+  "maxItems",
+  "uniqueItems",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "multipleOf",
+  "const",
+  "minProperties",
+  "maxProperties",
+  "anyOf",
+  "oneOf",
+  "allOf",
+  "not",
+  "dependentRequired",
+  "format",
+  "contains",
+  "propertyNames",
+  "prefixItems",
+  "items",
+]);
+
+/** Return the stable softschema category for one JSON Schema keyword. */
+export function structuralErrorCode(validator: string): string {
+  if (UNDECLARED_PROPERTY_VALIDATORS.has(validator)) return "undeclared_property";
+  if (MISSING_PROPERTY_VALIDATORS.has(validator)) return "missing_property";
+  if (INVALID_VALUE_VALIDATORS.has(validator)) return "invalid_value";
+  return "unmapped_keyword";
 }
 
 /**
@@ -139,7 +192,10 @@ export function renderStructuralMessage(
       return `string is longer than the maximum length of ${pyRepr(validatorValue)}`;
     case "pattern":
       return `value ${pyRepr(value)} does not match pattern ${pyRepr(validatorValue)}`;
+    // Both closure keywords are one category to the author, so they share a message.
+    // The generic fallback would otherwise spill the whole payload into the string.
     case "additionalProperties":
+    case "unevaluatedProperties":
       return "object has properties that are not allowed";
     case "multipleOf":
       return `value ${pyRepr(value)} is not a multiple of ${pyRepr(validatorValue)}`;
@@ -156,6 +212,7 @@ export function structuralErrorRecord(args: {
 }): StructuralErrorRecord {
   return {
     kind: SCHEMA_VIOLATION_KIND,
+    code: structuralErrorCode(args.validator),
     path: args.path,
     validator: args.validator,
     validator_value: args.validatorValue,
@@ -190,25 +247,41 @@ export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
 }
 
 /**
- * Collapse `additionalProperties` errors to one record per object path.
+ * Collapse undeclared-property errors to one record per object path.
  *
- * ajv (with `allErrors`) reports one `additionalProperties` error per disallowed key,
- * whereas Python jsonschema reports a single error for the whole object. After
- * normalization the ajv records for the same object are byte-identical, so keeping the
- * first per path reproduces jsonschema's one-record shape. Other keywords (e.g.
- * `required`, which jsonschema also reports once per missing key) are left untouched.
+ * ajv (with `allErrors`) reports one closure error per disallowed key, whereas Python
+ * jsonschema reports a single error for the whole object. After normalization the ajv
+ * records for the same object are byte-identical, so keeping the first per path
+ * reproduces jsonschema's one-record shape. Other keywords (e.g. `required`, which
+ * jsonschema also reports once per missing key) are left untouched.
+ *
+ * Keyed on the `undeclared_property` code rather than a keyword list, so this stays
+ * correct for both closure keywords: a simple schema reports `additionalProperties`
+ * and a composed one reports `unevaluatedProperties`, and ajv over-reports both.
  */
-export function collapseAdditionalProperties(
+export function collapseUndeclaredProperties(
   records: StructuralErrorRecord[],
 ): StructuralErrorRecord[] {
   const seen = new Set<string>();
   return records.filter((record) => {
-    if (record.validator !== "additionalProperties") return true;
+    if (record.code !== "undeclared_property") return true;
     const key = JSON.stringify(record.path);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+/**
+ * Drop ajv's `if` wrapper records.
+ *
+ * When a conditional fails, ajv emits the inner cause *and* an `if` record reading
+ * `must match "then" schema`, which only restates it. Python's jsonschema never emits
+ * one — a failing `if` is a false condition, not an error — so dropping the wrapper
+ * aligns the engines without losing information.
+ */
+export function dropConditionalWrappers(records: StructuralErrorRecord[]): StructuralErrorRecord[] {
+  return records.filter((record) => record.validator !== "if");
 }
 
 /** Deterministic, engine-independent order: by path (element-wise), then validator. */
