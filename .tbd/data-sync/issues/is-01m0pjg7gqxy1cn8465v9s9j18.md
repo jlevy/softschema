@@ -3,9 +3,9 @@ type: is
 id: is-01m0pjg7gqxy1cn8465v9s9j18
 title: "Python: replace enforcement refusal with applicator-split closure"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - enforcement
@@ -16,7 +16,11 @@ dependencies:
     target: is-01m0pjkm7kd2kf57ennae999ye
 parent_id: is-01m0pjfmt8vxpkcjk8msfa8c32
 created_at: 2026-08-23T05:46:38.999Z
-updated_at: 2026-08-23T05:48:30.322Z
+updated_at: 2026-08-23T06:31:37.794Z
+closed_at: 2026-08-23T06:31:37.794Z
+close_reason: "Landed on claude/review-open-issue-spec-dt4zkk (PR #42)."
+resolution: null
+duplicate_of: null
 ---
 Phase 2. Rewrite _apply_enforced_extras in packages/python/src/softschema/canonicalize.py to the three clauses in the spec:
 

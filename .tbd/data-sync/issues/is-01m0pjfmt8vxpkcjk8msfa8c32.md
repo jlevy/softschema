@@ -3,9 +3,9 @@ type: is
 id: is-01m0pjfmt8vxpkcjk8msfa8c32
 title: "Spec: enforced closure for composed schemas (issue #41)"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - enforcement
@@ -20,7 +20,11 @@ child_order_hints:
   - is-01m0pjkkw38f6br2fma3a90h7v
   - is-01m0pjkm7kd2kf57ennae999ye
 created_at: 2026-08-23T05:46:19.848Z
-updated_at: 2026-08-23T05:48:30.322Z
+updated_at: 2026-08-23T06:31:39.046Z
+closed_at: 2026-08-23T06:31:39.046Z
+close_reason: "All six children landed on PR #42. Issue #41 resolved: composed schemas validate under enforced, records carry a stable code enum, engine deviations pinned. Sibling anyOf bug filed as ss-p32o."
+resolution: null
+duplicate_of: null
 ---
 Under `status: enforced`, any schema using `allOf`/`if`/`then` composition fails with `enforcement_unsupported` for every document, so a genuine violation is masked by a generic message (GitHub issue #41).
 

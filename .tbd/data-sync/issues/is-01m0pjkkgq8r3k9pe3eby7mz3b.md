@@ -3,9 +3,9 @@ type: is
 id: is-01m0pjkkgq8r3k9pe3eby7mz3b
 title: "TypeScript: port closure rule, code enum, and ajv error normalization"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - enforcement
@@ -17,7 +17,11 @@ dependencies:
     target: is-01m0pjkm7kd2kf57ennae999ye
 parent_id: is-01m0pjfmt8vxpkcjk8msfa8c32
 created_at: 2026-08-23T05:48:29.590Z
-updated_at: 2026-08-23T05:48:30.322Z
+updated_at: 2026-08-23T06:31:38.288Z
+closed_at: 2026-08-23T06:31:38.287Z
+close_reason: "Landed on claude/review-open-issue-spec-dt4zkk (PR #42)."
+resolution: null
+duplicate_of: null
 ---
 Phase 3. Mirror the Python work in packages/typescript/src/.
 
