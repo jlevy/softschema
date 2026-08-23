@@ -328,80 +328,193 @@ It is not required to be an import path or a class name.
 
 ### Closure under `enforced`
 
-Closure is not a single-keyword rule, because a schema that *composes* constraints
-cannot be closed the same way as one that declares them in a single place.
-`additionalProperties` is lexical: it constrains only the properties named in the same
-schema object and is blind to properties a sibling subschema contributes.
-Closing a composed schema with it would reject documents the author’s schema accepts.
+Closure is the rule that turns `enforced` from an intention into a check.
+It is worth deriving rather than memorizing, because the obvious implementation is wrong
+for any schema that composes constraints, and the reason is not obvious.
 
-A conforming validator therefore splits applicators into two kinds:
+#### The invariant
 
-| Kind | Keywords | Each subschema | Treatment |
+Closure must satisfy two conditions at once:
+
+1. **Reject undeclared keys.** A key the schema names nowhere is an authoring bug.
+2. **Reject nothing else.** A document the author’s own schema accepts must stay valid
+   when `enforced` is switched on.
+   Closure adds a check; it does not change the contract.
+
+Condition 2 is the one that constrains the design.
+Everything below follows from asking, precisely, what “the schema names this key” means.
+
+#### Why the lexical answer works, until it doesn’t
+
+`additionalProperties` answers “is this key declared?”
+by consulting the `properties` of **the same schema object it appears in** — nothing
+else. Call this the lexical answer.
+
+For a schema that declares everything in one place, the lexical answer is exactly right:
+
+```yaml
+type: object
+properties: {name: {type: string}}
+additionalProperties: false      # sees `name`; rejects everything else
+```
+
+Now compose.
+In JSON Schema, an *in-place applicator* is a keyword whose subschemas apply
+to **the same instance location** as the parent — `allOf`, `anyOf`, `oneOf`, `not`,
+`if`/`then`/`else`, `dependentSchemas`, and `$ref`. (Contrast a *child* applicator like
+`properties` or `items`, whose subschemas apply to a child location.)
+In-place applicators mean a single instance location can be described by several schema
+objects at once:
+
+```yaml
+type: object
+properties: {a: {type: string}}
+allOf:
+  - properties: {b: {type: string}}
+additionalProperties: false      # sees only `a`
+```
+
+`{"a": "x", "b": "y"}` satisfies the author’s schema — `b` is declared, one applicator
+over — and `additionalProperties` rejects it.
+Condition 2 is violated.
+The lexical answer was never a definition of “declared”; it was a shortcut that happens
+to coincide with the definition when all declarations sit in one object.
+
+#### The annotation answer
+
+2020-12 provides the non-lexical answer.
+When a subschema validates **successfully**, its `properties` keyword produces an
+*annotation* naming the keys it matched, and annotations from in-place applicators
+propagate to the schema object containing them.
+`unevaluatedProperties` consults those collected annotations instead of its lexical
+siblings:
+
+```yaml
+type: object
+properties: {a: {type: string}}
+allOf:
+  - properties: {b: {type: string}}
+unevaluatedProperties: false     # sees `a` and `b`
+```
+
+`{"a": "x", "b": "y"}` now passes, and `{"a": "x", "zzz": 1}` is still rejected.
+Both conditions hold.
+
+Two properties of the annotation model drive every rule that follows:
+
+- **Annotations propagate upward to the composition root, not sideways.** A branch
+  cannot see its siblings’ annotations.
+  So the closure keyword must be placed at the object where the applicators meet — not
+  inside any of them.
+- **Only successful subschemas contribute.** A failing branch, a `not` whose subschema
+  failed, or an `if` whose condition was false all contribute nothing.
+
+#### Which subschemas may be closed on their own
+
+Given the above, a subschema can carry its own closure only if it is a **complete
+description** of its instance location — if nothing else contributes declarations there.
+Sorting the in-place applicators by that question:
+
+| Kind | Keywords | Is a branch a complete description? | Treatment |
 | --- | --- | --- | --- |
-| Alternatives | `anyOf`, `oneOf` | describes the instance completely | closed on its own terms |
-| Fragments | `allOf`, `if`, `then`, `else`, `not`, `dependentSchemas` | contributes part of one instance’s constraints | never closed; closed at the composition root instead |
+| Alternatives | `anyOf`, `oneOf` | By convention yes — validation picks one branch, and the compiled shape of an optional field is `anyOf: [{$ref: …}, {"type": "null"}]` | Closed on its own terms |
+| Fragments | `allOf`, `if`, `then`, `else`, `not`, `dependentSchemas` | No — each contributes *part* of the constraints, and `if` contributes a *matcher* rather than a declaration | Never closed internally; the composition root closes instead |
 
-Three clauses follow:
+The alternatives row rests on an authoring convention, not a guarantee the spec makes: a
+node that declares `properties` *and* carries alternatives that declare more breaks it.
+That shape is a known defect rather than a supported one — see the tracked issues.
 
-1. Closure is never injected inside a fragment subtree.
-   Closing an `allOf` branch would reject keys its sibling declares; closing an `if`
-   matcher would stop the conditional from firing at all.
-   `$defs` resets this — a definition is a complete declaration reached by `$ref`, so it
-   closes on its own terms even when the reference sits inside a fragment.
-2. A node declares properties if it carries `properties`, *or* if a fragment applicator
-   under it does. A schema may declare every property inside its `allOf` branches, and
-   would otherwise be enforced nowhere.
-3. Such a node is closed with `unevaluatedProperties: false` when it carries a fragment
-   applicator or a reference keyword (`$ref`, `$dynamicRef` — also in-place applicators,
-   whose annotations reach the referring node), and `additionalProperties: false`
-   otherwise.
-4. A definition closes on its own terms unless *every* reference to it is composed — one
-   where the referring node contributes constraints alongside it, by declaring sibling
-   `properties`, carrying a fragment applicator, or sitting inside a fragment.
-   A composed reference is already covered by the referring node’s annotation-aware
-   closure, so closing the definition lexically as well would reject whatever its
-   siblings declare — which is what the ubiquitous
-   `allOf: [{$ref: Base}, {properties: {...}}]` extension idiom does.
-   A single standalone reference (a bare `{"$ref": ...}` in non-fragment position, such
-   as a property value) keeps the definition closed, since nothing else covers that
-   instance location.
+#### The rules
 
-Clause 2 recurses through fragment applicators and local `$ref` targets only;
-alternatives are not traversed, and `not` is excluded — the properties under it are
-prohibitions rather than declarations, and it contributes no annotations, so counting
-them would close the schema against everything.
+Four rules implement the invariant.
+Each is a direct consequence of the two annotation properties above.
 
-`unevaluatedProperties` is annotation-aware: properties evaluated by `properties`, by an
-`allOf` branch, by a successful `if`, by `then`, `else`, `dependentSchemas`, or through
-`$ref` all count as declared, so only genuinely undeclared keys fail.
+1. **Never inject closure inside a fragment subtree.** Annotations do not travel
+   sideways, so a fragment cannot see what its siblings declare; closing it lexically
+   re-creates the failure in “Why the lexical answer works, until it doesn’t”. Closing
+   an `if` matcher is worse than wrong: it changes which documents the condition
+   matches, so the conditional silently stops firing instead of failing loudly.
 
-One consequence is worth knowing rather than discovering.
-A property named in an `if` matcher is *evaluated* when the matcher succeeds, so it is
-admitted. Given `if: {properties: {secret: {const: "x"}}}` and no `secret` in the root’s
-`properties`, `{"secret": "x"}` passes closure while `{"secret": "other"}` is rejected.
-That is correct 2020-12 behavior, and it is the price of the annotation model.
-The converse is also worth knowing: a failing `if` contributes no annotations, so a
-property named *only* in a matcher is undeclared whenever the matcher does not fire.
-Declare matched properties at the root as well.
+2. **A node declares properties if it carries `properties`, or if a fragment applicator
+   under it does.** The second half matters because a schema may declare every property
+   inside its `allOf` branches and nothing at the root; without it, such a schema would
+   be enforced nowhere.
+   The scan recurses through fragment applicators and follows local `$ref` targets, and
+   stops there — alternatives are not traversed, and `not` is excluded, since the
+   properties under it name what must be *absent*. Counting a prohibition as a
+   declaration would close the schema over keys that can never be evaluated, admitting
+   nothing at all.
+
+3. **Close such a node with `unevaluatedProperties: false` when it carries a fragment
+   applicator or a reference keyword, and `additionalProperties: false` otherwise.**
+   `$ref` and `$dynamicRef` are in-place applicators too, so their annotations reach the
+   referring node and the annotation-aware keyword is required there for the same
+   reason. A node with neither has all its declarations in one object, so the lexical
+   keyword is correct — and keeping it means non-composed schemas are unaffected, byte
+   for byte.
+
+4. **A definition closes on its own terms unless every reference to it is composed.** A
+   reference is *composed* when the referring node contributes constraints alongside it:
+   it declares sibling `properties`, carries a fragment applicator, or sits inside a
+   fragment. In each of those cases the referring node (or its composition root) is
+   itself closed with `unevaluatedProperties`, which already covers the definition’s
+   keys through the propagated annotation — so closing the definition lexically as well
+   would reject whatever the siblings declare.
+   That is precisely the ubiquitous extension idiom:
+
+   ```yaml
+   allOf:
+     - $ref: "#/$defs/Base"                    # declares `street`
+     - properties: {extra: {type: string}}
+   $defs:
+     Base: {type: object, properties: {street: {type: string}}}
+   ```
+
+   A **standalone** reference — a bare `{"$ref": …}` in non-fragment position, such as a
+   property value — has nothing else covering that instance location, so the definition
+   must close itself. One standalone reference anywhere is enough to keep it closed; a
+   definition used both ways keeps its closure, and the composed use carries the
+   residual.
+
+An explicit `additionalProperties` or `unevaluatedProperties` anywhere always wins, so a
+schema can opt any object out.
+Objects that declare no properties anywhere — free-form mappings — are never closed.
+
+#### Consequences of the annotation model
+
+These follow from “only successful subschemas contribute”, and are worth knowing rather
+than discovering.
+
+A property named in an `if` matcher **is** evaluated when the matcher succeeds, so it is
+admitted. Given `if: {properties: {secret: {const: "x"}}}` and no `secret` at the root,
+`{"secret": "x"}` passes closure while `{"secret": "other"}` is rejected.
+The converse bites harder: a failing `if` contributes nothing, so a property named
+*only* in a matcher is undeclared whenever the matcher does not fire.
+**Declare matched properties at the root as well.**
 
 ### What `enforced` does not close
 
 Closure applies at composition roots.
 Two shapes are deliberately left open, because closing them lexically would reintroduce
-the sibling blindness the applicator split exists to prevent:
+exactly the failure the rules above prevent:
 
-- **Objects declared inline inside a fragment.** `unevaluatedProperties` at the
-  composition root applies to the root instance only; it cannot reach a nested instance
-  location. An object declared under, say, `then.properties.extra` therefore stays open.
-  To restore strictness, declare it as a `$defs` entry and `$ref` it — a definition
-  closes on its own terms.
-- **Alternatives nested inside a fragment.** In `allOf: [{anyOf: [...]}]` the branches
-  inherit fragment status, so they are not closed, and the declares-scan does not
-  traverse alternatives, so the root does not close either.
+- **Objects declared inline inside a fragment.** Annotations propagate to the
+  composition root, and `unevaluatedProperties` there constrains the *root* instance
+  object only — it cannot reach a nested instance location.
+  An object declared under, say, `then.properties.extra` therefore stays open, and
+  closing it lexically would be blind to any sibling fragment constraining the same
+  nested location. To restore strictness, declare it as a `$defs` entry and `$ref` it:
+  rule 4 keeps a standalone reference’s definition closed.
+- **Alternatives nested inside a fragment.** In `allOf: [{anyOf: […]}]` the branches
+  inherit fragment status, so rule 1 leaves them open, and rule 2 does not traverse
+  alternatives, so the root does not close either.
   The same `anyOf` at the top level does close its branches.
+  Closing the root over hoisted branch declarations would give union semantics that
+  differ from top-level branch closure, which is a contract decision rather than an
+  implementation gap.
 
-A conforming validator may not silently narrow these later: they are pinned as document
-outcomes in the shared vectors.
+Both are pinned as document outcomes in the shared vectors, so a conforming validator
+cannot narrow them silently.
 
 The effective status is resolved by the caller (for example a registry contract or a
 `--status` flag), falling back to the document’s declared `softschema.status`.

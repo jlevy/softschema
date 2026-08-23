@@ -821,21 +821,61 @@ allOf:
     required: [budget_spent]
 ```
 
-Under `enforced`, a record with `decision: abandoned` and no `budget_spent` fails with
-`required property ['budget_spent'] is missing` — the actionable error, naming the field
-the author forgot. A record with `decision: pending` does not trigger the rule at all,
-and an undeclared key is still rejected.
+Under `enforced`, this behaves as follows — every row verified against both engines:
 
-Two things make this work, and both are worth knowing:
+| Record | Result | Why |
+| --- | --- | --- |
+| `{decision: pending}` | valid | the matcher does not fire, so the rule imposes nothing |
+| `{decision: abandoned, budget_spent: 12.5}` | valid | the rule fires and is satisfied |
+| `{decision: abandoned}` | invalid — `required property ['budget_spent'] is missing` | the rule fires; the error names the field the author forgot |
+| `{decision: pending, bogus: 1}` | invalid — `object has properties that are not allowed` | closure still bites on a composed schema |
 
-- **Fragments are never closed internally.** The `if` block is a *matcher*, not a
-  declaration of what the document may contain, so the validator does not close it.
-  If it did, the conditional would silently stop firing.
-- **The composition root closes with `unevaluatedProperties`.** That keyword is
-  annotation-aware, so a property declared in *any* branch counts as declared.
-  Here `budget_spent` is declared in the root’s own `properties`, so either keyword
-  would admit it — but move a declaration into a branch (as schemas grow, they tend to
-  migrate there) and only `unevaluatedProperties` still sees it.
+The third row is the point: the error is actionable, not a generic complaint about
+`allOf`.
+
+Three mechanics make this work.
+They are worth understanding, because each one is a place where a plausible-looking
+alternative silently breaks the schema.
+
+**1. The `if` block is a matcher, not a declaration.** It describes *which documents the
+rule applies to*, not what they may contain.
+So the validator never closes it.
+If it did, `{decision: abandoned}` would stop matching the `if` — the document has no
+other properties for a closed matcher to accept — and the conditional would quietly
+never fire. You would not get an error; you would get a rule that does nothing.
+
+**2. Closure lands on the composition root, not inside the branches.** A branch cannot
+see what its siblings declare, so a branch that closed itself would reject their keys.
+Only the root sees all of them.
+
+**3. The root closes with `unevaluatedProperties`, which is annotation-aware.** It
+admits any property that some subschema actually evaluated, wherever that subschema
+sits. In the schema above `budget_spent` is declared in the root’s own `properties`, so
+the lexical `additionalProperties` would admit it too — the difference does not show
+yet. It shows the moment a declaration moves into a branch, which is what happens as a
+schema grows:
+
+```yaml
+allOf:
+- if:
+    properties: {decision: {const: abandoned}}
+    required: [decision]
+  then:
+    required: [budget_spent]
+    properties:
+      writeoff_reason: {type: string}     # declared only in the branch
+```
+
+`unevaluatedProperties` admits `writeoff_reason` on an abandoned record, because the
+`then` branch evaluated it.
+`additionalProperties` at the root would not: it sees only the root’s own `properties`
+and rejects a key the schema plainly declares.
+
+One caveat comes with the annotation model.
+Because only *successful* subschemas contribute, a property named **only** inside an
+`if` matcher is undeclared whenever the matcher does not fire.
+Declare anything you match on at the root too — `decision` above is declared at the root
+for exactly this reason.
 
 The payoff is that the schema stays the single statement of the contract.
 Reimplementing cross-field rules in a separate checker is exactly the split soft schemas
