@@ -400,3 +400,116 @@ $ softschema validate tests/golden/fixtures/conditional-undeclared.md --schema t
 }
 ? 1
 ```
+
+# Test: enforced injects unevaluatedProperties when the schema itself is silent
+
+Every property is declared inside an `allOf` branch and the schema says nothing about
+closure, so the overlay must inject the annotation-aware keyword. The other enforced
+fixtures carry an explicit `additionalProperties`, which wins and hides this path.
+
+```console
+$ softschema validate tests/golden/fixtures/composed-open-ok.md --schema tests/golden/fixtures/composed-open.schema.yaml
+{
+  "contract": {
+    "envelope_key": "composed",
+    "id": "demo:Composed/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "tests/golden/fixtures/composed-open.schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "demo:Composed/v1",
+  "document_metadata": {
+    "contract": "demo:Composed/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/composed-open-ok.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "first": "Ada",
+    "last": "Lovelace"
+  },
+  "warnings": []
+}
+? 0
+```
+
+# Test: injected closure reports one record for several undeclared keys
+
+Two undeclared keys against the same object. ajv emits one closure error per key and
+jsonschema one per object, so this is where the collapse is observable — with a single
+key the two shapes are indistinguishable.
+
+```console
+$ softschema validate tests/golden/fixtures/composed-open-undeclared.md --schema tests/golden/fixtures/composed-open.schema.yaml
+{
+  "contract": {
+    "envelope_key": "composed",
+    "id": "demo:Composed/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "tests/golden/fixtures/composed-open.schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "demo:Composed/v1",
+  "document_metadata": {
+    "contract": "demo:Composed/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/composed-open-undeclared.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "code": "undeclared_property",
+        "kind": "schema_violation",
+        "message": "object has properties that are not allowed",
+        "path": [],
+        "validator": "unevaluatedProperties",
+        "validator_value": false,
+        "value": {
+          "bogus": 1,
+          "first": "Ada",
+          "last": "Lovelace",
+          "other": 2
+        }
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": {
+    "bogus": 1,
+    "first": "Ada",
+    "last": "Lovelace",
+    "other": 2
+  },
+  "warnings": []
+}
+? 1
+```

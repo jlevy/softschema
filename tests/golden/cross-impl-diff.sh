@@ -114,6 +114,11 @@ diff_cmd "validate (document-declared enforced)" validate tests/golden/fixtures/
 diff_cmd "validate (composed, valid)"            validate tests/golden/fixtures/conditional-ok.md --schema tests/golden/fixtures/conditional.schema.yaml
 diff_cmd "validate (composed, conditional fires)" validate tests/golden/fixtures/conditional-violation.md --schema tests/golden/fixtures/conditional.schema.yaml
 diff_cmd "validate (composed, undeclared key)"   validate tests/golden/fixtures/conditional-undeclared.md --schema tests/golden/fixtures/conditional.schema.yaml
+# The injected-`unevaluatedProperties` path: schema silent about closure, properties
+# declared only in `allOf` branches. The conditional fixtures cannot reach it because
+# their schema carries an explicit `additionalProperties`, which wins.
+diff_cmd "validate (injected closure, valid)"    validate tests/golden/fixtures/composed-open-ok.md --schema tests/golden/fixtures/composed-open.schema.yaml
+diff_cmd "validate (injected closure, two undeclared keys)" validate tests/golden/fixtures/composed-open-undeclared.md --schema tests/golden/fixtures/composed-open.schema.yaml
 
 if [ "$fail" -ne 0 ]; then
   echo "cross-impl parity FAILED" >&2
