@@ -176,6 +176,7 @@ $ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fi
     "engine": "json_schema",
     "errors": [
       {
+        "code": "missing_property",
         "kind": "schema_violation",
         "message": "required property ['title', 'year', 'extra'] is missing",
         "path": [],
@@ -512,6 +513,7 @@ $ softschema validate tests/golden/fixtures/pure-yaml-enforced.yaml
     "engine": "json_schema",
     "errors": [
       {
+        "code": "invalid_value",
         "kind": "schema_violation",
         "message": "value 42 is not of type 'string'",
         "path": [

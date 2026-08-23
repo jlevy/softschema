@@ -130,6 +130,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
     "engine": "json_schema",
     "errors": [
       {
+        "code": "invalid_value",
         "kind": "schema_violation",
         "message": "array is shorter than the minimum of 1 items",
         "path": [
@@ -140,6 +141,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
         "value": []
       },
       {
+        "code": "invalid_value",
         "kind": "schema_violation",
         "message": "value 1500 is less than the minimum of 1888",
         "path": [
@@ -150,6 +152,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
         "value": 1500
       },
       {
+        "code": "invalid_value",
         "kind": "schema_violation",
         "message": "value 0 is not greater than 0",
         "path": [

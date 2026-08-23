@@ -9,9 +9,11 @@ from typing import Any
 from ruamel.yaml import YAML
 
 from softschema import validate_structural
-from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
+from softschema.canonicalize import apply_enforced_extras
 
 HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
+
+_CLOSURE_KEYWORDS = ("additionalProperties", "unevaluatedProperties")
 
 
 def _base_schema() -> dict[str, Any]:
@@ -105,25 +107,94 @@ def test_input_schema_is_not_mutated() -> None:
     assert schema == snapshot
 
 
+def test_fragments_are_never_closed_internally() -> None:
+    # Closing a fragment is the failure this rule exists to prevent: an `allOf` branch
+    # would reject keys its sibling declares, and an `if` matcher would stop firing.
+    schema = {
+        "type": "object",
+        "properties": {"kind": {"type": "string"}},
+        "allOf": [{"properties": {"first": {"type": "string"}}}],
+        "if": {"properties": {"kind": {"const": "special"}}},
+        "then": {"properties": {"extra": {"type": "string"}}},
+    }
+
+    out = apply_enforced_extras(schema)
+
+    assert out["unevaluatedProperties"] is False
+    for fragment in (out["allOf"][0], out["if"], out["then"]):
+        assert "additionalProperties" not in fragment
+        assert "unevaluatedProperties" not in fragment
+
+
+def test_defs_close_even_when_referenced_from_a_fragment() -> None:
+    schema = {
+        "allOf": [{"$ref": "#/$defs/Address"}],
+        "$defs": {"Address": {"type": "object", "properties": {"street": {"type": "string"}}}},
+    }
+
+    out = apply_enforced_extras(schema)
+
+    assert out["$defs"]["Address"]["additionalProperties"] is False
+    # The fragment carries only a `$ref`, which declares no properties lexically, so
+    # the root has nothing to close.
+    assert "additionalProperties" not in out
+    assert "unevaluatedProperties" not in out
+
+
+def test_explicit_unevaluated_properties_wins() -> None:
+    schema = {
+        "properties": {"a": {"type": "string"}},
+        "allOf": [{"properties": {"b": {"type": "string"}}}],
+        "unevaluatedProperties": True,
+    }
+
+    assert apply_enforced_extras(schema)["unevaluatedProperties"] is True
+
+
 def test_shared_enforcement_vectors() -> None:
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
     for case in vectors["enforcement"]:
-        if case["supported"]:
-            assert apply_enforced_extras(case["schema"])["additionalProperties"] is False
+        out = apply_enforced_extras(case["schema"])
+        injected = [key for key in _CLOSURE_KEYWORDS if key in out]
+        expected = case["closure"]
+        if expected == "none":
+            assert injected == [], case["id"]
         else:
-            try:
-                apply_enforced_extras(case["schema"])
-            except EnforcementUnsupportedError:
-                continue
-            raise AssertionError(case["id"])
+            assert injected == [expected], case["id"]
+        for name, keyword in (case.get("defs_closure") or {}).items():
+            assert out["$defs"][name][keyword] is False, f"{case['id']}/{name}"
 
 
-def test_structural_validation_reports_unsupported_enforcement(tmp_path: Path) -> None:
+def test_composed_schemas_validate_instead_of_refusing(tmp_path: Path) -> None:
+    # The shape the refusal was built for. Every document below was `invalid` with an
+    # `enforcement_unsupported` record before the applicator split.
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
-    case = next(item for item in vectors["enforcement"] if not item["supported"])
+    case = next(item for item in vectors["enforcement"] if item["id"] == "composed_object")
     schema_path = tmp_path / "composed.schema.yaml"
     YAML().dump(case["schema"], schema_path)
-    result = validate_structural(
-        {"first": "Ada", "last": "Lovelace"}, schema_path, strict_extras=True
+
+    ok = validate_structural({"first": "Ada", "last": "Lovelace"}, schema_path, strict_extras=True)
+    assert ok.ok, ok.errors
+
+    rejected = validate_structural(
+        {"first": "Ada", "last": "Lovelace", "bogus": 1}, schema_path, strict_extras=True
     )
-    assert result.errors[0]["kind"] == "enforcement_unsupported"
+    assert not rejected.ok
+    assert [error["code"] for error in rejected.errors] == ["undeclared_property"]
+    assert rejected.errors[0]["validator"] == "unevaluatedProperties"
+
+
+def test_conditional_reports_the_real_violation(tmp_path: Path) -> None:
+    # Issue #41 case (b): the conditional must fire and name the missing property,
+    # rather than being masked by a generic message about `allOf`.
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    case = next(item for item in vectors["enforcement"] if item["id"] == "conditional_object")
+    schema_path = tmp_path / "conditional.schema.yaml"
+    YAML().dump(case["schema"], schema_path)
+
+    assert validate_structural({"kind": "plain"}, schema_path, strict_extras=True).ok
+
+    violation = validate_structural({"kind": "special"}, schema_path, strict_extras=True)
+    assert not violation.ok
+    assert [error["code"] for error in violation.errors] == ["missing_property"]
+    assert violation.errors[0]["message"] == "required property ['extra'] is missing"

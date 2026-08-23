@@ -11,12 +11,19 @@ Record shape (every structural validation error):
 
     {
         "kind": "schema_violation",
+        "code": "invalid_value" | "undeclared_property" | ...,  # softschema category
         "path": ["properties", "..."] | [...],   # JSON path to the value
         "validator": "enum" | "minimum" | ...,    # the JSON Schema keyword
         "validator_value": <the keyword's value>,
         "value": <the offending instance value>,
         "message": "<synthesized, engine-neutral>",
     }
+
+``kind`` + ``code`` + ``path`` is the documented match surface. ``validator`` names the
+*mechanism* — which JSON Schema keyword fired — and is diagnostic: one authoring mistake
+can reach a consumer through more than one keyword, because an undeclared key reports
+``additionalProperties`` on a simple schema and ``unevaluatedProperties`` on a composed
+one. ``code`` names *what the author got wrong* and is stable across both.
 
 Numeric values in a record (and in the rendered message) use a canonical form:
 a whole-valued float renders without a trailing fraction (``2.0`` -> ``2``), the
@@ -33,6 +40,57 @@ from __future__ import annotations
 from typing import Any
 
 SCHEMA_VIOLATION_KIND = "schema_violation"
+
+# The stable category for a structural violation, as a pure function of ``validator``.
+# Consumers match on this; see the module docstring. Keep in lockstep with the
+# equivalent map in the TypeScript ``errors.ts``.
+_UNDECLARED_PROPERTY_VALIDATORS = frozenset({"additionalProperties", "unevaluatedProperties"})
+_MISSING_PROPERTY_VALIDATORS = frozenset({"required"})
+
+# Every keyword the message table above renders a specific template for. A keyword
+# outside this allowlist is reported as ``unmapped_keyword`` rather than silently
+# folded into ``invalid_value``, so the gap is greppable instead of invisible.
+_INVALID_VALUE_VALIDATORS = frozenset(
+    {
+        "enum",
+        "type",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "multipleOf",
+        "const",
+        "minProperties",
+        "maxProperties",
+        "anyOf",
+        "oneOf",
+        "allOf",
+        "not",
+        "dependentRequired",
+        "format",
+        "contains",
+        "propertyNames",
+        "prefixItems",
+        "items",
+    }
+)
+
+
+def structural_error_code(validator: str) -> str:
+    """Return the stable softschema category for one JSON Schema keyword."""
+    if validator in _UNDECLARED_PROPERTY_VALIDATORS:
+        return "undeclared_property"
+    if validator in _MISSING_PROPERTY_VALIDATORS:
+        return "missing_property"
+    if validator in _INVALID_VALUE_VALIDATORS:
+        return "invalid_value"
+    return "unmapped_keyword"
 
 
 def canonical_number(value: Any) -> Any:
@@ -122,7 +180,9 @@ def render_structural_message(
         return f"string is longer than the maximum length of {_fmt(validator_value)}"
     if validator == "pattern":
         return f"value {_fmt(value)} does not match pattern {_fmt(validator_value)}"
-    if validator == "additionalProperties":
+    if validator in _UNDECLARED_PROPERTY_VALIDATORS:
+        # Both closure keywords are one category to the author, so they share a message.
+        # The generic fallback would otherwise spill the whole payload into the string.
         return "object has properties that are not allowed"
     if validator == "multipleOf":
         return f"value {_fmt(value)} is not a multiple of {_fmt(validator_value)}"
@@ -144,6 +204,7 @@ def structural_error_record(
     value = _canonical(value)
     return {
         "kind": SCHEMA_VIOLATION_KIND,
+        "code": structural_error_code(validator),
         "path": path,
         "validator": validator,
         "validator_value": validator_value,

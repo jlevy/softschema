@@ -1,0 +1,20 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: demo:Thing/v1
+title: Thing
+type: object
+additionalProperties: false
+required:
+- kind
+properties:
+  kind:
+    enum: [plain, special]
+  extra:
+    type: string
+allOf:
+- if:
+    properties:
+      kind:
+        const: special
+    required: [kind]
+  then:
+    required: [extra]

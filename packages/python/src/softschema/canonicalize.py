@@ -53,6 +53,23 @@ _NAME_MAP_KEYWORDS = frozenset(
 # Keywords whose value is a list of subschemas.
 _SCHEMA_LIST_KEYWORDS = frozenset({"anyOf", "oneOf", "allOf", "prefixItems"})
 
+# Applicators whose subschemas each contribute *part* of one instance's constraints
+# rather than describing it completely. A fragment is never closed internally: its
+# `properties` is a partial contribution (or, for `if`, a matcher rather than a
+# declaration), so closing it would reject keys a sibling fragment declares, or stop a
+# conditional from firing at all. Their contributions are closed at the composition
+# root instead, with annotation-aware `unevaluatedProperties`.
+#
+# `anyOf`/`oneOf` are deliberately absent: an alternative branch describes the instance
+# completely, so it closes on its own terms (the compiled shape of an optional model
+# field is `anyOf: [{$ref: ...}, {"type": "null"}]`).
+_FRAGMENT_APPLICATORS = frozenset({"allOf", "if", "then", "else", "not", "dependentSchemas"})
+
+# Definition keywords reset the fragment flag: a definition is a complete declaration
+# reached by `$ref`, so it closes on its own terms even when the reference sits inside a
+# fragment.
+_DEFINITION_KEYWORDS = frozenset({"$defs", "definitions"})
+
 # Keywords whose value is a single subschema (when it is a mapping).
 _SCHEMA_KEYWORDS = frozenset(
     {
@@ -138,78 +155,95 @@ def _is_nullable_union(union: list[Any]) -> bool:
 def apply_enforced_extras(schema: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of ``schema`` with the ``status: enforced`` strictness overlay.
 
-    Under ``enforced`` the schema is authoritative at the boundary: every object
-    schema that declares ``properties`` but is silent about
-    ``additionalProperties`` is validated as ``additionalProperties: false``.
-    An explicit ``additionalProperties`` (``true``, ``false``, or a subschema)
-    always wins, so a schema can opt specific objects out of strictness.
-    Object schemas without ``properties`` (free-form mappings such as
-    ``dict[str, X]``) are unaffected.
+    Under ``enforced`` the schema is authoritative at the boundary: an object schema
+    that declares properties but is silent about closure is validated as closed. Three
+    clauses decide where and how, because a schema that *composes* constraints cannot be
+    closed the same way as one that declares them in a single place:
+
+    1. Closure is never injected inside a fragment subtree
+       (``allOf``/``if``/``then``/``else``/``not``/``dependentSchemas``). A fragment
+       contributes part of an instance's constraints, so closing it would reject keys a
+       sibling fragment declares; closing an ``if`` matcher would silently stop the
+       conditional from firing. ``$defs`` resets this — a definition is a complete
+       declaration reached by ``$ref``.
+    2. A node declares properties if it carries ``properties``, *or* if a fragment
+       applicator under it does. The second half matters: a schema may declare every
+       property inside its ``allOf`` branches, and would otherwise be enforced nowhere.
+    3. Such a node is closed with ``unevaluatedProperties: false`` when it carries a
+       fragment applicator, and ``additionalProperties: false`` otherwise.
+       ``unevaluatedProperties`` is annotation-aware, so properties evaluated by
+       ``properties``, by an ``allOf`` branch, by a successful ``if``, by ``then``,
+       ``else``, ``dependentSchemas``, or through ``$ref`` all count as declared, and
+       only genuinely undeclared keys fail.
+
+    An explicit ``additionalProperties`` or ``unevaluatedProperties`` (``true``,
+    ``false``, or a subschema) always wins, so a schema can opt specific objects out of
+    strictness. Object schemas that declare no properties anywhere (free-form mappings
+    such as ``dict[str, X]``) are unaffected.
+
+    One consequence of annotation-aware closure is worth knowing: a property named in an
+    ``if`` matcher is *evaluated* when the matcher succeeds, so it is admitted. Given
+    ``if: {properties: {secret: {const: "x"}}}`` and no ``secret`` in the root's
+    ``properties``, ``{"secret": "x"}`` passes closure while ``{"secret": "other"}`` is
+    rejected. That is correct 2020-12 behavior and the price of the annotation model.
 
     This is a validation-time overlay applied by ``validate_structural`` when the
     effective status is ``enforced``. It never changes compiled schemas.
     """
-    result = _apply_enforced_extras(schema)
+    result = _apply_enforced_extras(schema, in_fragment=False)
     assert isinstance(result, dict)
     return result
 
 
-class EnforcementUnsupportedError(ValueError):
-    """The requested closure would change composed-schema meaning."""
-
-
-def _apply_enforced_extras(node: Any) -> Any:
+def _apply_enforced_extras(node: Any, *, in_fragment: bool) -> Any:
     if not isinstance(node, dict):
         return node
-    union = node.get("allOf")
-    if isinstance(union, list) and any(_contains_open_properties(branch) for branch in union):
-        raise EnforcementUnsupportedError(
-            "enforced closure is unsupported for allOf object composition"
-        )
-    dependent = node.get("dependentSchemas")
-    if isinstance(dependent, dict) and any(
-        _contains_open_properties(branch) for branch in dependent.values()
-    ):
-        raise EnforcementUnsupportedError(
-            "enforced closure is unsupported for dependent object composition"
-        )
-    if any(_contains_open_properties(node.get(key)) for key in ("if", "then", "else", "not")):
-        raise EnforcementUnsupportedError(
-            "enforced closure is unsupported for conditional object composition"
-        )
+
     out: dict[str, Any] = {}
     for key, value in node.items():
+        # A definition is a complete declaration, so it closes even inside a fragment.
+        child_fragment = False if key in _DEFINITION_KEYWORDS else in_fragment
+        child_fragment = child_fragment or key in _FRAGMENT_APPLICATORS
         if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
-            out[key] = {name: _apply_enforced_extras(sub) for name, sub in value.items()}
+            out[key] = {
+                name: _apply_enforced_extras(sub, in_fragment=child_fragment)
+                for name, sub in value.items()
+            }
         elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):
-            out[key] = [_apply_enforced_extras(item) for item in value]
+            out[key] = [_apply_enforced_extras(item, in_fragment=child_fragment) for item in value]
         elif key in _SCHEMA_KEYWORDS:
-            out[key] = _apply_enforced_extras(value)
+            out[key] = _apply_enforced_extras(value, in_fragment=child_fragment)
         else:
             out[key] = value
-    if isinstance(out.get("properties"), dict) and "additionalProperties" not in out:
-        out["additionalProperties"] = False
+
+    if in_fragment:
+        return out
+    if "additionalProperties" in out or "unevaluatedProperties" in out:
+        return out
+    has_fragment = any(key in _FRAGMENT_APPLICATORS for key in out)
+    if isinstance(out.get("properties"), dict):
+        out["unevaluatedProperties" if has_fragment else "additionalProperties"] = False
+    elif has_fragment and _fragment_declares_properties(out):
+        out["unevaluatedProperties"] = False
     return out
 
 
-def _contains_open_properties(node: Any) -> bool:
+def _fragment_declares_properties(node: dict[str, Any]) -> bool:
+    """Whether a fragment applicator under ``node`` declares ``properties``.
+
+    Recurses through fragment applicators only. A ``$ref`` is not followed: it is not a
+    lexical declaration, and the definition it names closes on its own terms.
+    """
+    return any(
+        _declares_properties(value) for key, value in node.items() if key in _FRAGMENT_APPLICATORS
+    )
+
+
+def _declares_properties(node: Any) -> bool:
+    if isinstance(node, list):
+        return any(_declares_properties(item) for item in node)
     if not isinstance(node, dict):
         return False
-    if isinstance(node.get("properties"), dict) and "additionalProperties" not in node:
+    if isinstance(node.get("properties"), dict):
         return True
-    for key, value in node.items():
-        if key in _SCHEMA_KEYWORDS and _contains_open_properties(value):
-            return True
-        if (
-            key in _SCHEMA_LIST_KEYWORDS
-            and isinstance(value, list)
-            and any(_contains_open_properties(item) for item in value)
-        ):
-            return True
-        if (
-            key in _NAME_MAP_KEYWORDS
-            and isinstance(value, dict)
-            and any(_contains_open_properties(item) for item in value.values())
-        ):
-            return True
-    return False
+    return _fragment_declares_properties(node)

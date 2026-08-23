@@ -28,7 +28,7 @@ from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
 from softschema._portable import PortableInputError, parse_yaml, read_utf8
-from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
+from softschema.canonicalize import apply_enforced_extras
 from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
@@ -223,11 +223,6 @@ def validate_structural(
         return _schema_invalid("reference", str(exc))
     except re.error as exc:
         return _schema_invalid("pattern", str(exc))
-    except EnforcementUnsupportedError as exc:
-        return StructuralResult(
-            ok=False,
-            errors=[{"kind": "enforcement_unsupported", "message": str(exc)}],
-        )
     except Exception as exc:
         return _schema_invalid(_schema_failure_reason(exc), str(exc))
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do

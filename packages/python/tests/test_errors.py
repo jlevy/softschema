@@ -5,7 +5,12 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from softschema import compile_model, validate_structural
-from softschema.errors import canonical_number, render_structural_message, structural_error_record
+from softschema.errors import (
+    canonical_number,
+    render_structural_message,
+    structural_error_code,
+    structural_error_record,
+)
 
 
 class Sample(BaseModel):
@@ -67,12 +72,32 @@ def test_structural_error_record_shape() -> None:
     )
     assert record == {
         "kind": "schema_violation",
+        "code": "invalid_value",
         "path": ["count"],
         "validator": "maximum",
         "validator_value": 10,
         "value": 11,
         "message": "value 11 is greater than the maximum of 10",
     }
+
+
+def test_structural_error_code_categories() -> None:
+    # `code` is the documented match surface, so both closure keywords — the one a
+    # simple schema reports and the one a composed schema reports — must land on the
+    # same category, and share a message.
+    assert structural_error_code("additionalProperties") == "undeclared_property"
+    assert structural_error_code("unevaluatedProperties") == "undeclared_property"
+    assert structural_error_code("required") == "missing_property"
+    assert structural_error_code("enum") == "invalid_value"
+    assert render_structural_message("unevaluatedProperties", False, {"a": 1}) == (
+        render_structural_message("additionalProperties", False, {"a": 1})
+    )
+
+
+def test_unmapped_keyword_is_a_visible_signal() -> None:
+    # A keyword with no template must not be folded silently into `invalid_value`;
+    # `unmapped_keyword` is what makes the gap greppable.
+    assert structural_error_code("someFutureKeyword") == "unmapped_keyword"
 
 
 def test_validate_structural_emits_neutral_records(tmp_path: Path) -> None:

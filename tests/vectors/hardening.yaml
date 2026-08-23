@@ -129,17 +129,60 @@ canonicalization:
     before: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
     after: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
 
+# The enforced-closure overlay. `closure` is the keyword the overlay must inject at the
+# schema root (`none` = the root must stay open); `defs_closure` pins the same for named
+# `$defs` entries. Asserting the keyword, not merely that closure happened, is what keeps
+# the applicator split honest: fragments (allOf/if/then/else/not/dependentSchemas) are
+# never closed internally and force `unevaluatedProperties` at the composition root,
+# while everything else keeps the lexical `additionalProperties`.
 enforcement:
   - id: simple_object
     schema: { type: object, properties: { name: { type: string } } }
-    supported: true
+    closure: additionalProperties
+  - id: free_form_mapping
+    schema: { type: object }
+    closure: none
   - id: composed_object
     schema:
       allOf:
         - { type: object, properties: { first: { type: string } } }
         - { type: object, properties: { last: { type: string } } }
-    supported: false
-    code: enforcement_unsupported
+    closure: unevaluatedProperties
+  - id: conditional_object
+    schema:
+      type: object
+      required: [kind]
+      properties:
+        kind: { enum: [plain, special] }
+        extra: { type: string }
+      allOf:
+        - if: { properties: { kind: { const: special } }, required: [kind] }
+          then: { required: [extra] }
+    closure: unevaluatedProperties
+  - id: bare_conditional
+    schema:
+      if: { properties: { kind: { const: special } }, required: [kind] }
+      then: { properties: { extra: { type: string } } }
+    closure: unevaluatedProperties
+  - id: ref_from_fragment
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Address" }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    # The fragment carries only a `$ref`, which is not a lexical `properties`
+    # declaration, so the root has nothing to close. The definition still closes on its
+    # own terms: `$defs` resets the fragment flag.
+    closure: none
+    defs_closure:
+      Address: additionalProperties
+  - id: dependent_object
+    schema:
+      type: object
+      properties: { a: { type: string } }
+      dependentSchemas:
+        a: { required: [b], properties: { b: { type: string } } }
+    closure: unevaluatedProperties
 
 identity:
   - { id: contract_and_schema_id, contract: "example.people:Person/v1", schema_id: "https://example.com/schemas/person-v1", valid: true }

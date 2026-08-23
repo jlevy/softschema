@@ -97,6 +97,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
     "engine": "json_schema",
     "errors": [
       {
+        "code": "undeclared_property",
         "kind": "schema_violation",
         "message": "object has properties that are not allowed",
         "path": [],
@@ -112,6 +113,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
         }
       },
       {
+        "code": "undeclared_property",
         "kind": "schema_violation",
         "message": "object has properties that are not allowed",
         "path": [
@@ -183,6 +185,7 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
     "engine": "json_schema",
     "errors": [
       {
+        "code": "undeclared_property",
         "kind": "schema_violation",
         "message": "object has properties that are not allowed",
         "path": [],
@@ -198,6 +201,7 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
         }
       },
       {
+        "code": "undeclared_property",
         "kind": "schema_violation",
         "message": "object has properties that are not allowed",
         "path": [
@@ -221,6 +225,176 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
       "source": "web"
     },
     "name": "Acme"
+  },
+  "warnings": []
+}
+? 1
+```
+
+# Test: enforced validates a composed schema instead of refusing it
+
+The schema from issue #41: a closed object plus one `if`/`then` rule inside `allOf`.
+Composition used to make every document `invalid` with a single
+`enforcement_unsupported` record, valid or not. Now `kind: plain` does not trigger the
+conditional, and the document passes.
+
+```console
+$ softschema validate tests/golden/fixtures/conditional-ok.md --schema tests/golden/fixtures/conditional.schema.yaml
+{
+  "contract": {
+    "envelope_key": "thing",
+    "id": "demo:Thing/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "tests/golden/fixtures/conditional.schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "demo:Thing/v1",
+  "document_metadata": {
+    "contract": "demo:Thing/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/conditional-ok.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "kind": "plain"
+  },
+  "warnings": []
+}
+? 0
+```
+
+# Test: enforced reports the conditional's real violation
+
+The same schema with `kind: special`, which fires the conditional and requires `extra`.
+The error names the missing property — the actionable one — rather than a generic
+message about `allOf`.
+
+```console
+$ softschema validate tests/golden/fixtures/conditional-violation.md --schema tests/golden/fixtures/conditional.schema.yaml
+{
+  "contract": {
+    "envelope_key": "thing",
+    "id": "demo:Thing/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "tests/golden/fixtures/conditional.schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "demo:Thing/v1",
+  "document_metadata": {
+    "contract": "demo:Thing/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/conditional-violation.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "code": "missing_property",
+        "kind": "schema_violation",
+        "message": "required property ['extra'] is missing",
+        "path": [],
+        "validator": "required",
+        "validator_value": [
+          "extra"
+        ],
+        "value": {
+          "kind": "special"
+        }
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": {
+    "kind": "special"
+  },
+  "warnings": []
+}
+? 1
+```
+
+# Test: enforced still rejects an undeclared key on a composed schema
+
+Closure is not lost by supporting composition: `bogus` is declared nowhere, so it is
+rejected. Both this and a simple schema's undeclared key report
+`code: undeclared_property`, which is the stable surface to match on.
+
+```console
+$ softschema validate tests/golden/fixtures/conditional-undeclared.md --schema tests/golden/fixtures/conditional.schema.yaml
+{
+  "contract": {
+    "envelope_key": "thing",
+    "id": "demo:Thing/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "tests/golden/fixtures/conditional.schema.yaml",
+    "status": "enforced"
+  },
+  "contract_id": "demo:Thing/v1",
+  "document_metadata": {
+    "contract": "demo:Thing/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/conditional-undeclared.md",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "code": "undeclared_property",
+        "kind": "schema_violation",
+        "message": "object has properties that are not allowed",
+        "path": [],
+        "validator": "additionalProperties",
+        "validator_value": false,
+        "value": {
+          "bogus": 1,
+          "kind": "plain"
+        }
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": {
+    "bogus": 1,
+    "kind": "plain"
   },
   "warnings": []
 }
