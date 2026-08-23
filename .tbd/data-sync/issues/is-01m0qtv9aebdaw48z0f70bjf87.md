@@ -5,7 +5,7 @@ title: "Perform holistic design review of PR #42"
 kind: epic
 status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/reviews/review-2026-08-23-pr-42-schema-composition-design.md
 labels:
   - review
@@ -22,10 +22,10 @@ child_order_hints:
   - is-01m0qvyhj89h3qk7d6pqdr8syh
   - is-01m0qwbc32tx42ahnb8trtbey6
 created_at: 2026-08-23T17:31:44.333Z
-updated_at: 2026-08-23T18:56:51.616Z
+updated_at: 2026-08-23T19:12:45.813Z
 ---
 Holistic senior design review of PR #42, including JSON Schema composition and annotation semantics, Python/TypeScript parity, schema-resource topology, public validation contracts, durable research, and publication of the final review comment.
 
 ## Notes
 
-Native stack remediation branch codex/pr-42-schema-composition-fixes is pushed. Implementation commit: 9d69517. Documentation commit, stacked PR registration, review disposition, CI, and closure remain.
+Review published on PR #42. Stacked remediation commits 9d69517 and 7f62269 are pushed on codex/pr-42-schema-composition-fixes. Full local lint, build, unit, golden, publint, and direct parity validation passed. Native stack registration, R1-R7 GitHub disposition, CI, and closure remain.
