@@ -253,7 +253,10 @@ unevaluatedProperties  #/unevaluatedProperties       unevaluatedProperty: a
 Python reports only `required`. Both engines agree the document is **invalid**; they
 disagree on the record set, and no normalization removes it cleanly.
 This sits in the same class as the pre-existing `anyOf` divergence.
-See Open Questions.
+Resolved by maintainer direction: support the shape.
+Functionally equivalent, language-native error differences are acceptable when tests
+document them — Python goldens are the reference output, and accepted TypeScript
+deviations are checked in and validated (see Testing Strategy).
 
 ## Implementation Plan
 
@@ -298,6 +301,9 @@ failing vector first, then Python, then the TypeScript port, then both golden ru
   absence is part of why the limitation went unnoticed.
 - CHANGELOG entry under a fix heading, noting that schemas previously refused now
   validate.
+- `docs/development.md`: record the deviation policy — cross-implementation output is
+  identical except for deviations explicitly checked in as documented diffs, with the
+  Python goldens as the reference.
 
 ## Testing Strategy
 
@@ -310,6 +316,7 @@ failing vector first, then Python, then the TypeScript port, then both golden ru
 | Alternatives still closed | `test_recurses_into_anyof_branches`, unchanged |
 | Real violation surfaces | golden scenario on the reporter’s case (b) |
 | Engine-neutral records | golden corpus run twice via `SOFTSCHEMA_IMPL`, plus `cross-impl-diff.sh` |
+| Known engine deviations | checked-in documented diffs against the Python golden reference, validated by `cross-impl-diff.sh` — covering the `dependentSchemas` record set and the pre-existing `anyOf` multiplicity, so an unlisted divergence still fails |
 
 Both refusal-pinning tests are rewritten rather than deleted: they become the assertions
 that these shapes are now *supported*, which keeps the regression visible if the rule
@@ -347,13 +354,19 @@ ever narrows again.
 | Treat a fragment-declaring node as property-declaring | Otherwise the `composed_object` vector is enforced nowhere. |
 | Never close inside a fragment | Closing an `if` matcher silently stops a conditional from firing — the worst failure mode available. |
 | Keep the diagnostic at validation time | The refusal disappears; relocating it would require changing `schema_invalid`’s outcome class too. |
+| Support `dependentSchemas`, pinning engine deviations as documented diffs | Maintainer direction: functionally equivalent, language-native differences are fine when tests record them; Python goldens are the reference. |
 
 ## Open Questions
 
-1. **Retire or reserve `enforcement_unsupported`?** It becomes unreachable.
-   Removing the kind is cleanest; keeping it defined-but-never-emitted for one release
-   is friendlier to consumers matching on it.
-   Recommend: keep the symbol, document it as never emitted, remove in the next major.
+1. **Retire `enforcement_unsupported`?** It becomes unreachable, and it has no official
+   surface to preserve: the string appears in no spec, guide, README, or changelog
+   entry, and `EnforcementUnsupportedError` is exported by neither package (absent from
+   the Python `__all__` and the TypeScript `index.ts`). Keeping it
+   defined-but-never-emitted would protect nobody — an output string is not a symbol, so
+   a consumer matching on it loses that branch the moment emission stops, whether or not
+   a constant remains in source.
+   Recommend: delete the kind, the exception class, and the vector `code` field; the
+   changelog entry is the notice.
 2. **Report `unevaluatedProperties` as the `validator`, or normalize?** The same logical
    violation — an undeclared key — now reports `additionalProperties` for a simple
    schema and `unevaluatedProperties` for a composed one, so a consumer matching the
@@ -361,13 +374,7 @@ ever narrows again.
    Reporting the true keyword matches the documented record shape (`validator` is “the
    JSON Schema keyword”); normalizing is kinder to consumers.
    Recommend: report truthfully, and call out the pair in the spec.
-3. **`dependentSchemas`: support with the known divergence, or keep refusing it?**
-   Supporting it is consistent — the divergence is the same class as the `anyOf` one
-   that ships today, and it only affects the record set of an already-invalid document.
-   Refusing it keeps error sets tight but leaves one arbitrary hole in an otherwise
-   uniform rule. Recommend: support it, and add a golden that pins the divergence so it
-   is a known quantity rather than a surprise.
-4. **Is `unevaluatedProperties`’s evaluation cost worth measuring?** It defeats some ajv
+3. **Is `unevaluatedProperties`’s evaluation cost worth measuring?** It defeats some ajv
    optimizations. It applies only to composed schemas under `enforced`, so the blast
    radius is small, but the memoization added in 0.6.2 makes a before/after worth a
    glance.
