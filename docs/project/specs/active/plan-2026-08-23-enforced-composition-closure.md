@@ -12,7 +12,8 @@ author: Claude Code, with maintainer direction from Joshua Levy
 **Status:** Proposed.
 Design validated against a working prototype; not implemented.
 
-**Tracking:** GitHub issue [#41](https://github.com/jlevy/softschema/issues/41)
+**Tracking:** `ss-r9u8` (enforced-closure epic), from GitHub issue
+[#41](https://github.com/jlevy/softschema/issues/41)
 
 ## Overview
 
@@ -22,8 +23,8 @@ not. The reporter’s case is exact and reproduces on `main`.
 
 The refusal is not gratuitous: closing a composed schema with `additionalProperties`
 does change its meaning, and the
-[minimal hardening plan](done/plan-2026-07-11-minimal-softschema-hardening.md) chose the
-refusal deliberately over a rewrite that silently breaks valid documents.
+[minimal hardening plan](../done/plan-2026-07-11-minimal-softschema-hardening.md) chose
+the refusal deliberately over a rewrite that silently breaks valid documents.
 The defect is that the refusal is *over-broad*. It covers shapes that JSON Schema
 2020-12 can close correctly, using the keyword designed for precisely this problem:
 `unevaluatedProperties`.
@@ -31,6 +32,8 @@ The defect is that the refusal is *over-broad*. It covers shapes that JSON Schem
 This plan replaces the refusal with an annotation-aware closure, splits applicators into
 the two kinds that need different treatment, and absorbs the engine-parity work that
 supporting these shapes newly exposes.
+Because the closure now picks between two keywords, it also gives structural error
+records a stable `code` enum, so consumers match a category rather than a keyword.
 
 ## Goals
 
@@ -42,6 +45,9 @@ supporting these shapes newly exposes.
   explicit-wins rule unchanged for schemas that do not compose.
 - Normalize the Python/TypeScript error-record divergences that supporting these shapes
   makes reachable, and pin them with shared vectors and goldens.
+- Give structural error records a stable `code` enum, so a consumer matches a
+  softschema-owned category rather than whichever JSON Schema keyword the closure
+  happened to use.
 - Make any residual refusal a schema-authoring diagnostic rather than a per-document
   `invalid` outcome.
 
@@ -119,7 +125,7 @@ exercise. For `{"anyOf": [{"type": "string"}, {"type": "integer"}]}` against `{"
 | ajv | two `type` plus one `anyOf` |
 
 No golden covers it.
-The parity invariant in [development.md](../../development.md) is upheld *for the
+The parity invariant in [development.md](../../../development.md) is upheld *for the
 corpus*, not for arbitrary schemas.
 The relevance here is direct: this fix widens the set of schemas that reach the
 validator, which converts latent divergences into user-visible ones.
@@ -185,12 +191,53 @@ pin the old refusal — `test_shared_enforcement_vectors` and
 `test_structural_validation_reports_unsupported_enforcement` — both of which this plan
 rewrites.
 
+### The `code` enum on structural error records
+
+The closure rule splits one authoring mistake across two keywords: an undeclared key
+reports `additionalProperties` on a simple schema and `unevaluatedProperties` on a
+composed one. A consumer matching `validator == "additionalProperties"` therefore stops
+seeing exactly the cases this plan newly admits.
+Reporting the true keyword is right — `validator` is documented as the JSON Schema
+keyword, and hiding which one fired would cost real diagnostic information — but it
+cannot be the match surface.
+
+By maintainer direction, structural error records gain a small closed `code` enum
+alongside `validator`. `validator` names the *mechanism*; `code` names *what the author
+got wrong*:
+
+| `code` | Emitted for | Meaning |
+| --- | --- | --- |
+| `undeclared_property` | `additionalProperties`, `unevaluatedProperties` | a key the schema does not declare |
+| `missing_property` | `required` | a declared key the document omits |
+| `invalid_value` | every other mapped keyword | a value the schema rejects |
+| `unmapped_keyword` | allowlist miss | a keyword with no mapping yet |
+
+`unmapped_keyword` is a visible signal to extend the map, never a silent default: it is
+what the generic message branch already implies, made greppable.
+
+`code` is a pure function of `validator`, computed in the shared normalization layer
+(`errors.py`, mirrored in `errors.ts`) beside the message table, so the two engines
+cannot drift. The `unevaluatedProperties` message template added below emits the *same
+string* as `additionalProperties` — one category, one code, one message.
+
+Two naming points, because the word `code` is already taken twice nearby.
+This `code` sits *inside* a record whose `kind` is `schema_violation`; it subdivides
+that kind and does not compete with it.
+It is also distinct from the `code:` field on shared vectors, which pins a record’s
+`kind` — the vector field that clause 2 of Phase 2 removes for
+`enforcement_unsupported`.
+
+**The documented match surface becomes `kind` + `code` + `path`.** `validator` and
+`validator_value` stay diagnostic, and message wording may improve in a minor.
+
 ### `enforcement_unsupported` becomes unreachable
 
 Under the rule there is no shape the overlay must refuse: fragments are left alone and
 roots close annotation-aware.
 `EnforcementUnsupportedError` is never raised, and `_contains_open_properties` becomes
-dead code. See Open Questions for whether to retire the error kind or reserve it.
+dead code.
+Both are deleted, along with the `enforcement_unsupported` kind and the vector
+`code` field naming it (see Decision Summary).
 
 This also answers the issue’s fallback request ("raise when the schema is loaded"). It
 is worth recording why that fallback is the *weaker* option, not just the unchosen one:
@@ -202,8 +249,8 @@ to the result contract, for a code path this design removes.
 
 ### Parity work this newly exposes
 
-Supporting these shapes makes three divergences reachable.
-All three are measured, not predicted.
+Supporting these shapes makes four divergences reachable.
+All four are measured, not predicted.
 
 **1. Closure-error multiplicity.** For `{first, last, bogus, other}`:
 
@@ -227,7 +274,8 @@ value {'kind': 'plain', 'bogus': 1} failed unevaluatedProperties constraint Fals
 
 That is unhelpful, and it spills the whole payload into the message — worse than the
 `additionalProperties` wording it should mirror.
-Add the template to both.
+Add the template to both, emitting the identical string, so the two keywords that share
+a `code` also share their wording.
 
 **3. ajv’s `if` wrapper.** For the reporter’s case (b):
 
@@ -260,7 +308,7 @@ deviations are checked in and validated (see Testing Strategy).
 
 ## Implementation Plan
 
-Follows the golden-first parity process in [development.md](../../development.md):
+Follows the golden-first parity process in [development.md](../../../development.md):
 failing vector first, then Python, then the TypeScript port, then both golden runs.
 
 ### Phase 1: Characterize
@@ -277,18 +325,22 @@ failing vector first, then Python, then the TypeScript port, then both golden ru
 
 - Rewrite `_apply_enforced_extras` to the three clauses, threading an `in_fragment` flag
   and resetting it under `$defs`.
-- Delete `_contains_open_properties`, and resolve `EnforcementUnsupportedError` per the
-  Open Questions decision.
-- Add the `unevaluatedProperties` message template to `errors.py`.
+- Delete `_contains_open_properties`, `EnforcementUnsupportedError`, the
+  `enforcement_unsupported` kind, and the vector `code` field naming it.
+- Add the `unevaluatedProperties` message template to `errors.py`, emitting the same
+  string as `additionalProperties`.
+- Add the `code` enum and the keyword-to-code map to `errors.py`, and set `code` in
+  `structural_error_record`.
 - Update `apply_enforced_extras`’s docstring: it is the reference prose for the rule.
 
 ### Phase 3: TypeScript
 
 - Mirror the closure rule in `canonicalize.ts`.
-- Generalize `collapseAdditionalProperties` to both closure keywords, renaming it for
-  what it now does.
+- Mirror the `code` enum and keyword-to-code map in `errors.ts`, alongside the matching
+  message template.
+- Generalize `collapseAdditionalProperties` to collapse on the `undeclared_property`
+  code rather than a keyword list, renaming it for what it now does.
 - Suppress ajv `if` wrapper records in `normalizeAjvError`’s caller.
-- Add the matching template to `errors.ts`.
 
 ### Phase 4: Documentation
 
@@ -299,8 +351,11 @@ failing vector first, then Python, then the TypeScript port, then both golden ru
 - Add a short “cross-field rules” example to the guide — the issue’s
   `decision: abandoned` requires `budget_spent` shape is the natural one, and its
   absence is part of why the limitation went unnoticed.
-- CHANGELOG entry under a fix heading, noting that schemas previously refused now
-  validate.
+- `docs/softschema-spec.md`, error records: add the `code` table, and state which fields
+  are the stable match surface and which are diagnostic.
+- CHANGELOG: lead with the `validator`-to-`code` migration table under a heading that
+  says it is breaking for consumers matching `validator`, then note that schemas
+  previously refused now validate.
 - `docs/development.md`: record the deviation policy — cross-implementation output is
   identical except for deviations explicitly checked in as documented diffs, with the
   Python goldens as the reference.
@@ -315,6 +370,8 @@ failing vector first, then Python, then the TypeScript port, then both golden ru
 | Explicit-wins, free-form untouched | existing `test_enforced_extras.py` cases, unchanged |
 | Alternatives still closed | `test_recurses_into_anyof_branches`, unchanged |
 | Real violation surfaces | golden scenario on the reporter’s case (b) |
+| `code` is stable across both closure keywords | vector assertion that a simple and a composed undeclared key both report `undeclared_property` |
+| No keyword falls through unmapped | unit assertion that every keyword in the message table maps to a code other than `unmapped_keyword` |
 | Engine-neutral records | golden corpus run twice via `SOFTSCHEMA_IMPL`, plus `cross-impl-diff.sh` |
 | Known engine deviations | checked-in documented diffs against the Python golden reference, validated by `cross-impl-diff.sh` — covering the `dependentSchemas` record set and the pre-existing `anyOf` multiplicity, so an unlisted divergence still fails |
 
@@ -336,6 +393,8 @@ ever narrows again.
   them, which is why the golden corpus passes untouched.
 - **Compiled schemas and `schema_sha256` are unaffected.** The overlay remains
   validation-time only.
+- **Records gain a `code` field.** Additive for anyone reading records loosely, and the
+  new field is what consumers should match on going forward.
 - One behavioral widening deserves a maintainer’s eye: `unevaluatedProperties` is
   annotation-based, so a property named in an `if` matcher is *evaluated* when the
   matcher succeeds, and is therefore admitted.
@@ -344,6 +403,28 @@ ever narrows again.
   rejected. This is correct 2020-12 behavior, it is narrow, and it is the price of
   annotation-aware closure — but it should be documented in the spec rather than
   discovered.
+
+### Upgrade path
+
+By maintainer direction this ships as a minor that may break a little, provided the
+breakage is loud and the path out is written down.
+One break is not loud, and it is the one the release notes must lead with.
+
+A consumer matching `validator == "additionalProperties"` does not crash when a composed
+schema starts reporting `unevaluatedProperties`. It silently stops matching — the branch
+simply never fires again.
+That is the single failure this change cannot make obvious from inside the library, so
+the CHANGELOG carries the migration table and the spec documents `kind` + `code` +
+`path` as the surface to match instead.
+
+| Matching on | Before | After |
+| --- | --- | --- |
+| `validator == "additionalProperties"` | catches every undeclared key | misses composed schemas — **migrate** |
+| `kind == "enforcement_unsupported"` | fires for composed schemas | never fires; the kind is gone |
+| `code == "undeclared_property"` | not available | catches every undeclared key |
+
+Everything else is loud: a removed exception class is an `ImportError`, and a removed
+vector field fails the shared vector load.
 
 ## Decision Summary
 
@@ -354,27 +435,13 @@ ever narrows again.
 | Treat a fragment-declaring node as property-declaring | Otherwise the `composed_object` vector is enforced nowhere. |
 | Never close inside a fragment | Closing an `if` matcher silently stops a conditional from firing — the worst failure mode available. |
 | Keep the diagnostic at validation time | The refusal disappears; relocating it would require changing `schema_invalid`’s outcome class too. |
+| Delete `enforcement_unsupported` rather than reserve it | It becomes unreachable and has no official surface: the string appears in no spec, guide, README, or changelog, and `EnforcementUnsupportedError` is exported by neither package. An output string is not a symbol — a consumer matching it loses that branch the moment emission stops, whether or not a constant remains in source. |
+| Report the true keyword in `validator`, and add `code` for matching | Maintainer direction. `validator` is documented as the JSON Schema keyword, so normalizing it away would hide which closure fired; a softschema-owned category gives consumers something stable to match without that cost. |
 | Support `dependentSchemas`, pinning engine deviations as documented diffs | Maintainer direction: functionally equivalent, language-native differences are fine when tests record them; Python goldens are the reference. |
 
 ## Open Questions
 
-1. **Retire `enforcement_unsupported`?** It becomes unreachable, and it has no official
-   surface to preserve: the string appears in no spec, guide, README, or changelog
-   entry, and `EnforcementUnsupportedError` is exported by neither package (absent from
-   the Python `__all__` and the TypeScript `index.ts`). Keeping it
-   defined-but-never-emitted would protect nobody — an output string is not a symbol, so
-   a consumer matching on it loses that branch the moment emission stops, whether or not
-   a constant remains in source.
-   Recommend: delete the kind, the exception class, and the vector `code` field; the
-   changelog entry is the notice.
-2. **Report `unevaluatedProperties` as the `validator`, or normalize?** The same logical
-   violation — an undeclared key — now reports `additionalProperties` for a simple
-   schema and `unevaluatedProperties` for a composed one, so a consumer matching the
-   former misses composed cases.
-   Reporting the true keyword matches the documented record shape (`validator` is “the
-   JSON Schema keyword”); normalizing is kinder to consumers.
-   Recommend: report truthfully, and call out the pair in the spec.
-3. **Is `unevaluatedProperties`’s evaluation cost worth measuring?** It defeats some ajv
+1. **Is `unevaluatedProperties`’s evaluation cost worth measuring?** It defeats some ajv
    optimizations. It applies only to composed schemas under `enforced`, so the blast
    radius is small, but the memoization added in 0.6.2 makes a before/after worth a
    glance.
@@ -382,9 +449,9 @@ ever narrows again.
 ## References
 
 - GitHub issue [#41](https://github.com/jlevy/softschema/issues/41)
-- [Minimal Softschema Hardening](done/plan-2026-07-11-minimal-softschema-hardening.md),
+- [Minimal Softschema Hardening](../done/plan-2026-07-11-minimal-softschema-hardening.md),
   which introduced the refusal
-- [softschema Spec](../../softschema-spec.md), Status Values
+- [softschema Spec](../../../softschema-spec.md), Status Values
 - [JSON Schema 2020-12 Core](https://json-schema.org/draft/2020-12/json-schema-core.html),
   `unevaluatedProperties` and annotation collection
 - [ajv unevaluatedProperties](https://ajv.js.org/json-schema.html#unevaluatedproperties)
