@@ -5,7 +5,7 @@ title: "Address PR #44 checked-enforcement review"
 kind: epic
 status: closed
 priority: 1
-version: 10
+version: 11
 labels:
   - pr-review
   - enforcement
@@ -20,10 +20,10 @@ child_order_hints:
   - is-01m0tep2y1kzqp2khvms1sw0yh
   - is-01m0tfbthsfev227r473tw68wz
 created_at: 2026-08-24T17:56:29.631Z
-updated_at: 2026-08-24T18:48:48.144Z
+updated_at: 2026-08-24T18:49:04.253Z
 closed_at: 2026-08-24T18:48:48.141Z
 close_reason: "All S1-S8 review findings are implemented, documented, dispositioned, and green locally and in GitHub CI on PR #44."
 resolution: null
 duplicate_of: null
 ---
-Address every S1-S7 finding from the holistic review comment on PR #44, update the #42 -> #44 stack from upstream in base-first order, publish a disposition map, and verify both runtimes and CI.
+Address every S1-S7 finding from the holistic review comment on PR #44 plus the S8 context-sensitive-reference issue found during pre-commit review, update the #42 -> #44 stack from upstream in base-first order, publish a disposition map, and verify both runtimes and CI.
