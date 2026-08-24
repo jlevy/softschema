@@ -213,17 +213,7 @@ def validate_structural(
     """
     try:
         validator = _validator_for(schema_yaml_path, strict_extras, resources)
-        errors = [
-            structural_error_record(
-                path=list(error.absolute_path),
-                validator=str(error.validator),
-                validator_value=error.validator_value,
-                value=error.instance,
-                property_name=property_name,
-            )
-            for error in validator.iter_errors(values)
-            for property_name in _structural_error_properties(error)
-        ]
+        errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
         return _schema_invalid("syntax", "compiled schema root must be a mapping")
     except PortableInputError as exc:
@@ -262,18 +252,40 @@ def validate_structural(
     return StructuralResult(ok=not errors, errors=errors)
 
 
+def _structural_error_records(errors: Iterator[Any]) -> Iterator[dict[str, Any]]:
+    """Normalize jsonschema errors without parsing required-property messages."""
+    expanded_required_sites: set[tuple[tuple[Any, ...], tuple[Any, ...]]] = set()
+    for error in errors:
+        if str(error.validator) == "required":
+            site = (tuple(error.absolute_path), tuple(error.absolute_schema_path))
+            if site in expanded_required_sites:
+                continue
+            expanded_required_sites.add(site)
+        for property_name in _structural_error_properties(error):
+            yield structural_error_record(
+                path=list(error.absolute_path),
+                validator=str(error.validator),
+                validator_value=error.validator_value,
+                value=error.instance,
+                property_name=property_name,
+            )
+
+
 def _structural_error_properties(error: Any) -> Sequence[str | None]:
     """Return portable offending-property details from one jsonschema error."""
     validator = str(error.validator)
-    if validator == "required":
-        suffix = " is a required property"
-        if error.message.endswith(suffix):
-            try:
-                value = literal_eval(error.message[: -len(suffix)])
-            except (SyntaxError, ValueError):
-                value = None
-            if isinstance(value, str):
-                return [value]
+    if (
+        validator == "required"
+        and isinstance(error.instance, dict)
+        and isinstance(error.validator_value, list)
+    ):
+        missing = [
+            value
+            for value in error.validator_value
+            if isinstance(value, str) and value not in error.instance
+        ]
+        if missing:
+            return missing
     if validator == "additionalProperties" and isinstance(error.instance, dict):
         schema = error.schema if isinstance(error.schema, dict) else {}
         declared = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
@@ -297,14 +309,18 @@ def _structural_error_properties(error: Any) -> Sequence[str | None]:
 
 
 def _unexpected_properties(message: str) -> list[str]:
-    start = message.rfind("(")
+    start = message.find("(")
     if start < 0 or not message.endswith(")"):
         return []
     details = message[start + 1 : -1]
+    found_suffix = False
     for suffix in (" were unexpected", " was unexpected"):
         if details.endswith(suffix):
             details = details[: -len(suffix)]
+            found_suffix = True
             break
+    if not found_suffix:
+        return []
     try:
         values = literal_eval(f"[{details}]")
     except (SyntaxError, ValueError):

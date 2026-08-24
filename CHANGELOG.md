@@ -24,6 +24,7 @@ per object should migrate:
 | Read one generic missing/extra record | Read one record per affected field, with a property-specific message |
 | Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the checked profile are refused |
 | Use an enforced semantic model without a schema | Bind a compiled structural schema; the result is now `enforced_schema_required` |
+| Read a null or omitted structural `skipped_reason` from a model-only values call | Read `skipped_reason: "no_schema"`; the semantic model still runs |
 
 The `code` values are `undeclared_property`, `missing_property`, `invalid_value`, and
 `unmapped_keyword`. `validator`, `validator_value`, and `value` remain diagnostic
@@ -47,13 +48,24 @@ relying on engine-specific retrieval behavior.
   independently. The offline graph supports local pointers, escaped tokens, anchors,
   nested definitions, embedded `$id` resources, supplied resources, and literal or
   pattern-based declarations.
+  Structured `items` and disjoint `prefixItems`/`items` close independently, while
+  `contains` remains an unchanged matcher.
+  Sibling child evaluators and context-sensitive composition references are refused when
+  closure could change intersection, branch-selection, or conditional-success semantics.
 - **Enforced status no longer succeeds without structural enforcement.** Artifact
   validation and the Python/TypeScript values APIs reject model-only enforced calls with
   `enforced_schema_required`. Both values APIs accept `status` and offline `resources`.
 - **Field-level structural diagnostics identify the repair target.** Missing and
   undeclared-property errors name the field and preserve one record per affected field.
   `unevaluatedProperties` uses the same category and property-specific message as
-  `additionalProperties`.
+  `additionalProperties`. Array indexes in `path` are numeric in both runtimes, and
+  Python derives missing required fields from validator data rather than English error
+  text.
+- **In-memory schema graph identity is deterministic.** Reusing one mapping object at
+  several schema locations now returns `schema_invalid/shared_subschema` with deep-copy
+  guidance instead of allowing traversal order to select closure behavior.
+  TypeScript repeats this graph check before returning a validator-cache hit, where
+  serialized content alone cannot distinguish shared identities.
 
 ### Added
 

@@ -239,6 +239,29 @@ function decodePointerToken(token: string): string {
   return token.replace(/~1/g, "/").replace(/~0/g, "~");
 }
 
+const ARRAY_INDEX_TOKEN = /^(?:0|[1-9][0-9]*)$/u;
+
+function decodeInstancePath(instancePath: string, instance: unknown): (string | number)[] {
+  let current = instance;
+  return instancePath
+    .split("/")
+    .slice(1)
+    .map((token) => {
+      const decoded = decodePointerToken(token);
+      if (Array.isArray(current) && ARRAY_INDEX_TOKEN.test(decoded)) {
+        const index = Number(decoded);
+        current = current[index];
+        return index;
+      }
+      if (current !== null && typeof current === "object") {
+        current = (current as Record<string, unknown>)[decoded];
+      } else {
+        current = undefined;
+      }
+      return decoded;
+    });
+}
+
 /**
  * Normalize one ajv error into the engine-neutral record (matching jsonschema's).
  *
@@ -250,8 +273,8 @@ function decodePointerToken(token: string): string {
  * lives in `params.multipleOf`, not `params.limit`, and `required` is the missing key,
  * not the required list); `schema`/`data` sidestep all of that.
  */
-export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
-  const path = error.instancePath.split("/").slice(1).map(decodePointerToken);
+export function normalizeAjvError(error: ErrorObject, instance?: unknown): StructuralErrorRecord {
+  const path = decodeInstancePath(error.instancePath, instance);
   const property = ajvErrorProperty(error);
   return structuralErrorRecord({
     path,

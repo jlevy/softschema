@@ -276,6 +276,32 @@ describe("errors: every message template", () => {
     expect(rec.message).toBe("required property 'title' is missing");
   });
 
+  test("normalizeAjvError distinguishes array indexes from numeric object keys", () => {
+    const arrayRecord = normalizeAjvError(
+      {
+        instancePath: "/0/name",
+        keyword: "type",
+        params: { type: "string" },
+        schema: "string",
+        data: 42,
+      } as never,
+      [{ name: 42 }],
+    );
+    const objectRecord = normalizeAjvError(
+      {
+        instancePath: "/0/name",
+        keyword: "type",
+        params: { type: "string" },
+        schema: "string",
+        data: 42,
+      } as never,
+      { "0": { name: 42 } },
+    );
+
+    expect(arrayRecord.path).toEqual([0, "name"]);
+    expect(objectRecord.path).toEqual(["0", "name"]);
+  });
+
   test("collapseUndeclaredProperties deduplicates by object path and property", () => {
     const base = structuralErrorRecord({
       path: [],

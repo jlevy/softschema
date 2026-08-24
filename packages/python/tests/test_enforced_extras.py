@@ -6,10 +6,12 @@ import copy
 from pathlib import Path
 from typing import Any
 
+import pytest
 from ruamel.yaml import YAML
 
 from softschema import validate_structural
 from softschema.canonicalize import apply_enforced_extras
+from softschema.enforcement import SchemaGraphError, prepare_schema_graph
 
 HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardening.yaml"
 
@@ -179,6 +181,19 @@ def test_cyclic_local_references_terminate() -> None:
     apply_enforced_extras(schema)
 
 
+def test_shared_subschema_objects_are_rejected() -> None:
+    shared = {"type": "object", "properties": {"street": {"type": "string"}}}
+    schema = {
+        "properties": {"home": shared},
+        "$defs": {"Address": shared},
+    }
+
+    with pytest.raises(SchemaGraphError, match="deep-copy shared subschemas") as exc_info:
+        prepare_schema_graph(schema)
+
+    assert exc_info.value.reason == "shared_subschema"
+
+
 def test_properties_under_not_are_prohibitions_not_declarations() -> None:
     # `not` contributes no annotations, so closing over its properties would leave the
     # schema admitting nothing at all.
@@ -308,6 +323,16 @@ def test_shared_enforcement_semantics(tmp_path: Path) -> None:
                 if error.get("code") == "undeclared_property"
             )
             assert actual == case["properties"], case["id"]
+        if "errors" in case:
+            actual_errors = [
+                {
+                    "code": error["code"],
+                    "path": error["path"],
+                    "property": error.get("property"),
+                }
+                for error in enforced.errors
+            ]
+            assert actual_errors == case["errors"], case["id"]
 
 
 def test_multiple_undeclared_keys_preserve_field_identity(tmp_path: Path) -> None:

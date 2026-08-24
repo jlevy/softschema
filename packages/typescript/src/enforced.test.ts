@@ -279,6 +279,33 @@ test("cyclic local references terminate", () => {
   } as Schema);
 });
 
+test("shared subschema objects are rejected", () => {
+  const shared = { type: "object", properties: { street: { type: "string" } } };
+  const schema = {
+    properties: { home: shared },
+    $defs: { Address: shared },
+  };
+
+  // Prime the content-addressed validator cache with the same JSON tree but distinct
+  // object identities. Sharing is graph structure, not JSON content, so cache lookup
+  // must not bypass the identity check below.
+  const copied = JSON.parse(JSON.stringify(schema)) as Schema;
+  expect(validateStructural({ home: { street: "Main" } }, copied, { strictExtras: true }).ok).toBe(
+    true,
+  );
+
+  const result = validateStructural({ home: { street: "Main" } }, schema, {
+    strictExtras: true,
+  });
+
+  expect(result.ok).toBe(false);
+  expect(result.errors[0]?.kind).toBe("schema_invalid");
+  expect((result.errors[0] as Record<string, unknown> | undefined)?.reason).toBe(
+    "shared_subschema",
+  );
+  expect(result.errors[0]?.message).toContain("deep-copy shared subschemas");
+});
+
 test("properties under not are prohibitions, not declarations", () => {
   // `not` contributes no annotations, so closing over its properties would leave the
   // schema admitting nothing at all.
@@ -437,6 +464,14 @@ test("shared enforcement semantics", () => {
         .map((error) => error.property)
         .sort();
       expect(actual, item.id as string).toEqual(item.properties);
+    }
+    if (Array.isArray(item.errors)) {
+      const actual = enforced.errors.map((error) => ({
+        code: error.code,
+        path: error.path,
+        property: error.property,
+      }));
+      expect(actual, item.id as string).toEqual(item.errors);
     }
   }
 });

@@ -261,7 +261,9 @@ real authoring bugs, bind a compiled structural schema and flip `status: enforce
 validator rejects undeclared fields at the structural boundary: a supported object site
 silent about closure receives `unevaluatedProperties` when declarations compose and
 `additionalProperties` otherwise.
-An explicit value for either keyword on the site still wins.
+Structured `items` and disjoint `prefixItems`/`items` schemas close their object
+elements; a `contains` schema remains a matcher so enforcement cannot change which
+elements match. An explicit value for either keyword on the site still wins.
 A model without a structural schema is rejected because Pydantic and Zod have different
 unknown-key defaults.
 The checked profile returns `enforcement_unsupported` for a topology it cannot transform
@@ -875,6 +877,9 @@ allOf:
 `then` branch evaluated it.
 `additionalProperties` at the root would not: it sees only the root’s own `properties`
 and rejects a key the schema plainly declares.
+The admission is success-sensitive: `{decision: pending, writeoff_reason: n/a}` is
+rejected because the `then` branch does not apply and no successful schema evaluates
+`writeoff_reason` for that record.
 
 One profile rule comes with the annotation model.
 Python `jsonschema` and Ajv do not expose condition-matcher annotations consistently in

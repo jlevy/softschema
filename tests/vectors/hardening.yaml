@@ -306,6 +306,83 @@ enforcement_semantics:
     value: { a: x }
     raw: invalid
     enforced: invalid
+  - id: oneof_reference_target_would_change_selection
+    schema:
+      oneOf:
+        - { $ref: "#/$defs/NestedBranch" }
+        - { type: object, properties: { child: true } }
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { child: { x: 1, detail: changes-selection } }
+    raw: invalid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: allof_reference_target_would_change_nested_intersection
+    schema:
+      allOf:
+        - { $ref: "#/$defs/NestedBranch" }
+        - properties:
+            child:
+              type: object
+              properties: { detail: { type: string } }
+              additionalProperties: true
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { child: { x: 1, detail: declared-by-sibling } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: conditional_reference_target_would_change_branch_success
+    schema:
+      type: object
+      properties:
+        kind: { type: string }
+        child:
+          type: object
+          properties: { detail: { type: string } }
+          additionalProperties: true
+      if: { properties: { kind: { const: special } }, required: [kind] }
+      then: { $ref: "#/$defs/NestedBranch" }
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { kind: special, child: { x: 1, detail: declared-at-parent } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: reference_with_validation_sibling_reaches_modified_target
+    schema:
+      $ref: "#/$defs/NestedBranch"
+      properties:
+        child:
+          type: object
+          properties: { detail: { type: string } }
+          additionalProperties: true
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { child: { x: 1, detail: declared-by-sibling } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
   - id: mixed_reference_contexts_do_not_interfere
     schema:
       type: object
@@ -353,6 +430,111 @@ enforcement_semantics:
     value: { x_ok: yes }
     raw: valid
     enforced: valid
+  - id: array_items_close_each_element
+    schema:
+      type: array
+      items:
+        type: object
+        properties: { name: { type: string } }
+    value: [{ name: Ada, bogus: 1 }]
+    raw: valid
+    enforced: invalid
+    errors:
+      - { code: undeclared_property, path: [0], property: bogus }
+  - id: prefix_items_and_items_are_disjoint
+    schema:
+      type: array
+      prefixItems:
+        - { type: object, properties: { head: { type: string } } }
+      items: { type: object, properties: { tail: { type: string } } }
+    value: [{ head: first }, { tail: second }]
+    raw: valid
+    enforced: valid
+  - id: contains_is_a_matcher
+    schema:
+      type: array
+      contains:
+        type: object
+        required: [match]
+        properties: { match: { const: true } }
+    value: [{ match: true, detail: stays-open }]
+    raw: valid
+    enforced: valid
+  - id: contains_nested_object_requires_explicit_closure
+    schema:
+      type: array
+      contains:
+        type: object
+        properties:
+          nested:
+            type: object
+            properties: { x: { type: number } }
+    value: [{ nested: { x: 1, detail: changes-match } }]
+    raw: valid
+    enforced: unsupported
+    reason: nested_instance_composition
+  - id: contains_reference_target_would_change_match
+    schema:
+      type: array
+      contains: { $ref: "#/$defs/Element" }
+      $defs:
+        Element:
+          type: object
+          properties:
+            nested:
+              type: object
+              properties: { x: { type: number } }
+    value: [{ nested: { x: 1, detail: changes-match } }]
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: items_and_contains_child_overlap
+    schema:
+      type: array
+      items:
+        type: object
+        properties: { a: { type: string } }
+      contains:
+        type: object
+        required: [b]
+        properties: { b: { type: number } }
+    value: [{ a: x, b: 1 }]
+    raw: valid
+    enforced: unsupported
+    reason: child_evaluator_overlap
+  - id: literal_and_pattern_child_overlap
+    schema:
+      type: object
+      properties:
+        ab: { type: object, properties: { x: { type: number } } }
+      patternProperties:
+        "^a": { type: object, properties: { y: { type: number } } }
+    value: { ab: { x: 1, y: 2 } }
+    raw: valid
+    enforced: unsupported
+    reason: child_evaluator_overlap
+  - id: structured_pattern_pair_is_refused_conservatively
+    schema:
+      type: object
+      patternProperties:
+        "^x": { type: object, properties: { left: { type: number } } }
+        "^y": { type: object, properties: { right: { type: number } } }
+    value: { x_key: { left: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: child_evaluator_overlap
+  - id: conditional_branch_declaration_is_success_sensitive
+    schema:
+      type: object
+      properties: { kind: { enum: [plain, special] } }
+      if: { properties: { kind: { const: special } }, required: [kind] }
+      then:
+        required: [extra]
+        properties: { extra: { type: string } }
+    value: { kind: plain, extra: fine }
+    raw: valid
+    enforced: invalid
+    properties: [extra]
   - id: anchor_reference_extension
     schema:
       allOf:

@@ -133,3 +133,22 @@ def test_field_level_errors_preserve_property_identity(tmp_path: Path) -> None:
         ("missing_property", "a"),
         ("missing_property", "b"),
     ]
+
+
+def test_field_recovery_uses_required_data_and_pins_unevaluated_message_shape(
+    tmp_path: Path,
+) -> None:
+    schema_path = tmp_path / "field-recovery.schema.yaml"
+    schema_path.write_text(
+        "type: object\nrequired: [a, b]\nproperties:\n  a: true\n  b: true\n"
+        "unevaluatedProperties: false\n"
+    )
+
+    result = validate_structural({"left(paren": 1, "right)paren": 2}, schema_path)
+
+    assert [(error["code"], error["property"]) for error in result.errors] == [
+        ("missing_property", "a"),
+        ("missing_property", "b"),
+        ("undeclared_property", "left(paren"),
+        ("undeclared_property", "right)paren"),
+    ]

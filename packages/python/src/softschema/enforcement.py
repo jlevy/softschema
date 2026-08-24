@@ -43,6 +43,29 @@ _ANNOTATING_IN_PLACE_KEYWORDS = (
     _IN_PLACE_MAP_KEYWORDS | _IN_PLACE_LIST_KEYWORDS | (_IN_PLACE_SINGLE_KEYWORDS - {"not"})
 )
 _EXPLICIT_CLOSURE_KEYWORDS = frozenset({"additionalProperties", "unevaluatedProperties"})
+_CONTEXT_SENSITIVE_REFERENCE_KEYWORDS = (
+    _IN_PLACE_MAP_KEYWORDS
+    | _IN_PLACE_LIST_KEYWORDS
+    | _IN_PLACE_SINGLE_KEYWORDS
+    | frozenset({"contains"})
+)
+_REFERENCE_NONVALIDATION_SIBLINGS = frozenset(
+    {
+        "$anchor",
+        "$comment",
+        "$defs",
+        "$id",
+        "$schema",
+        "default",
+        "definitions",
+        "deprecated",
+        "description",
+        "examples",
+        "readOnly",
+        "title",
+        "writeOnly",
+    }
+)
 
 _FragmentContext = Literal["same_instance", "nested_instance"] | None
 
@@ -124,6 +147,10 @@ class _SchemaGraph:
         self.resource_roots: dict[str, Any] = {}
         self.infos: dict[int, _NodeInfo] = {}
         self.nodes: dict[int, dict[str, Any]] = {}
+        self.inferred_closures: set[int] = set()
+        # Cache only positive reachability; a cycle back-edge can make an interim false
+        # result path-dependent while the outer traversal is still in progress.
+        self.closure_reachable: set[int] = set()
         self._visit(
             root,
             base_uri=_ROOT_RETRIEVAL_URI,
@@ -188,6 +215,13 @@ class _SchemaGraph:
         reusable_root: bool,
         main_root: bool,
     ) -> None:
+        if isinstance(node, dict) and id(node) in self.infos:
+            previous = self.infos[id(node)]
+            raise SchemaGraphError(
+                "shared_subschema",
+                f"schema object at {_display_path(path)} is shared with "
+                f"{_display_path(previous.path)}; deep-copy shared subschemas before validation",
+            )
         self._register_target(f"{resource_uri}#{pointer}", node)
         if not isinstance(node, dict):
             return
@@ -423,6 +457,78 @@ class _SchemaGraph:
             return False
         return matcher_patterns <= covered_patterns
 
+    def _evaluates_object_properties(self, node: Any) -> bool:
+        names, patterns, wildcard = self._property_evaluators(
+            node,
+            include_alternatives=True,
+            include_conditionals=True,
+        )
+        return bool(names or patterns or wildcard)
+
+    def _check_child_evaluator_overlaps(self, node: dict[str, Any]) -> None:
+        """Refuse sibling child applicators whose independent closure can conflict."""
+        contains = node.get("contains")
+        if self._evaluates_object_properties(contains):
+            item_schemas: list[tuple[str, Any]] = []
+            if "items" in node:
+                item_schemas.append(("items", node["items"]))
+            prefix_items = node.get("prefixItems")
+            if isinstance(prefix_items, list):
+                item_schemas.extend(
+                    (f"prefixItems/{index}", child) for index, child in enumerate(prefix_items)
+                )
+            for keyword, child in item_schemas:
+                if self._evaluation_reaches_inferred_closure(child):
+                    raise EnforcementUnsupportedError(
+                        "child_evaluator_overlap",
+                        f"contains and {keyword} can evaluate the same array element; "
+                        "make closure explicit at every affected structured descendant "
+                        "or separate the item and match criteria",
+                        schema_path=_display_path(self.infos[id(node)].path),
+                    )
+
+        properties = node.get("properties")
+        patterns = node.get("patternProperties")
+        property_entries = list(properties.items()) if isinstance(properties, dict) else []
+        pattern_entries = list(patterns.items()) if isinstance(patterns, dict) else []
+        for name, property_schema in property_entries:
+            for pattern, pattern_schema in pattern_entries:
+                if (
+                    re.search(pattern, name)
+                    and self._evaluates_object_properties(property_schema)
+                    and self._evaluates_object_properties(pattern_schema)
+                    and (
+                        self._evaluation_reaches_inferred_closure(property_schema)
+                        or self._evaluation_reaches_inferred_closure(pattern_schema)
+                    )
+                ):
+                    raise EnforcementUnsupportedError(
+                        "child_evaluator_overlap",
+                        f"property {name!r} is also matched by patternProperties pattern "
+                        f"{pattern!r}; make closure explicit at every affected structured "
+                        "descendant in both value schemas or separate their property domains",
+                        schema_path=_display_path(self.infos[id(node)].path),
+                    )
+
+        for index, (first_pattern, first_schema) in enumerate(pattern_entries):
+            for second_pattern, second_schema in pattern_entries[index + 1 :]:
+                if (
+                    self._evaluates_object_properties(first_schema)
+                    and self._evaluates_object_properties(second_schema)
+                    and (
+                        self._evaluation_reaches_inferred_closure(first_schema)
+                        or self._evaluation_reaches_inferred_closure(second_schema)
+                    )
+                ):
+                    raise EnforcementUnsupportedError(
+                        "child_evaluator_overlap",
+                        "structured patternProperties value schemas may evaluate the same "
+                        f"property ({first_pattern!r} and {second_pattern!r}); make closure "
+                        "explicit at every affected structured descendant in both value "
+                        "schemas or use one structured pattern",
+                        schema_path=_display_path(self.infos[id(node)].path),
+                    )
+
     def _check_reference_targets(self) -> None:
         for marker, info in self.infos.items():
             node = self.nodes[marker]
@@ -443,6 +549,103 @@ class _SchemaGraph:
                     "or a supplied resource",
                     schema_path=_display_path(info.path),
                 )
+
+    def _evaluation_reaches_inferred_closure(
+        self,
+        node: Any,
+        seen: frozenset[int] | None = None,
+    ) -> bool:
+        if not isinstance(node, dict):
+            return False
+        if seen is None:
+            seen = frozenset()
+        marker = id(node)
+        if marker in self.closure_reachable:
+            return True
+        if marker in seen:
+            return False
+        if marker in self.inferred_closures:
+            self.closure_reachable.add(marker)
+            return True
+        next_seen = seen | {marker}
+        reference = node.get("$ref")
+        if isinstance(reference, str) and self._evaluation_reaches_inferred_closure(
+            self.resolve_ref(node, reference), next_seen
+        ):
+            self.closure_reachable.add(marker)
+            return True
+        for key, value in node.items():
+            if key in _DEFINITION_KEYWORDS:
+                continue
+            if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
+                if any(
+                    self._evaluation_reaches_inferred_closure(child, next_seen)
+                    for child in value.values()
+                ):
+                    self.closure_reachable.add(marker)
+                    return True
+            elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):
+                if any(
+                    self._evaluation_reaches_inferred_closure(child, next_seen) for child in value
+                ):
+                    self.closure_reachable.add(marker)
+                    return True
+            elif key in _SCHEMA_KEYWORDS and self._evaluation_reaches_inferred_closure(
+                value, next_seen
+            ):
+                self.closure_reachable.add(marker)
+                return True
+        return False
+
+    @staticmethod
+    def _reference_has_validation_siblings(node: dict[str, Any]) -> bool:
+        return any(key != "$ref" and key not in _REFERENCE_NONVALIDATION_SIBLINGS for key in node)
+
+    def _check_context_sensitive_references(
+        self,
+        node: Any,
+        composition_context: bool = False,
+    ) -> None:
+        if not isinstance(node, dict):
+            return
+        reference = node.get("$ref")
+        if (
+            (composition_context or self._reference_has_validation_siblings(node))
+            and isinstance(reference, str)
+            and self._evaluation_reaches_inferred_closure(self.resolve_ref(node, reference))
+        ):
+            raise EnforcementUnsupportedError(
+                "composition_reference_context",
+                "a $ref inside context-sensitive composition or beside validation "
+                "siblings reaches a target that inferred closure would modify; add "
+                "explicit closure to the target's structured descendants or use the "
+                "reference at a pure application site",
+                schema_path=_display_path(self.infos[id(node)].path),
+            )
+        for key, value in node.items():
+            child_context = composition_context or key in _CONTEXT_SENSITIVE_REFERENCE_KEYWORDS
+            if key in _DEFINITION_KEYWORDS:
+                child_context = False
+            if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
+                for child in value.values():
+                    self._check_context_sensitive_references(child, child_context)
+            elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):
+                for child in value:
+                    self._check_context_sensitive_references(child, child_context)
+            elif key in _SCHEMA_KEYWORDS:
+                self._check_context_sensitive_references(value, child_context)
+
+    def check_post_transform_safety(
+        self,
+        root: dict[str, Any],
+        resources: Mapping[str, dict[str, Any]],
+    ) -> None:
+        """Reject co-evaluator and reference contexts changed by inferred closure."""
+        for node in self.nodes.values():
+            self._check_child_evaluator_overlaps(node)
+        self._check_context_sensitive_references(root)
+        for resource in resources.values():
+            self._check_context_sensitive_references(resource)
 
     def transform(self, node: Any, context: _FragmentContext = None) -> Any:
         if not isinstance(node, dict):
@@ -498,6 +701,7 @@ class _SchemaGraph:
         needs_annotations = "$ref" in node or any(
             key in _ANNOTATING_IN_PLACE_KEYWORDS for key in node
         )
+        self.inferred_closures.add(id(node))
         out["unevaluatedProperties" if needs_annotations else "additionalProperties"] = False
         return out
 
@@ -509,6 +713,8 @@ def _has_explicit_closure(node: Any) -> bool:
 def _child_fragment_context(context: _FragmentContext, keyword: str) -> _FragmentContext:
     if keyword in _DEFINITION_KEYWORDS:
         return None
+    if keyword == "contains":
+        return "same_instance"
     if (
         keyword in _IN_PLACE_MAP_KEYWORDS
         or keyword in _IN_PLACE_LIST_KEYWORDS
@@ -527,6 +733,7 @@ def prepare_schema_graph(
     graph = _SchemaGraph(root, supplied)
     transformed_root = graph.transform(root)
     transformed_resources = {key: graph.transform(resource) for key, resource in supplied.items()}
+    graph.check_post_transform_safety(root, supplied)
     assert isinstance(transformed_root, dict)
     assert all(isinstance(resource, dict) for resource in transformed_resources.values())
     return PreparedSchemaGraph(root=transformed_root, resources=transformed_resources)

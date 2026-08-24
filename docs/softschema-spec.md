@@ -340,13 +340,16 @@ for any schema that composes constraints, and the reason is not obvious.
 
 Closure must satisfy two conditions at once:
 
-1. **Reject undeclared keys.** A key the schema names nowhere is an authoring bug.
-2. **Reject nothing else.** A document the author’s own schema accepts must stay valid
-   when `enforced` is switched on.
-   Closure adds a check; it does not change the contract.
+1. **Reject unevaluated keys.** A present property whose value is not evaluated by any
+   successful applicable schema at that instance location is an authoring bug.
+2. **Preserve authored acceptance for evaluated data.** A document the authored schema
+   accepts, and whose present properties are all evaluated by its successful applicable
+   schemas, must stay valid when `enforced` is switched on.
+   Closure may reject an otherwise valid document only for properties left unevaluated.
 
 Condition 2 is the one that constrains the design.
-Everything below follows from asking, precisely, what “the schema names this key” means.
+Everything below follows from asking which successful schema evaluation admitted a
+present property value.
 
 #### Why the lexical answer works, until it doesn’t
 
@@ -434,11 +437,12 @@ parent.
 The overlay implements these rules over the root and every explicitly supplied resource
 as one offline graph:
 
-1. A schema site declares object fields when it has a `properties` map, a nonempty
-   `patternProperties` map, or a supported in-place applicator that reaches such a
-   declaration. `required`, `dependentRequired`, and `propertyNames` do not evaluate
-   property values and do not declare fields.
-   Declarations below `not` do not escape it.
+1. A present object field is admitted when its value is evaluated by a successful
+   applicable schema at that instance location.
+   `properties`, `patternProperties`, and supported in-place applicators can contribute
+   those evaluations. Conditional and dependent branches contribute only when they apply
+   and succeed. `required`, `dependentRequired`, and `propertyNames` do not evaluate
+   property values. Evaluations below `not` do not escape it.
 2. A self-contained lexical site receives `additionalProperties: false`. A site that
    composes declarations through `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`,
    `dependentSchemas`, or `$ref` receives `unevaluatedProperties: false`. No closure is
@@ -446,7 +450,9 @@ as one offline graph:
 3. Reusable `$defs`, legacy `definitions`, embedded-resource roots, and
    supplied-resource roots stay unchanged unless the author closed them explicitly.
    A structured `$ref` application site receives annotation-aware closure independently,
-   so using one target in several contexts cannot make those sites interfere.
+   so using one target at pure application sites cannot make those sites interfere.
+   A reference inside context-sensitive composition, or beside validation siblings, is
+   refused when its evaluated target subtree would receive inferred closure.
 4. An explicit `additionalProperties` or `unevaluatedProperties` on the site prevents
    injection there. Explicit keywords inside referenced targets and composition branches
    retain their ordinary Draft 2020-12 assertion and annotation behavior.
@@ -479,17 +485,34 @@ Supported spellings include:
 A supplied resource’s root `$id`, when present, must resolve to its mapping key.
 All resources are supplied explicitly; neither runtime performs network retrieval.
 Valid `$dynamicRef` and `$dynamicAnchor` schemas are outside this profile.
+Caller-constructed schema graphs must also use a distinct mapping object at every schema
+location. JSON and portable YAML already have this property.
+Reusing one in-memory mapping at several locations is `schema_invalid` with reason
+`shared_subschema`, because location-specific graph metadata would otherwise depend on
+traversal order.
+
+For reference-context analysis, a pure `$ref` site may also carry `$schema`, `$id`,
+`$anchor`, `$comment`, `$defs`, legacy `definitions`, `title`, `description`, `default`,
+`examples`, `deprecated`, `readOnly`, or `writeOnly`. These keywords do not add
+validation siblings at that instance location.
+Any other sibling is treated conservatively as validation behavior.
 
 #### Support matrix
 
 | Shape | Checked-profile behavior |
 | --- | --- |
 | Direct `properties` | Close lexically with `additionalProperties` |
-| Nonempty `patternProperties` | Close lexically; overlapping patterns keep native intersection semantics |
-| `allOf`, `anyOf`, `oneOf`, `dependentSchemas` | Leave branches unchanged and close their parent with `unevaluatedProperties` |
-| `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site |
+| Nonempty `patternProperties` | Close lexically; scalar and otherwise nonclosing overlaps keep native intersection semantics |
+| Literal `properties` plus a matching structured `patternProperties` value, or two structured pattern values | Refuse as `child_evaluator_overlap` when either value schema’s evaluated subtree would receive inferred closure; pattern-pair overlap is treated conservatively because the profile does not prove that regexes are disjoint |
+| `allOf`, `anyOf`, `oneOf` | Leave branches unchanged and close their parent with `unevaluatedProperties` |
+| `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site, while fields declared only in `then` or `else` are admitted only when that branch applies and succeeds |
+| `dependentSchemas` branch declarations | Admit fields only when the trigger is present and the dependent schema succeeds |
 | `not` | Preserve the prohibition; declarations below it do not cause closure |
-| Supported `$ref` | Keep the reusable target open and close each structured application site |
+| Supported `$ref` | Keep the reusable target open and close each pure structured application site; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
+| Plain structured `items` | Close each element schema independently when no `contains` schema co-describes its elements |
+| `prefixItems` with `items` | Close their structured value schemas independently; they apply to disjoint index ranges |
+| `contains` | Preserve the matcher without inferred closure so enforcement cannot change which elements match; an unclosed structured child below the matcher is unsupported |
+| Structured `contains` with an inferred-closed structured `items` or `prefixItems` schema | Refuse as `child_evaluator_overlap`, because the sibling applicators can evaluate the same element |
 | Explicit closure on a site | Preserve it; do not inject another closure keyword there |
 | Free-form mapping | Leave open |
 | Supplied resources | Check, analyze, transform, and register offline with the root |
@@ -504,13 +527,16 @@ Current reasons are:
 | `reason` | Shape | Author action |
 | --- | --- | --- |
 | `dynamic_reference` | `$dynamicRef` or `$dynamicAnchor` | Use a supported static `$ref`, or author explicit closure and validate outside the overlay |
-| `nested_instance_composition` | An unclosed structured child instance appears below an in-place composition branch | Put explicit closure on that child schema, or hoist the complete child schema outside the composition |
+| `nested_instance_composition` | An unclosed structured child instance appears below an in-place composition branch or selection matcher | Put explicit closure on that child schema, or hoist the complete child schema outside the composition or matcher |
 | `conditional_annotation_scope` | An `if` matcher evaluates fields not unconditionally evaluated at the closure site | Declare matcher fields at that site, directly or through an unconditional `$ref`/`allOf` path |
+| `child_evaluator_overlap` | Sibling child applicators can evaluate the same object or array element and inferred closure would change one value schema’s evaluated subtree independently | Make closure explicit at every affected structured descendant in the co-describing value schemas, or separate the property, pattern, item, and match domains |
+| `composition_reference_context` | A `$ref` under `allOf`, `anyOf`, `oneOf`, `dependentSchemas`, `if`, `then`, `else`, `not`, or `contains`, or beside validation siblings, reaches a reusable target whose evaluated subtree would receive inferred closure | Add explicit closure to the target’s structured descendants, or use the reference at a pure application site outside context-sensitive composition |
 | `embedded_resource_context` | A structured embedded `$id` resource is also applied directly at a nested site | Add explicit closure or move the reusable resource to `$defs` |
-| `reference_target_context` | A structured `$ref` target is also a directly applied, non-reusable schema | Move the target to `$defs` or a supplied resource, or close it explicitly |
+| `reference_target_context` | A structured `$ref` target is also a directly applied, non-reusable schema, including a structured root referenced as `$ref: "#"` | Move the target to `$defs` or a supplied resource, or close it explicitly. For a recursive root, make the root a bare `$ref` into `$defs` and recurse through that definition |
 
 Malformed or unresolved graphs use `schema_invalid`, not `enforcement_unsupported`.
-Stable reasons include `dialect`, `pattern`, `reference`, and `resource_identity`.
+Stable reasons include `dialect`, `pattern`, `reference`, `resource_identity`, and
+`shared_subschema`.
 
 The effective status is resolved by the caller (for example a registry contract or a
 `--status` flag), falling back to the document’s declared `softschema.status`.

@@ -172,11 +172,8 @@ const validatorCache = new Map<string, ValidateFunction>();
 /**
  * Check a compiled schema, apply the `enforced` overlay, and compile it with Ajv.
  *
- * Every step is a pure function of the schema, the overlay flag, and the resources, so
- * a cache hit may legitimately skip all of them: a schema that passed the identity and
- * pattern checks once passes them again. Throws propagate to `validateStructural`,
- * which turns them into a `schema_invalid` result, and only a schema that compiles is
- * ever cached.
+ * Throws propagate to `validateStructural`, which turns them into a `schema_invalid`
+ * result, and only a schema that compiles is ever cached.
  */
 function buildValidator(
   schemaObject: Record<string, unknown>,
@@ -216,8 +213,10 @@ function buildValidator(
  *
  * Keyed on the schema's own content rather than on a file path and stat, so a rewritten
  * schema can never be served from a stale entry and two paths holding identical schemas
- * correctly share one. Serializing to build the key is negligible against what a hit
- * avoids. Least-recently-used entries are evicted past `VALIDATOR_CACHE_SIZE`.
+ * correctly share one. Before returning a checked-enforcement hit, the graph is prepared
+ * again because shared in-memory object identity is not represented by JSON content.
+ * Serializing to build the key is negligible against what a hit avoids.
+ * Least-recently-used entries are evicted past `VALIDATOR_CACHE_SIZE`.
  */
 function cachedValidator(
   schemaObject: Record<string, unknown>,
@@ -230,9 +229,21 @@ function cachedValidator(
     // this made before the cache existed, and the same choice Python makes.
     return buildValidator(schemaObject, strictExtras, resources);
   }
-  const key = `${strictExtras ? "1" : "0"}\u0000${JSON.stringify(schemaObject)}`;
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(schemaObject);
+  } catch (error) {
+    if (strictExtras) {
+      prepareSchemaGraph(schemaObject);
+    }
+    throw error;
+  }
+  const key = `${strictExtras ? "1" : "0"}\u0000${serialized}`;
   const hit = validatorCache.get(key);
   if (hit !== undefined) {
+    if (strictExtras) {
+      prepareSchemaGraph(schemaObject);
+    }
     // Re-insert to mark this entry most recently used; Map iterates in insertion order.
     validatorCache.delete(key);
     validatorCache.set(key, hit);
@@ -273,7 +284,9 @@ export function validateStructural(
     const errors: StructuralErrorRecord[] = ok
       ? []
       : collapseUndeclaredProperties(
-          dropConditionalWrappers((validateFn.errors ?? []).map((e) => normalizeAjvError(e))),
+          dropConditionalWrappers(
+            (validateFn.errors ?? []).map((error) => normalizeAjvError(error, values)),
+          ),
         );
     errors.sort(compareStructuralRecords);
     return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
@@ -325,8 +338,13 @@ const UNSUPPORTED_PATTERN_PARTS = ["(?<", "(?P", "\\A", "\\Z", "\\z", "\\p", "\\
 
 function* iterSchemas(root: Record<string, unknown>): Iterable<Record<string, unknown>> {
   const stack = [root];
+  const seen = new Set<Record<string, unknown>>();
   while (stack.length > 0) {
     const schema = stack.pop() as Record<string, unknown>;
+    if (seen.has(schema)) {
+      continue;
+    }
+    seen.add(schema);
     yield schema;
     for (const [key, value] of Object.entries(schema)) {
       if (SCHEMA_MAPS.has(key) && isMapping(value)) {

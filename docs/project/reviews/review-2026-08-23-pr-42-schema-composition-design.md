@@ -34,7 +34,7 @@ larger contract around:
   active plan.
 
 The supporting research is in
-[JSON Schema Composition, Field Dependencies, and Enforced Closure](https://github.com/jlevy/softschema/blob/codex/pr-42-design-review/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md).
+[JSON Schema Composition, Field Dependencies, and Enforced Closure](../research/research-2026-08-23-json-schema-composition-and-enforcement.md).
 It records the normative keyword semantics, runtime comparison, paired probes, design
 options, and primary sources behind this review.
 
@@ -436,6 +436,69 @@ checks, and the direct Python/TypeScript parity diff.
 **Final verdict:** Approved.
 All required findings are addressed in the stacked remediation; final GitHub CI evidence
 is recorded on the pull request.
+
+## Follow-up Review Addendum — 2026-08-24
+
+A second holistic review of the updated PR #42 to PR #44 stack found seven gaps in the
+checked-profile remediation.
+The
+[published review](https://github.com/jlevy/softschema/pull/44#issuecomment-5397960201)
+covered child applicators, shared graph identity, success-sensitive declarations, error
+parity, and release hygiene.
+The mandatory pre-commit review then found an eighth class: references can carry
+globally inferred closure into a context where another schema controls intersection,
+selection, matching, prohibition, or conditional success.
+
+**Verdict at follow-up review:** Request changes.
+
+| ID | Severity | Bead | Disposition | Resolution |
+| --- | --- | --- | --- | --- |
+| S1 | High | `ss-tmf7` | Fixed | `contains` remains an unchanged matcher; structured `items` or `prefixItems` co-evaluation is refused when inferred closure could change the element result. Plain `items` and disjoint `prefixItems`/`items` remain supported. |
+| S2 | High | `ss-hkei` | Fixed | Matching literal and pattern value schemas, and conservatively every structured pattern pair, return `child_evaluator_overlap` when either evaluated subtree would receive inferred closure. |
+| S3 | Medium | `ss-juw0` | Fixed | Repeated in-memory schema mapping identity returns `schema_invalid/shared_subschema`. TypeScript repeats graph preparation before returning a content-cache hit, so identical JSON content cannot bypass the identity check. |
+| S4 | Medium | `ss-zylb` | Fixed | The invariant and rules now depend on successful property evaluation. Conditional and dependent branch declarations are admitted only when the branch applies and succeeds. |
+| S5 | Medium | `ss-zpso` | Fixed | TypeScript decodes Ajv pointers against the instance, producing numeric array indexes without changing numeric-looking object keys. |
+| S6 | Low | `ss-girn` | Fixed | Python derives missing required properties from validator data. The unavoidable `unevaluatedProperties` message parser has canary coverage for multiple and parenthesized keys. |
+| S7 | Low | `ss-9pjf` | Fixed | Stack wording, the resolved alternatives bead, model-only `no_schema` migration note, and root self-reference guidance are reconciled. |
+| S8 | High | `ss-2hn1` | Fixed | A `$ref` under context-sensitive composition, or beside validation siblings, is refused as `composition_reference_context` when its evaluated target subtree would receive inferred closure. Pure application sites remain supported. |
+
+### Design assessment
+
+The checked-profile architecture remains the right near-term choice.
+A general Draft 2020-12 transformer would need instance-location analysis across
+arbitrary vocabularies and dynamic scope in two runtimes.
+The implementation instead supports a documented subset and returns one stable,
+actionable refusal when it cannot prove that inferred closure preserves the authored
+evaluation graph.
+
+The follow-up changes make that boundary systematic.
+Post-transform graph analysis records every inferred closure and then checks both
+sibling child evaluators and context-sensitive references against the evaluated target
+subtree. This is more conservative than attempting regex-disjointness or reference-path
+equivalence, but it does not silently change a document verdict.
+Authors can cross the boundary by making closure explicit at the affected structured
+descendants or by separating the co-evaluating schemas.
+
+### Documentation
+
+The main spec owns the successful-evaluation invariant, exact pure-reference sibling
+set, array and child-applicator matrix, refusal reasons, shared-identity requirement,
+and author actions. The guide summarizes ordinary author behavior.
+Both implementation designs document runtime-specific error recovery and caching.
+The research brief records the counterexamples, the Python/TypeScript behavior, and the
+primary Draft 2020-12 sources.
+
+### Follow-up validation
+
+- Python: 194 tests and 49 golden journeys passed.
+- TypeScript: 192 tests passed with at least 98% line coverage; 47 Node and 49 Bun
+  golden journeys passed.
+- Lint, formatting, types, documentation footers, both package builds, publint, and the
+  direct cross-runtime parity diff passed.
+
+**Final follow-up verdict:** Approved.
+The review findings and the additional pre-commit finding are addressed in the stacked
+remediation. Final GitHub CI evidence is recorded on PR #44.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

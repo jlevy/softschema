@@ -2,8 +2,9 @@
 title: JSON Schema Composition, Field Dependencies, and Enforced Closure
 description: >-
   Research into Draft 2020-12 field relationships, annotation-based closure,
-  references and resources, Python jsonschema and TypeScript Ajv behavior, and the
-  implications for softschema's enforced validation policy.
+  object and array child applicators, references and resources, Python jsonschema and
+  TypeScript Ajv behavior, and the implications for softschema's enforced validation
+  policy.
 author: Joshua Levy with OpenAI Codex assistance
 ---
 # Research: JSON Schema Composition, Field Dependencies, and Enforced Closure
@@ -55,8 +56,9 @@ It should not silently apply a partial approximation to every Draft 2020-12 sche
 
 ## Scope
 
-This document covers JSON Schema Draft 2020-12 object validation, in-place applicators,
-annotations, references, embedded and supplied resources, and cross-field dependencies.
+This document covers JSON Schema Draft 2020-12 object and array validation, in-place and
+child applicators, annotations, references, embedded and supplied resources, and
+cross-field dependencies.
 It compares the versions installed in this repository on 2026-08-23:
 
 | Component | Version | Role |
@@ -148,6 +150,46 @@ written inside an `allOf` branch.
 Conversely, two distant schema objects can apply to the same location through references
 or composition. A boolean such as `in_fragment` can be a conservative implementation
 guard, but it is not a full model of evaluation.
+
+### Child applicators can co-describe one child location
+
+In-place composition is not the only way several schema objects can describe the same
+instance location. Sibling child applicators can converge on one child:
+
+- a literal `properties` entry and every matching `patternProperties` pattern all apply
+  to the same property value;
+- every matching pair of `patternProperties` patterns applies together; and
+- `items` or `prefixItems` can apply to an array element that `contains` also tests.
+
+Closing the value schemas independently loses the same information that branch-local
+closure loses under `allOf`. For example, if a literal property’s object schema declares
+`x` and a matching pattern’s object schema declares `y`, adding
+`additionalProperties: false` to both rejects `{x, y}` even though the authored
+intersection accepts it.
+
+Array applicators add match selection.
+`contains` does not merely validate a known element; it decides which elements count
+toward `minContains` and `maxContains`. Adding closure inside its subschema can change
+that set. Closing an `items` object independently can also reject a field evaluated by
+the successful `contains` schema.
+By contrast, `prefixItems` and `items` cover disjoint index ranges in Draft 2020-12, so
+their element schemas can be closed independently when `contains` is absent.
+
+A checked profile therefore needs a child co-evaluator rule as well as an in-place
+applicator rule: infer closure only when one structured evaluator describes the child
+location. Literal-pattern overlap can be detected by testing the literal name.
+Proving that pattern pairs are disjoint is not practical portably, so independently
+closed structured pattern pairs should be refused conservatively.
+
+Context-sensitive composition references require another graph check.
+Leaving an `allOf`, `anyOf`, `oneOf`, `dependentSchemas`, conditional, `not`, or
+`contains` subschema lexically unchanged is insufficient if a `$ref` inside it reaches a
+reusable target whose nested schemas are changed by the global overlay.
+The same problem occurs when a `$ref` has validation siblings at its application site.
+That indirect mutation can change an intersection, branch or match selection, or
+conditional success.
+The profile must either prove the evaluated target subtree is unchanged or refuse the
+reference context.
 
 ### Alternative branches are not necessarily complete descriptions
 
@@ -296,6 +338,13 @@ records.
 A stable `{kind, code, path}` tuple cannot distinguish two missing properties at
 the same object path.
 A portable `property` or sorted `properties` detail field can.
+Array positions in `path` also need a shared type.
+Python’s `absolute_path` uses integer indexes.
+Ajv’s JSON Pointer uses strings, so TypeScript must decode the pointer against the
+validated instance to distinguish an array index `0` from an object key `"0"`. Python
+can recover missing required fields from `validator_value` and the instance; parsing the
+English message is necessary only for the current `unevaluatedProperties` error surface
+and should be protected by a canary test.
 
 ### Pydantic and Zod add a separate semantic layer
 
@@ -364,6 +413,33 @@ Finally, an `enforced` Python `Contract` with only a default Pydantic model acce
 semantic validation ignored the extra key.
 The low-level `validate_values` and `validateValues` APIs also provide no status or
 strict-extras option.
+
+### Follow-up evidence for child dependencies
+
+The checked-profile follow-up probes exposed two additional co-evaluator classes, an
+indirect composition-reference class, and one graph-identity case:
+
+| Shape and instance | Raw | Prior checked overlay | Required profile result |
+| --- | --- | --- | --- |
+| Structured `items` and structured `contains`; one element carries both field sets | valid | invalid | `child_evaluator_overlap` |
+| Literal property and matching pattern apply separate structured schemas to one value | valid | invalid | `child_evaluator_overlap` |
+| Two structured matching patterns apply to one value | valid | invalid | `child_evaluator_overlap` |
+| `contains` references a definition whose nested object receives inferred closure | valid | invalid | `composition_reference_context` |
+| A `oneOf` branch references that kind of definition while a second branch covers the child | invalid | valid | `composition_reference_context` |
+| An `allOf` or conditional branch references such a definition while a sibling describes the nested child | valid | invalid | `composition_reference_context` |
+| A reference with validation siblings reaches such a definition | valid | invalid | `composition_reference_context` |
+
+Caller-constructed TypeScript and Python schema objects exposed a separate source of
+order dependence.
+Reusing one mapping object as both a definition and an application site
+caused the last graph visit to overwrite location metadata.
+Depending on key order, the same schema either closed a reusable definition or left an
+application site open.
+Portable YAML aliases are already rejected, but the library APIs accept in-memory
+objects. Rejecting repeated mapping identity as `shared_subschema` turns that silent
+under- or over-enforcement into a deterministic schema error.
+TypeScript repeats that identity check before returning a content-addressed
+validator-cache hit because identity sharing is not represented in serialized JSON.
 
 ## Key Insights
 
@@ -546,19 +622,22 @@ A limitation without a real issue is not tracked merely because a comment names 
 
 ## Implementation Outcome
 
-The stacked remediation implements Option B in commit `9d69517`. Both runtimes now
-prepare the root and supplied resources as one checked offline graph, keep reusable
-targets open, and close structured application sites independently.
+The stacked remediation implements Option B. Both runtimes now prepare the root and
+supplied resources as one checked offline graph, keep reusable targets open, and close
+structured application sites independently.
 The implementation covers static pointers, escaped pointer tokens, anchors, nested
 definitions, embedded resource identities, supplied resources, literal and pattern
-declarations, alternatives, conditionals, and dependent schemas within the profile
-specified in the main spec.
+declarations, alternatives, conditionals, dependent schemas, plain array item closure,
+and disjoint `prefixItems`/`items` within the profile specified in the main spec.
 
 The implementation also makes the boundary explicit.
-Dynamic references and the four instance-location shapes for which static analysis
-cannot prove safe annotation flow return `enforcement_unsupported` with a stable reason.
+Dynamic references and the instance-location, child co-evaluator, and context-sensitive
+reference shapes for which static analysis cannot prove safe annotation flow return
+`enforcement_unsupported` with a stable reason.
 Enforced model-only calls return `enforced_schema_required`. Missing and
-undeclared-field errors carry the affected `property`, with one record per field.
+undeclared-field errors carry the affected `property`, with one record per field, and
+array positions in TypeScript and Python error paths are numeric.
+Repeated in-memory schema object identities return `schema_invalid/shared_subschema`.
 
 Shared semantic vectors now compare raw and enforced outcomes across both runtimes,
 including reference/resource equivalents and each unsupported reason.
@@ -576,6 +655,13 @@ under `engine_deviations`; they are not treated as verdict differences.
 - [x] Preserve offending field identity in structural errors (`ss-5rjo`).
 - [x] Reconcile the spec, design docs, examples, vectors, docstrings, and issue links
   (`ss-pq0m`).
+- [x] Refuse independently closed sibling child evaluators (`ss-tmf7`, `ss-hkei`).
+- [x] Reject shared in-memory subschema identity (`ss-juw0`).
+- [x] Specify success-sensitive branch declarations (`ss-zylb`).
+- [x] Normalize array-index paths and harden Python field recovery (`ss-zpso`,
+  `ss-girn`).
+- [x] Refuse context-sensitive composition references to transformed targets
+  (`ss-2hn1`).
 
 ## Methodology
 
@@ -599,7 +685,11 @@ decision.
 - [Draft 2020-12 annotations](https://json-schema.org/draft/2020-12/json-schema-core#section-7.5)
 - [Draft 2020-12 schema references](https://json-schema.org/draft/2020-12/json-schema-core#section-8.2.3)
 - [Draft 2020-12 in-place applicators](https://json-schema.org/draft/2020-12/json-schema-core#section-10.2)
+- [Draft 2020-12 `allOf`](https://json-schema.org/draft/2020-12/json-schema-core#section-10.2.1.1)
 - [Draft 2020-12 `anyOf`](https://json-schema.org/draft/2020-12/json-schema-core#section-10.2.1.2)
+- [Draft 2020-12 conditional applicators](https://json-schema.org/draft/2020-12/json-schema-core#section-10.2.2)
+- [Draft 2020-12 `dependentSchemas`](https://json-schema.org/draft/2020-12/json-schema-core#section-10.2.2.4)
+- [Draft 2020-12 `contains`](https://json-schema.org/draft/2020-12/json-schema-core#section-10.3.1.3)
 - [Draft 2020-12 `unevaluatedProperties`](https://json-schema.org/draft/2020-12/json-schema-core#section-11.3)
 - [JSON Schema conditional validation](https://json-schema.org/understanding-json-schema/reference/conditionals)
 - [Python `jsonschema` referencing](https://python-jsonschema.readthedocs.io/en/stable/referencing/)

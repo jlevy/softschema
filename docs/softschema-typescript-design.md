@@ -101,16 +101,23 @@ identities, resolves the supported static `$ref` forms, and applies closure at t
 instance sites where annotation flow makes the overlay safe.
 Reusable definitions and resources stay open; structured reference application sites
 close independently.
-Unsupported topologies return a structured `enforcement_unsupported` record rather than
-a document verdict produced by a partial rewrite.
-The normative rules, reference boundary, and reason codes are in the spec’s
+Structured `items` and disjoint `prefixItems`/`items` are closed independently, while
+`contains` remains a matcher.
+Sibling child evaluators and context-sensitive composition references are refused when
+independent or indirect closure could change authored semantics.
+Caller-constructed graphs that reuse one object at several schema locations return
+`schema_invalid/shared_subschema`. Unsupported topologies return a structured
+`enforcement_unsupported` record rather than a document verdict produced by a partial
+rewrite. The normative rules, reference boundary, and reason codes are in the spec’s
 [support matrix](softschema-spec.md#support-matrix).
 
 The overlay is validation-time only and does not affect the compiled schema or
 `schema_sha256`. `validateStructural` accepts supplied `resources`, and `validateValues`
 accepts both `status` and `resources`. Calls with resources bypass the
 compiled-validator cache because the graph is neither cheap nor safe to identify by the
-root schema alone.
+root schema alone. Before returning a cache hit for an enforced call, graph preparation
+and the `shared_subschema` check run again: shared in-memory identity is not represented
+by the content-addressed cache key.
 
 ## Library API Parity
 
@@ -154,6 +161,8 @@ presentation, not a byte-level wire contract.
 `normalizeAjvError()` reads `error.schema`/`error.data` (ajv runs with `verbose: true`),
 the analogues of jsonschema’s `validator_value`/`instance`, and extracts Ajv’s affected
 property detail into the shared `property` field.
+It decodes each JSON Pointer against the validated instance so array positions in `path`
+are numbers while numeric-looking object keys remain strings, matching Python.
 Two ajv shapes are then normalized: `collapseUndeclaredProperties()` keeps one record
 per object path and affected property for the `undeclared_property` code, and
 `dropConditionalWrappers()` removes the `if` record Ajv adds alongside a failed

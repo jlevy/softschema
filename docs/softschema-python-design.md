@@ -181,8 +181,13 @@ graph, and applies the checked closure profile in `softschema.enforcement`. Simp
 object sites use `additionalProperties`; composed and referenced sites use
 `unevaluatedProperties`; reusable definitions stay open; and unsupported topologies
 return a structured `enforcement_unsupported` error.
-The normative behavior and reason codes are in the spec’s
-[support matrix](softschema-spec.md#support-matrix).
+Structured `items` and disjoint `prefixItems`/`items` are closed independently, while
+`contains` remains a matcher.
+Sibling child evaluators and context-sensitive composition references are refused when
+independent or indirect closure could change authored semantics.
+Caller-constructed graphs that reuse one mapping object at several schema locations
+return `schema_invalid/shared_subschema`. The normative behavior and reason codes are in
+the spec’s [support matrix](softschema-spec.md#support-matrix).
 The overlay is validation-time only; compiled schemas never change.
 
 `validate_structural` exposes the same behavior through `strict_extras=True` and accepts
@@ -257,6 +262,9 @@ Each violation becomes
 where `message` comes from a shared template keyed on the JSON Schema keyword
 (`softschema.errors`). Missing and undeclared-field records carry `property`, with one
 record per affected field.
+Missing required fields are derived from the structured `required` array and instance.
+The `unevaluatedProperties` message remains jsonschema’s only per-field source, so its
+current aggregate message shape has explicit canary coverage.
 Records are sorted by `(path, validator, property)`. The TypeScript port returns the
 same verdict and structured meaning through Ajv; exact record-set differences are
 allowed only when pinned in the shared vectors as documented engine deviations.

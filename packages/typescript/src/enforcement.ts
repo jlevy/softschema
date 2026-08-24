@@ -41,6 +41,27 @@ const ANNOTATING_IN_PLACE_KEYWORDS = new Set([
   "else",
 ]);
 const EXPLICIT_CLOSURE_KEYWORDS = ["additionalProperties", "unevaluatedProperties"];
+const CONTEXT_SENSITIVE_REFERENCE_KEYWORDS = new Set([
+  ...IN_PLACE_MAP_KEYWORDS,
+  ...IN_PLACE_LIST_KEYWORDS,
+  ...IN_PLACE_SINGLE_KEYWORDS,
+  "contains",
+]);
+const REFERENCE_NONVALIDATION_SIBLINGS = new Set([
+  "$anchor",
+  "$comment",
+  "$defs",
+  "$id",
+  "$schema",
+  "default",
+  "definitions",
+  "deprecated",
+  "description",
+  "examples",
+  "readOnly",
+  "title",
+  "writeOnly",
+]);
 const THEN = "then";
 
 export class EnforcementUnsupportedError extends Error {
@@ -130,6 +151,10 @@ class SchemaGraph {
   private readonly targets = new Map<string, Json>();
   private readonly resourceRoots = new Map<string, Json>();
   private readonly infos = new Map<Schema, NodeInfo>();
+  private readonly inferredClosures = new Set<Schema>();
+  // Cache only positive reachability; a cycle back-edge can make an interim false result
+  // path-dependent while the outer traversal is still in progress.
+  private readonly closureReachable = new Set<Schema>();
 
   constructor(root: Schema, resources: Record<string, Schema>) {
     this.visit(root, {
@@ -194,6 +219,15 @@ class SchemaGraph {
     node: Json,
     location: Omit<NodeInfo, "embeddedDirectResource"> & { mainRoot: boolean },
   ): void {
+    if (isMapping(node)) {
+      const previous = this.infos.get(node);
+      if (previous !== undefined) {
+        throw new SchemaGraphError(
+          "shared_subschema",
+          `schema object at ${displayPath(location.path)} is shared with ${displayPath(previous.path)}; deep-copy shared subschemas before validation`,
+        );
+      }
+    }
     this.registerTarget(`${location.resourceUri}#${location.pointer}`, node);
     if (!isMapping(node)) return;
 
@@ -402,6 +436,76 @@ class SchemaGraph {
     return [...matcher.patterns].every((pattern) => covered.patterns.has(pattern));
   }
 
+  private evaluatesObjectProperties(node: Json): boolean {
+    const evaluators = this.propertyEvaluators(node, {
+      includeAlternatives: true,
+      includeConditionals: true,
+    });
+    return evaluators.names.size > 0 || evaluators.patterns.size > 0 || evaluators.wildcard;
+  }
+
+  private checkChildEvaluatorOverlaps(node: Schema): void {
+    if (this.evaluatesObjectProperties(node.contains)) {
+      const itemSchemas: [string, Json][] = [];
+      if ("items" in node) {
+        itemSchemas.push(["items", node.items]);
+      }
+      if (Array.isArray(node.prefixItems)) {
+        node.prefixItems.forEach((child, index) => {
+          itemSchemas.push([`prefixItems/${index}`, child]);
+        });
+      }
+      for (const [keyword, child] of itemSchemas) {
+        if (this.evaluationReachesInferredClosure(child)) {
+          throw new EnforcementUnsupportedError(
+            "child_evaluator_overlap",
+            `contains and ${keyword} can evaluate the same array element; make closure explicit at every affected structured descendant or separate the item and match criteria`,
+            displayPath((this.infos.get(node) as NodeInfo).path),
+          );
+        }
+      }
+    }
+
+    const propertyEntries = isMapping(node.properties) ? Object.entries(node.properties) : [];
+    const patternEntries = isMapping(node.patternProperties)
+      ? Object.entries(node.patternProperties)
+      : [];
+    for (const [name, propertySchema] of propertyEntries) {
+      for (const [pattern, patternSchema] of patternEntries) {
+        if (
+          new RegExp(pattern, "u").test(name) &&
+          this.evaluatesObjectProperties(propertySchema) &&
+          this.evaluatesObjectProperties(patternSchema) &&
+          (this.evaluationReachesInferredClosure(propertySchema) ||
+            this.evaluationReachesInferredClosure(patternSchema))
+        ) {
+          throw new EnforcementUnsupportedError(
+            "child_evaluator_overlap",
+            `property ${JSON.stringify(name)} is also matched by patternProperties pattern ${JSON.stringify(pattern)}; make closure explicit at every affected structured descendant in both value schemas or separate their property domains`,
+            displayPath((this.infos.get(node) as NodeInfo).path),
+          );
+        }
+      }
+    }
+
+    patternEntries.forEach(([firstPattern, firstSchema], index) => {
+      for (const [secondPattern, secondSchema] of patternEntries.slice(index + 1)) {
+        if (
+          this.evaluatesObjectProperties(firstSchema) &&
+          this.evaluatesObjectProperties(secondSchema) &&
+          (this.evaluationReachesInferredClosure(firstSchema) ||
+            this.evaluationReachesInferredClosure(secondSchema))
+        ) {
+          throw new EnforcementUnsupportedError(
+            "child_evaluator_overlap",
+            `structured patternProperties value schemas may evaluate the same property (${JSON.stringify(firstPattern)} and ${JSON.stringify(secondPattern)}); make closure explicit at every affected structured descendant in both value schemas or use one structured pattern`,
+            displayPath((this.infos.get(node) as NodeInfo).path),
+          );
+        }
+      }
+    });
+  }
+
   private checkReferenceTargets(): void {
     for (const [node, info] of this.infos) {
       if (typeof node.$ref !== "string") continue;
@@ -420,6 +524,107 @@ class SchemaGraph {
           displayPath(info.path),
         );
       }
+    }
+  }
+
+  private evaluationReachesInferredClosure(node: Json, seen: Set<Schema> = new Set()): boolean {
+    if (!isMapping(node)) {
+      return false;
+    }
+    if (this.closureReachable.has(node)) {
+      return true;
+    }
+    if (seen.has(node)) {
+      return false;
+    }
+    if (this.inferredClosures.has(node)) {
+      this.closureReachable.add(node);
+      return true;
+    }
+    const nextSeen = new Set(seen).add(node);
+    if (
+      typeof node.$ref === "string" &&
+      this.evaluationReachesInferredClosure(this.resolveRef(node, node.$ref), nextSeen)
+    ) {
+      this.closureReachable.add(node);
+      return true;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (DEFINITION_KEYWORDS.has(key)) {
+        continue;
+      }
+      if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
+        if (
+          Object.values(value).some((child) =>
+            this.evaluationReachesInferredClosure(child, nextSeen),
+          )
+        ) {
+          this.closureReachable.add(node);
+          return true;
+        }
+      } else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) {
+        if (value.some((child) => this.evaluationReachesInferredClosure(child, nextSeen))) {
+          this.closureReachable.add(node);
+          return true;
+        }
+      } else if (
+        SCHEMA_KEYWORDS.has(key) &&
+        this.evaluationReachesInferredClosure(value, nextSeen)
+      ) {
+        this.closureReachable.add(node);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static referenceHasValidationSiblings(node: Schema): boolean {
+    return Object.keys(node).some(
+      (key) => key !== "$ref" && !REFERENCE_NONVALIDATION_SIBLINGS.has(key),
+    );
+  }
+
+  private checkContextSensitiveReferences(node: Json, compositionContext = false): void {
+    if (!isMapping(node)) {
+      return;
+    }
+    if (
+      (compositionContext || SchemaGraph.referenceHasValidationSiblings(node)) &&
+      typeof node.$ref === "string" &&
+      this.evaluationReachesInferredClosure(this.resolveRef(node, node.$ref))
+    ) {
+      throw new EnforcementUnsupportedError(
+        "composition_reference_context",
+        "a $ref inside context-sensitive composition or beside validation siblings reaches a target that inferred closure would modify; add explicit closure to the target's structured descendants or use the reference at a pure application site",
+        displayPath((this.infos.get(node) as NodeInfo).path),
+      );
+    }
+    for (const [key, value] of Object.entries(node)) {
+      let childContext = compositionContext || CONTEXT_SENSITIVE_REFERENCE_KEYWORDS.has(key);
+      if (DEFINITION_KEYWORDS.has(key)) {
+        childContext = false;
+      }
+      if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
+        for (const child of Object.values(value)) {
+          this.checkContextSensitiveReferences(child, childContext);
+        }
+      } else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) {
+        for (const child of value) {
+          this.checkContextSensitiveReferences(child, childContext);
+        }
+      } else if (SCHEMA_KEYWORDS.has(key)) {
+        this.checkContextSensitiveReferences(value, childContext);
+      }
+    }
+  }
+
+  checkPostTransformSafety(root: Schema, resources: Record<string, Schema>): void {
+    for (const node of this.infos.keys()) {
+      this.checkChildEvaluatorOverlaps(node);
+    }
+    this.checkContextSensitiveReferences(root);
+    for (const resource of Object.values(resources)) {
+      this.checkContextSensitiveReferences(resource);
     }
   }
 
@@ -470,6 +675,7 @@ class SchemaGraph {
 
     const needsAnnotations =
       "$ref" in node || Object.keys(node).some((key) => ANNOTATING_IN_PLACE_KEYWORDS.has(key));
+    this.inferredClosures.add(node);
     out[needsAnnotations ? "unevaluatedProperties" : "additionalProperties"] = false;
     return out;
   }
@@ -481,6 +687,9 @@ function hasExplicitClosure(node: Json): boolean {
 
 function childFragmentContext(context: FragmentContext, keyword: string): FragmentContext {
   if (DEFINITION_KEYWORDS.has(keyword)) return null;
+  if (keyword === "contains") {
+    return "same_instance";
+  }
   if (
     IN_PLACE_MAP_KEYWORDS.has(keyword) ||
     IN_PLACE_LIST_KEYWORDS.has(keyword) ||
@@ -496,14 +705,14 @@ export function prepareSchemaGraph(
   resources: Record<string, Schema> = {},
 ): PreparedSchemaGraph {
   const graph = new SchemaGraph(root, resources);
+  const transformedRoot = graph.transform(root) as Schema;
+  const transformedResources = Object.fromEntries(
+    Object.entries(resources).map(([key, resource]) => [key, graph.transform(resource) as Schema]),
+  );
+  graph.checkPostTransformSafety(root, resources);
   return {
-    root: graph.transform(root) as Schema,
-    resources: Object.fromEntries(
-      Object.entries(resources).map(([key, resource]) => [
-        key,
-        graph.transform(resource) as Schema,
-      ]),
-    ),
+    root: transformedRoot,
+    resources: transformedResources,
   };
 }
 
