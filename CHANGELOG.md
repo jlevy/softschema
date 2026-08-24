@@ -6,10 +6,20 @@ version number.
 
 ## Unreleased
 
-`status: enforced` now uses a checked Draft 2020-12 schema-graph profile.
-Composed schemas that the validator can close without changing their authored meaning
-validate normally; topologies outside that profile return an explicit unsupported
-result.
+`status: enforced` now returns real document verdicts for supported `allOf`,
+`if`/`then`/`else`, and `dependentSchemas` object shapes that version 0.6.2 refused
+before examining the document.
+It also corrects unsafe `anyOf`, `oneOf`, and `$ref` transformations that could change
+the authored schema’s result.
+At each supported object location, it rejects a present property whose value is not
+admitted by any successful applicable schema.
+If the validator cannot apply that undeclared-property rule without changing the
+schema’s other behavior, it returns an explicit unsupported result.
+
+Support for the previously refused shapes is additive relative to version 0.6.2, but
+this release is not wholly backward-compatible: corrected alternative/reference
+behavior, model-only enforced calls, supplied-resource handling, and structural
+diagnostic records can change as described below.
 
 ### Breaking changes and migration
 
@@ -22,7 +32,7 @@ per object should migrate:
 | Match `validator == "additionalProperties"` | Match `code == "undeclared_property"`; composed sites report `unevaluatedProperties` |
 | Match `{kind, code, path}` for a field repair | Match `{kind, code, path, property}` |
 | Read one generic missing/extra record | Read one record per affected field, with a property-specific message |
-| Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the checked profile are refused |
+| Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the support matrix are refused |
 | Use an enforced semantic model without a schema | Bind a compiled structural schema; the result is now `enforced_schema_required` |
 | Read a null or omitted structural `skipped_reason` from a model-only values call | Read `skipped_reason: "no_schema"`; the semantic model still runs |
 
@@ -32,26 +42,27 @@ fields, not the field-repair match surface.
 
 Callers that supply external resources must key each one by an absolute URI without a
 fragment. A resource root `$id`, when present, must resolve to that key.
-This makes Python and TypeScript resolve the same closed, offline graph rather than
-relying on engine-specific retrieval behavior.
+This makes Python and TypeScript resolve the same fully supplied offline resource graph
+rather than relying on engine-specific retrieval behavior.
 
 ### Fixed
 
-- **Composed schemas validate under `enforced` when closure is provably safe**
+- **Supported composed object schemas now validate under `enforced`**
   ([#41](https://github.com/jlevy/softschema/issues/41)). `allOf`, `anyOf`, `oneOf`,
-  `if`/`then`/`else`, `dependentSchemas`, and supported `$ref` sites remain unchanged
-  internally and close at the parent with annotation-aware
-  `unevaluatedProperties: false`. This preserves alternative branch selection and
-  successful-branch annotations.
+  `if`/`then`/`else`, `dependentSchemas`, and supported `$ref` branches remain unchanged
+  internally; their parent receives annotation-aware `unevaluatedProperties: false`.
+  This preserves alternative branch selection and successful-branch annotations.
   Direct lexical objects continue to use `additionalProperties: false`. Reusable
-  definitions and resources remain open while each structured reference site closes
-  independently. The offline graph supports local pointers, escaped tokens, anchors,
-  nested definitions, embedded `$id` resources, supplied resources, and literal or
+  definitions and resources remain open while each supported structured reference site
+  receives its own undeclared-property rule.
+  The offline graph supports local pointers, escaped tokens, anchors, nested
+  definitions, embedded `$id` resources, supplied resources, and literal or
   pattern-based declarations.
-  Structured `items` and disjoint `prefixItems`/`items` close independently, while
-  `contains` remains an unchanged matcher.
+  Structured `items` and disjoint `prefixItems`/`items` receive the rule independently,
+  while `contains` remains an unchanged matcher.
   Sibling child evaluators and context-sensitive composition references are refused when
-  closure could change intersection, branch-selection, or conditional-success semantics.
+  inserting undeclared-property rejection could change intersection, branch-selection,
+  or conditional-success semantics.
 - **Enforced status no longer succeeds without structural enforcement.** Artifact
   validation and the Python/TypeScript values APIs reject model-only enforced calls with
   `enforced_schema_required`. Both values APIs accept `status` and offline `resources`.
@@ -63,7 +74,8 @@ relying on engine-specific retrieval behavior.
   text.
 - **In-memory schema graph identity is deterministic.** Reusing one mapping object at
   several schema locations now returns `schema_invalid/shared_subschema` with deep-copy
-  guidance instead of allowing traversal order to select closure behavior.
+  guidance instead of allowing traversal order to select which object locations reject
+  undeclared properties.
   TypeScript repeats this graph check before returning a validator-cache hit, where
   serialized content alone cannot distinguish shared identities.
 
@@ -71,7 +83,7 @@ relying on engine-specific retrieval behavior.
 
 - **Stable `code` and `property` error fields.** `code` groups engine keywords by repair
   category; `property` identifies the field for missing and undeclared-property records.
-- **A checked enforced-profile support matrix.** Dynamic references, unsafe nested
+- **An explicit `status: enforced` support matrix.** Dynamic references, unsafe nested
   instance composition, conditionals whose matcher annotations escape the unconditional
   declaration scope, directly applied structured embedded resources, and references to
   directly applied non-reusable targets return `enforcement_unsupported` with stable
@@ -82,7 +94,7 @@ relying on engine-specific retrieval behavior.
   multiplicity in Python and TypeScript.
 - **Documented native-engine deviations.** The `engine_deviations` vectors pin the few
   accepted `jsonschema`/Ajv record-set differences exactly.
-  Validation verdicts for the checked profile remain equal.
+  Validation verdicts for the supported matrix remain equal.
 
 ### Compatibility
 

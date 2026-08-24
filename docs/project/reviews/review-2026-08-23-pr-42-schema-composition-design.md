@@ -1,11 +1,12 @@
 ---
-title: Senior Design Review of PR 42 Schema Composition and Enforced Closure
+title: Senior Design Review of PR 42 Composed-Schema Enforcement
 description: >-
-  Holistic review of softschema's Draft 2020-12 composition, reference, closure,
-  validation, parity, error, and documentation design at PR 42 head 18946cb.
+  Holistic review of softschema's Draft 2020-12 composition, reference,
+  undeclared-property enforcement, validation, parity, error, and documentation design
+  at PR 42 head 18946cb.
 author: Joshua Levy with OpenAI Codex assistance
 ---
-# Senior Design Review: PR #42 Schema Composition and Enforced Closure
+# Senior Design Review: PR #42 Composed-Schema Enforcement
 
 **Date:** 2026-08-23
 
@@ -34,9 +35,22 @@ larger contract around:
   active plan.
 
 The supporting research is in
-[JSON Schema Composition, Field Dependencies, and Enforced Closure](../research/research-2026-08-23-json-schema-composition-and-enforcement.md).
+[JSON Schema Composition, Field Dependencies, and Undeclared Properties](../research/research-2026-08-23-json-schema-composition-and-enforcement.md).
 It records the normative keyword semantics, runtime comparison, paired probes, design
 options, and primary sources behind this review.
+
+In this review, **object closure** means one local rule: at one object instance
+location, reject each present property whose value is not evaluated by a successful
+applicable schema. It does not mean making an entire schema resource graph strict.
+
+The stack’s central capability is additive: supported `allOf`, conditional, and
+dependent-schema object shapes that version 0.6.2 refused can now receive real
+validation verdicts.
+The complete stack is nevertheless breaking for consumers that relied on model-only
+enforced validation, old alternative/reference transformations, permissive
+supplied-resource preparation, or the old structural diagnostic record shape.
+It does not change `soft` or `permissive` validation, compiled schema bytes, or
+`schema_sha256`.
 
 ## Executive Assessment
 
@@ -47,8 +61,10 @@ keeping the overlay validation-only preserves the compiled-schema digest; exclud
 are useful.
 
 The problem is the abstraction boundary.
-The implementation treats enforced closure as a recursive syntax-tree rewrite with a
-root-only `$defs` lookup and a global open/closed choice for each definition.
+The implementation treats object closure—the rule that rejects each present property
+whose value is not evaluated by a successful applicable schema at that object
+location—as a recursive syntax-tree rewrite with a root-only `$defs` lookup and a global
+open/closed choice for each definition.
 The public design describes a semantics-preserving policy over Draft 2020-12 schemas.
 Those are not equivalent systems.
 
@@ -62,8 +78,8 @@ Direct probes show all four failure classes:
 
 The current code should not become the normative design.
 My recommendation is to restore an explicit unsupported result for unproved shapes,
-define a checked enforced-schema profile, and prepare the complete schema-resource graph
-before either runtime compiles it.
+publish an exact `status: enforced` support matrix, and prepare the complete
+schema-resource graph before either runtime compiles it.
 A general Draft 2020-12 transformer is disproportionate and especially risky in two
 implementations.
 
@@ -106,7 +122,7 @@ documented sibling-properties case.
 
 **Required change:** Treat alternatives as in-place composition sites.
 Preserve branch selection, leave branches open, and place `unevaluatedProperties` at
-their parent when the checked profile can prove a structured object declaration.
+their parent when the supported analysis recognizes a structured object declaration.
 If the project wants a “disjoint complete record” convention, validate it at schema-load
 time. Do not infer it from the presence of `anyOf` or `oneOf`.
 
@@ -306,8 +322,8 @@ Verify every workaround with an end-to-end vector and every issue link with `tbd
 
 ## Recommended Design
 
-The near-term design should be a checked enforcement profile, not an unrestricted
-transformer.
+The near-term design should support a documented subset whose transformations the
+validator checks before use, not attempt an unrestricted transformer.
 
 1. **Prepare the graph.** Parse and validate the root plus every supplied resource,
    index URI identities and targets, and keep the registry offline.
@@ -400,7 +416,7 @@ No code changes are proposed by this review.
 
 ## Status Addendum — 2026-08-23
 
-The stacked remediation implements the checked-profile recommendation in commit
+The stacked remediation implements the support-matrix recommendation in commit
 `9d69517`. The original findings above remain as the historical review of PR #42 at
 `18946cb`; this addendum records their disposition after implementation and document
 reconciliation.
@@ -408,7 +424,7 @@ reconciliation.
 | ID | Disposition | Resolution |
 | --- | --- | --- |
 | R1 | Fixed | Alternatives remain unchanged internally and close at their parent, preserving `anyOf` annotations and `oneOf` branch selection. |
-| R2 | Fixed | Reusable definitions and resources remain open; structured `$ref` application sites close independently. |
+| R2 | Fixed | Reusable definitions and resources remain open; each supported structured `$ref` application site receives its own undeclared-property rule. |
 | R3 | Fixed | Both runtimes check, index, transform, and compile the root and supplied resources as one offline graph. |
 | R4 | Fixed | Nonempty `patternProperties` participates in declaration analysis and graph-wide portable regex checks. |
 | R5 | Fixed | Enforced artifact and values APIs require a structural schema; both values APIs expose status and resources. |
@@ -440,7 +456,7 @@ is recorded on the pull request.
 ## Follow-up Review Addendum — 2026-08-24
 
 A second holistic review of the updated PR #42 to PR #44 stack found seven gaps in the
-checked-profile remediation.
+support-matrix remediation.
 The
 [published review](https://github.com/jlevy/softschema/pull/44#issuecomment-5397960201)
 covered child applicators, shared graph identity, success-sensitive declarations, error
@@ -464,7 +480,7 @@ selection, matching, prohibition, or conditional success.
 
 ### Design assessment
 
-The checked-profile architecture remains the right near-term choice.
+The documented-subset architecture remains the right near-term choice.
 A general Draft 2020-12 transformer would need instance-location analysis across
 arbitrary vocabularies and dynamic scope in two runtimes.
 The implementation instead supports a documented subset and returns one stable,

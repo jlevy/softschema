@@ -177,14 +177,16 @@ envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
 When the contract’s status is `enforced`, a structural schema is required.
 The validator checks the root and every supplied resource, prepares them as one offline
-graph, and applies the checked closure profile in `softschema.enforcement`. Simple
-object sites use `additionalProperties`; composed and referenced sites use
+graph, and applies the checked undeclared-property rules in `softschema.enforcement`. At
+each supported object location, it rejects a present property whose value is not
+evaluated by any successful applicable schema.
+Simple object sites use `additionalProperties`; composed and referenced sites use
 `unevaluatedProperties`; reusable definitions stay open; and unsupported topologies
 return a structured `enforcement_unsupported` error.
-Structured `items` and disjoint `prefixItems`/`items` are closed independently, while
-`contains` remains a matcher.
+Structured `items` and disjoint `prefixItems`/`items` receive the rule independently,
+while `contains` remains a matcher.
 Sibling child evaluators and context-sensitive composition references are refused when
-independent or indirect closure could change authored semantics.
+independently inserting that rejection rule could change authored semantics.
 Caller-constructed graphs that reuse one mapping object at several schema locations
 return `schema_invalid/shared_subschema`. The normative behavior and reason codes are in
 the spec’s [support matrix](softschema-spec.md#support-matrix).

@@ -1,9 +1,11 @@
-"""Checked ``status: enforced`` profile for Draft 2020-12 schema graphs.
+"""Apply ``status: enforced`` undeclared-property rules to Draft 2020-12 schemas.
 
 The enforced policy is deliberately narrower than arbitrary JSON Schema. It prepares
 the root schema and every supplied resource as one offline graph, resolves the supported
-``$ref`` forms, and inserts closure only at instance sites where annotation flow makes
-that transformation semantics-preserving.
+``$ref`` forms, and rejects a present object property when no successful applicable
+schema evaluates its value. The implementation calls insertion of that local rule
+``closure`` and performs it only where annotation flow makes the transformation
+semantics-preserving.
 """
 
 from __future__ import annotations

@@ -318,21 +318,29 @@ It is not required to be an import path or a class name.
 - `soft` and `permissive` do not change validation behavior; whether a model allows
   extra fields is configured on the source model.
 - `enforced` makes the schema authoritative at the boundary: a conforming validator
-  requires a structural schema and treats a supported object schema that declares
-  properties but omits closure as closed.
+  requires a structural schema and, at a supported object schema that declares
+  properties but omits an explicit undeclared-property rule, rejects each present
+  property not evaluated by a successful applicable schema at that object location.
   A model alone is insufficient: implementations return `enforced_schema_required`
   rather than inheriting Pydantic’s or Zod’s different unknown-key defaults.
-  Which keyword closes an object depends on whether declarations compose at that
-  instance site. An explicit `additionalProperties` or `unevaluatedProperties` value on
+  Which keyword the validator inserts depends on whether declarations compose at that
+  instance site. An explicit `additionalProperties` or `unevaluatedProperties` value at
   the site always wins.
   Free-form mappings remain open.
   The checked overlay applies at validation time only; it never changes the compiled
-  schema or `schema_sha256`. A topology outside the checked profile returns
+  schema or `schema_sha256`. A topology outside the support matrix returns
   `enforcement_unsupported` rather than a guessed document verdict.
 
-### Closure under `enforced`
+### Rejecting undeclared properties under `enforced`
 
-Closure is the rule that turns `enforced` from an intention into a check.
+In this spec, **object closure** means rejecting each present property whose value is
+not evaluated by any successful applicable schema at the same object instance location.
+`additionalProperties: false` and `unevaluatedProperties: false` are the two JSON Schema
+mechanisms used to impose that rule.
+Closure is local to one object; it does not close every nested object unless the
+validator also closes the schema site for that child.
+
+Object closure turns `enforced` from an intention into a check.
 It is worth deriving rather than memorizing, because the obvious implementation is wrong
 for any schema that composes constraints, and the reason is not obvious.
 
@@ -499,7 +507,10 @@ Any other sibling is treated conservatively as validation behavior.
 
 #### Support matrix
 
-| Shape | Checked-profile behavior |
+This table defines exactly which schema shapes `status: enforced` transforms and which
+ones it refuses.
+
+| Shape | `status: enforced` behavior |
 | --- | --- |
 | Direct `properties` | Close lexically with `additionalProperties` |
 | Nonempty `patternProperties` | Close lexically; scalar and otherwise nonclosing overlaps keep native intersection semantics |
@@ -519,8 +530,9 @@ Any other sibling is treated conservatively as validation behavior.
 
 ### Unsupported enforced shapes
 
-The checked profile returns one `enforcement_unsupported` record with stable `reason`,
-`schema_path`, and `message` fields when it cannot prove a safe placement.
+For a shape outside that matrix, `status: enforced` returns one
+`enforcement_unsupported` record with stable `reason`, `schema_path`, and `message`
+fields when it cannot prove a safe placement.
 It does not validate the document against a partial overlay.
 Current reasons are:
 
@@ -627,7 +639,7 @@ A validator must reject:
 - a missing or unreadable compiled schema when one is bound (`schema_missing`)
 - a bound file that is not a valid schema (`schema_invalid`)
 - `status: enforced` without a structural schema (`enforced_schema_required`)
-- a valid schema topology outside the checked enforced profile
+- a valid schema topology outside the `status: enforced` support matrix
   (`enforcement_unsupported`)
 - a JSON Schema validation failure
 - a model validation failure

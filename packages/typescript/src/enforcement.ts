@@ -1,4 +1,9 @@
-/** Checked `status: enforced` profile for offline Draft 2020-12 schema graphs. */
+/**
+ * Apply `status: enforced` undeclared-property rules to Draft 2020-12 schemas.
+ *
+ * "Closure" below means rejecting a present object property when no successful
+ * applicable schema evaluates its value at that object location.
+ */
 
 import { isMapping } from "./guards.js";
 

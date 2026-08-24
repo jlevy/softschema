@@ -1,13 +1,14 @@
 ---
-title: JSON Schema Composition, Field Dependencies, and Enforced Closure
+title: JSON Schema Composition, Field Dependencies, and Undeclared Properties
 description: >-
   A first-principles guide to JSON Schema evaluation and draft history, followed by
-  research into Draft 2020-12 field relationships, annotation-based closure, object and
-  array child applicators, references and resources, Python jsonschema and TypeScript
-  Ajv behavior, and the implications for softschema's enforced validation policy.
+  research into Draft 2020-12 field relationships, annotation-based undeclared-property
+  rejection, object and array child applicators, references and resources, Python
+  jsonschema and TypeScript Ajv behavior, and the implications for softschema's enforced
+  validation policy.
 author: Joshua Levy with OpenAI Codex assistance
 ---
-# Research: JSON Schema Composition, Field Dependencies, and Enforced Closure
+# Research: JSON Schema Composition, Field Dependencies, and Undeclared Properties
 
 **Date:** 2026-08-23
 
@@ -32,6 +33,15 @@ YAML is an authoring syntax here; after parsing, the payload and schema must hav
 same data model as JSON. The difficult part of `status: enforced` is deciding which
 object properties count as part of that contract when several subschemas describe the
 same object.
+
+This document uses **object closure** as shorthand for one scoped rule: at a single
+object instance location, reject each present property whose value is not evaluated by
+any successful applicable schema.
+`additionalProperties: false` and `unevaluatedProperties: false` are the two relevant
+JSON Schema mechanisms.
+Closing an object does not mutate the data or automatically close every nested object.
+Raw JSON Schema remains open unless the author supplies such a keyword; softschema’s
+`status: enforced` policy inserts one at supported object locations during validation.
 
 ## JSON Schema From First Principles
 
@@ -137,7 +147,7 @@ These internal annotations are not the same as descriptive keywords such as `tit
 Draft 2020-12’s `unevaluatedProperties` and `unevaluatedItems` use them to find values
 that no successful applicable subschema has covered.
 
-### Object keywords describe presence, values, names, and closure separately
+### Object keywords describe presence, values, names, and rejection separately
 
 The `properties` keyword is open by default: it ignores property names that it does not
 list. Other object keywords may still constrain them.
@@ -156,7 +166,8 @@ declaration table.
 | `additionalProperties` | Apply a subschema to values unmatched by sibling `properties` and `patternProperties` | Yes |
 | `unevaluatedProperties` | Apply a subschema to values not evaluated by relevant successful schemas | Yes |
 
-The distinction between the last two rows is the source of the closure problem:
+The distinction between the last two rows is the source of the undeclared-property
+problem in composed schemas:
 
 - `additionalProperties` is **lexical**. It sees only `properties` and
   `patternProperties` beside it in the same schema object.
@@ -235,7 +246,7 @@ an unfinished proposal.
 Schemas should identify a specific draft because later dialects can add keywords or
 change semantics.
 
-The history most relevant to composition and closure is:
+The history most relevant to composition and undeclared properties is:
 
 | Release | Relevant evolution |
 | --- | --- |
@@ -252,7 +263,8 @@ Starting with 2019-09, year-month names avoid confusion between sequential meta-
 names and independently numbered IETF documents.
 The final Draft 2020-12 specification documents were published in June 2022.
 
-This progression explains why closure is subtle rather than accidental.
+This progression explains why rejecting undeclared properties across composed schemas is
+subtle rather than accidental.
 The lexical behavior of `additionalProperties` preserves the meaning of a subschema
 wherever it is reused, but it cannot see declarations supplied elsewhere.
 `unevaluatedProperties` was added later to close an object *after* successful in-place
@@ -266,8 +278,8 @@ An object schema using `properties` remains open to unmatched names unless anoth
 keyword constrains them.
 softschema deliberately gives `status: enforced` a stronger meaning: supported object
 sites that declare structure should reject properties left outside the contract.
-The validator therefore overlays closure at validation time even when the compiled
-schema is silent about it.
+The validator therefore inserts an undeclared-property rule at validation time even when
+the compiled schema is silent about it.
 
 The design question is whether that overlay can infer “declared fields” from an
 arbitrary Draft 2020-12 schema without changing any other part of the authored schema’s
@@ -278,14 +290,32 @@ schema at the same instance location.
 That question crosses three layers:
 
 1. Draft 2020-12 defines assertions, applicators, annotations, and reference resolution.
-2. softschema adds a validation-time closure policy over the authored structural schema.
+2. softschema may insert `additionalProperties: false` or `unevaluatedProperties: false`
+   over the authored structural schema during validation.
 3. Pydantic and Zod may add coercion, unknown-key handling, and cross-field rules that
    are not represented identically in JSON Schema.
 
-The core conclusion is that a general enforced-closure pass is a schema compiler, not a
-local tree rewrite. softschema should either require explicit closure in the authored
-schema or define a restricted, checked enforcement profile.
+The core conclusion is that a general pass that inserts undeclared-property rejection is
+a schema compiler, not a local tree rewrite.
+softschema should either require the author to supply that rule or publish a restricted
+support matrix and reject every shape outside it.
 It should not silently apply a partial approximation to every Draft 2020-12 schema.
+
+### Compatibility with version 0.6.2
+
+The ability to validate previously refused `allOf`, conditional, and dependent-schema
+shapes is additive, but the complete change is not wholly backward-compatible.
+
+| Surface | Version 0.6.2 | After the PR #42 and #44 stack | Compatibility |
+| --- | --- | --- | --- |
+| Supported `allOf`, `if`/`then`/`else`, and `dependentSchemas` object shapes | Refuses the composed schema before returning a document verdict | Returns the schema’s real valid or invalid verdict and rejects undeclared properties | Additive validation support |
+| `anyOf`, `oneOf`, and reusable `$ref` targets | Can insert `additionalProperties: false` inside alternatives or shared targets, changing branch selection or making use sites interfere | Leaves alternatives and reusable targets unchanged and inserts the rule at a supported parent or reference application site | Correctness fix; verdicts can change for affected edge cases |
+| Plain enforced object schemas | Rejects undeclared properties | Preserves that validity behavior, with more specific error records | Verdict-compatible; diagnostic API changes |
+| `status: enforced` with a semantic model but no structural schema | Can succeed after model validation alone | Returns `enforced_schema_required` | Intentional breaking correction |
+| Supplied schema resources | Can bypass root preprocessing or rely on engine-specific retrieval behavior | Every supplied resource is checked and registered with the root in one offline resource graph | Stricter and potentially breaking |
+| Shapes whose safe transformation is not proved | Version 0.6.2 broadly refuses composed shapes; the base PR attempted some unsafe ones | Returns `enforcement_unsupported` with a stable reason instead of guessing | No loss relative to 0.6.2; a safety correction relative to the base PR |
+| `soft` and `permissive` validation | Existing behavior | Unchanged | Compatible |
+| Compiled schema bytes and `schema_sha256` | Existing output | Unchanged because insertion happens only during validation | Compatible |
 
 ## Research Questions
 
@@ -352,7 +382,7 @@ It is closer to “a property value evaluated by the successful schema evaluatio
 instance location.” If softschema wants `required` alone to count as a declaration, that
 is an additional language rule and should be specified as such.
 
-### Closure is an instance-location operation
+### Undeclared-property rejection applies at one instance location
 
 `additionalProperties` is lexical.
 It sees only `properties` and `patternProperties` in the same schema object.
@@ -408,9 +438,10 @@ the successful `contains` schema.
 By contrast, `prefixItems` and `items` cover disjoint index ranges in Draft 2020-12, so
 their element schemas can be closed independently when `contains` is absent.
 
-A checked profile therefore needs a child co-evaluator rule as well as an in-place
-applicator rule: infer closure only when one structured evaluator describes the child
-location. Literal-pattern overlap can be detected by testing the literal name.
+The `status: enforced` support matrix therefore needs a child co-evaluator rule as well
+as an in-place applicator rule: infer closure only when one structured evaluator
+describes the child location.
+Literal-pattern overlap can be detected by testing the literal name.
 Proving that pattern pairs are disjoint is not practical portably, so independently
 closed structured pattern pairs should be refused conservatively.
 
@@ -649,10 +680,10 @@ strict-extras option.
 
 ### Follow-up evidence for child dependencies
 
-The checked-profile follow-up probes exposed two additional co-evaluator classes, an
+Follow-up probes of the supported subset exposed two additional co-evaluator classes, an
 indirect composition-reference class, and one graph-identity case:
 
-| Shape and instance | Raw | Prior checked overlay | Required profile result |
+| Shape and instance | Raw | Prior PR #44 overlay | Required result |
 | --- | --- | --- | --- |
 | Structured `items` and structured `contains`; one element carries both field sets | valid | invalid | `child_evaluator_overlap` |
 | Literal property and matching pattern apply separate structured schemas to one value | valid | invalid | `child_evaluator_overlap` |
@@ -729,7 +760,7 @@ key.” Run the same vector through Python and TypeScript.
 
 ## Comparison Matrix
 
-| Design dimension | Explicit authored closure | Checked overlay profile | General graph transformer |
+| Design dimension | Explicit authored closure | Checked validation-time subset | General graph transformer |
 | --- | --- | --- | --- |
 | Schema remains self-describing outside softschema | Yes | No | No |
 | `status` can tighten without regeneration | No | Yes | Yes |
@@ -760,11 +791,11 @@ The source model or hand-authored schema emits `additionalProperties` or
 - Pydantic and Zod source policies must be aligned deliberately.
 - Existing open schemas need a migration.
 
-### Option B: Define a checked enforced-overlay profile
+### Option B: Support only transformations the validator can verify
 
 Keep the validation-time overlay, but analyze the complete resource graph first.
-Apply closure only for supported shapes and return a stable `enforcement_unsupported`
-schema error for everything else.
+Publish the supported shapes as a normative matrix, apply closure only for those shapes,
+and return a stable `enforcement_unsupported` schema error for everything else.
 
 **Advantages:**
 
@@ -874,7 +905,7 @@ Repeated in-memory schema object identities return `schema_invalid/shared_subsch
 
 Shared semantic vectors now compare raw and enforced outcomes across both runtimes,
 including reference/resource equivalents and each unsupported reason.
-Python and TypeScript agree on checked-profile verdicts.
+Python and TypeScript agree on verdicts for the support matrix.
 The remaining native-engine record-set differences are listed and asserted separately
 under `engine_deviations`; they are not treated as verdict differences.
 

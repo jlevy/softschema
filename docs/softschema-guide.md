@@ -258,16 +258,19 @@ Bugs that used to silently break the consumer now fail loudly.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
 real authoring bugs, bind a compiled structural schema and flip `status: enforced`. The
-validator rejects undeclared fields at the structural boundary: a supported object site
-silent about closure receives `unevaluatedProperties` when declarations compose and
-`additionalProperties` otherwise.
+validator rejects undeclared fields at the structural boundary.
+In this guide, **closing an object** means rejecting each present property whose value
+is not evaluated by any successful applicable schema at that object location.
+A supported site receives `unevaluatedProperties: false` when declarations compose and
+`additionalProperties: false` otherwise.
 Structured `items` and disjoint `prefixItems`/`items` schemas close their object
 elements; a `contains` schema remains a matcher so enforcement cannot change which
 elements match. An explicit value for either keyword on the site still wins.
 A model without a structural schema is rejected because Pydantic and Zod have different
 unknown-key defaults.
-The checked profile returns `enforcement_unsupported` for a topology it cannot transform
-safely; see the [normative support matrix](softschema-spec.md#support-matrix).
+For a schema shape outside the support matrix, `status: enforced` returns
+`enforcement_unsupported` instead of guessing where to insert the rule; see the
+[normative support matrix](softschema-spec.md#support-matrix).
 Setting the source model to `extra="forbid"` additionally compiles strictness into the
 schema and enforces it at the semantic layer.
 
@@ -835,7 +838,7 @@ Under `enforced`, this behaves as follows — every row verified against both en
 | `{decision: pending}` | valid | the matcher does not fire, so the rule imposes nothing |
 | `{decision: abandoned, budget_spent: 12.5}` | valid | the rule fires and is satisfied |
 | `{decision: abandoned}` | invalid — `required property 'budget_spent' is missing` | the rule fires; the error names the field the author forgot |
-| `{decision: pending, bogus: 1}` | invalid — `property 'bogus' is not allowed` | closure still bites on a composed schema |
+| `{decision: pending, bogus: 1}` | invalid — `property 'bogus' is not allowed` | undeclared properties are still rejected in a composed schema |
 
 The third row is the point: the error is actionable, not a generic complaint about
 `allOf`.
@@ -851,9 +854,9 @@ If it did, `{decision: abandoned}` would stop matching the `if` — the document
 other properties for a closed matcher to accept — and the conditional would quietly
 never fire. You would not get an error; you would get a rule that does nothing.
 
-**2. Closure lands on the composition root, not inside the branches.** A branch cannot
-see what its siblings declare, so a branch that closed itself would reject their keys.
-Only the root sees all of them.
+**2. Reject undeclared properties at the composition root, not inside the branches.** A
+branch cannot see what its siblings declare, so inserting the rule in a branch would
+reject their keys. Only the root sees all of them.
 
 **3. The root closes with `unevaluatedProperties`, which is annotation-aware.** It
 admits any property that some subschema actually evaluated, wherever that subschema
@@ -883,9 +886,9 @@ rejected because the `then` branch does not apply and no successful schema evalu
 
 One profile rule comes with the annotation model.
 Python `jsonschema` and Ajv do not expose condition-matcher annotations consistently in
-every shape, so matcher fields must also be unconditionally evaluated at the closure
-site. Declare anything you match on there — `decision` above is declared at the root for
-exactly this reason.
+every shape, so matcher fields must also be unconditionally evaluated at the object
+being closed. Declare anything you match on there — `decision` above is declared at the
+root for exactly this reason.
 Otherwise enforced validation returns `enforcement_unsupported` with reason
 `conditional_annotation_scope`.
 

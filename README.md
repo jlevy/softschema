@@ -202,8 +202,12 @@ flags.
 
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
-`status: enforced` does require that structural schema and applies the checked closure
-profile in the spec’s [support matrix](docs/softschema-spec.md#support-matrix).
+`status: enforced` requires a structural schema.
+At each supported object location, it rejects a present property whose value is not
+admitted by any successful applicable schema.
+The spec’s [support matrix](docs/softschema-spec.md#support-matrix) lists the composed,
+referenced, and array-contained object shapes for which the validator can apply that
+rule without changing the authored schema’s other behavior.
 Contract IDs follow an enforced shape, `[namespace:]Name[/version]`—for example
 `example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0`—naming a payload
 contract, not a class or import path.

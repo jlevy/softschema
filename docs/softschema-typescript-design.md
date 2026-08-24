@@ -97,14 +97,15 @@ structural schema is bound.
 Before Ajv compilation, `prepareSchemaGraph` checks the root and every supplied resource
 as one offline graph.
 It validates the Draft 2020-12 schemas and portable regular expressions, indexes URI
-identities, resolves the supported static `$ref` forms, and applies closure at the
-instance sites where annotation flow makes the overlay safe.
-Reusable definitions and resources stay open; structured reference application sites
-close independently.
-Structured `items` and disjoint `prefixItems`/`items` are closed independently, while
-`contains` remains a matcher.
+identities, resolves the supported static `$ref` forms, and rejects undeclared
+properties at each object location where annotation flow makes the overlay safe.
+A property is undeclared when no successful applicable schema evaluates its value at
+that location. Reusable definitions and resources stay open; structured reference
+application sites receive the rule independently.
+Structured `items` and disjoint `prefixItems`/`items` also receive it independently,
+while `contains` remains a matcher.
 Sibling child evaluators and context-sensitive composition references are refused when
-independent or indirect closure could change authored semantics.
+independently inserting that rejection rule could change authored semantics.
 Caller-constructed graphs that reuse one object at several schema locations return
 `schema_invalid/shared_subschema`. Unsupported topologies return a structured
 `enforcement_unsupported` record rather than a document verdict produced by a partial
