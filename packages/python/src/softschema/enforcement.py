@@ -6,6 +6,9 @@ the root schema and every supplied resource as one offline graph, resolves the s
 schema evaluates its value. The implementation calls insertion of that local rule
 ``closure`` and performs it only where annotation flow makes the transformation
 semantics-preserving.
+
+Design rationale and counterexamples:
+``docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md``.
 """
 
 from __future__ import annotations

@@ -301,22 +301,6 @@ softschema should either require the author to supply that rule or publish a res
 support matrix and reject every shape outside it.
 It should not silently apply a partial approximation to every Draft 2020-12 schema.
 
-### Compatibility with version 0.6.2
-
-The ability to validate previously refused `allOf`, conditional, and dependent-schema
-shapes is additive, but the complete change is not wholly backward-compatible.
-
-| Surface | Version 0.6.2 | After the PR #42 and #44 stack | Compatibility |
-| --- | --- | --- | --- |
-| Supported `allOf`, `if`/`then`/`else`, and `dependentSchemas` object shapes | Refuses the composed schema before returning a document verdict | Returns the schema’s real valid or invalid verdict and rejects undeclared properties | Additive validation support |
-| `anyOf`, `oneOf`, and reusable `$ref` targets | Can insert `additionalProperties: false` inside alternatives or shared targets, changing branch selection or making use sites interfere | Leaves alternatives and reusable targets unchanged and inserts the rule at a supported parent or reference application site | Correctness fix; verdicts can change for affected edge cases |
-| Plain enforced object schemas | Rejects undeclared properties | Preserves that validity behavior, with more specific error records | Verdict-compatible; diagnostic API changes |
-| `status: enforced` with a semantic model but no structural schema | Can succeed after model validation alone | Returns `enforced_schema_required` | Intentional breaking correction |
-| Supplied schema resources | Can bypass root preprocessing or rely on engine-specific retrieval behavior | Every supplied resource is checked and registered with the root in one offline resource graph | Stricter and potentially breaking |
-| Shapes whose safe transformation is not proved | Version 0.6.2 broadly refuses composed shapes; the base PR attempted some unsafe ones | Returns `enforcement_unsupported` with a stable reason instead of guessing | No loss relative to 0.6.2; a safety correction relative to the base PR |
-| `soft` and `permissive` validation | Existing behavior | Unchanged | Compatible |
-| Compiled schema bytes and `schema_sha256` | Existing output | Unchanged because insertion happens only during validation | Compatible |
-
 ## Research Questions
 
 1. Which JSON Schema keywords express field presence, field dependencies, field
@@ -636,54 +620,58 @@ and the only semantic model ignores or strips extras.
 An API must either require a structural schema for enforced status, derive one in
 memory, or explicitly apply a strict semantic policy in each runtime.
 
-## softschema PR #42 Evidence
+## Failure Modes Demonstrated by Runtime Probes
 
-The following probes compare each authored schema with the PR-head validation-time
-overlay. Except where noted, Python and TypeScript produced the same verdict.
-“Raw” means the authored Draft 2020-12 schema; “enforced” means the current softschema
-overlay.
+The following probes test a naive recursive overlay: insert undeclared-property rules
+from schema syntax without complete application-site, resource, and child co-evaluator
+analysis. Except where noted, Python and TypeScript produced the same verdict.
+“Raw” means the authored Draft 2020-12 schema; “naive overlay” means the result after
+that incomplete transformation.
+The naive overlay is a counterexample model, not softschema’s current implementation.
 
-| Shape and instance | Raw | Enforced | Interpretation |
+| Shape and instance | Raw | Naive overlay | Interpretation |
 | --- | --- | --- | --- |
 | Simple `properties`, plus `bogus` | valid | invalid | Intended narrowing |
-| Two `allOf` branches declaring `a` and `b`; `{a, b}` | valid | valid | PR’s central fix works |
+| Two `allOf` branches declaring `a` and `b`; `{a, b}` | valid | valid | Parent-level `unevaluatedProperties` preserves successful branch annotations |
 | Two successful `anyOf` branches declaring `a` and `b`; `{a, b}` | valid | invalid | Branch-local closure rejects declared keys |
 | Two overlapping `oneOf` branches; `{a}` | invalid | valid | Overlay changes branch selection and widens the schema |
 | One `$defs` target used both standalone and in `allOf`; composed `{street, extra}` | valid | invalid | Global target closure makes use sites interfere |
 | `$ref` with sibling `unevaluatedProperties: true`; `{street, extra}` | valid | invalid | Explicit opt-out cannot override target mutation |
-| `patternProperties`-only object with one unmatched key | valid | valid | Enforced mode does not close the structured pattern map |
+| `patternProperties`-only object with one unmatched key | valid | valid | A syntax scan that considers only `properties` misses the structured pattern declaration |
 | `$ref` plus sibling `patternProperties`; matching extra key | valid | invalid | Target closure cannot see the sibling pattern annotation |
 | `allOf` extension through `$anchor` | valid | invalid | Root-only pointer resolver misses a valid target form |
 | Extension through nested `$defs` | valid | invalid | Root-only definition indexing misses nested targets |
-| Object supplied through the public external `resources` map, plus extra key | valid | valid | Resources bypass the overlay |
-| `$defs` workaround referenced below a conditional fragment, with nested extra key | valid | valid | The documented workaround does not restore closure |
+| Object supplied through the public external `resources` map, plus extra key | valid | valid | A root-only transformation leaves supplied resources unchanged |
+| `$defs` target referenced below a conditional fragment, with nested extra key | valid | valid | Moving the child schema behind a reference does not solve instance-location analysis |
 
 A plain-name `$dynamicRef` probe was also engine-sensitive: Python accepted the raw
-schema and rejected the overlaid instance, while Ajv failed compilation with a stack
+schema and rejected the transformed instance, while Ajv failed compilation with a stack
 overflow for both. This is a warning against claiming dynamic-reference support in the
 transformer based only on keyword recognition.
 A dedicated official-conformance fixture is needed before that topology belongs in an
 enforced profile.
 
-The resource path exposes a second inconsistency.
-With an external resource containing the Python-only pattern `(?P<x>a)`, Python built
-the validator and accepted `"a"`; Ajv returned `schema_invalid` for an invalid regular
-expression. The root schema is checked against softschema’s portable regex subset, but
-supplied resources are not.
+Root-only resource preparation exposes a second inconsistency.
+With an external resource containing the Python-only pattern `(?P<x>a)`, Python can
+build the validator and accept `"a"`, while Ajv returns `schema_invalid` for an invalid
+regular expression. Checking only the root against softschema’s portable regex subset
+therefore allows supplied resources to bypass the portability rule.
 The same prepare-and-check pipeline must cover the entire graph.
 
-Finally, an `enforced` Python `Contract` with only a default Pydantic model accepted
-`{known: 1, bogus: 2}`. Structural validation reported `inferred_via_model`, and
-semantic validation ignored the extra key.
-The low-level `validate_values` and `validateValues` APIs also provide no status or
-strict-extras option.
+Model-only enforcement exposes a separate boundary problem.
+A default Pydantic model can accept `{known: 1, bogus: 2}` because its semantic
+validation ignores the extra key.
+If no structural schema is bound, `status: enforced` cannot make the JSON Schema
+contract authoritative.
 
-### Follow-up evidence for child dependencies
+### Additional probes for child dependencies
 
-Follow-up probes of the supported subset exposed two additional co-evaluator classes, an
-indirect composition-reference class, and one graph-identity case:
+A second candidate handled in-place composition and resource graphs but not sibling
+child applicators or references that indirectly reached transformed descendants.
+Probes against it expose two additional co-evaluator classes, an indirect
+composition-reference class, and one graph-identity case:
 
-| Shape and instance | Raw | Prior PR #44 overlay | Required result |
+| Shape and instance | Raw | Second candidate | Required result |
 | --- | --- | --- | --- |
 | Structured `items` and structured `contains`; one element carries both field sets | valid | invalid | `child_evaluator_overlap` |
 | Literal property and matching pattern apply separate structured schemas to one value | valid | invalid | `child_evaluator_overlap` |
@@ -838,15 +826,16 @@ contract.
 
 ## Recommendations
 
-Use Option B for the immediate correction and treat Option A as the simpler long-term
-contract.
+Use Option B for the current implementation boundary and treat Option A as the simpler
+long-term contract.
 
-1. Restore a structured unsupported result until each composition family has semantic
+1. Return a structured unsupported result unless a composition family has semantic
    before/after vectors.
    Do not replace an honest refusal with a wrong verdict.
-2. Move the overlay out of the canonicalization module into a schema-graph preparation
-   component that accepts the root and supplied resources together.
-3. Define the enforced profile in the main spec.
+2. Keep the overlay separate from canonical schema generation, in a schema-graph
+   preparation component that accepts the root and supplied resources together.
+3. Define the enforced profile in the
+   [softschema specification](../../softschema-spec.md#support-matrix).
    Base declarations on successful property-evaluation annotations; include
    `patternProperties`; state explicitly that `required`, `dependentRequired`, and
    `propertyNames` do not evaluate values.
@@ -868,9 +857,9 @@ contract.
 
 ## Documentation Requirements
 
-The normative documentation should contain one support matrix rather than distributing
-behavior across a spec, two design docs, code docstrings, an active plan, and vector
-comments. At minimum it should state:
+A product that adds this policy over JSON Schema needs one normative support matrix
+rather than behavior distributed across examples, implementation comments, and tests.
+At minimum the matrix should state:
 
 - supported object declaration keywords;
 - supported in-place applicators;
@@ -881,18 +870,16 @@ comments. At minimum it should state:
 - parity guarantees for verdicts versus diagnostic record sets; and
 - verified workarounds for unsupported shapes.
 
-Every referenced tracking ID should resolve on the reviewed branch.
-A limitation without a real issue is not tracked merely because a comment names an ID.
+## softschema Policy and Implementation Boundary
 
-## Implementation Outcome
-
-The stacked remediation implements Option B. Both runtimes now prepare the root and
-supplied resources as one checked offline graph, keep reusable targets open, and close
-structured application sites independently.
+softschema implements Option B. Both runtimes prepare the root and supplied resources as
+one checked offline graph, keep reusable targets open, and insert the
+undeclared-property rule at each supported structured application site.
 The implementation covers static pointers, escaped pointer tokens, anchors, nested
 definitions, embedded resource identities, supplied resources, literal and pattern
 declarations, alternatives, conditionals, dependent schemas, plain array item closure,
-and disjoint `prefixItems`/`items` within the profile specified in the main spec.
+and disjoint `prefixItems`/`items` within the
+[normative support matrix](../../softschema-spec.md#support-matrix).
 
 The implementation also makes the boundary explicit.
 Dynamic references and the instance-location, child co-evaluator, and context-sensitive
@@ -903,29 +890,11 @@ undeclared-field errors carry the affected `property`, with one record per field
 array positions in TypeScript and Python error paths are numeric.
 Repeated in-memory schema object identities return `schema_invalid/shared_subschema`.
 
-Shared semantic vectors now compare raw and enforced outcomes across both runtimes,
+Shared semantic vectors compare raw and enforced outcomes across both runtimes,
 including reference/resource equivalents and each unsupported reason.
 Python and TypeScript agree on verdicts for the support matrix.
 The remaining native-engine record-set differences are listed and asserted separately
 under `engine_deviations`; they are not treated as verdict differences.
-
-## Next Steps
-
-- [x] Resolve alternative-branch semantics (`ss-vy4t`).
-- [x] Replace global definition closure with application-site policy (`ss-iq9w`).
-- [x] Prepare and validate the complete schema resource graph (`ss-qr8j`).
-- [x] Define `patternProperties` declaration behavior (`ss-w78w`).
-- [x] Make enforced status a real API guarantee (`ss-4est`).
-- [x] Preserve offending field identity in structural errors (`ss-5rjo`).
-- [x] Reconcile the spec, design docs, examples, vectors, docstrings, and issue links
-  (`ss-pq0m`).
-- [x] Refuse independently closed sibling child evaluators (`ss-tmf7`, `ss-hkei`).
-- [x] Reject shared in-memory subschema identity (`ss-juw0`).
-- [x] Specify success-sensitive branch declarations (`ss-zylb`).
-- [x] Normalize array-index paths and harden Python field recovery (`ss-zpso`,
-  `ss-girn`).
-- [x] Refuse context-sensitive composition references to transformed targets
-  (`ss-2hn1`).
 
 ## Methodology
 
@@ -933,8 +902,8 @@ The research combined four evidence sources:
 
 1. Normative Draft 2020-12 core and validation specifications.
 2. Official documentation for Python `jsonschema`/`referencing`, Ajv, Pydantic, and Zod.
-3. Static inspection of the PR-head Python and TypeScript implementations, tests,
-   vectors, and main design documents.
+3. Static inspection of the Python and TypeScript implementations, tests, vectors, and
+   main design documents.
 4. Paired runtime probes against the dependency versions installed from this
    repository’s locks. Probes compared raw and overlaid verdicts and inspected native
    error details.

@@ -3,6 +3,8 @@
  *
  * "Closure" below means rejecting a present object property when no successful
  * applicable schema evaluates its value at that object location.
+ * Design rationale and counterexamples:
+ * docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md
  */
 
 import { isMapping } from "./guards.js";
