@@ -3,15 +3,19 @@ type: is
 id: is-01m0pkvkvwwm4xfn5pnvyyaqnq
 title: "Enforced closure and anyOf/oneOf: over-rejection beside siblings, under-enforcement inside fragments"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels:
   - enforcement
   - json-schema
 dependencies: []
 created_at: 2026-08-23T06:10:20.668Z
-updated_at: 2026-08-23T09:14:49.209Z
+updated_at: 2026-08-24T18:48:47.807Z
+closed_at: 2026-08-24T18:48:47.806Z
+close_reason: "Resolved by the checked-profile alternative handling in PR #44; anyOf/oneOf branch selection and parent closure are pinned across both runtimes."
+resolution: null
+duplicate_of: null
 ---
 Two related defects in how the enforced overlay treats anyOf/oneOf. Both need the SAME maintainer decision about branch-closure semantics, so they are tracked together.
 
