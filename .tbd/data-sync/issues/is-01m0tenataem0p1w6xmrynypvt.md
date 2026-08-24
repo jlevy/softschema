@@ -5,7 +5,7 @@ title: "Address PR #44 checked-enforcement review"
 kind: epic
 status: closed
 priority: 1
-version: 11
+version: 15
 labels:
   - pr-review
   - enforcement
@@ -19,10 +19,12 @@ child_order_hints:
   - is-01m0tep2k7kvpevkcg54v7pc0c
   - is-01m0tep2y1kzqp2khvms1sw0yh
   - is-01m0tfbthsfev227r473tw68wz
+  - is-01m0tqka43mzbyfhex3nem2bsc
+  - is-01m0tr91qdd1tx150ptp9v70ec
 created_at: 2026-08-24T17:56:29.631Z
-updated_at: 2026-08-24T18:49:04.253Z
-closed_at: 2026-08-24T18:48:48.141Z
-close_reason: "All S1-S8 review findings are implemented, documented, dispositioned, and green locally and in GitHub CI on PR #44."
+updated_at: 2026-08-24T20:59:19.567Z
+closed_at: 2026-08-24T20:59:19.566Z
+close_reason: "Completed the holistic PR #42 to #44 review and all S1-S8 remediation, upstream integration, first-principles research brief, concrete scope and compatibility rewrite, PR metadata/comments, local Python and TypeScript verification, package/golden/parity checks, and final 18-check GitHub CI run at 2d20a6a."
 resolution: null
 duplicate_of: null
 ---
