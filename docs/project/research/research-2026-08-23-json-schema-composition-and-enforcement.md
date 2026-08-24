@@ -1,10 +1,10 @@
 ---
 title: JSON Schema Composition, Field Dependencies, and Enforced Closure
 description: >-
-  Research into Draft 2020-12 field relationships, annotation-based closure,
-  object and array child applicators, references and resources, Python jsonschema and
-  TypeScript Ajv behavior, and the implications for softschema's enforced validation
-  policy.
+  A first-principles guide to JSON Schema evaluation and draft history, followed by
+  research into Draft 2020-12 field relationships, annotation-based closure, object and
+  array child applicators, references and resources, Python jsonschema and TypeScript
+  Ajv behavior, and the implications for softschema's enforced validation policy.
 author: Joshua Levy with OpenAI Codex assistance
 ---
 # Research: JSON Schema Composition, Field Dependencies, and Enforced Closure
@@ -17,30 +17,277 @@ author: Joshua Levy with OpenAI Codex assistance
 
 ## Overview
 
-This research supports the design review of softschema PR #42. The immediate change
-replaces a blanket refusal to enforce composed schemas with an annotation-aware closure
-overlay. The larger question is whether a validator can infer “declared fields” from an
-arbitrary JSON Schema without changing the schema’s meaning.
+JSON is a data format for six kinds of value: `null`, booleans, numbers, strings,
+arrays, and objects.
+**JSON Schema** is a declarative language for describing which JSON values an
+application accepts.
+A validator receives two inputs—a schema and the JSON value being checked—and evaluates
+whether that value satisfies the schema.
+JSON Schema’s `integer` type describes numbers whose mathematical value has no
+fractional part; it is not a seventh JSON value kind.
 
-That question crosses several boundaries:
+softschema uses JSON Schema as the portable structural contract for the YAML payload in
+a Markdown artifact.
+YAML is an authoring syntax here; after parsing, the payload and schema must have the
+same data model as JSON. The difficult part of `status: enforced` is deciding which
+object properties count as part of that contract when several subschemas describe the
+same object.
 
-- JSON Schema distinguishes assertions, applicators, and annotations.
-  “Declared field” is a softschema policy term, not a JSON Schema term.
-- Object keywords operate at an instance location.
-  Composition and references can bring declarations from several schema objects to that
-  same location.
-- `$ref` resolves through a resource graph, not through a root-only map of `$defs` keys.
-- Python `jsonschema` and TypeScript Ajv implement the same draft but expose different
-  compilation, resource, and diagnostic surfaces.
-- Pydantic and Zod add separate semantic-validation behavior that is not automatically
-  represented by the compiled structural schema.
+## JSON Schema From First Principles
+
+### An instance is the value being checked
+
+The JSON value being validated is called the **instance**. It can be a whole document or
+one value nested inside a document.
+JSON objects are string-keyed mappings; each key-value pair is a **property**. “Field”
+is common application terminology, but “property” is the precise JSON and JSON Schema
+term.
+
+A **schema** is itself JSON. In modern drafts it is either an object or a boolean:
+
+- `{}` and `true` accept every instance.
+- `false` rejects every instance.
+- A schema object uses named **keywords** to describe or constrain an instance.
+
+softschema’s compiled schemas are often written as YAML for readability.
+The following YAML is equivalent to a JSON Schema object:
+
+```yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+properties:
+  account_id: {type: integer}
+  display_name: {type: string}
+required: [account_id]
+additionalProperties: false
+```
+
+The schema has five independent meanings:
+
+- `$schema` selects the Draft 2020-12 dialect.
+- `type: object` rejects non-object instances.
+- `properties` validates `account_id` and `display_name` when they are present.
+- `required` makes `account_id` mandatory.
+- `additionalProperties: false` rejects every other property name.
+
+The independence is important.
+`properties` does not make a property required, and `required` does not validate its
+value. Object-specific keywords also do not imply `type: object`; they simply have no
+effect on a non-object instance.
+A robust schema usually states the intended type explicitly.
+
+| Instance | Result | Reason |
+| --- | --- | --- |
+| `{"account_id": 42}` | valid | The required property is present and is an integer |
+| `{}` | invalid | `account_id` is required |
+| `{"account_id": "42"}` | invalid | JSON Schema does not coerce the string to an integer |
+| `{"account_id": 42, "nickname": "Al"}` | invalid | `nickname` is an additional property |
+
+### Validation evaluates; it does not construct or mutate
+
+Evaluation recursively applies the schema to the instance.
+At the root, the schema above applies to the whole object.
+A schema nested inside another schema is a **subschema**. Paths can be written as JSON
+Pointers, a slash-separated location syntax: the subschema at schema location
+`/properties/account_id` applies to the child value at instance location `/account_id`.
+That distinction between a **schema location** and an **instance location** becomes
+central once schemas compose.
+
+JSON Schema validation does not, by itself:
+
+- parse JSON or YAML;
+- coerce a string into a number;
+- insert a `default` value;
+- remove unknown properties;
+- instantiate a Python or TypeScript class; or
+- run arbitrary application logic.
+
+It produces a validity result and may produce annotations and diagnostics.
+Parsing, normalization, model construction, and business rules are separate application
+layers. This is why a Pydantic or Zod model can behave differently from the JSON Schema
+it generates.
+
+### A dialect defines the language being evaluated
+
+A JSON Schema release is a **dialect**: a set of keywords and their exact semantics.
+The root `$schema` URI identifies the dialect and its **meta-schema**, which is a schema
+for checking schemas.
+Without `$schema`, a validator must be configured with a dialect or choose a default,
+which can change the meaning of the document.
+
+Draft 2020-12 also organizes keywords into **vocabularies**. A vocabulary groups related
+keywords, such as core identifiers, validation assertions, applicators, or annotations.
+Custom dialects can choose vocabularies, so recognizing a keyword’s spelling is not
+enough without knowing its dialect and vocabulary.
+
+### Keywords have different jobs
+
+The following categories prevent several common misunderstandings:
+
+| Role | What it does | Examples |
+| --- | --- | --- |
+| Core organization and identity | Selects a dialect, stores subschemas, or identifies schema resources and locations | `$schema`, `$id`, `$anchor`, `$defs` |
+| Assertion | Contributes a pass or fail condition | `type`, `required`, `minimum`, `minProperties` |
+| Applicator | Applies one or more subschemas to the current or a child instance location | `properties`, `items`, `allOf`, `if`, `$ref` |
+| Annotation | Attaches information for tools without normally changing validity | `title`, `description`, `default`, `deprecated` |
+
+Applicators may also produce **evaluation annotations** that record which object
+properties or array elements their subschemas evaluated.
+These internal annotations are not the same as descriptive keywords such as `title`.
+Draft 2020-12’s `unevaluatedProperties` and `unevaluatedItems` use them to find values
+that no successful applicable subschema has covered.
+
+### Object keywords describe presence, values, names, and closure separately
+
+The `properties` keyword is open by default: it ignores property names that it does not
+list. Other object keywords may still constrain them.
+These keywords divide responsibility rather than building one class-like field
+declaration table.
+
+| Keyword | Relationship expressed | Evaluates property values? |
+| --- | --- | --- |
+| `properties` | Apply a subschema to each named property when present | Yes |
+| `patternProperties` | Apply a subschema for every regular expression that matches a property name | Yes; every matching pattern applies |
+| `required` | Require listed property names to be present | No |
+| `dependentRequired` | When one property is present, require other names | No |
+| `dependentSchemas` | When one property is present, apply a subschema to the whole object | Through the applied subschema |
+| `propertyNames` | Validate each property name as a string | No; it does not evaluate the corresponding values |
+| `minProperties` / `maxProperties` | Constrain the number of properties | No |
+| `additionalProperties` | Apply a subschema to values unmatched by sibling `properties` and `patternProperties` | Yes |
+| `unevaluatedProperties` | Apply a subschema to values not evaluated by relevant successful schemas | Yes |
+
+The distinction between the last two rows is the source of the closure problem:
+
+- `additionalProperties` is **lexical**. It sees only `properties` and
+  `patternProperties` beside it in the same schema object.
+- `unevaluatedProperties` is **annotation-aware**. It can account for successful
+  evaluations contributed through adjacent composition and references.
+
+Both keywords take a schema, not merely a boolean.
+Setting either to `false` rejects the properties in its domain; setting it to another
+schema validates those property values against that schema.
+
+### Composition combines constraints, not object definitions
+
+An applicator’s subschema may apply to the same instance location as its parent.
+These are **in-place applicators**. The boolean composition keywords are the simplest
+examples:
+
+| Keyword | Validity rule |
+| --- | --- |
+| `allOf` | Every subschema must succeed |
+| `anyOf` | One or more subschemas must succeed |
+| `oneOf` | Exactly one subschema must succeed |
+| `not` | Its subschema must fail |
+
+`allOf` is logical AND, not object-oriented inheritance or a merge operation.
+Each branch receives the complete instance and retains its own rules.
+An `additionalProperties: false` inside one branch therefore rejects properties
+described only by another branch.
+
+Conditional applicators are also in-place.
+`if` evaluates a matcher and selects `then` or `else`; `dependentSchemas` applies a
+whole-object subschema when its trigger property is present.
+Which branches succeed determines both validity and which evaluation annotations are
+available. Annotations below `not` do not escape the negated schema.
+
+### Child applicators can overlap
+
+Other applicators move evaluation to child locations:
+
+- `properties` and `patternProperties` apply schemas to object-property values;
+- `prefixItems` applies schemas to specific array positions;
+- `items` applies one schema to array positions after `prefixItems`; and
+- `contains` tests array elements and can constrain the number of matches with
+  `minContains` and `maxContains`.
+
+Child locations are not necessarily independent.
+A literal property and every matching pattern all apply to the same value.
+An array element can be evaluated by `items` and also tested by `contains`. In Draft
+2020-12, elements that satisfy `contains` count as evaluated for `unevaluatedItems`. A
+transformation that closes each child subschema in isolation can therefore change an
+intersection or change which elements match.
+
+### References turn the schema tree into a resource graph
+
+`$defs` is a storage location for reusable subschemas; putting a schema there does not
+apply it. `$ref` applies a referenced schema at the current instance location.
+It is an in-place applicator, not a textual include, class import, or inheritance
+mechanism.
+
+A reference is a URI reference resolved against the current base URI. It can point to a
+JSON Pointer such as `#/$defs/Address`, a named `$anchor`, an embedded resource whose
+`$id` establishes a new base URI, or a separately supplied resource.
+References can be recursive.
+The effective structure is therefore a graph of resources and application sites, even
+when the source text is one YAML tree.
+
+This distinction matters for transformation.
+A reusable target can be applied alone in one place and combined with sibling
+constraints in another.
+Mutating the shared target to satisfy one use site also changes every other use site.
+
+## How JSON Schema Reached Draft 2020-12
+
+JSON Schema has evolved through released **drafts**. In this context,
+[“draft” names a completed release](https://json-schema.org/learn/glossary#draft), not
+an unfinished proposal.
+Schemas should identify a specific draft because later dialects can add keywords or
+change semantics.
+
+The history most relevant to composition and closure is:
+
+| Release | Relevant evolution |
+| --- | --- |
+| [Drafts 0–3 (2009–2010)](https://json-schema.org/specification-links) | The first IETF Internet-Draft line established a schema language for JSON values. |
+| [Draft 4 (2013)](https://json-schema.org/specification-links#draft-4) | The specification separated core, validation, and JSON Reference documents. The combination of `$ref`, `allOf`, and lexical `additionalProperties` already made closed-schema reuse difficult. |
+| [Draft 6 (2017)](https://json-schema.org/draft-06/json-schema-release-notes) | `id` became `$id`; boolean schemas became valid everywhere; `propertyNames`, `contains`, and `const` were added. Its release notes explicitly documented that `additionalProperties` could not see across composed reusable schemas and deferred a general solution. |
+| [Draft 7 (2018)](https://json-schema.org/draft-07/json-schema-release-notes) | `if`/`then`/`else` added direct conditional evaluation, and the specification clarified the assertion, applicator, and annotation model. |
+| [Draft 2019-09](https://json-schema.org/draft/2019-09/release-notes) | Numbered meta-schema names changed to year-month identifiers. This release organized keywords into vocabularies, formalized annotation and output handling, allowed `$ref` siblings, renamed `definitions` to `$defs`, split `dependencies`, and introduced `unevaluatedProperties` and `unevaluatedItems`. |
+| [Draft 2020-12](https://json-schema.org/draft/2020-12/release-notes) | Tuple validation changed from array-form `items` plus `additionalItems` to `prefixItems` plus `items`; `$dynamicRef` and `$dynamicAnchor` replaced the narrower recursive-reference keywords; and successful `contains` matches were defined as evaluated array items. The unevaluated keywords moved into their own vocabulary. |
+
+Draft 5 sometimes appears in older material, but it was a cleanup of Draft 4 without a
+new meta-schema or new validation behavior.
+Starting with 2019-09, year-month names avoid confusion between sequential meta-schema
+names and independently numbered IETF documents.
+The final Draft 2020-12 specification documents were published in June 2022.
+
+This progression explains why closure is subtle rather than accidental.
+The lexical behavior of `additionalProperties` preserves the meaning of a subschema
+wherever it is reused, but it cannot see declarations supplied elsewhere.
+`unevaluatedProperties` was added later to close an object *after* successful in-place
+evaluations have contributed annotations.
+It is an evaluation mechanism, not a static union of every property name found in the
+schema text.
+
+## The softschema Enforcement Problem
+
+An object schema using `properties` remains open to unmatched names unless another
+keyword constrains them.
+softschema deliberately gives `status: enforced` a stronger meaning: supported object
+sites that declare structure should reject properties left outside the contract.
+The validator therefore overlays closure at validation time even when the compiled
+schema is silent about it.
+
+The design question is whether that overlay can infer “declared fields” from an
+arbitrary Draft 2020-12 schema without changing any other part of the authored schema’s
+meaning. “Declared field” is a softschema policy term, not a JSON Schema term.
+The closest native concept is a property value evaluated by a successful applicable
+schema at the same instance location.
+
+That question crosses three layers:
+
+1. Draft 2020-12 defines assertions, applicators, annotations, and reference resolution.
+2. softschema adds a validation-time closure policy over the authored structural schema.
+3. Pydantic and Zod may add coercion, unknown-key handling, and cross-field rules that
+   are not represented identically in JSON Schema.
 
 The core conclusion is that a general enforced-closure pass is a schema compiler, not a
-local tree rewrite. Softschema should either require explicit closure in the authored
+local tree rewrite. softschema should either require explicit closure in the authored
 schema or define a restricted, checked enforcement profile.
 It should not silently apply a partial approximation to every Draft 2020-12 schema.
 
-## Questions to Answer
+## Research Questions
 
 1. Which JSON Schema keywords express field presence, field dependencies, field
    evaluation, and closed-object behavior?
@@ -71,9 +318,9 @@ It compares the versions installed in this repository on 2026-08-23:
 
 The research does not attempt to define arbitrary business invariants, compare every
 JSON Schema implementation, or design network schema retrieval.
-Softschema’s closed in-memory resource policy remains a sound boundary.
+softschema’s closed in-memory resource policy remains a sound boundary.
 
-## Findings
+## Detailed Findings
 
 ### “Declared” and “evaluated” are different concepts
 
@@ -94,20 +341,6 @@ unevaluatedProperties: false
 `required` asserts presence, but it does not apply a schema to the property value and
 does not mark the property as evaluated.
 Adding `properties: {account_id: true}` makes the intended declaration explicit.
-
-The main object keywords have these roles:
-
-| Keyword | Relationship expressed | Marks property values evaluated? | Closure consequence |
-| --- | --- | --- | --- |
-| `properties` | Apply a schema to each named property when present | Yes | Names can satisfy `unevaluatedProperties` |
-| `patternProperties` | Apply schemas to every name matching each pattern | Yes | Matching names must not be treated as extras |
-| `additionalProperties` | Apply a schema to names unmatched by sibling `properties` and `patternProperties` | Yes | Lexical; cannot see declarations in sibling schema objects |
-| `unevaluatedProperties` | Apply a schema after adjacent in-place applicators have contributed annotations | It consumes and then produces evaluation information | Appropriate at a composition site |
-| `required` | Require listed names to exist | No | A required name must still be declared or otherwise evaluated |
-| `dependentRequired` | Require names when a trigger name exists | No | Presence dependency only; it does not declare either name |
-| `dependentSchemas` | Apply a subschema to the whole object when a trigger name exists | Through the applied subschema | Behaves like conditional in-place composition |
-| `propertyNames` | Validate each key string | No for property values | Does not make the corresponding values evaluated |
-| `minProperties` / `maxProperties` | Constrain object cardinality | No | No effect on declared-key closure |
 
 `patternProperties` patterns can overlap.
 A property matching two patterns must satisfy both schemas.
@@ -372,7 +605,7 @@ and the only semantic model ignores or strips extras.
 An API must either require a structural schema for enforced status, derive one in
 memory, or explicitly apply a strict semantic policy in each runtime.
 
-## Softschema PR #42 Evidence
+## softschema PR #42 Evidence
 
 The following probes compare each authored schema with the PR-head validation-time
 overlay. Except where noted, Python and TypeScript produced the same verdict.
@@ -447,7 +680,7 @@ validator-cache hit because identity sharing is not represented in serialized JS
 
 The authored schema permits additional properties when no closure keyword says
 otherwise.
-Softschema’s enforced mode deliberately assigns a stronger meaning to a subset
+softschema’s enforced mode deliberately assigns a stronger meaning to a subset
 of schema shapes. That is a language profile layered on Draft 2020-12, not merely
 “turning on” a dormant JSON Schema option.
 
@@ -681,6 +914,17 @@ decision.
 
 ## References
 
+- [JSON Schema overview](https://json-schema.org/overview/what-is-jsonschema)
+- [JSON Schema glossary](https://json-schema.org/learn/glossary)
+- [JSON Schema basics](https://json-schema.org/understanding-json-schema/basics)
+- [JSON Schema dialects and `$schema`](https://json-schema.org/understanding-json-schema/reference/schema)
+- [JSON Schema object keywords](https://json-schema.org/understanding-json-schema/reference/object)
+- [JSON Schema composition](https://json-schema.org/understanding-json-schema/reference/combining)
+- [JSON Schema specification timeline](https://json-schema.org/specification-links)
+- [Draft 6 release notes](https://json-schema.org/draft-06/json-schema-release-notes)
+- [Draft 7 release notes](https://json-schema.org/draft-07/json-schema-release-notes)
+- [Draft 2019-09 release notes](https://json-schema.org/draft/2019-09/release-notes)
+- [Draft 2020-12 release notes](https://json-schema.org/draft/2020-12/release-notes)
 - [JSON Schema Draft 2020-12 Core](https://json-schema.org/draft/2020-12/json-schema-core)
 - [Draft 2020-12 annotations](https://json-schema.org/draft/2020-12/json-schema-core#section-7.5)
 - [Draft 2020-12 schema references](https://json-schema.org/draft/2020-12/json-schema-core#section-8.2.3)
