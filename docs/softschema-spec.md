@@ -573,9 +573,44 @@ Markdown body prose and tables are reader-facing and never authoritative.
 ## Compiled Schemas
 
 A compiled schema is a generated validation contract, usually JSON Schema written as
-YAML. It is the language-neutral form of a contract: a Pydantic class or Zod schema
-compiles to it (provably identically—the conformance machinery guarantees an equal
-`schema_sha256`), and any language can validate against it.
+YAML. It is the language-neutral form of a contract, and any language can validate
+against it. Equivalent Pydantic and Zod sources within softschema’s model-compiler
+profile compile to the same canonical content and `schema_sha256`. This guarantee is
+covered by shared conformance fixtures; it does not extend to every feature that either
+model library can express.
+
+### Release-Level Mapping Across JSON Schema, Pydantic, and Zod
+
+The compiled JSON Schema is the portable boundary.
+The table below summarizes the key areas exercised by the shared
+[Pydantic model](../examples/parity/model.py),
+[Zod schema](../packages/typescript/test/fixtures/parity.ts), and
+[compiled-schema fixture](../examples/parity/parity.schema.yaml).
+
+| Area | Canonical Draft 2020-12 form | Pydantic source | Zod source | Guarantee in this release |
+| --- | --- | --- | --- | --- |
+| Scalar types and field presence | `type`, object `properties`, and `required` | `str`, `int`, `float`, and `bool` fields on a `BaseModel`; a field without a default is required | `z.string()`, `z.int()`, `z.number()`, and `z.boolean()` inside `z.object()` or `z.strictObject()`; `.optional()` makes a key optional | Equivalent fixture shapes compile to the same structural schema |
+| Numeric, string, and choice constraints | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minLength`, `maxLength`, `pattern`, and `enum` | `Field(ge=, le=, gt=, lt=, multiple_of=, min_length=, max_length=, pattern=)` and `Literal` | `.min()`, `.max()`, `.gt()`, `.lt()`, `.multipleOf()`, string `.min()`, string `.max()`, `.regex()`, and `z.enum()` | Equivalent fixture constraints compile identically; regular expressions must satisfy the portable subset below |
+| Optional, nullable, union, and default forms | Omission from `required`, `anyOf`, `type: "null"`, and the `default` annotation | Field defaults, `Optional[T]`, and ordinary union types | `.optional()`, `.nullable()`, `.default()`, and `z.union()` | The compiler normalizes the fixture forms to common shapes; `default` remains an annotation and structural validation does not insert it |
+| Arrays and typed maps | `type: array`, `items`, `minItems`, and object `additionalProperties` with a schema | `list[T]`, `Field(min_length=)`, and `dict[str, T]` | `z.array(T)`, array `.min()`, and `z.record(z.string(), T)` | Equivalent fixture shapes compile identically |
+| Nested and reused objects | Nested `properties`, `$defs`, and `$ref` | Nested `BaseModel` types | Named object schemas with `.meta({ id })` | The compiler normalizes named reuse to common `$defs` and `$ref` shapes |
+| Closed simple objects | `additionalProperties: false` | `ConfigDict(extra="forbid")` | `z.strictObject()` | Equivalent strict objects compile identically; `status: enforced` separately adds checked undeclared-property rejection to supported composed schemas |
+| Temporal values | `type: string` with `format` annotations | `date`, `datetime`, `time`, and `timedelta` fields | `z.iso.date()`, `z.iso.datetime()`, `z.iso.time()`, and `z.iso.duration()` | The structural schema is format-only; Pydantic and Zod can accept different string sets during semantic validation |
+| Descriptions and softschema metadata | `title`, `description`, `default`, and `x-softschema` annotations | Model and `Field` metadata; `SoftField` | `.meta()`, `.default()`, and `softField()` | The canonical compiler preserves the common annotation forms exercised by the fixture |
+| Composition and field dependencies | Hand-authored `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `dependentSchemas`, `patternProperties`, and related applicators | Author the compiled JSON Schema directly; softschema defines no equivalent general Pydantic construct | Author the compiled JSON Schema directly; softschema defines no equivalent general Zod construct | Structural validation uses Draft 2020-12; `status: enforced` accepts only the topologies in the support matrix below |
+| Native semantic rules | No general JSON Schema representation for arbitrary runtime code | `@field_validator` and `@model_validator` | `.refine()`, `.superRefine()`, and `.check()` | A caller may add this independent validation layer. It is implementation-specific and is not covered by `schema_sha256` |
+
+The last row is additive, not a fallback.
+When a caller supplies both a compiled schema and a native model, the values must pass
+both layers. A native model cannot rescue a structural failure or replace the structural
+schema required by `status: enforced`. The current APIs allow a trusted caller to supply
+a model, but the portable artifact does not declare that a native model is mandatory.
+
+This table is intentionally area-level for this release.
+A future profile may enumerate each Pydantic and Zod source construct, its
+canonicalization rule, accepted-value caveats, and its conformance vector.
+Until then, an unlisted model-library feature is implementation-specific unless its
+canonical output is covered by cross-runtime tests.
 
 An artifact may bind to its compiled schema with the optional `softschema.schema` key.
 The compiled schema a validator uses is resolved in this precedence (highest first):

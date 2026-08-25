@@ -636,6 +636,21 @@ portable structural profile.
 Pydantic model validators and Zod refinements/checks should remain semantic validation,
 reported separately from JSON Schema results.
 
+The
+[release-level mapping table](../../softschema-spec.md#release-level-mapping-across-json-schema-pydantic-and-zod)
+summarizes the model constructs that compile to common JSON Schema, the composition
+features that remain structural-schema concerns, and native rules that remain
+language-specific. It is deliberately an area-level map rather than an exhaustive
+keyword-by-keyword correspondence.
+
+When both a structural schema and a native model are supplied, the two validators are
+conjunctive: the input must pass both.
+Native validation is therefore an optional additional layer, not a fallback for
+structural failure.
+In the current API, a trusted caller may supply the Pydantic class or
+Zod schema; the portable artifact itself does not declare a native validator as
+mandatory.
+
 Their object defaults also matter:
 
 - Pydantic’s default model ignores extra input and emits an open object schema.
