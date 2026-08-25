@@ -259,23 +259,33 @@ Bugs that used to silently break the consumer now fail loudly.
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
 real authoring bugs, bind a compiled structural schema and flip `status: enforced`. The
 validator rejects undeclared fields at the structural boundary.
-In this guide, **closing an object** means rejecting each present property whose value
-is not evaluated by any successful applicable schema at that object location.
-A supported site receives `unevaluatedProperties: false` when declarations compose and
-`additionalProperties: false` otherwise.
-Structured `items` and disjoint `prefixItems`/`items` schemas close their object
-elements; a `contains` schema remains a matcher so enforcement cannot change which
-elements match. An explicit value for either keyword on the site still wins.
 If a trusted host binds only a Pydantic or Zod model, validation delegates to that
 model’s language-specific rules and skips the structural layer.
 This preserves native validators and refinements, but it is not portable object closure:
 Pydantic and Zod have different unknown-key defaults.
 Bind a compiled schema when clients in either language need the same structural result.
-For a schema shape outside the support matrix, `status: enforced` returns
-`enforcement_unsupported` instead of guessing where to insert the rule; see the
-[normative support matrix](softschema-spec.md#support-matrix).
 Setting the source model to `extra="forbid"` additionally compiles strictness into the
 schema and enforces it at the semantic layer.
+
+*Advanced, and only for composed or dependent schemas.* If every object in your schema
+declares its fields in one place, the paragraph above is the complete rule and you can
+skip the rest of this step.
+The mechanics start to matter in two cases: declarations for one object spread across
+`allOf`, `anyOf`, `oneOf`, or `$ref`, or one field’s schema depending on another field’s
+value through `if`/`then`/`else` or `dependentSchemas`. There, **closing an object**
+means rejecting each present property whose value is not evaluated by any successful
+applicable schema at that object location — which is not what `additionalProperties`
+does, because that keyword sees only the declarations sitting in its own schema object.
+So a supported site receives `unevaluatedProperties: false` when declarations compose
+and `additionalProperties: false` otherwise.
+Structured `items` and disjoint `prefixItems`/`items` schemas close their object
+elements; a `contains` schema remains a matcher so enforcement cannot change which
+elements match. An explicit value for either keyword on the site still wins.
+For a schema shape outside the support matrix, `status: enforced` returns
+`enforcement_unsupported` instead of guessing where to insert the rule; see the
+[normative support matrix](softschema-spec.md#support-matrix), and
+[Playbook: Express Cross-Field Rules](#playbook-express-cross-field-rules) for a worked
+dependent-field example.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -810,9 +820,12 @@ Four habits make the record compound rather than accumulate:
 
 ## Playbook: Express Cross-Field Rules
 
-Some contracts are not about individual field types but about how fields relate: *a
-record marked `decision: abandoned` must also say what it cost.* Write that in the
-schema, with a plain JSON Schema conditional, rather than in a separate checker:
+This playbook is an advanced one, and most soft schemas never need it: when each field
+stands on its own, declare the fields and stop.
+Reach for it when a contract is not about individual field types but about how fields
+relate — *a record marked `decision: abandoned` must also say what it cost.* Write that
+rule in the schema, with a plain JSON Schema conditional, rather than in a separate
+checker:
 
 ```yaml
 $schema: https://json-schema.org/draft/2020-12/schema
@@ -898,6 +911,13 @@ Otherwise enforced validation returns `enforcement_unsupported` with reason
 The payoff is that the schema stays the single statement of the contract.
 Reimplementing cross-field rules in a separate checker is exactly the split soft schemas
 exist to avoid: two places to update, and only one of them runs in CI.
+
+For the full derivation behind these mechanics — why annotations rather than lexical
+siblings decide what counts as declared, what Draft 2020-12 guarantees, and where Python
+`jsonschema` and Ajv actually differ — see the research brief,
+[JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md).
+The [spec](softschema-spec.md#rejecting-undeclared-properties-under-enforced) states the
+normative rules and the support matrix.
 
 ## Common Mistakes
 
@@ -996,6 +1016,10 @@ For Python-specific module layout, public API decisions, and dependency boundary
   Python ↔ TypeScript API parity table.
 - [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
+- [JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md):
+  advanced background, needed only for composed or dependent schemas — JSON Schema from
+  first principles, the Draft 2020-12 annotation model, and the measured Python
+  `jsonschema` and Ajv behavior behind the support matrix.
 - [Installation](installation.md), [Development](development.md), and
   [Publishing](publishing.md): workflow docs.
 

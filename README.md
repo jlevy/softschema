@@ -202,13 +202,21 @@ flags.
 
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
-When a structural schema is bound, `status: enforced` rejects a present property at each
-supported object location unless a successful applicable schema admits it.
-With only a host-supplied Pydantic or Zod model, validation delegates to that model and
-does not invent a structural schema; with neither, validation checks metadata only.
-The spec’s [support matrix](docs/softschema-spec.md#support-matrix) lists the composed,
-referenced, and array-contained object shapes for which the validator can apply that
-rule without changing the authored schema’s other behavior.
+When a structural schema is bound, `status: enforced` rejects any property the schema
+does not declare. With only a host-supplied Pydantic or Zod model, validation delegates
+to that model and does not invent a structural schema; with neither, validation checks
+metadata only.
+
+For an ordinary schema—one that declares its fields in one place per object—that is the
+whole rule, and the paragraph below is safe to skip.
+
+Two advanced cases need more care: schemas that **compose** declarations across `allOf`,
+`anyOf`, `oneOf`, or `$ref`, and **dependent** schemas where one field’s schema depends
+on another field’s value (`if`/`then`/`else`, `dependentSchemas`). softschema enforces
+those too, at each supported object location, but only where it can do so without
+changing what the authored schema otherwise accepts; the spec’s
+[support matrix](docs/softschema-spec.md#support-matrix) is the exact boundary.
+
 Contract IDs follow an enforced shape, `[namespace:]Name[/version]`—for example
 `example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0`—naming a payload
 contract, not a class or import path.
@@ -347,6 +355,9 @@ They release together under the same version number on PyPI and npm.
 - [Movie Page Example](examples/movie_page/README.md): the complete example backing the
   snippets above.
 - [Installation](docs/installation.md): pinned vs zero-install, uv and Node setup.
+- [JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md):
+  advanced background for composed and dependent schemas only; not needed for ordinary
+  soft schemas.
 
 ## Development and Contributing
 

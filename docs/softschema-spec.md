@@ -345,6 +345,19 @@ mechanisms used to impose that rule.
 Closure is local to one object; it does not close every nested object unless the
 validator also closes the schema site for that child.
 
+**Who needs the rest of this section.** When every object in a schema declares its
+fields in one schema object, closure is exactly `additionalProperties: false`, and every
+rule below reduces to that; an author of such a schema can skip ahead to
+[Source of Truth](#source-of-truth).
+What follows governs two advanced shapes.
+The first is **composition**: the declarations for one object spread across `allOf`,
+`anyOf`, `oneOf`, or `$ref`. The second is **dependent schemas**: one field’s schema
+selected by another field’s value through `if`/`then`/`else` or `dependentSchemas`. Both
+are normative for implementers and for authors who write such schemas by hand.
+The supporting research — the draft history, the annotation model, and the measured
+Python `jsonschema` and Ajv behavior — is in
+[JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md).
+
 Object closure turns `enforced` from an intention into a check.
 It is worth deriving rather than memorizing, because the obvious implementation is wrong
 for any schema that composes constraints, and the reason is not obvious.
