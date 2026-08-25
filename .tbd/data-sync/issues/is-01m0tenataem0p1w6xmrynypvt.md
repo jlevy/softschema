@@ -3,9 +3,9 @@ type: is
 id: is-01m0tenataem0p1w6xmrynypvt
 title: "Address PR #44 checked-enforcement review"
 kind: epic
-status: closed
+status: open
 priority: 1
-version: 21
+version: 24
 labels:
   - pr-review
   - enforcement
@@ -23,10 +23,12 @@ child_order_hints:
   - is-01m0tr91qdd1tx150ptp9v70ec
   - is-01m0ts624t3eayqddvva741nwd
   - is-01m0vb7kne3cn9grkmgjaj1ayv
+  - is-01m0vcqpcf8qncrdaw92awc4n0
+  - is-01m0vcqpwktrpf5f5fq85dj2nx
 created_at: 2026-08-24T17:56:29.631Z
-updated_at: 2026-08-25T02:30:55.273Z
-closed_at: 2026-08-25T02:30:55.273Z
-close_reason: "Clarified exact additionalProperties schema-object scope with verified ticker/score examples in the standalone research brief and normative spec; commit aa26459 is pushed, PR #44 is updated, and all 18 CI checks pass."
+updated_at: 2026-08-25T02:42:04.818Z
+closed_at: null
+close_reason: null
 resolution: null
 duplicate_of: null
 ---
@@ -35,3 +37,5 @@ Address every S1-S7 finding from the holistic review comment on PR #44 plus the 
 ## Notes
 
 Reopened: Follow-up documentation clarification requested after rollout explanation
+
+Reopened: Additional cross-runtime contract questions identified after the documentation clarification.
