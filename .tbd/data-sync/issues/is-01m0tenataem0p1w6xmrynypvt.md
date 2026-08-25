@@ -5,7 +5,7 @@ title: "Address PR #44 checked-enforcement review"
 kind: epic
 status: open
 priority: 1
-version: 24
+version: 25
 labels:
   - pr-review
   - enforcement
@@ -25,8 +25,9 @@ child_order_hints:
   - is-01m0vb7kne3cn9grkmgjaj1ayv
   - is-01m0vcqpcf8qncrdaw92awc4n0
   - is-01m0vcqpwktrpf5f5fq85dj2nx
+  - is-01m0vd72213crxnvyp5wbdm019
 created_at: 2026-08-24T17:56:29.631Z
-updated_at: 2026-08-25T02:42:04.818Z
+updated_at: 2026-08-25T02:50:27.775Z
 closed_at: null
 close_reason: null
 resolution: null
