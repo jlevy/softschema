@@ -5,7 +5,7 @@ title: "Address PR #44 checked-enforcement review"
 kind: epic
 status: closed
 priority: 1
-version: 18
+version: 21
 labels:
   - pr-review
   - enforcement
@@ -22,11 +22,16 @@ child_order_hints:
   - is-01m0tqka43mzbyfhex3nem2bsc
   - is-01m0tr91qdd1tx150ptp9v70ec
   - is-01m0ts624t3eayqddvva741nwd
+  - is-01m0vb7kne3cn9grkmgjaj1ayv
 created_at: 2026-08-24T17:56:29.631Z
-updated_at: 2026-08-24T21:08:56.590Z
-closed_at: 2026-08-24T21:08:56.589Z
-close_reason: Completed holistic stacked-PR remediation, research and review documentation, review-comment follow-up, and final CI verification
+updated_at: 2026-08-25T02:30:55.273Z
+closed_at: 2026-08-25T02:30:55.273Z
+close_reason: "Clarified exact additionalProperties schema-object scope with verified ticker/score examples in the standalone research brief and normative spec; commit aa26459 is pushed, PR #44 is updated, and all 18 CI checks pass."
 resolution: null
 duplicate_of: null
 ---
 Address every S1-S7 finding from the holistic review comment on PR #44 plus the S8 context-sensitive-reference issue found during pre-commit review, update the #42 -> #44 stack from upstream in base-first order, publish a disposition map, and verify both runtimes and CI.
+
+## Notes
+
+Reopened: Follow-up documentation clarification requested after rollout explanation
