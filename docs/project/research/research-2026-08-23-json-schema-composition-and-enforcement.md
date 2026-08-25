@@ -163,16 +163,20 @@ declaration table.
 | `dependentSchemas` | When one property is present, apply a subschema to the whole object | Through the applied subschema |
 | `propertyNames` | Validate each property name as a string | No; it does not evaluate the corresponding values |
 | `minProperties` / `maxProperties` | Constrain the number of properties | No |
-| `additionalProperties` | Apply a subschema to values unmatched by sibling `properties` and `patternProperties` | Yes |
+| `additionalProperties` | Apply a subschema to property values whose names match neither `properties` nor `patternProperties` in the same schema object | Yes |
 | `unevaluatedProperties` | Apply a subschema to values not evaluated by relevant successful schemas | Yes |
 
 The distinction between the last two rows is the source of the undeclared-property
 problem in composed schemas:
 
-- `additionalProperties` is **lexical**. It sees only `properties` and
-  `patternProperties` beside it in the same schema object.
+- `additionalProperties` is **lexical**. It uses only the `properties` and
+  `patternProperties` keywords in the exact schema object that contains the
+  `additionalProperties` keyword—that is, the exact JSON object or YAML mapping.
+  It does not inspect a parent, child, another `allOf` entry, or a schema reached
+  through `$ref`.
 - `unevaluatedProperties` is **annotation-aware**. It can account for successful
-  evaluations contributed through adjacent composition and references.
+  evaluations contributed by other in-place applicators at the same instance location,
+  including composition and references.
 
 Both keywords take a schema, not merely a boolean.
 Setting either to `false` rejects the properties in its domain; setting it to another
@@ -195,6 +199,47 @@ examples:
 Each branch receives the complete instance and retains its own rules.
 An `additionalProperties: false` inside one branch therefore rejects properties
 described only by another branch.
+
+The following schema has two schema objects that apply to the same data object: the
+outer YAML mapping and the mapping nested under `allOf`.
+
+```yaml
+type: object
+properties:
+  ticker: {type: string}
+allOf:
+- properties:
+    score: {type: number}
+additionalProperties: false
+```
+
+The outer `additionalProperties` keyword uses only `properties` and `patternProperties`
+from the outer mapping.
+Its `properties` keyword lists `ticker`, not `score`. Consequently:
+
+- `{"ticker": "AAPL"}` is valid;
+- `{"ticker": "AAPL", "score": 0.8}` is invalid because the outer `additionalProperties`
+  rule treats `score` as an additional property, even though the `allOf` branch also
+  applies and validates its value; and
+- `{"ticker": "AAPL", "tickre": "AAPL"}` is invalid because no applicable schema
+  evaluates `tickre`.
+
+Replacing the last line with `unevaluatedProperties: false` produces the intended
+composed rule:
+
+```yaml
+type: object
+properties:
+  ticker: {type: string}
+allOf:
+- properties:
+    score: {type: number}
+unevaluatedProperties: false
+```
+
+Now the successful `properties` evaluations in the outer mapping and the `allOf` branch
+both count. The object containing `ticker` and `score` is valid, while the object
+containing the misspelled `tickre` remains invalid.
 
 Conditional applicators are also in-place.
 `if` evaluates a matcher and selects `then` or `else`; `dependentSchemas` applies a
@@ -369,27 +414,17 @@ is an additional language rule and should be specified as such.
 ### Undeclared-property rejection applies at one instance location
 
 `additionalProperties` is lexical.
-It sees only `properties` and `patternProperties` in the same schema object.
-It cannot see a key described by a sibling `allOf` branch or by a referenced schema.
+It uses only `properties` and `patternProperties` in the exact schema object that
+contains it. It does not use declarations from another `allOf` entry or a referenced
+schema.
 
 `unevaluatedProperties` is annotation-aware.
-It can see property evaluations contributed by adjacent in-place applicators, including
-successful composition branches and references.
+It can incorporate property evaluations contributed by other in-place applicators at the
+same instance location, including successful composition branches and references.
 It therefore belongs at the schema object where those contributions meet.
-
-```yaml
-type: object
-properties:
-  a: {type: string}
-allOf:
-- properties:
-    b: {type: string}
-unevaluatedProperties: false
-```
-
-Here `{a: x, b: y}` is valid.
-Placing `additionalProperties: false` at the root or in either branch rejects a field
-declared by the other schema object.
+The `ticker` and `score` examples above demonstrate the difference: the two property
+schemas are written in different schema objects but apply at the same object instance
+location.
 
 The relevant unit is the instance location, not lexical ancestry in the schema document.
 A `properties.child` subschema applies to a child instance location even when it is
@@ -497,8 +532,8 @@ It is appropriate for relations such as “when `credit_card` is present,
 closed-object behavior is desired.
 
 `dependentSchemas` applies a subschema to the entire object when its trigger property is
-present. Its successful property annotations can flow to an adjacent
-`unevaluatedProperties` keyword.
+present. Its successful property annotations can flow to an `unevaluatedProperties`
+keyword in the schema object that contains `dependentSchemas`.
 
 `if` chooses `then` or `else`. An `if` subschema that succeeds can contribute evaluation
 annotations; a failing matcher does not.

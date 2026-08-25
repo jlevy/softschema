@@ -359,18 +359,20 @@ Condition 2 is the one that constrains the design.
 Everything below follows from asking which successful schema evaluation admitted a
 present property value.
 
-#### Why the lexical answer works, until it doesn’t
+#### Why `additionalProperties` cannot close composed declarations
 
-`additionalProperties` answers “is this key declared?”
-by consulting the `properties` of **the same schema object it appears in** — nothing
-else. Call this the lexical answer.
+`additionalProperties` applies to property values whose names match neither `properties`
+nor `patternProperties` in the exact schema object containing the `additionalProperties`
+keyword. Here, “the same schema object” means the exact YAML mapping that contains the
+keyword. It does not mean a parent or child mapping, another entry under `allOf`, or a
+schema reached through `$ref`.
 
-For a schema that declares everything in one place, the lexical answer is exactly right:
+For a schema that declares everything in one mapping, this rule is exactly right:
 
 ```yaml
 type: object
 properties: {name: {type: string}}
-additionalProperties: false      # sees `name`; rejects everything else
+additionalProperties: false      # permits `name`; rejects every other property
 ```
 
 Now compose.
@@ -383,17 +385,20 @@ objects at once:
 
 ```yaml
 type: object
-properties: {a: {type: string}}
+properties: {ticker: {type: string}}
 allOf:
-  - properties: {b: {type: string}}
-additionalProperties: false      # sees only `a`
+  - properties: {score: {type: number}}
+additionalProperties: false
 ```
 
-`{"a": "x", "b": "y"}` satisfies the author’s schema — `b` is declared, one applicator
-over — and `additionalProperties` rejects it.
+The `properties` under `allOf` validates `score` when it is present, but it is in a
+different schema object.
+The outer `additionalProperties` keyword therefore treats `score` as additional.
+`{"ticker": "AAPL"}` is valid, while `{"ticker": "AAPL", "score": 0.8}` is invalid.
 Condition 2 is violated.
-The lexical answer was never a definition of “declared”; it was a shortcut that happens
-to coincide with the definition when all declarations sit in one object.
+The rule implemented by `additionalProperties` was never a general definition of
+“declared”; it coincides with that definition only when all declarations sit in one
+schema object.
 
 #### The annotation answer
 
@@ -406,13 +411,14 @@ siblings:
 
 ```yaml
 type: object
-properties: {a: {type: string}}
+properties: {ticker: {type: string}}
 allOf:
-  - properties: {b: {type: string}}
-unevaluatedProperties: false     # sees `a` and `b`
+  - properties: {score: {type: number}}
+unevaluatedProperties: false
 ```
 
-`{"a": "x", "b": "y"}` now passes, and `{"a": "x", "zzz": 1}` is still rejected.
+`{"ticker": "AAPL", "score": 0.8}` now passes, and
+`{"ticker": "AAPL", "tickre": "AAPL"}` is still rejected.
 Both conditions hold.
 
 Two properties of the annotation model drive every rule that follows:
@@ -459,8 +465,9 @@ as one offline graph:
    supplied-resource roots stay unchanged unless the author closed them explicitly.
    A structured `$ref` application site receives annotation-aware closure independently,
    so using one target at pure application sites cannot make those sites interfere.
-   A reference inside context-sensitive composition, or beside validation siblings, is
-   refused when its evaluated target subtree would receive inferred closure.
+   A reference inside context-sensitive composition, or in the same schema object as
+   other validation keywords, is refused when its evaluated target subtree would receive
+   inferred closure.
 4. An explicit `additionalProperties` or `unevaluatedProperties` on the site prevents
    injection there. Explicit keywords inside referenced targets and composition branches
    retain their ordinary Draft 2020-12 assertion and annotation behavior.
@@ -542,7 +549,7 @@ Current reasons are:
 | `nested_instance_composition` | An unclosed structured child instance appears below an in-place composition branch or selection matcher | Put explicit closure on that child schema, or hoist the complete child schema outside the composition or matcher |
 | `conditional_annotation_scope` | An `if` matcher evaluates fields not unconditionally evaluated at the closure site | Declare matcher fields at that site, directly or through an unconditional `$ref`/`allOf` path |
 | `child_evaluator_overlap` | Sibling child applicators can evaluate the same object or array element and inferred closure would change one value schema’s evaluated subtree independently | Make closure explicit at every affected structured descendant in the co-describing value schemas, or separate the property, pattern, item, and match domains |
-| `composition_reference_context` | A `$ref` under `allOf`, `anyOf`, `oneOf`, `dependentSchemas`, `if`, `then`, `else`, `not`, or `contains`, or beside validation siblings, reaches a reusable target whose evaluated subtree would receive inferred closure | Add explicit closure to the target’s structured descendants, or use the reference at a pure application site outside context-sensitive composition |
+| `composition_reference_context` | A `$ref` under `allOf`, `anyOf`, `oneOf`, `dependentSchemas`, `if`, `then`, `else`, `not`, or `contains`, or in the same schema object as other validation keywords, reaches a reusable target whose evaluated subtree would receive inferred closure | Add explicit closure to the target’s structured descendants, or use the reference at a pure application site outside context-sensitive composition |
 | `embedded_resource_context` | A structured embedded `$id` resource is also applied directly at a nested site | Add explicit closure or move the reusable resource to `$defs` |
 | `reference_target_context` | A structured `$ref` target is also a directly applied, non-reusable schema, including a structured root referenced as `$ref: "#"` | Move the target to `$defs` or a supplied resource, or close it explicitly. For a recursive root, make the root a bare `$ref` into `$defs` and recurse through that definition |
 
