@@ -4,11 +4,10 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
-## Unreleased
+## v0.7.0—2026-08-25
 
-This section is intended for version 0.7.0 because structural diagnostic records and
-supplied-resource requirements change even though ordinary schema verdicts remain
-compatible.
+This is a minor release because structural diagnostic records and supplied-resource
+requirements change even though ordinary schema verdicts remain compatible.
 
 `status: enforced` now returns real document verdicts for supported `allOf`,
 `if`/`then`/`else`, and `dependentSchemas` object shapes that version 0.6.2 refused
