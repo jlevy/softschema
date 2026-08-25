@@ -5,12 +5,18 @@
  */
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import type { ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { z } from "zod";
-import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
 import {
-  collapseAdditionalProperties,
+  EnforcementUnsupportedError,
+  prepareSchemaGraph,
+  SchemaGraphError,
+} from "./enforcement.js";
+import {
+  collapseUndeclaredProperties,
   compareStructuralRecords,
+  dropConditionalWrappers,
   normalizeAjvError,
   type StructuralErrorRecord,
 } from "./errors.js";
@@ -24,6 +30,7 @@ import {
   pyTypeName,
   type SchemaMetadata,
   SchemaMetadataError,
+  type SchemaStatus,
   type SchemaWarning,
 } from "./models.js";
 import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
@@ -159,31 +166,128 @@ function warning(code: SchemaWarning["code"], message: string): SchemaWarning {
   return { code, message, severity: "warning" };
 }
 
+const VALIDATOR_CACHE_SIZE = 256;
+const validatorCache = new Map<string, ValidateFunction>();
+
+/**
+ * Check a compiled schema, apply the `enforced` overlay, and compile it with Ajv.
+ *
+ * Throws propagate to `validateStructural`, which turns them into a `schema_invalid`
+ * result, and only a schema that compiles is ever cached.
+ */
+function buildValidator(
+  schemaObject: Record<string, unknown>,
+  strictExtras: boolean,
+  resources: Record<string, Record<string, unknown>>,
+): ValidateFunction {
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: false,
+    verbose: true,
+    validateFormats: false,
+  });
+  for (const document of [schemaObject, ...Object.values(resources)]) {
+    checkPatterns(document);
+    if (!ajv.validateSchema(document)) {
+      throw new SchemaGraphError("dialect", `schema is invalid: ${ajv.errorsText(ajv.errors)}`);
+    }
+  }
+  if (!strictExtras) checkSchemaIdentities(schemaObject, resources);
+  const prepared = strictExtras
+    ? prepareSchemaGraph(schemaObject, resources)
+    : { root: schemaObject, resources };
+  for (const [key, resource] of Object.entries(prepared.resources)) {
+    ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
+  }
+  return ajv.compile(prepared.root);
+}
+
+/**
+ * Memoize `buildValidator` for the no-`resources` case, mirroring the Python
+ * `_cached_validator`.
+ *
+ * A compiled schema is a build output, so checking it, applying the overlay, and
+ * compiling it produce the same validator every time. Doing that work per call
+ * dominated large suites, which is what the Python cache already fixed; without this
+ * the two runtimes had the same schema and very different cost.
+ *
+ * Keyed on the schema's own content rather than on a file path and stat, so a rewritten
+ * schema can never be served from a stale entry and two paths holding identical schemas
+ * correctly share one. Before returning a checked-enforcement hit, the graph is prepared
+ * again because shared in-memory object identity is not represented by JSON content.
+ * Serializing to build the key is negligible against what a hit avoids.
+ * Least-recently-used entries are evicted past `VALIDATOR_CACHE_SIZE`.
+ */
+function cachedValidator(
+  schemaObject: Record<string, unknown>,
+  strictExtras: boolean,
+  resources: Record<string, Record<string, unknown>>,
+): ValidateFunction {
+  if (Object.keys(resources).length > 0) {
+    // `resources` is a plain object of schemas, so it is neither cheap to fingerprint
+    // nor the common path; build fresh rather than risk a wrong cache key. Same call
+    // this made before the cache existed, and the same choice Python makes.
+    return buildValidator(schemaObject, strictExtras, resources);
+  }
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(schemaObject);
+  } catch (error) {
+    if (strictExtras) {
+      prepareSchemaGraph(schemaObject);
+    }
+    throw error;
+  }
+  const key = `${strictExtras ? "1" : "0"}\u0000${serialized}`;
+  const hit = validatorCache.get(key);
+  if (hit !== undefined) {
+    if (strictExtras) {
+      prepareSchemaGraph(schemaObject);
+    }
+    // Re-insert to mark this entry most recently used; Map iterates in insertion order.
+    validatorCache.delete(key);
+    validatorCache.set(key, hit);
+    return hit;
+  }
+  const built = buildValidator(schemaObject, strictExtras, resources);
+  validatorCache.set(key, built);
+  if (validatorCache.size > VALIDATOR_CACHE_SIZE) {
+    const oldest = validatorCache.keys().next();
+    if (!oldest.done) validatorCache.delete(oldest.value);
+  }
+  return built;
+}
+
+/**
+ * Drop every memoized validator, the counterpart to Python's `clear_validator_cache`.
+ *
+ * Only needed by a long-lived process that regenerates compiled schemas in place, such
+ * as a watch mode or a language server; ordinary callers never have to call it, because
+ * a rewritten schema misses the cache on its own.
+ */
+export function clearValidatorCache(): void {
+  validatorCache.clear();
+}
+
 export function validateStructural(
   values: unknown,
   schemaObject: Record<string, unknown>,
   options: { strictExtras?: boolean; resources?: Record<string, Record<string, unknown>> } = {},
 ): StructuralResult {
   try {
-    checkSchemaIdentities(schemaObject, options.resources ?? {});
-    checkPatterns(schemaObject);
-    const schema = options.strictExtras
-      ? (applyEnforcedExtras(schemaObject) as Record<string, unknown>)
-      : schemaObject;
-    const ajv = new Ajv2020({
-      allErrors: true,
-      strict: false,
-      verbose: true,
-      validateFormats: false,
-    });
-    for (const [key, resource] of Object.entries(options.resources ?? {})) {
-      ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
-    }
-    const validateFn = ajv.compile(schema);
+    const validateFn = cachedValidator(
+      schemaObject,
+      options.strictExtras ?? false,
+      options.resources ?? {},
+    );
     const ok = validateFn(values);
     const errors: StructuralErrorRecord[] = ok
       ? []
-      : collapseAdditionalProperties((validateFn.errors ?? []).map((e) => normalizeAjvError(e)));
+      : collapseUndeclaredProperties(
+          dropConditionalWrappers(
+            (validateFn.errors ?? []).map((error) => normalizeAjvError(error, values)),
+          ),
+        );
     errors.sort(compareStructuralRecords);
     return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
   } catch (error) {
@@ -191,11 +295,19 @@ export function validateStructural(
     if (error instanceof EnforcementUnsupportedError) {
       return {
         ok: false,
-        errors: [{ kind: "enforcement_unsupported", message }],
+        errors: [
+          {
+            kind: "enforcement_unsupported",
+            reason: error.reason,
+            schema_path: error.schemaPath,
+            message,
+          },
+        ],
         engine: "json_schema",
         skipped_reason: null,
       };
     }
+    if (error instanceof SchemaGraphError) return schemaInvalid(error.reason, message);
     return schemaInvalid(schemaFailureReason(message), message);
   }
 }
@@ -226,8 +338,13 @@ const UNSUPPORTED_PATTERN_PARTS = ["(?<", "(?P", "\\A", "\\Z", "\\z", "\\p", "\\
 
 function* iterSchemas(root: Record<string, unknown>): Iterable<Record<string, unknown>> {
   const stack = [root];
+  const seen = new Set<Record<string, unknown>>();
   while (stack.length > 0) {
     const schema = stack.pop() as Record<string, unknown>;
+    if (seen.has(schema)) {
+      continue;
+    }
+    seen.add(schema);
     yield schema;
     for (const [key, value] of Object.entries(schema)) {
       if (SCHEMA_MAPS.has(key) && isMapping(value)) {
@@ -323,14 +440,27 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
  */
 export function validateValues(
   values: unknown,
-  options: { model?: z.ZodType; schema?: Record<string, unknown> } = {},
+  options: {
+    model?: z.ZodType;
+    schema?: Record<string, unknown>;
+    status?: SchemaStatus;
+    resources?: Record<string, Record<string, unknown>>;
+  } = {},
 ): ValidationResult {
   if (options.model === undefined && options.schema === undefined) {
     throw new Error("validateValues() requires at least one of model or schema");
   }
-  const structural = options.schema
-    ? validateStructural(values, options.schema)
-    : { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
+  let structural: StructuralResult;
+  if (options.schema !== undefined) {
+    structural = validateStructural(values, options.schema, {
+      strictExtras: options.status === "enforced",
+      resources: options.resources,
+    });
+  } else {
+    // The semantic model is the requested validator; the structural slot remains an
+    // unrequested successful pass so callers can read both result fields uniformly.
+    structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
+  }
   const semantic = options.model
     ? validateSemantic(values, options.model)
     : { ok: true, errors: [], skipped_reason: null };

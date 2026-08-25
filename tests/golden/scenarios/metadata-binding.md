@@ -176,9 +176,11 @@ $ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fi
     "engine": "json_schema",
     "errors": [
       {
+        "code": "missing_property",
         "kind": "schema_violation",
-        "message": "required property ['title', 'year', 'extra'] is missing",
+        "message": "required property 'extra' is missing",
         "path": [],
+        "property": "extra",
         "validator": "required",
         "validator_value": [
           "title",
@@ -420,4 +422,257 @@ $ softschema validate tests/golden/fixtures/bound-envelope-absent.md
   "warnings": []
 }
 ? 1
+```
+
+# Test: a pure-yaml artifact validates with no flags
+
+The CLI picks the profile from the artifact rather than assuming `frontmatter-md`. A
+`*.yaml` file is read as pure-yaml on its name, so the spec's own pure-yaml example
+binds its contract from the root `softschema:` block and needs no flags. With no
+envelope designated, the whole root minus the metadata block is the payload: pure-yaml
+is exempt from single-key inference and multi-key ambiguity rejection, so the two
+sibling keys here are the payload rather than an ambiguity error.
+
+```console
+$ softschema validate tests/golden/fixtures/pure-yaml-report.yaml
+{
+  "contract": {
+    "envelope_key": null,
+    "id": "test.runs:BacktestReport/v1",
+    "model": null,
+    "profile": "pure-yaml",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.runs:BacktestReport/v1",
+  "document_metadata": {
+    "contract": "test.runs:BacktestReport/v1",
+    "envelope": null,
+    "schema": null,
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/pure-yaml-report.yaml",
+  "profile": "pure-yaml",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_schema"
+  },
+  "values": {
+    "run_id": "run-2026-04-12T18-03-00Z",
+    "summary": "regression vs baseline"
+  },
+  "warnings": []
+}
+? 0
+```
+
+# Test: an enforced pure-yaml artifact fails against its bound schema
+
+The regression guard for a profile bound to the reader instead of the document: while
+`validate` always assumed `frontmatter-md`, a pure-yaml artifact declaring
+`status: enforced` reported `no_frontmatter` and validated none of its payload, so a
+project could wire this command into CI and get a passing build that checked nothing.
+`name: 42` violates the bound schema, so the run must fail structurally with exit 1.
+
+```console
+$ softschema validate tests/golden/fixtures/pure-yaml-enforced.yaml
+{
+  "contract": {
+    "envelope_key": null,
+    "id": "test.runs:Reading/v1",
+    "model": null,
+    "profile": "pure-yaml",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "test.runs:Reading/v1",
+  "document_metadata": {
+    "contract": "test.runs:Reading/v1",
+    "envelope": null,
+    "schema": "lenient.schema.yaml",
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/pure-yaml-enforced.yaml",
+  "profile": "pure-yaml",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "code": "invalid_value",
+        "kind": "schema_violation",
+        "message": "value 42 is not of type 'string'",
+        "path": [
+          "name"
+        ],
+        "validator": "type",
+        "validator_value": "string",
+        "value": 42
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": 42
+  },
+  "warnings": []
+}
+? 1
+```
+
+# Test: a pure-yaml artifact honors a declared envelope key
+
+With `envelope:` declared, the named key nests the payload exactly as it does in
+frontmatter, so only `reading:` is validated against the contract.
+
+```console
+$ softschema validate tests/golden/fixtures/pure-yaml-envelope.yaml
+{
+  "contract": {
+    "envelope_key": "reading",
+    "id": "test.runs:Reading/v1",
+    "model": null,
+    "profile": "pure-yaml",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.runs:Reading/v1",
+  "document_metadata": {
+    "contract": "test.runs:Reading/v1",
+    "envelope": "reading",
+    "schema": "lenient.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/pure-yaml-envelope.yaml",
+  "profile": "pure-yaml",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "sensor-7"
+  },
+  "warnings": []
+}
+? 0
+```
+
+# Test: --profile overrides detection
+
+The explicit escape hatch, for an artifact whose shape its name and content do not
+settle. Forcing `frontmatter-md` on a YAML file makes it the fenceless document it
+looks like to that reader, which is the `no_frontmatter` this command reported for
+every pure-yaml artifact before detection existed.
+
+```console
+$ softschema validate tests/golden/fixtures/pure-yaml-report.yaml --profile frontmatter-md --contract test.runs:BacktestReport/v1
+{
+  "contract": {
+    "envelope_key": null,
+    "id": "test.runs:BacktestReport/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.runs:BacktestReport/v1",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/pure-yaml-report.yaml",
+  "profile": "frontmatter-md",
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "no_frontmatter"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "no_frontmatter",
+        "message": "no frontmatter in tests/golden/fixtures/pure-yaml-report.yaml"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+# Test: a pure-yaml artifact is detected without a *.yaml name
+
+When the file name does not settle the profile, the document does: a fenceless document
+whose whole text is a mapping carrying a root `softschema:` block is pure-yaml. That
+block is the spec's metadata block, so finding it at the root is what separates a
+pure-yaml artifact from prose that happens to parse as YAML — a Markdown file without
+frontmatter still reports `no_frontmatter` as it always has.
+
+```console
+$ softschema validate tests/golden/fixtures/pure-yaml-unnamed.data
+{
+  "contract": {
+    "envelope_key": null,
+    "id": "test.runs:Reading/v1",
+    "model": null,
+    "profile": "pure-yaml",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.runs:Reading/v1",
+  "document_metadata": {
+    "contract": "test.runs:Reading/v1",
+    "envelope": null,
+    "schema": "lenient.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/pure-yaml-unnamed.data",
+  "profile": "pure-yaml",
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "sensor-7"
+  },
+  "warnings": []
+}
+? 0
 ```

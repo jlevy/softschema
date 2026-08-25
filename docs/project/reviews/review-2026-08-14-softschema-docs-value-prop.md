@@ -415,8 +415,8 @@ two places where the current docs already address the concern:
    description at appropriate lengths.
    The GitHub repository description is external to this PR and can be updated after the
    wording merges.
-3. **Fixed: describe outcomes instead of eligibility.** The README’s eligibility list is
-   replaced by explicit capabilities and concrete workflow shapes.
+3. **Fixed: describe outcomes instead of eligibility.** The README uses explicit
+   capabilities and concrete workflow shapes instead of an eligibility list.
    The guide retains the adoption criteria, where they help a reader make a decision.
 4. **Fixed: add workflow examples.** The README summarizes four shapes, and the guide
    owns the fuller explanations, including what belongs in frontmatter, what remains
@@ -430,6 +430,30 @@ two places where the current docs already address the concern:
    The 1,274-artifact benchmark measures validator performance, not the effect of the
    authoring convention on agent workflows, so adding it here would weaken the
    explanation rather than support it.
+
+### Reconciliation on 2026-08-25
+
+Since the original review, `main` has added pure-YAML artifact profiles, checked
+enforcement for composed and dependent schemas, stable structural error categories, and
+the research and specification material behind those behaviors.
+These changes refine validation after an artifact reaches a boundary.
+They do not replace the authoring rule or explain why an agent should use it while
+designing a workflow.
+
+The rebased PR therefore retains the original public-surface scope:
+
+- The README explains the failure mode, the authoritative-YAML boundary, and the
+  operations that boundary supports across agent steps and sessions.
+- The guide adds workflow shapes and a six-step agent playbook.
+  The repair step now points to v0.7’s stable `code` and `path` fields and the
+  `property` field on missing- and undeclared-property records.
+- The package READMEs and package metadata use the same present-state description.
+- This review remains the dated decision record; the newer composed-schema material
+  remains in the spec, guide’s advanced playbook, and research brief.
+
+The PR still changes documentation and package descriptions only.
+It does not change the artifact format, API, validation behavior, or the v0.7 support
+matrix.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

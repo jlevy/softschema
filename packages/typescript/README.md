@@ -1,9 +1,9 @@
 # softschema
 
 `softschema` applies gradual contracts to Markdown and YAML artifacts.
-In Markdown, consumed values live in YAML frontmatter under a named contract; the body
-remains prose. A field becomes structured only when a consumer needs it, and validation
-tightens as the shape settles.
+In Markdown, values a downstream tool reads live in YAML frontmatter under a named
+contract; the body remains prose.
+Add a field when a consumer needs it, and tighten validation as the shape settles.
 
 This is the TypeScript/Zod implementation of
 [softschema](https://github.com/jlevy/softschema).

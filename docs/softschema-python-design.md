@@ -24,6 +24,7 @@ core package.
 | `softschema.registry` | In-memory collection that resolves contracts by id |
 | `softschema.validate` | Envelope resolution, structural validation, semantic validation, and artifact validation |
 | `softschema.canonicalize` | Canonical JSON Schema profile shared with the TypeScript port |
+| `softschema.enforcement` | Checked enforced-profile analysis and offline schema-resource graph preparation |
 | `softschema.errors` | Engine-neutral structural error records and message templates |
 | `softschema.compile` | Pydantic-to-JSON-Schema compilation |
 | `softschema.cli` | Small command-line wrapper over the library |
@@ -106,6 +107,14 @@ The CLI reads `softschema.contract`, `softschema.status`, and a single top-level
 envelope key from the artifact by default.
 `--contract`, `--status`, and `--envelope` are override and disambiguation flags.
 
+**Profile resolution**: `--profile` flag > a `*.yaml`/`*.yml` file name > a fenceless
+document whose root mapping carries a `softschema:` block > `frontmatter-md`. The name
+is checked before the fence because a YAML document may open with the `---`
+document-start marker, which the frontmatter reader would otherwise scan as a fence.
+The content check requires the metadata block, so prose that happens to parse as YAML
+stays `frontmatter-md` and still reports `no_frontmatter`. `validate` and `inspect`
+resolve the profile identically, so the two never disagree about what a given file is.
+
 **Schema precedence** (host over document): `--schema` flag > registry
 `Contract.schema_path` (library only) > `softschema.schema` (document metadata) >
 metadata-only (no structural validation).
@@ -113,7 +122,9 @@ metadata-only (no structural validation).
 **Envelope precedence**: `--envelope` flag > registry `envelope_key` >
 `softschema.envelope` (document metadata) > single-key inference (the single
 non-`softschema` top-level key; zero or several candidates are rejected as
-`envelope_missing` / `envelope_ambiguous`).
+`envelope_missing` / `envelope_ambiguous`). Inference and ambiguity rejection are
+`frontmatter-md` only: the spec exempts `pure-yaml`, where an undesignated envelope
+means the whole root minus the metadata block is the payload.
 
 Document-declared `schema` paths are relative-only, resolved from the document’s
 directory, bounded to the document directory and the current working directory.
@@ -146,11 +157,14 @@ JSON Schema carries the portable structural subset that another implementation c
 reuse.
 
 ```python
+from pathlib import Path
+
 from softschema import Contract, SchemaStatus, validate_artifact
 
 contract = Contract(
     id="example.movies:MoviePage/v1",
     model=MoviePage,
+    schema_path=Path("examples/movie_page/movie-page.schema.yaml"),
     envelope_key="movie",
     status=SchemaStatus.enforced,
 )
@@ -161,13 +175,34 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
-When the contract’s status is `enforced`, structural validation applies the
-strict-extras overlay (`apply_enforced_extras` in `softschema.canonicalize`): object
-schemas that declare `properties` but omit `additionalProperties` are validated as
-`additionalProperties: false`, an explicit `additionalProperties` always wins, and
-free-form mappings are unaffected.
+When the contract’s status is `enforced` and a structural schema is bound, the validator
+checks the root and every supplied resource, prepares them as one offline graph, and
+applies the checked undeclared-property rules in `softschema.enforcement`. At each
+supported object location, it rejects a present property whose value is not evaluated by
+any successful applicable schema.
+Simple object sites use `additionalProperties`; composed and referenced sites use
+`unevaluatedProperties`; reusable definitions stay open; and unsupported topologies
+return a structured `enforcement_unsupported` error.
+Structured `items` and disjoint `prefixItems`/`items` receive the rule independently,
+while `contains` remains a matcher.
+Sibling child evaluators and context-sensitive composition references are refused when
+independently inserting that rejection rule could change authored semantics.
+Caller-constructed graphs that reuse one mapping object at several schema locations
+return `schema_invalid/shared_subschema`. The normative behavior and reason codes are in
+the spec’s [support matrix](softschema-spec.md#support-matrix).
 The overlay is validation-time only; compiled schemas never change.
-`validate_structural` exposes the same behavior via its `strict_extras` keyword.
+
+`validate_structural` exposes the same behavior through `strict_extras=True` and accepts
+an optional `resources` mapping.
+`validate_values` accepts `status` and `resources`, so already-extracted values use the
+same boundary policy.
+Without a structural schema, an artifact with a Pydantic model preserves the existing
+semantic-only path and reports structural validation as skipped with
+`inferred_via_model`. A model-only `validate_values` call likewise runs Pydantic and
+leaves the unrequested structural result successful.
+If neither schema nor model is bound, artifact validation is metadata-only and reports
+`no_schema`. `status` does not synthesize a schema or change the model’s `extra`
+configuration.
 
 Compiling a schema is a pure function of the schema text and `strict_extras`, so
 `validate_structural` memoizes it rather than reparsing and recompiling on every call.
@@ -229,11 +264,21 @@ preserves the canonical profile’s annotation-only treatment of `format`; a por
 Structural validation runs through `jsonschema`, but the error records it returns are
 synthesized by softschema, not passed through from the library.
 Each violation becomes
-`{kind: "schema_violation", path, validator, validator_value, value, message}` where
-`message` comes from a shared template keyed on the JSON Schema keyword
-(`softschema.errors`). Records are sorted by `(path, validator)`. The TypeScript port
-returns the same structured meaning through `ajv`; semantic model errors remain
-implementation-specific.
+`{kind: "schema_violation", code, path, property?, validator, validator_value, value, message}`
+where `message` comes from a shared template keyed on the JSON Schema keyword
+(`softschema.errors`). Missing and undeclared-field records carry `property`, with one
+record per affected field.
+Missing required fields are derived from the structured `required` array and instance.
+The `unevaluatedProperties` message remains jsonschema’s only per-field source, so its
+current aggregate message shape has explicit canary coverage.
+Records are sorted by `(path, validator, property)`. The TypeScript port returns the
+same verdict and structured meaning through Ajv; exact record-set differences are
+allowed only when pinned in the shared vectors as documented engine deviations.
+Semantic model errors remain implementation-specific.
+
+For field repair, match `{kind, code, path, property}`. `validator`, `validator_value`,
+and `value` name engine mechanisms and diagnostic context rather than the stable repair
+category.
 
 `ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
 `invalid`, or `input_error`. Library callers always receive this structured result.
@@ -316,6 +361,7 @@ The current first-release kinds:
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
 | `schema_missing` | A compiled schema is bound (a `schema_path` or `softschema.schema`) but the file does not exist, is unreadable, or fails bounded resolution (absolute path or path escaping the document directory and working directory). |
 | `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
+| `enforcement_unsupported` | The schema is valid Draft 2020-12, but its topology is outside the checked enforced profile; `reason` and `schema_path` identify the boundary. |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them

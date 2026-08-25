@@ -8,9 +8,14 @@ export type SchemaStatus = "soft" | "permissive" | "enforced";
 export type SchemaProfile = "frontmatter-md" | "pure-yaml";
 
 const SCHEMA_STATUSES: readonly SchemaStatus[] = ["soft", "permissive", "enforced"];
+const SCHEMA_PROFILES: readonly SchemaProfile[] = ["frontmatter-md", "pure-yaml"];
 
 export function isSchemaStatus(value: unknown): value is SchemaStatus {
   return typeof value === "string" && (SCHEMA_STATUSES as readonly string[]).includes(value);
+}
+
+export function isSchemaProfile(value: unknown): value is SchemaProfile {
+  return typeof value === "string" && (SCHEMA_PROFILES as readonly string[]).includes(value);
 }
 
 /**

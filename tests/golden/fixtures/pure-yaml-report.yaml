@@ -1,0 +1,4 @@
+softschema:
+  contract: test.runs:BacktestReport/v1
+run_id: run-2026-04-12T18-03-00Z
+summary: regression vs baseline

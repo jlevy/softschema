@@ -1,13 +1,13 @@
 # softschema
 
 `softschema` applies gradual contracts to Markdown and YAML artifacts.
-In Markdown, consumed values live in YAML frontmatter under a named contract; the body
-remains prose. A field becomes structured only when a consumer needs it, and validation
-tightens as the shape settles.
+In Markdown, values a downstream tool reads live in YAML frontmatter under a named
+contract; the body remains prose.
+Add a field when a consumer needs it, and tighten validation as the shape settles.
 
-Explain that rule to a coding agent and it changes the artifacts the agent produces.
-Later code and agent steps can validate, query, and aggregate those artifacts without
-parsing or reinterpreting their prose.
+Give that rule to a coding agent before it designs a workflow.
+It can write each artifact as both readable context and a validated handoff.
+Later code and agent steps read named values instead of parsing or reinterpreting prose.
 
 ## Quick Start
 
@@ -35,10 +35,11 @@ portable Agent Skills location and the Claude Code discovery mirror.
 
 ## Why Explain Soft Schemas to an Agent?
 
-Coding agents readily produce readable Markdown.
-Without an explicit boundary, they often put values that later code needs into prose or
-tables. The file works for the current task but becomes a weak handoff: every consumer
-must parse unstable text, and a later agent session must infer the values again.
+A coding agent can produce readable Markdown without separating context from values that
+a later step must consume.
+Without an explicit boundary, those values may appear in prose or tables.
+The file remains readable, but every consumer must parse unstable text, and a later
+agent session must infer the values again.
 
 The soft-schema convention gives the agent a stable rule.
 YAML is authoritative for any value a consumer reads; the body is for reasoning,
@@ -46,18 +47,23 @@ evidence, and caveats.
 A value moves into YAML only when a consumer needs it, and validation runs where the
 artifact passes to that consumer.
 
-Once an agent has that rule, it can build several capabilities on the same artifacts:
+Once that boundary is explicit, the same artifacts support:
 
 - **Explicit handoffs.** Later agent steps and ordinary code read named fields under a
   contract instead of guessing at headings or table layouts.
-- **Machine-actionable repair.** `softschema validate` reports structural and semantic
-  failures separately as JSON, so an agent can correct a specific field and retry.
+- **Validation-guided repair.** `softschema validate` separates structural and semantic
+  failures. Structural records carry stable categories and paths, so an agent can repair
+  the named field and retry instead of interpreting free-form feedback.
 - **Durable project memory.** Structured values remain queryable across files and
   sessions, while the body preserves why a decision was made.
 - **Derived reports.** Code can regenerate indexes, ledgers, and summaries from
   validated payloads instead of maintaining those views as separate sources of truth.
-- **Gradual automation.** A workflow can begin as documents, then acquire typed fields,
-  validation, aggregations, and CI checks one consumer at a time.
+- **Incremental automation.** A workflow can begin as documents, then acquire typed
+  fields, validation, aggregations, and CI checks one consumer at a time.
+
+Across a pipeline, each artifact serves as both persistent context and a validated
+interface: the body preserves why the work took its current form, and the payload tells
+the next step which values it can rely on.
 
 The project skill makes the rule discoverable to agents working in a repository.
 The CLI makes it testable: `compile --check` detects drift between a model and its
@@ -124,11 +130,12 @@ A research loop is any process that repeatedly proposes an idea, measures it, an
 decides: optimizing a program, tuning prompts against an eval, comparing libraries.
 Each iteration produces a record with two halves that resist a single format: numbers a
 tool must read, and reasoning only the author can write.
-In one project’s performance work, each of 51 experiments is one artifact whose enforced
-frontmatter carries the hypothesis ID, the host and subject fingerprints, the measured
-medians with confidence intervals, and a verdict drawn from a fixed set, while the
-Markdown body explains what the profiler suggested, what was tried, and why the numbers
-meant what they said.
+In the
+[performance work that motivated this playbook](https://github.com/jlevy/softschema/pull/33),
+each of 51 experiments is one artifact whose enforced frontmatter carries the hypothesis
+ID, the host and subject fingerprints, the measured medians with confidence intervals,
+and a verdict drawn from a fixed set, while the Markdown body explains what the profiler
+suggested, what was tried, and why the numbers meant what they said.
 Code reads the YAML to apply the accept rule and regenerate a ledger; humans and agents
 read the prose.
 
@@ -197,6 +204,21 @@ flags.
 
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
+When a structural schema is bound, `status: enforced` rejects any property the schema
+does not declare. With only a host-supplied Pydantic or Zod model, validation delegates
+to that model and does not invent a structural schema; with neither, validation checks
+metadata only.
+
+For an ordinary schema—one that declares its fields in one place per object—that is the
+whole rule, and the paragraph below is safe to skip.
+
+Two advanced cases need more care: schemas that **compose** declarations across `allOf`,
+`anyOf`, `oneOf`, or `$ref`, and **dependent** schemas where one field’s schema depends
+on another field’s value (`if`/`then`/`else`, `dependentSchemas`). softschema enforces
+those too, at each supported object location, but only where it can do so without
+changing what the authored schema otherwise accepts; the spec’s
+[support matrix](docs/softschema-spec.md#support-matrix) is the exact boundary.
+
 Contract IDs follow an enforced shape, `[namespace:]Name[/version]`—for example
 `example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0`—naming a payload
 contract, not a class or import path.
@@ -335,6 +357,9 @@ They release together under the same version number on PyPI and npm.
 - [Movie Page Example](examples/movie_page/README.md): the complete example backing the
   snippets above.
 - [Installation](docs/installation.md): pinned vs zero-install, uv and Node setup.
+- [JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md):
+  advanced background for composed and dependent schemas only; not needed for ordinary
+  soft schemas.
 
 ## Development and Contributing
 

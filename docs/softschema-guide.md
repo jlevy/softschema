@@ -1,9 +1,9 @@
 # softschema Guide
 
 `softschema` applies gradual contracts to Markdown and YAML artifacts.
-In Markdown, consumed values live in YAML frontmatter under a named contract; the body
-remains prose. A field becomes structured only when a consumer needs it, and validation
-tightens as the shape settles.
+In Markdown, values a downstream tool reads live in YAML frontmatter under a named
+contract; the body remains prose.
+Add a field when a consumer needs it, and tighten validation as the shape settles.
 This guide is the operational reference for humans and coding agents adopting that
 pattern.
 
@@ -287,14 +287,39 @@ Add `softschema.contract` and `status: soft`. The rest of the document stays pro
 **Step 4: schema validation at boundaries.** When the consumer has been burned by a
 missing or malformed value, add a Pydantic model (or compiled schema), set
 `status: permissive`, and validate at file boundaries.
-Bugs that used to silently break the consumer now fail loudly.
+Missing or malformed values then fail at the boundary instead of silently breaking the
+consumer.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
-real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
-fields at the structural boundary (object schemas that are silent about
-`additionalProperties` are treated as closed; an explicit `additionalProperties` in the
-schema still wins). Setting the source model to `extra="forbid"` additionally compiles
-that strictness into the compiled schema itself and enforces it at the semantic layer.
+real authoring bugs, bind a compiled structural schema and flip `status: enforced`. The
+validator rejects undeclared fields at the structural boundary.
+If a trusted host binds only a Pydantic or Zod model, validation delegates to that
+model’s language-specific rules and skips the structural layer.
+This preserves native validators and refinements, but it is not portable object closure:
+Pydantic and Zod have different unknown-key defaults.
+Bind a compiled schema when clients in either language need the same structural result.
+Setting the source model to `extra="forbid"` additionally compiles strictness into the
+schema and enforces it at the semantic layer.
+
+*Advanced, and only for composed or dependent schemas.* If every object in your schema
+declares its fields in one place, the paragraph above is the complete rule and you can
+skip the rest of this step.
+The mechanics start to matter in two cases: declarations for one object spread across
+`allOf`, `anyOf`, `oneOf`, or `$ref`, or one field’s schema depending on another field’s
+value through `if`/`then`/`else` or `dependentSchemas`. There, **closing an object**
+means rejecting each present property whose value is not evaluated by any successful
+applicable schema at that object location, which is not what `additionalProperties`
+does, because that keyword sees only the declarations sitting in its own schema object.
+So a supported site receives `unevaluatedProperties: false` when declarations compose
+and `additionalProperties: false` otherwise.
+Structured `items` and disjoint `prefixItems`/`items` schemas close their object
+elements; a `contains` schema remains a matcher so enforcement cannot change which
+elements match. An explicit value for either keyword on the site still wins.
+For a schema shape outside the support matrix, `status: enforced` returns
+`enforcement_unsupported` instead of guessing where to insert the rule; see the
+[normative support matrix](softschema-spec.md#support-matrix), and
+[Playbook: Express Cross-Field Rules](#playbook-express-cross-field-rules) for a worked
+dependent-field example.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -544,7 +569,7 @@ Two checks belong in CI:
 
   ```bash
   for f in docs/artifacts/*.md; do
-    softschema validate “$f”
+    softschema validate "$f"
   done
   ```
 
@@ -556,9 +581,9 @@ integration” section of [docs/development.md](development.md).
 
 ## Playbook: Migrate an Existing Artifact
 
-Take an artifact that doesn’t fit the canonical shape and bring it in line.
+Take an artifact that doesn’t fit the default shape and bring it in line.
 
-The canonical shape is:
+The default shape is:
 
 - A `softschema:` block (the self-description quartet: `contract`, `schema`, `envelope`,
   `status`) plus a designated envelope key at the top level.
@@ -716,9 +741,9 @@ If consumed values remain in prose, the next step or session must infer them aga
 If those values live in a validated payload, later agents and ordinary code can read
 them directly while the body preserves the reasoning behind them.
 
-Explaining soft schemas therefore changes more than output formatting.
-It gives the agent a design rule it can apply while planning a workflow, choosing file
-boundaries, writing artifacts, implementing consumers, and adding CI checks.
+With that boundary, the agent can use one design rule while planning a workflow,
+choosing file boundaries, writing artifacts, implementing consumers, and adding CI
+checks.
 
 Use this sequence:
 
@@ -744,8 +769,10 @@ Use this sequence:
 
 4. **Validate and repair at each handoff.** Run `softschema validate ...` immediately
    after an agent writes an artifact and return the JSON result to the agent.
-   Separate structural and semantic errors identify the field or invariant that needs
-   repair.
+   Structural and semantic failures are separate.
+   For a structural repair, match `kind`, `code`, and `path`; records for missing or
+   undeclared properties also include `property`. Do not parse `message`; see
+   [Matching on structural error records](softschema-spec.md#matching-on-structural-error-records).
 
 5. **Build derived views from validated payloads.** Indexes, ledgers, dashboards, and
    summaries should read YAML only and be regenerated rather than maintained as a second
@@ -840,6 +867,107 @@ Four habits make the record compound rather than accumulate:
 - **Let the record be the loop’s memory.** An agent resuming the loop months later reads
   back what was tried and why it was dropped without re-running anything, so the loop
   survives the session that produced it.
+
+## Playbook: Express Cross-Field Rules
+
+This playbook is an advanced one, and most soft schemas never need it: when each field
+stands on its own, declare the fields and stop.
+Reach for it when a contract is not about individual field types but about how fields
+relate: *a record marked `decision: abandoned` must also say what it cost.* Write that
+rule in the schema, with a plain JSON Schema conditional, rather than in a separate
+checker:
+
+```yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: example.research:Experiment/v1
+type: object
+required: [decision]
+properties:
+  decision:
+    enum: [pending, adopted, abandoned]
+  budget_spent:
+    type: number
+allOf:
+- if:
+    properties:
+      decision:
+        const: abandoned
+    required: [decision]
+  then:
+    required: [budget_spent]
+```
+
+Under `enforced`, this behaves as follows; every row was verified against both engines:
+
+| Record | Result | Why |
+| --- | --- | --- |
+| `{decision: pending}` | valid | the matcher does not fire, so the rule imposes nothing |
+| `{decision: abandoned, budget_spent: 12.5}` | valid | the rule fires and is satisfied |
+| `{decision: abandoned}` | invalid: `required property 'budget_spent' is missing` | the rule fires; the error names the field the author forgot |
+| `{decision: pending, bogus: 1}` | invalid: `property 'bogus' is not allowed` | undeclared properties are still rejected in a composed schema |
+
+The third row is the point: the error is actionable, not a generic complaint about
+`allOf`.
+
+Three mechanics make this work.
+They are worth understanding, because each one is a place where a plausible-looking
+alternative silently breaks the schema.
+
+**1. The `if` block is a matcher, not a declaration.** It describes *which documents the
+rule applies to*, not what they may contain.
+So the validator never closes it.
+If it did, `{decision: abandoned}` would stop matching the `if`; the document has no
+other properties for a closed matcher to accept, and the conditional would quietly never
+fire. You would not get an error; you would get a rule that does nothing.
+
+**2. Reject undeclared properties at the composition root, not inside the branches.** A
+branch cannot see what its siblings declare, so inserting the rule in a branch would
+reject their keys. Only the root sees all of them.
+
+**3. The root closes with `unevaluatedProperties`, which is annotation-aware.** It
+admits any property that some subschema actually evaluated, wherever that subschema
+sits. In the schema above `budget_spent` is declared in the root’s own `properties`, so
+the lexical `additionalProperties` would admit it too; the difference does not show yet.
+It shows the moment a declaration moves into a branch, which is what happens as a schema
+grows:
+
+```yaml
+allOf:
+- if:
+    properties: {decision: {const: abandoned}}
+    required: [decision]
+  then:
+    required: [budget_spent]
+    properties:
+      writeoff_reason: {type: string}     # declared only in the branch
+```
+
+`unevaluatedProperties` admits `writeoff_reason` on an abandoned record, because the
+`then` branch evaluated it.
+`additionalProperties` at the root would not: it sees only the root’s own `properties`
+and rejects a key the schema plainly declares.
+The admission is success-sensitive: `{decision: pending, writeoff_reason: n/a}` is
+rejected because the `then` branch does not apply and no successful schema evaluates
+`writeoff_reason` for that record.
+
+One profile rule comes with the annotation model.
+Python `jsonschema` and Ajv do not expose condition-matcher annotations consistently in
+every shape, so matcher fields must also be unconditionally evaluated at the object
+being closed. Declare anything you match on there; `decision` above is declared at the
+root for exactly this reason.
+Otherwise enforced validation returns `enforcement_unsupported` with reason
+`conditional_annotation_scope`.
+
+This keeps the schema as the single statement of the contract.
+Reimplementing cross-field rules in a separate checker is exactly the split soft schemas
+exist to avoid: two places to update, and only one of them runs in CI.
+
+For the full derivation behind these mechanics—why annotations rather than lexical
+siblings decide what counts as declared, what Draft 2020-12 guarantees, and where Python
+`jsonschema` and Ajv actually differ—see the research brief,
+[JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md).
+The [spec](softschema-spec.md#rejecting-undeclared-properties-under-enforced) states the
+normative rules and the support matrix.
 
 ## Common Mistakes
 
@@ -938,6 +1066,10 @@ For Python-specific module layout, public API decisions, and dependency boundary
   Python ↔ TypeScript API parity table.
 - [Movie Page Example](../examples/movie_page/README.md): the complete public example
   backing the snippets above.
+- [JSON Schema Composition, Field Dependencies, and Undeclared Properties](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md):
+  advanced background, needed only for composed or dependent schemas: JSON Schema from
+  first principles, the Draft 2020-12 annotation model, and the measured Python
+  `jsonschema` and Ajv behavior behind the support matrix.
 - [Installation](installation.md), [Development](development.md), and
   [Publishing](publishing.md): workflow docs.
 

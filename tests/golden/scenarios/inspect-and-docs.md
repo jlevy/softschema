@@ -8,6 +8,9 @@ path:
 
 # Test: inspect reports envelope keys and softschema metadata
 
+`profile` reports which artifact shape the file was read as, so a populated `metadata`
+block beside `has_frontmatter: false` is explained rather than surprising.
+
 ```console
 $ softschema inspect examples/movie_page/spirited-away.md
 {
@@ -22,7 +25,8 @@ $ softschema inspect examples/movie_page/spirited-away.md
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
-  "path": "examples/movie_page/spirited-away.md"
+  "path": "examples/movie_page/spirited-away.md",
+  "profile": "frontmatter-md"
 }
 ? 0
 ```
@@ -203,7 +207,8 @@ $ softschema inspect tests/golden/fixtures/plain-doc.md
   ],
   "has_frontmatter": true,
   "metadata": null,
-  "path": "tests/golden/fixtures/plain-doc.md"
+  "path": "tests/golden/fixtures/plain-doc.md",
+  "profile": "frontmatter-md"
 }
 ? 0
 ```
@@ -216,7 +221,8 @@ $ softschema inspect tests/golden/fixtures/no-frontmatter.md
   "envelope_keys": [],
   "has_frontmatter": false,
   "metadata": null,
-  "path": "tests/golden/fixtures/no-frontmatter.md"
+  "path": "tests/golden/fixtures/no-frontmatter.md",
+  "profile": "frontmatter-md"
 }
 ? 0
 ```
@@ -233,5 +239,32 @@ $ softschema skill
 ---
 name: softschema
 ...
+? 0
+```
+
+# Test: inspect a pure-yaml artifact reads its root metadata block
+
+`inspect` detects the profile the same way `validate` does, so the two never disagree
+about what a file is. The root `softschema:` block is the metadata block and the
+remaining root keys are the envelope candidates, while `has_frontmatter` stays literal:
+a pure-yaml artifact has no frontmatter to report.
+
+```console
+$ softschema inspect tests/golden/fixtures/pure-yaml-report.yaml
+{
+  "envelope_keys": [
+    "run_id",
+    "summary"
+  ],
+  "has_frontmatter": false,
+  "metadata": {
+    "contract": "test.runs:BacktestReport/v1",
+    "envelope": null,
+    "schema": null,
+    "status": null
+  },
+  "path": "tests/golden/fixtures/pure-yaml-report.yaml",
+  "profile": "pure-yaml"
+}
 ? 0
 ```

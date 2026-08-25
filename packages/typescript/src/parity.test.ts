@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { canonicalizeJsonSchema } from "./canonicalize.js";
-import { renderStructuralMessage, structuralErrorRecord } from "./errors.js";
+import { renderStructuralMessage, structuralErrorCode, structuralErrorRecord } from "./errors.js";
 import { canonicalJson, stableStringify } from "./settings.js";
 import { softFieldMeta } from "./softField.js";
 
@@ -51,12 +51,27 @@ describe("renderStructuralMessage", () => {
       }),
     ).toEqual({
       kind: "schema_violation",
+      code: "invalid_value",
       path: ["count"],
       validator: "maximum",
       validator_value: 10,
       value: 11,
       message: "value 11 is greater than the maximum of 10",
     });
+  });
+  test("code categories and the shared closure message match Python", () => {
+    // `code` is the documented match surface, so both closure keywords — the one a
+    // simple schema reports and the one a composed schema reports — must land on the
+    // same category, and share a message.
+    expect(structuralErrorCode("additionalProperties")).toBe("undeclared_property");
+    expect(structuralErrorCode("unevaluatedProperties")).toBe("undeclared_property");
+    expect(structuralErrorCode("required")).toBe("missing_property");
+    expect(structuralErrorCode("enum")).toBe("invalid_value");
+    // A keyword with no template must not be folded silently into `invalid_value`.
+    expect(structuralErrorCode("someFutureKeyword")).toBe("unmapped_keyword");
+    expect(renderStructuralMessage("unevaluatedProperties", false, { a: 1 })).toBe(
+      renderStructuralMessage("additionalProperties", false, { a: 1 }),
+    );
   });
 });
 

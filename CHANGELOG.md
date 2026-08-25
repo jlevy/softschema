@@ -4,7 +4,183 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
-## Unreleased
+## v0.7.0—2026-08-25
+
+This is a minor release because structural diagnostic records and supplied-resource
+requirements change even though ordinary schema verdicts remain compatible.
+
+`status: enforced` now returns real document verdicts for supported `allOf`,
+`if`/`then`/`else`, and `dependentSchemas` object shapes that version 0.6.2 refused
+before examining the document.
+It also corrects unsafe `anyOf`, `oneOf`, and `$ref` transformations that could change
+the authored schema’s result.
+At each supported object location, it rejects a present property whose value is not
+admitted by any successful applicable schema.
+If the validator cannot apply that undeclared-property rule without changing the
+schema’s other behavior, it returns an explicit unsupported result.
+
+Support for the previously refused shapes is additive relative to version 0.6.2, but
+this release is not wholly backward-compatible: corrected alternative/reference
+behavior, supplied-resource handling, and structural diagnostic records can change as
+described below.
+
+### Breaking changes and migration
+
+Structural errors now identify both a stable category and, for field-level repairs, the
+affected property. Consumers that match engine keywords or assume one aggregate record
+per object should migrate:
+
+| Before | After |
+| --- | --- |
+| Match `validator == "additionalProperties"` | Match `code == "undeclared_property"`; composed sites report `unevaluatedProperties` |
+| Match `{kind, code, path}` for a field repair | Match `{kind, code, path, property}` |
+| Read one generic missing/extra record | Read one record per affected field, with a property-specific message |
+| Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the support matrix are refused |
+
+The `code` values are `undeclared_property`, `missing_property`, `invalid_value`, and
+`unmapped_keyword`. `validator`, `validator_value`, and `value` remain diagnostic
+fields, not the field-repair match surface.
+
+Callers that supply external resources must key each one by an absolute URI without a
+fragment. A resource root `$id`, when present, must resolve to that key.
+This makes Python and TypeScript resolve the same fully supplied offline resource graph
+rather than relying on engine-specific retrieval behavior.
+
+### Fixed
+
+- **Supported composed object schemas now validate under `enforced`**
+  ([#41](https://github.com/jlevy/softschema/issues/41)). `allOf`, `anyOf`, `oneOf`,
+  `if`/`then`/`else`, `dependentSchemas`, and supported `$ref` branches remain unchanged
+  internally; their parent receives annotation-aware `unevaluatedProperties: false`.
+  This preserves alternative branch selection and successful-branch annotations.
+  Direct lexical objects continue to use `additionalProperties: false`. Reusable
+  definitions and resources remain open while each supported structured reference site
+  receives its own undeclared-property rule.
+  The offline graph supports local pointers, escaped tokens, anchors, nested
+  definitions, embedded `$id` resources, supplied resources, and literal or
+  pattern-based declarations.
+  Structured `items` and disjoint `prefixItems`/`items` receive the rule independently,
+  while `contains` remains an unchanged matcher.
+  Pure references to targets that already state `additionalProperties` or
+  `unevaluatedProperties` receive no redundant closure keyword.
+  This keeps the common generated `anyOf: [$ref, null]` shape valid when its object
+  graph is already explicit.
+  Sibling child evaluators and context-sensitive composition references are refused when
+  inserting undeclared-property rejection could change intersection, branch-selection,
+  or conditional-success semantics.
+- **Values APIs can request the checked structural policy.** Both Python and TypeScript
+  values APIs accept `status` and offline `resources`. Existing model-only calls retain
+  their semantic-only behavior, including under `status: enforced`; the status changes
+  structural behavior only when a schema is supplied.
+- **Field-level structural diagnostics identify the repair target.** Missing and
+  undeclared-property errors name the field and preserve one record per affected field.
+  `unevaluatedProperties` uses the same category and property-specific message as
+  `additionalProperties`. Array indexes in `path` are numeric in both runtimes, and
+  Python derives missing required fields from validator data rather than English error
+  text.
+- **In-memory schema graph identity is deterministic.** Reusing one mapping object at
+  several schema locations now returns `schema_invalid/shared_subschema` with deep-copy
+  guidance instead of allowing traversal order to select which object locations reject
+  undeclared properties.
+  TypeScript repeats this graph check before returning a validator-cache hit, where
+  serialized content alone cannot distinguish shared identities.
+
+### Added
+
+- **Stable `code` and `property` error fields.** `code` groups engine keywords by repair
+  category; `property` identifies the field for missing and undeclared-property records.
+- **An explicit `status: enforced` support matrix.** Dynamic references, unsafe nested
+  instance composition, conditionals whose matcher annotations escape the unconditional
+  declaration scope, directly applied structured embedded resources, and references to
+  directly applied non-reusable targets return `enforcement_unsupported` with stable
+  `reason`, `schema_path`, and `message` fields.
+  Malformed graphs remain `schema_invalid`.
+- **Semantic parity vectors.** Shared raw-versus-enforced vectors cover alternatives,
+  references, resources, patterns, conditionals, unsupported boundaries, and field-error
+  multiplicity in Python and TypeScript.
+- **Documented native-engine deviations.** The `engine_deviations` vectors pin the few
+  accepted `jsonschema`/Ajv record-set differences exactly.
+  Validation verdicts for the supported matrix remain equal.
+
+### Compatibility
+
+Compiled schemas and `schema_sha256` are unchanged because the checked overlay remains
+validation-time only.
+Explicit `additionalProperties` or `unevaluatedProperties` at an instance site still
+wins, and mappings with no reachable declaration remain open.
+Model-only and metadata-only validation keep their version 0.6.2 verdicts and skip
+reasons; this release does not require existing hosts to add structural schemas.
+
+Documents previously refused solely because they used supported composition now report
+their real valid or invalid outcome.
+A schema outside the supported matrix fails before document validation with an
+actionable reason rather than receiving a partial overlay.
+See the spec’s [support matrix](docs/softschema-spec.md#support-matrix) for the exact
+boundary and author workarounds.
+
+## v0.6.2—2026-08-22
+
+Fixes a validation gap that could pass a build while checking nothing: the CLI bound
+every artifact to the `frontmatter-md` profile, so a conforming `pure-yaml` artifact —
+including the spec’s own example — could not be validated at all.
+
+### Fixed
+
+- **`validate` and `inspect` resolve the artifact profile instead of assuming
+  `frontmatter-md`** ([#38](https://github.com/jlevy/softschema/issues/38)). Both CLIs
+  read every artifact with the frontmatter reader and built a `Contract` with no
+  `profile`, so the pure-yaml branch of `validate_artifact` was unreachable from the
+  command line and any pure-YAML file failed with `no_frontmatter`. The library was
+  correct throughout; only the binding was wrong.
+
+  The gap was silent rather than loud, which is what made it worth a patch: a project
+  could adopt pure-YAML datasets, mark them `status: enforced`, wire
+  `softschema validate` into CI, and get a passing build that validated nothing — the
+  exact failure `status` exists to prevent.
+  An `enforced` pure-yaml artifact that violates its bound schema now fails with exit 1.
+
+  Profile resolution is `--profile` flag > a `*.yaml`/`*.yml` file name > a fenceless
+  document whose root mapping carries a `softschema:` block > `frontmatter-md`. The name
+  is checked before the fence because a YAML document may open with the `---`
+  document-start marker that the frontmatter reader would otherwise scan as a fence.
+  Requiring the metadata block for the content case keeps prose that happens to parse as
+  YAML on `frontmatter-md`, so a Markdown document without frontmatter reports
+  `no_frontmatter` exactly as before.
+
+- **Envelope inference no longer applies to pure-yaml artifacts.** The spec exempts the
+  profile from single-key inference and multi-key ambiguity rejection, because a
+  pure-yaml artifact’s whole root minus the metadata block is the payload.
+  Reaching that branch through the CLI would otherwise have rejected a two-key pure-yaml
+  document as ambiguous.
+
+### Features
+
+- **`--profile {frontmatter-md,pure-yaml}` on `validate` and `inspect`** in both
+  implementations: the explicit escape hatch for an artifact whose name and content do
+  not settle its shape.
+
+- **`inspect` reports the resolved `profile`**, and reads a pure-yaml artifact’s root
+  metadata block rather than reporting `metadata: null` for it.
+  `has_frontmatter` stays literal — a pure-yaml artifact has none — and `profile` is
+  what explains the populated metadata beside it.
+  This adds one key to the `inspect` JSON output.
+
+- **`clearValidatorCache` is exported from the TypeScript package**, matching Python’s
+  `clear_validator_cache`.
+
+### Performance
+
+- **TypeScript compiled schemas are memoized**, closing the last gap with the Python
+  cache shipped in v0.5.0. `validateStructural` constructed a fresh Ajv instance and
+  recompiled the schema on every call, so a suite validating many artifacts against one
+  schema paid full compilation each time; on a repeated validation of the movie example
+  the per-call cost drops from roughly 17ms to 0.03ms.
+
+  Both runtimes now key the cache on the schema’s own content plus the `enforced`
+  overlay, so a rewritten schema can never be served a stale entry and two paths holding
+  identical schemas share one.
+  Validation with `resources` supplied builds fresh in both, rather than risk a wrong
+  key.
 
 ## v0.6.1—2026-08-14
 

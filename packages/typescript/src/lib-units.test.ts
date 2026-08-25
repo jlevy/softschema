@@ -6,7 +6,7 @@ import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
-  collapseAdditionalProperties,
+  collapseUndeclaredProperties,
   normalizeAjvError,
   renderStructuralMessage,
   structuralErrorRecord,
@@ -263,8 +263,7 @@ describe("errors: every message template", () => {
     expect(rec.message).toBe("value 7 is not a multiple of 5");
   });
 
-  test("normalizeAjvError uses the full required list for required (matching jsonschema)", () => {
-    // Regression for ss-l9ng: Python's validator_value is the whole required array.
+  test("normalizeAjvError preserves the missing property beside the required list", () => {
     const rec = normalizeAjvError({
       instancePath: "",
       keyword: "required",
@@ -273,18 +272,47 @@ describe("errors: every message template", () => {
       data: { year: 2000 },
     } as never);
     expect(rec.validator_value).toEqual(["title", "year"]);
-    expect(rec.message).toBe("required property ['title', 'year'] is missing");
+    expect(rec.property).toBe("title");
+    expect(rec.message).toBe("required property 'title' is missing");
   });
 
-  test("collapseAdditionalProperties keeps one record per object path", () => {
-    // Regression for ss-b1l9: ajv emits one additionalProperties error per extra key.
+  test("normalizeAjvError distinguishes array indexes from numeric object keys", () => {
+    const arrayRecord = normalizeAjvError(
+      {
+        instancePath: "/0/name",
+        keyword: "type",
+        params: { type: "string" },
+        schema: "string",
+        data: 42,
+      } as never,
+      [{ name: 42 }],
+    );
+    const objectRecord = normalizeAjvError(
+      {
+        instancePath: "/0/name",
+        keyword: "type",
+        params: { type: "string" },
+        schema: "string",
+        data: 42,
+      } as never,
+      { "0": { name: 42 } },
+    );
+
+    expect(arrayRecord.path).toEqual([0, "name"]);
+    expect(objectRecord.path).toEqual(["0", "name"]);
+  });
+
+  test("collapseUndeclaredProperties deduplicates by object path and property", () => {
     const base = structuralErrorRecord({
       path: [],
       validator: "additionalProperties",
       validatorValue: false,
       value: { a: 1, b: 2 },
+      property: "a",
     });
-    expect(collapseAdditionalProperties([base, { ...base }])).toEqual([base]);
+    expect(collapseUndeclaredProperties([base, { ...base }])).toEqual([base]);
+    const other = { ...base, property: "b", message: "property 'b' is not allowed" };
+    expect(collapseUndeclaredProperties([base, other])).toEqual([base, other]);
     const req = structuralErrorRecord({
       path: [],
       validator: "required",
@@ -292,7 +320,7 @@ describe("errors: every message template", () => {
       value: {},
     });
     // required duplicates are preserved (jsonschema also emits one per missing key).
-    expect(collapseAdditionalProperties([req, { ...req }])).toHaveLength(2);
+    expect(collapseUndeclaredProperties([req, { ...req }])).toHaveLength(2);
   });
 });
 
