@@ -311,18 +311,16 @@ It is not required to be an import path or a class name.
 | --- | --- |
 | `soft` | A convention exists, but no boundary schema is enforced. |
 | `permissive` | Known fields validate; extension fields may be allowed by the source model. |
-| `enforced` | The schema is authoritative at the boundary. |
+| `enforced` | A bound structural schema is authoritative at the boundary. |
 
 `status` records intended maturity, and `enforced` tightens validation:
 
 - `soft` and `permissive` do not change validation behavior; whether a model allows
   extra fields is configured on the source model.
-- `enforced` makes the schema authoritative at the boundary: a conforming validator
-  requires a structural schema and, at a supported object schema that declares
-  properties but omits an explicit undeclared-property rule, rejects each present
-  property not evaluated by a successful applicable schema at that object location.
-  A model alone is insufficient: implementations return `enforced_schema_required`
-  rather than inheriting Pydantic’s or Zod’s different unknown-key defaults.
+- When a structural schema is bound, `enforced` makes it authoritative at the boundary.
+  At a supported object schema that declares properties but omits an explicit
+  undeclared-property rule, the validator rejects each present property not evaluated by
+  a successful applicable schema at that object location.
   Which keyword the validator inserts depends on whether declarations compose at that
   instance site. An explicit `additionalProperties` or `unevaluatedProperties` value at
   the site always wins.
@@ -330,6 +328,13 @@ It is not required to be an import path or a class name.
   The checked overlay applies at validation time only; it never changes the compiled
   schema or `schema_sha256`. A topology outside the support matrix returns
   `enforcement_unsupported` rather than a guessed document verdict.
+- `status` does not bind a validator by itself.
+  If a trusted host supplies only a Pydantic or Zod model, structural validation is
+  skipped and the native model decides the semantic result, including its own
+  unknown-key policy. If neither a schema nor a model is bound, validation checks only
+  the artifact format and metadata.
+  These two paths preserve language-specific or metadata-only workflows; they do not
+  provide the cross-language structural guarantee described above.
 
 ### Rejecting undeclared properties under `enforced`
 
@@ -465,6 +470,8 @@ as one offline graph:
    supplied-resource roots stay unchanged unless the author closed them explicitly.
    A structured `$ref` application site receives annotation-aware closure independently,
    so using one target at pure application sites cannot make those sites interfere.
+   A pure reference to a target that already states `additionalProperties` or
+   `unevaluatedProperties` receives no redundant closure keyword.
    A reference inside context-sensitive composition, or in the same schema object as
    other validation keywords, is refused when its evaluated target subtree would receive
    inferred closure.
@@ -526,7 +533,7 @@ ones it refuses.
 | `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site, while fields declared only in `then` or `else` are admitted only when that branch applies and succeeds |
 | `dependentSchemas` branch declarations | Admit fields only when the trigger is present and the dependent schema succeeds |
 | `not` | Preserve the prohibition; declarations below it do not cause closure |
-| Supported `$ref` | Keep the reusable target open and close each pure structured application site; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
+| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
 | Plain structured `items` | Close each element schema independently when no `contains` schema co-describes its elements |
 | `prefixItems` with `items` | Close their structured value schemas independently; they apply to disjoint index ranges |
 | `contains` | Preserve the matcher without inferred closure so enforcement cannot change which elements match; an unclosed structured child below the matcher is unsupported |
@@ -597,14 +604,17 @@ The table below summarizes the key areas exercised by the shared
 | Closed simple objects | `additionalProperties: false` | `ConfigDict(extra="forbid")` | `z.strictObject()` | Equivalent strict objects compile identically; `status: enforced` separately adds checked undeclared-property rejection to supported composed schemas |
 | Temporal values | `type: string` with `format` annotations | `date`, `datetime`, `time`, and `timedelta` fields | `z.iso.date()`, `z.iso.datetime()`, `z.iso.time()`, and `z.iso.duration()` | The structural schema is format-only; Pydantic and Zod can accept different string sets during semantic validation |
 | Descriptions and softschema metadata | `title`, `description`, `default`, and `x-softschema` annotations | Model and `Field` metadata; `SoftField` | `.meta()`, `.default()`, and `softField()` | The canonical compiler preserves the common annotation forms exercised by the fixture |
-| Composition and field dependencies | Hand-authored `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `dependentSchemas`, `patternProperties`, and related applicators | Author the compiled JSON Schema directly; softschema defines no equivalent general Pydantic construct | Author the compiled JSON Schema directly; softschema defines no equivalent general Zod construct | Structural validation uses Draft 2020-12; `status: enforced` accepts only the topologies in the support matrix below |
+| Composition and field dependencies | Hand-authored `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `dependentSchemas`, `patternProperties`, and related applicators | Author the compiled JSON Schema directly; softschema defines no equivalent general Pydantic construct | Author the compiled JSON Schema directly; softschema defines no equivalent general Zod construct | Structural validation uses Draft 2020-12; `status: enforced` accepts only the topologies in the support matrix above |
 | Native semantic rules | No general JSON Schema representation for arbitrary runtime code | `@field_validator` and `@model_validator` | `.refine()`, `.superRefine()`, and `.check()` | A caller may add this independent validation layer. It is implementation-specific and is not covered by `schema_sha256` |
 
-The last row is additive, not a fallback.
 When a caller supplies both a compiled schema and a native model, the values must pass
-both layers. A native model cannot rescue a structural failure or replace the structural
-schema required by `status: enforced`. The current APIs allow a trusted caller to supply
-a model, but the portable artifact does not declare that a native model is mandatory.
+both layers; a native model cannot rescue a structural failure.
+A trusted host may instead supply only a native model.
+That explicitly delegates the validation result to Pydantic or Zod, including
+library-specific refinements and unknown-key behavior, while the structural layer
+reports that it was skipped.
+This is the optional language-specific fallback, not part of the portable cross-language
+profile. The artifact’s `status` does not select or configure a native model by itself.
 
 This table is intentionally area-level for this release.
 A future profile may enumerate each Pydantic and Zod source construct, its
@@ -680,7 +690,6 @@ A validator must reject:
   keys without an explicit envelope designation)
 - a missing or unreadable compiled schema when one is bound (`schema_missing`)
 - a bound file that is not a valid schema (`schema_invalid`)
-- `status: enforced` without a structural schema (`enforced_schema_required`)
 - a valid schema topology outside the `status: enforced` support matrix
   (`enforcement_unsupported`)
 - a JSON Schema validation failure

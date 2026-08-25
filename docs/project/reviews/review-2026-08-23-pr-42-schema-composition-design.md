@@ -46,9 +46,9 @@ applicable schema. It does not mean making an entire schema resource graph stric
 The stack’s central capability is additive: supported `allOf`, conditional, and
 dependent-schema object shapes that version 0.6.2 refused can now receive real
 validation verdicts.
-The complete stack is nevertheless breaking for consumers that relied on model-only
-enforced validation, old alternative/reference transformations, permissive
-supplied-resource preparation, or the old structural diagnostic record shape.
+The complete stack is nevertheless breaking for consumers that relied on old
+alternative/reference transformations, permissive supplied-resource preparation, or the
+old structural diagnostic record shape.
 It does not change `soft` or `permissive` validation, compiled schema bytes, or
 `schema_sha256`.
 
@@ -475,7 +475,7 @@ selection, matching, prohibition, or conditional success.
 | S4 | Medium | `ss-zylb` | Fixed | The invariant and rules now depend on successful property evaluation. Conditional and dependent branch declarations are admitted only when the branch applies and succeeds. |
 | S5 | Medium | `ss-zpso` | Fixed | TypeScript decodes Ajv pointers against the instance, producing numeric array indexes without changing numeric-looking object keys. |
 | S6 | Low | `ss-girn` | Fixed | Python derives missing required properties from validator data. The unavoidable `unevaluatedProperties` message parser has canary coverage for multiple and parenthesized keys. |
-| S7 | Low | `ss-9pjf` | Fixed | Stack wording, the resolved alternatives bead, model-only `no_schema` migration note, and root self-reference guidance are reconciled. |
+| S7 | Low | `ss-9pjf` | Fixed | Stack wording, the resolved alternatives bead, values-API status/resource options, and root self-reference guidance are reconciled. A later compatibility gate preserved the released model-only results. |
 | S8 | High | `ss-2hn1` | Fixed | A `$ref` under context-sensitive composition, or beside validation siblings, is refused as `composition_reference_context` when its evaluated target subtree would receive inferred closure. Pure application sites remain supported. |
 
 ### Design assessment
@@ -515,6 +515,67 @@ primary Draft 2020-12 sources.
 **Final follow-up verdict:** Approved.
 The review findings and the additional pre-commit finding are addressed in the stacked
 remediation. Final GitHub CI evidence is recorded on PR #44.
+
+## Pre-Merge Compatibility Gate — 2026-08-24
+
+The final gate compared the complete stack with released version 0.6.2 and exercised the
+actual trading-models, GTIA v2, and metaproc consumers.
+It found two release blockers before the compatibility fixes:
+
+1. Model-only contracts marked `enforced` changed from native semantic validation to
+   `enforced_schema_required`. This broke metaproc’s registered Pydantic contracts.
+2. A common generated nullable model field, `anyOf: [{$ref: ...}, {type: "null"}]`,
+   returned `composition_reference_context` even when every referenced object already
+   stated its unknown-property policy.
+   This broke valid GTIA query-context and cohort artifacts.
+
+Both are fixed. Model-only and metadata-only paths retain their 0.6.2 verdicts and skip
+reasons. A pure `$ref` to a target that already states `additionalProperties` or
+`unevaluatedProperties` receives no redundant wrapper closure.
+References to implicitly open targets, references with validation siblings, and target
+subtrees that still need inferred closure retain the checked safety analysis.
+
+### Compatibility Results
+
+| Surface | Evidence | Result |
+| --- | --- | --- |
+| Ordinary structural verdicts | A 30-case 0.6.2-versus-stack matrix covered flat objects, required fields, explicit open and closed objects, inline nesting, arrays, local `$defs`/`$ref`, pattern properties, free-form maps, scalar constraints, nullability, and raw versus enforced status | Every pre-existing accept/reject verdict matched. The only matrix difference is the new optional `status` parameter on the values API. |
+| Model-only and metadata-only calls | Direct artifact and values probes plus metaproc’s registered contracts | Verdicts and structural skip reasons match 0.6.2. Native Pydantic or Zod validation still runs. |
+| Generated trading and GTIA schemas | 44 compiled sidecars containing 377 structured object schemas, 429 references, and 536 `anyOf` sites | All 377 object schemas already state their property policy: 249 use `additionalProperties: false` and 128 use `additionalProperties: true`. The enforced overlay does not need to infer simple-object closure there. |
+| Trading models | Full `packages/trading-models` suite against the stack | 102 passed. |
+| GTIA v2 | Full test directory against the stack | 1,547 passed. One stale assertion for a pure-YAML CLI limitation already removed in 0.6.2 was excluded. |
+| metaproc | Full vendored suite against the stack | 4,270 passed and 8 skipped. |
+| softschema Python | Lint, types, unit/integration tests, package build, and goldens | 194 tests and 49 golden journeys passed; sdist and wheel built. |
+| softschema TypeScript | Lint, types, coverage tests, package build, publint, and Node/Bun goldens | 192 tests passed at 98.02% line coverage; 47 Node and 49 Bun golden journeys passed. |
+| Cross-runtime behavior | Direct Python-versus-Node CLI comparison | All representative commands matched semantically. |
+| Compiled output | Compiler code-path review and conformance tests | Canonical schema bytes and `schema_sha256` remain unchanged. |
+
+### Client Impact That Remains
+
+The stack is validity-compatible for ordinary schema-backed use, but it is not fully
+output-compatible:
+
+- Structural violations add stable `code` and field-level `property` values.
+  Missing or undeclared fields produce one record per affected property.
+  A referenced object may report the mechanism as `unevaluatedProperties` instead of
+  `additionalProperties`. Consumers should match `code == "undeclared_property"` and
+  include `property`, rather than match the engine keyword or assume one aggregate
+  record.
+- Callers using the low-level external `resources` option must use absolute URI keys
+  without fragments, and a resource root `$id` must resolve to its key.
+  Ordinary callers that pass only a compiled schema are unaffected.
+- `validate_values` and `validateValues` gain optional `status` and `resources`
+  arguments. Existing calls keep their behavior.
+- The supported package-root exports are unchanged.
+  A deep import of `EnforcementUnsupportedError` from a canonicalization module was
+  internal and is not retained as a public compatibility surface.
+
+Because diagnostic records and supplied-resource inputs remain breaking surfaces, this
+stack should release as version 0.7.0, not 0.6.3. Existing consumers constrained to
+`softschema>=0.6,<0.7` will not receive those output changes automatically.
+
+**Final compatibility verdict:** Approved for merge and for a 0.7.0 release.
+No known ordinary-schema or current trading/GTIA validity regression remains.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -88,11 +88,14 @@ as YAML.
 
 ## Checked Enforced Profile
 
-When `status` is `enforced`, a structural schema is required.
-A Zod model alone is not a substitute because ordinary Zod objects and Pydantic models
-have different unknown-key defaults.
-`validateArtifact` and `validateValues` return `enforced_schema_required` when no
-structural schema is bound.
+When `status` is `enforced` and a structural schema is bound, Ajv applies the checked
+undeclared-property policy described below.
+Without a structural schema, `validateArtifact` preserves the semantic-only Zod path and
+reports structural validation as skipped with `inferred_via_model`; `validateValues`
+also runs the supplied Zod schema and leaves its unrequested structural result
+successful. If neither schema nor model is bound, artifact validation is metadata-only
+and reports `no_schema`. `status` does not synthesize JSON Schema or change whether a
+Zod object strips, passes through, or rejects unknown keys.
 
 Before Ajv compilation, `prepareSchemaGraph` checks the root and every supplied resource
 as one offline graph.

@@ -581,6 +581,13 @@ structured object. For dynamic references and unknown extension applicators, sta
 resolution may be impossible or outside the supported profile; the validator should
 report that boundary rather than guess.
 
+An application wrapper needs no added closure when its pure `$ref` target already states
+`additionalProperties` or `unevaluatedProperties` at the referenced object location.
+Adding a second closure keyword there is redundant.
+It can also make an ordinary generated nullable form such as
+`anyOf: [{$ref: ...}, {type: "null"}]` appear to depend on inferred closure even though
+every object rule is already explicit.
+
 An explicit closure keyword is also scoped to an instance site.
 For example, `{$ref: ..., unevaluatedProperties: true}` opts that referring site out.
 It cannot do so if a transformation has already inserted `additionalProperties: false`
@@ -646,10 +653,10 @@ keyword-by-keyword correspondence.
 When both a structural schema and a native model are supplied, the two validators are
 conjunctive: the input must pass both.
 Native validation is therefore an optional additional layer, not a fallback for
-structural failure.
-In the current API, a trusted caller may supply the Pydantic class or
-Zod schema; the portable artifact itself does not declare a native validator as
-mandatory.
+structural failure. Alternatively, a trusted host can supply only the Pydantic class or
+Zod schema. That is an explicit language-specific fallback: the native model decides the
+semantic result and there is no structural result to rescue or replace.
+The portable artifact itself does not declare a native validator as mandatory.
 
 Their object defaults also matter:
 
@@ -667,8 +674,9 @@ Their object defaults also matter:
 These are related but not interchangeable policies.
 A contract marked `enforced` is not actually closed if structural validation is skipped
 and the only semantic model ignores or strips extras.
-An API must either require a structural schema for enforced status, derive one in
-memory, or explicitly apply a strict semantic policy in each runtime.
+An API must therefore require or derive a structural schema, apply a strict semantic
+policy in each runtime, or state clearly that the model-only path delegates to
+language-specific behavior rather than providing the portable structural guarantee.
 
 ## Failure Modes Demonstrated by Runtime Probes
 
@@ -916,7 +924,7 @@ At minimum the matrix should state:
 - supported reference spellings and resource boundaries;
 - explicit closure precedence at an instance site;
 - known under-enforcement and over-enforcement, if any;
-- the structural-schema requirement for enforced status;
+- the exact behavior of enforced status when no structural schema is bound;
 - parity guarantees for verdicts versus diagnostic record sets; and
 - verified workarounds for unsupported shapes.
 
@@ -935,10 +943,15 @@ The implementation also makes the boundary explicit.
 Dynamic references and the instance-location, child co-evaluator, and context-sensitive
 reference shapes for which static analysis cannot prove safe annotation flow return
 `enforcement_unsupported` with a stable reason.
-Enforced model-only calls return `enforced_schema_required`. Missing and
-undeclared-field errors carry the affected `property`, with one record per field, and
-array positions in TypeScript and Python error paths are numeric.
-Repeated in-memory schema object identities return `schema_invalid/shared_subschema`.
+Pure references to targets that already state a closure keyword receive no redundant
+wrapper closure, including the common generated nullable-reference shape.
+When no structural schema is bound, a trusted host’s Pydantic or Zod model remains an
+explicit language-specific semantic fallback; with neither schema nor model, validation
+is metadata-only.
+Missing and undeclared-field errors carry the affected `property`, with
+one record per field, and array positions in TypeScript and Python error paths are
+numeric. Repeated in-memory schema object identities return
+`schema_invalid/shared_subschema`.
 
 Shared semantic vectors compare raw and enforced outcomes across both runtimes,
 including reference/resource equivalents and each unsupported reason.

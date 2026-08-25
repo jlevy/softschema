@@ -175,11 +175,11 @@ result = validate_artifact("examples/movie_page/spirited-away.md", contract=cont
 Validation fails on malformed frontmatter, invalid `softschema:` metadata, missing
 envelopes, missing compiled schemas, JSON Schema errors, and Pydantic errors.
 
-When the contract’s status is `enforced`, a structural schema is required.
-The validator checks the root and every supplied resource, prepares them as one offline
-graph, and applies the checked undeclared-property rules in `softschema.enforcement`. At
-each supported object location, it rejects a present property whose value is not
-evaluated by any successful applicable schema.
+When the contract’s status is `enforced` and a structural schema is bound, the validator
+checks the root and every supplied resource, prepares them as one offline graph, and
+applies the checked undeclared-property rules in `softschema.enforcement`. At each
+supported object location, it rejects a present property whose value is not evaluated by
+any successful applicable schema.
 Simple object sites use `additionalProperties`; composed and referenced sites use
 `unevaluatedProperties`; reusable definitions stay open; and unsupported topologies
 return a structured `enforcement_unsupported` error.
@@ -196,9 +196,13 @@ The overlay is validation-time only; compiled schemas never change.
 an optional `resources` mapping.
 `validate_values` accepts `status` and `resources`, so already-extracted values use the
 same boundary policy.
-An enforced artifact or values call without a structural schema returns
-`enforced_schema_required`; a semantic model is not a substitute because Pydantic and
-Zod have different unknown-key behavior.
+Without a structural schema, an artifact with a Pydantic model preserves the existing
+semantic-only path and reports structural validation as skipped with
+`inferred_via_model`. A model-only `validate_values` call likewise runs Pydantic and
+leaves the unrequested structural result successful.
+If neither schema nor model is bound, artifact validation is metadata-only and reports
+`no_schema`. `status` does not synthesize a schema or change the model’s `extra`
+configuration.
 
 Compiling a schema is a pure function of the schema text and `strict_extras`, so
 `validate_structural` memoizes it rather than reparsing and recompiling on every call.
@@ -357,7 +361,6 @@ The current first-release kinds:
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
 | `schema_missing` | A compiled schema is bound (a `schema_path` or `softschema.schema`) but the file does not exist, is unreadable, or fails bounded resolution (absolute path or path escaping the document directory and working directory). |
 | `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
-| `enforced_schema_required` | `status: enforced` was requested without a structural schema. |
 | `enforcement_unsupported` | The schema is valid Draft 2020-12, but its topology is outside the checked enforced profile; `reason` and `schema_path` identify the boundary. |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 

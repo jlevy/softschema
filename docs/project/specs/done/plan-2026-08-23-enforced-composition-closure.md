@@ -5,7 +5,7 @@ author: Claude Code, with maintainer direction from Joshua Levy
 ---
 # Feature: Enforced Closure for Composed Schemas
 
-**Date:** 2026-08-23 (last updated 2026-08-23)
+**Date:** 2026-08-23 (last updated 2026-08-24)
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
@@ -36,13 +36,16 @@ preparation stage in both runtimes:
 - `anyOf` and `oneOf` remain open internally and close at their parent with
   `unevaluatedProperties`, preserving branch selection and successful-branch
   annotations.
-- Reusable definitions and resources stay open; each structured `$ref` application site
-  closes independently.
+- Reusable definitions and resources stay open; each implicitly open structured `$ref`
+  application site closes independently.
+  A pure reference to an explicitly closed target receives no redundant closure keyword.
 - JSON Pointers, escaped tokens, anchors, nested definitions, embedded `$id` resources,
   and explicitly supplied absolute resources are indexed as one offline graph.
 - Nonempty `patternProperties` participates in property declaration and portable regex
   checks cover every supplied resource.
-- `status: enforced` requires a structural schema in artifact and values APIs.
+- `status: enforced` applies the checked policy when a structural schema is bound.
+  Existing model-only calls keep their language-specific semantic behavior, and
+  metadata-only artifacts keep their validation result.
 - Missing and undeclared field errors carry a stable `property` field and preserve one
   record per affected field.
 - Dynamic references, unsafe nested instance composition, conditional matcher fields
@@ -60,10 +63,10 @@ records have been reconciled with the checked profile.
 - **Internal code:** No compatibility requirement.
   The old lexical transformer is replaced, with thin wrappers retained only where
   current internal imports use them.
-- **Library APIs:** Migrate.
-  Existing function names remain, but enforced model-only calls now fail, values APIs
-  accept new status/resource options, and field-error matching adds `property`. The
-  changelog provides the migration surface.
+- **Library APIs:** Migrate diagnostic consumers only.
+  Existing function names and model-only verdicts remain.
+  Values APIs accept additive status/resource options, while field-error matching adds
+  `code` and `property`. The changelog provides the diagnostic migration surface.
 - **Server APIs:** Not applicable.
 - **Plugin and extension APIs:** Not applicable.
 - **File formats:** Support both.

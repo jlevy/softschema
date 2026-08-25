@@ -6,6 +6,10 @@ version number.
 
 ## Unreleased
 
+This section is intended for version 0.7.0 because structural diagnostic records and
+supplied-resource requirements change even though ordinary schema verdicts remain
+compatible.
+
 `status: enforced` now returns real document verdicts for supported `allOf`,
 `if`/`then`/`else`, and `dependentSchemas` object shapes that version 0.6.2 refused
 before examining the document.
@@ -18,8 +22,8 @@ schema’s other behavior, it returns an explicit unsupported result.
 
 Support for the previously refused shapes is additive relative to version 0.6.2, but
 this release is not wholly backward-compatible: corrected alternative/reference
-behavior, model-only enforced calls, supplied-resource handling, and structural
-diagnostic records can change as described below.
+behavior, supplied-resource handling, and structural diagnostic records can change as
+described below.
 
 ### Breaking changes and migration
 
@@ -33,8 +37,6 @@ per object should migrate:
 | Match `{kind, code, path}` for a field repair | Match `{kind, code, path, property}` |
 | Read one generic missing/extra record | Read one record per affected field, with a property-specific message |
 | Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the support matrix are refused |
-| Use an enforced semantic model without a schema | Bind a compiled structural schema; the result is now `enforced_schema_required` |
-| Read a null or omitted structural `skipped_reason` from a model-only values call | Read `skipped_reason: "no_schema"`; the semantic model still runs |
 
 The `code` values are `undeclared_property`, `missing_property`, `invalid_value`, and
 `unmapped_keyword`. `validator`, `validator_value`, and `value` remain diagnostic
@@ -60,12 +62,17 @@ rather than relying on engine-specific retrieval behavior.
   pattern-based declarations.
   Structured `items` and disjoint `prefixItems`/`items` receive the rule independently,
   while `contains` remains an unchanged matcher.
+  Pure references to targets that already state `additionalProperties` or
+  `unevaluatedProperties` receive no redundant closure keyword.
+  This keeps the common generated `anyOf: [$ref, null]` shape valid when its object
+  graph is already explicit.
   Sibling child evaluators and context-sensitive composition references are refused when
   inserting undeclared-property rejection could change intersection, branch-selection,
   or conditional-success semantics.
-- **Enforced status no longer succeeds without structural enforcement.** Artifact
-  validation and the Python/TypeScript values APIs reject model-only enforced calls with
-  `enforced_schema_required`. Both values APIs accept `status` and offline `resources`.
+- **Values APIs can request the checked structural policy.** Both Python and TypeScript
+  values APIs accept `status` and offline `resources`. Existing model-only calls retain
+  their semantic-only behavior, including under `status: enforced`; the status changes
+  structural behavior only when a schema is supplied.
 - **Field-level structural diagnostics identify the repair target.** Missing and
   undeclared-property errors name the field and preserve one record per affected field.
   `unevaluatedProperties` uses the same category and property-specific message as
@@ -102,6 +109,8 @@ Compiled schemas and `schema_sha256` are unchanged because the checked overlay r
 validation-time only.
 Explicit `additionalProperties` or `unevaluatedProperties` at an instance site still
 wins, and mappings with no reachable declaration remain open.
+Model-only and metadata-only validation keep their version 0.6.2 verdicts and skip
+reasons; this release does not require existing hosts to add structural schemas.
 
 Documents previously refused solely because they used supported composition now report
 their real valid or invalid outcome.

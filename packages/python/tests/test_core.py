@@ -181,20 +181,18 @@ def test_validate_values_requires_a_model_or_schema() -> None:
         validate_values({"name": "hello"})
 
 
-def test_validate_values_enforced_requires_a_structural_schema() -> None:
+def test_validate_values_enforced_model_only_preserves_semantic_validation() -> None:
     result = validate_values(
-        {"name": "hello", "bogus": 1},
+        {"name": "hello", "direction": "up", "delta": 1.5, "bogus": 1},
         model=SampleModel,
         status=SchemaStatus.enforced,
     )
 
     assert not result.ok
-    assert result.structural.errors == [
-        {
-            "kind": "enforced_schema_required",
-            "message": "status 'enforced' requires a structural schema",
-        }
-    ]
+    assert result.structural.ok
+    assert result.structural.errors == []
+    assert result.structural.skipped_reason is None
+    assert result.semantic.errors[0]["type"] == "extra_forbidden"
 
 
 def test_validate_artifact_without_envelope_key_infers_single_envelope(tmp_path: Path) -> None:
@@ -302,7 +300,9 @@ def test_validate_artifact_accepts_pure_yaml(tmp_path: Path) -> None:
     assert result.values == {"name": "hello", "direction": "up", "delta": 1.5}
 
 
-def test_validate_artifact_enforced_model_only_requires_schema(tmp_path: Path) -> None:
+def test_validate_artifact_enforced_model_only_preserves_semantic_validation(
+    tmp_path: Path,
+) -> None:
     doc = tmp_path / "sample.yaml"
     doc.write_text("name: hello\ndirection: up\ndelta: 1.5\nbogus: 1\n")
     contract = Contract(
@@ -315,7 +315,10 @@ def test_validate_artifact_enforced_model_only_requires_schema(tmp_path: Path) -
     result = validate_artifact(doc, contract=contract)
 
     assert not result.ok
-    assert result.structural.errors[0]["kind"] == "enforced_schema_required"
+    assert result.structural.ok
+    assert result.structural.errors == []
+    assert result.structural.skipped_reason == "inferred_via_model"
+    assert result.semantic.errors[0]["type"] == "extra_forbidden"
 
 
 def test_validate_artifact_rejects_contract_mismatch(tmp_path: Path) -> None:

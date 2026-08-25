@@ -591,6 +591,16 @@ class SchemaGraph {
     );
   }
 
+  /** Whether a pure reference chain already delegates object closure explicitly. */
+  private pureReferenceReachesExplicitClosure(node: Json, seen: Set<Schema> = new Set()): boolean {
+    if (!isMapping(node) || SchemaGraph.referenceHasValidationSiblings(node)) return false;
+    if (typeof node.$ref !== "string") return false;
+    const target = this.resolveRef(node, node.$ref);
+    if (hasExplicitClosure(target)) return true;
+    if (!isMapping(target) || seen.has(target)) return false;
+    return this.pureReferenceReachesExplicitClosure(target, new Set(seen).add(target));
+  }
+
   private checkContextSensitiveReferences(node: Json, compositionContext = false): void {
     if (!isMapping(node)) {
       return;
@@ -655,7 +665,7 @@ class SchemaGraph {
       }
     }
 
-    const explicit = hasExplicitClosure(out);
+    const explicit = hasExplicitClosure(out) || this.pureReferenceReachesExplicitClosure(node);
     const declares = this.declaresProperties(node);
     if (context === "nested_instance" && declares && !explicit) {
       throw new EnforcementUnsupportedError(

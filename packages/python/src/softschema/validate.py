@@ -456,10 +456,10 @@ def validate_values(
             strict_extras=status == SchemaStatus.enforced,
             resources=resources,
         )
-    elif status == SchemaStatus.enforced:
-        structural = _enforced_schema_required()
     else:
-        structural = StructuralResult(ok=True, skipped_reason="no_schema")
+        # The semantic model is the requested validator; the structural slot remains an
+        # unrequested successful pass so callers can read both result fields uniformly.
+        structural = StructuralResult(ok=True)
     semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
     return ValidationResult(structural=structural, semantic=semantic)
 
@@ -819,8 +819,6 @@ def _validate_extracted_values(
                 bound_path,
                 strict_extras=contract.status == SchemaStatus.enforced,
             )
-    elif contract.status == SchemaStatus.enforced:
-        structural = _enforced_schema_required()
     elif contract.model is not None:
         structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
     else:
@@ -842,18 +840,6 @@ def _validate_extracted_values(
         warnings=warnings,
         structural=structural,
         semantic=semantic,
-    )
-
-
-def _enforced_schema_required() -> StructuralResult:
-    return StructuralResult(
-        ok=False,
-        errors=[
-            {
-                "kind": "enforced_schema_required",
-                "message": "status 'enforced' requires a structural schema",
-            }
-        ],
     )
 
 

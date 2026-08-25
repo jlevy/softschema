@@ -606,6 +606,34 @@ class _SchemaGraph:
     def _reference_has_validation_siblings(node: dict[str, Any]) -> bool:
         return any(key != "$ref" and key not in _REFERENCE_NONVALIDATION_SIBLINGS for key in node)
 
+    def _pure_reference_reaches_explicit_closure(
+        self,
+        node: Any,
+        seen: frozenset[int] | None = None,
+    ) -> bool:
+        """Return whether a pure reference already delegates object closure.
+
+        Pydantic and Zod reuse explicitly closed object definitions through ``$ref``.
+        Adding ``unevaluatedProperties`` at those application wrappers is redundant and
+        can make an ordinary nullable reference look context-sensitive. Follow pure
+        reference chains only; validation siblings require composition analysis.
+        """
+        if not isinstance(node, dict) or self._reference_has_validation_siblings(node):
+            return False
+        reference = node.get("$ref")
+        if not isinstance(reference, str):
+            return False
+        target = self.resolve_ref(node, reference)
+        if _has_explicit_closure(target):
+            return True
+        if not isinstance(target, dict):
+            return False
+        seen = frozenset() if seen is None else seen
+        marker = id(target)
+        if marker in seen:
+            return False
+        return self._pure_reference_reaches_explicit_closure(target, seen | {marker})
+
     def _check_context_sensitive_references(
         self,
         node: Any,
@@ -672,7 +700,7 @@ class _SchemaGraph:
             else:
                 out[key] = value
 
-        explicit = _has_explicit_closure(out)
+        explicit = _has_explicit_closure(out) or self._pure_reference_reaches_explicit_closure(node)
         declares = self.declares_properties(node)
         if context == "nested_instance" and declares and not explicit:
             raise EnforcementUnsupportedError(

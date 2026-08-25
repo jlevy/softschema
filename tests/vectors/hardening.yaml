@@ -404,6 +404,33 @@ enforcement_semantics:
     value: { street: s, extra: 1 }
     raw: valid
     enforced: valid
+  - id: nullable_reference_to_explicitly_closed_generated_graph
+    # Pydantic and Zod commonly encode `Model | null` as `anyOf: [$ref, null]`.
+    # Every structured object is already explicit here, so checked enforcement has
+    # nothing to infer and must not refuse the nullable reference context.
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        company_facts:
+          anyOf:
+            - { $ref: "#/$defs/CompanyFacts" }
+            - { type: "null" }
+      $defs:
+        CompanyFacts:
+          type: object
+          additionalProperties: false
+          properties:
+            brands:
+              type: array
+              items: { $ref: "#/$defs/CompanyBrand" }
+        CompanyBrand:
+          type: object
+          additionalProperties: false
+          properties: { name: { type: string } }
+    value: { company_facts: { brands: [{ name: Acme }] } }
+    raw: valid
+    enforced: valid
   - id: pattern_only_object
     schema:
       type: object

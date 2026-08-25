@@ -266,8 +266,11 @@ A supported site receives `unevaluatedProperties: false` when declarations compo
 Structured `items` and disjoint `prefixItems`/`items` schemas close their object
 elements; a `contains` schema remains a matcher so enforcement cannot change which
 elements match. An explicit value for either keyword on the site still wins.
-A model without a structural schema is rejected because Pydantic and Zod have different
-unknown-key defaults.
+If a trusted host binds only a Pydantic or Zod model, validation delegates to that
+model’s language-specific rules and skips the structural layer.
+This preserves native validators and refinements, but it is not portable object closure:
+Pydantic and Zod have different unknown-key defaults.
+Bind a compiled schema when clients in either language need the same structural result.
 For a schema shape outside the support matrix, `status: enforced` returns
 `enforcement_unsupported` instead of guessing where to insert the rule; see the
 [normative support matrix](softschema-spec.md#support-matrix).

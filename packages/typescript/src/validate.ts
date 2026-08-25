@@ -456,10 +456,10 @@ export function validateValues(
       strictExtras: options.status === "enforced",
       resources: options.resources,
     });
-  } else if (options.status === "enforced") {
-    structural = enforcedSchemaRequired();
   } else {
-    structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
+    // The semantic model is the requested validator; the structural slot remains an
+    // unrequested successful pass so callers can read both result fields uniformly.
+    structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
   }
   const semantic = options.model
     ? validateSemantic(values, options.model)
@@ -630,25 +630,10 @@ function structuralForValues(
     }
     return structuralAgainstSchemaFile(bound.path, values, contract.status === "enforced");
   }
-  if (contract.status === "enforced") return enforcedSchemaRequired();
   if (contract.model !== null) {
     return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
   }
   return { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
-}
-
-function enforcedSchemaRequired(): StructuralResult {
-  return {
-    ok: false,
-    errors: [
-      {
-        kind: "enforced_schema_required",
-        message: "status 'enforced' requires a structural schema",
-      },
-    ],
-    engine: "json_schema",
-    skipped_reason: null,
-  };
 }
 
 function validateExtracted(

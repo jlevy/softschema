@@ -202,9 +202,10 @@ flags.
 
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
-`status: enforced` requires a structural schema.
-At each supported object location, it rejects a present property whose value is not
-admitted by any successful applicable schema.
+When a structural schema is bound, `status: enforced` rejects a present property at each
+supported object location unless a successful applicable schema admits it.
+With only a host-supplied Pydantic or Zod model, validation delegates to that model and
+does not invent a structural schema; with neither, validation checks metadata only.
 The spec’s [support matrix](docs/softschema-spec.md#support-matrix) lists the composed,
 referenced, and array-contained object shapes for which the validator can apply that
 rule without changing the authored schema’s other behavior.
