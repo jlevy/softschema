@@ -257,11 +257,25 @@ missing or malformed value, add a Pydantic model (or compiled schema), set
 Bugs that used to silently break the consumer now fail loudly.
 
 **Step 5: enforced.** When the artifact is consistently good and unknown fields indicate
-real authoring bugs, flip `status: enforced`: the validator then rejects undeclared
-fields at the structural boundary (object schemas that are silent about
-`additionalProperties` are treated as closed; an explicit `additionalProperties` in the
-schema still wins). Setting the source model to `extra="forbid"` additionally compiles
-that strictness into the compiled schema itself and enforces it at the semantic layer.
+real authoring bugs, bind a compiled structural schema and flip `status: enforced`. The
+validator rejects undeclared fields at the structural boundary.
+In this guide, **closing an object** means rejecting each present property whose value
+is not evaluated by any successful applicable schema at that object location.
+A supported site receives `unevaluatedProperties: false` when declarations compose and
+`additionalProperties: false` otherwise.
+Structured `items` and disjoint `prefixItems`/`items` schemas close their object
+elements; a `contains` schema remains a matcher so enforcement cannot change which
+elements match. An explicit value for either keyword on the site still wins.
+If a trusted host binds only a Pydantic or Zod model, validation delegates to that
+model’s language-specific rules and skips the structural layer.
+This preserves native validators and refinements, but it is not portable object closure:
+Pydantic and Zod have different unknown-key defaults.
+Bind a compiled schema when clients in either language need the same structural result.
+For a schema shape outside the support matrix, `status: enforced` returns
+`enforcement_unsupported` instead of guessing where to insert the rule; see the
+[normative support matrix](softschema-spec.md#support-matrix).
+Setting the source model to `extra="forbid"` additionally compiles strictness into the
+schema and enforces it at the semantic layer.
 
 **Step 6: pure data.** If the body has shrunk to nothing useful and the artifact is read
 more by code than by humans, retire the Markdown wrapper and switch to a YAML or JSON
@@ -793,6 +807,97 @@ Four habits make the record compound rather than accumulate:
 - **Let the record be the loop’s memory.** An agent resuming the loop months later reads
   back what was tried and why it was dropped without re-running anything, so the loop
   survives the session that produced it.
+
+## Playbook: Express Cross-Field Rules
+
+Some contracts are not about individual field types but about how fields relate: *a
+record marked `decision: abandoned` must also say what it cost.* Write that in the
+schema, with a plain JSON Schema conditional, rather than in a separate checker:
+
+```yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: example.research:Experiment/v1
+type: object
+required: [decision]
+properties:
+  decision:
+    enum: [pending, adopted, abandoned]
+  budget_spent:
+    type: number
+allOf:
+- if:
+    properties:
+      decision:
+        const: abandoned
+    required: [decision]
+  then:
+    required: [budget_spent]
+```
+
+Under `enforced`, this behaves as follows — every row verified against both engines:
+
+| Record | Result | Why |
+| --- | --- | --- |
+| `{decision: pending}` | valid | the matcher does not fire, so the rule imposes nothing |
+| `{decision: abandoned, budget_spent: 12.5}` | valid | the rule fires and is satisfied |
+| `{decision: abandoned}` | invalid — `required property 'budget_spent' is missing` | the rule fires; the error names the field the author forgot |
+| `{decision: pending, bogus: 1}` | invalid — `property 'bogus' is not allowed` | undeclared properties are still rejected in a composed schema |
+
+The third row is the point: the error is actionable, not a generic complaint about
+`allOf`.
+
+Three mechanics make this work.
+They are worth understanding, because each one is a place where a plausible-looking
+alternative silently breaks the schema.
+
+**1. The `if` block is a matcher, not a declaration.** It describes *which documents the
+rule applies to*, not what they may contain.
+So the validator never closes it.
+If it did, `{decision: abandoned}` would stop matching the `if` — the document has no
+other properties for a closed matcher to accept — and the conditional would quietly
+never fire. You would not get an error; you would get a rule that does nothing.
+
+**2. Reject undeclared properties at the composition root, not inside the branches.** A
+branch cannot see what its siblings declare, so inserting the rule in a branch would
+reject their keys. Only the root sees all of them.
+
+**3. The root closes with `unevaluatedProperties`, which is annotation-aware.** It
+admits any property that some subschema actually evaluated, wherever that subschema
+sits. In the schema above `budget_spent` is declared in the root’s own `properties`, so
+the lexical `additionalProperties` would admit it too — the difference does not show
+yet. It shows the moment a declaration moves into a branch, which is what happens as a
+schema grows:
+
+```yaml
+allOf:
+- if:
+    properties: {decision: {const: abandoned}}
+    required: [decision]
+  then:
+    required: [budget_spent]
+    properties:
+      writeoff_reason: {type: string}     # declared only in the branch
+```
+
+`unevaluatedProperties` admits `writeoff_reason` on an abandoned record, because the
+`then` branch evaluated it.
+`additionalProperties` at the root would not: it sees only the root’s own `properties`
+and rejects a key the schema plainly declares.
+The admission is success-sensitive: `{decision: pending, writeoff_reason: n/a}` is
+rejected because the `then` branch does not apply and no successful schema evaluates
+`writeoff_reason` for that record.
+
+One profile rule comes with the annotation model.
+Python `jsonschema` and Ajv do not expose condition-matcher annotations consistently in
+every shape, so matcher fields must also be unconditionally evaluated at the object
+being closed. Declare anything you match on there — `decision` above is declared at the
+root for exactly this reason.
+Otherwise enforced validation returns `enforcement_unsupported` with reason
+`conditional_annotation_scope`.
+
+The payoff is that the schema stays the single statement of the contract.
+Reimplementing cross-field rules in a separate checker is exactly the split soft schemas
+exist to avoid: two places to update, and only one of them runs in CI.
 
 ## Common Mistakes
 

@@ -6,6 +6,119 @@ version number.
 
 ## Unreleased
 
+This section is intended for version 0.7.0 because structural diagnostic records and
+supplied-resource requirements change even though ordinary schema verdicts remain
+compatible.
+
+`status: enforced` now returns real document verdicts for supported `allOf`,
+`if`/`then`/`else`, and `dependentSchemas` object shapes that version 0.6.2 refused
+before examining the document.
+It also corrects unsafe `anyOf`, `oneOf`, and `$ref` transformations that could change
+the authored schema’s result.
+At each supported object location, it rejects a present property whose value is not
+admitted by any successful applicable schema.
+If the validator cannot apply that undeclared-property rule without changing the
+schema’s other behavior, it returns an explicit unsupported result.
+
+Support for the previously refused shapes is additive relative to version 0.6.2, but
+this release is not wholly backward-compatible: corrected alternative/reference
+behavior, supplied-resource handling, and structural diagnostic records can change as
+described below.
+
+### Breaking changes and migration
+
+Structural errors now identify both a stable category and, for field-level repairs, the
+affected property. Consumers that match engine keywords or assume one aggregate record
+per object should migrate:
+
+| Before | After |
+| --- | --- |
+| Match `validator == "additionalProperties"` | Match `code == "undeclared_property"`; composed sites report `unevaluatedProperties` |
+| Match `{kind, code, path}` for a field repair | Match `{kind, code, path, property}` |
+| Read one generic missing/extra record | Read one record per affected field, with a property-specific message |
+| Treat every `enforcement_unsupported` as composed-schema refusal | Inspect its stable `reason`; only shapes outside the support matrix are refused |
+
+The `code` values are `undeclared_property`, `missing_property`, `invalid_value`, and
+`unmapped_keyword`. `validator`, `validator_value`, and `value` remain diagnostic
+fields, not the field-repair match surface.
+
+Callers that supply external resources must key each one by an absolute URI without a
+fragment. A resource root `$id`, when present, must resolve to that key.
+This makes Python and TypeScript resolve the same fully supplied offline resource graph
+rather than relying on engine-specific retrieval behavior.
+
+### Fixed
+
+- **Supported composed object schemas now validate under `enforced`**
+  ([#41](https://github.com/jlevy/softschema/issues/41)). `allOf`, `anyOf`, `oneOf`,
+  `if`/`then`/`else`, `dependentSchemas`, and supported `$ref` branches remain unchanged
+  internally; their parent receives annotation-aware `unevaluatedProperties: false`.
+  This preserves alternative branch selection and successful-branch annotations.
+  Direct lexical objects continue to use `additionalProperties: false`. Reusable
+  definitions and resources remain open while each supported structured reference site
+  receives its own undeclared-property rule.
+  The offline graph supports local pointers, escaped tokens, anchors, nested
+  definitions, embedded `$id` resources, supplied resources, and literal or
+  pattern-based declarations.
+  Structured `items` and disjoint `prefixItems`/`items` receive the rule independently,
+  while `contains` remains an unchanged matcher.
+  Pure references to targets that already state `additionalProperties` or
+  `unevaluatedProperties` receive no redundant closure keyword.
+  This keeps the common generated `anyOf: [$ref, null]` shape valid when its object
+  graph is already explicit.
+  Sibling child evaluators and context-sensitive composition references are refused when
+  inserting undeclared-property rejection could change intersection, branch-selection,
+  or conditional-success semantics.
+- **Values APIs can request the checked structural policy.** Both Python and TypeScript
+  values APIs accept `status` and offline `resources`. Existing model-only calls retain
+  their semantic-only behavior, including under `status: enforced`; the status changes
+  structural behavior only when a schema is supplied.
+- **Field-level structural diagnostics identify the repair target.** Missing and
+  undeclared-property errors name the field and preserve one record per affected field.
+  `unevaluatedProperties` uses the same category and property-specific message as
+  `additionalProperties`. Array indexes in `path` are numeric in both runtimes, and
+  Python derives missing required fields from validator data rather than English error
+  text.
+- **In-memory schema graph identity is deterministic.** Reusing one mapping object at
+  several schema locations now returns `schema_invalid/shared_subschema` with deep-copy
+  guidance instead of allowing traversal order to select which object locations reject
+  undeclared properties.
+  TypeScript repeats this graph check before returning a validator-cache hit, where
+  serialized content alone cannot distinguish shared identities.
+
+### Added
+
+- **Stable `code` and `property` error fields.** `code` groups engine keywords by repair
+  category; `property` identifies the field for missing and undeclared-property records.
+- **An explicit `status: enforced` support matrix.** Dynamic references, unsafe nested
+  instance composition, conditionals whose matcher annotations escape the unconditional
+  declaration scope, directly applied structured embedded resources, and references to
+  directly applied non-reusable targets return `enforcement_unsupported` with stable
+  `reason`, `schema_path`, and `message` fields.
+  Malformed graphs remain `schema_invalid`.
+- **Semantic parity vectors.** Shared raw-versus-enforced vectors cover alternatives,
+  references, resources, patterns, conditionals, unsupported boundaries, and field-error
+  multiplicity in Python and TypeScript.
+- **Documented native-engine deviations.** The `engine_deviations` vectors pin the few
+  accepted `jsonschema`/Ajv record-set differences exactly.
+  Validation verdicts for the supported matrix remain equal.
+
+### Compatibility
+
+Compiled schemas and `schema_sha256` are unchanged because the checked overlay remains
+validation-time only.
+Explicit `additionalProperties` or `unevaluatedProperties` at an instance site still
+wins, and mappings with no reachable declaration remain open.
+Model-only and metadata-only validation keep their version 0.6.2 verdicts and skip
+reasons; this release does not require existing hosts to add structural schemas.
+
+Documents previously refused solely because they used supported composition now report
+their real valid or invalid outcome.
+A schema outside the supported matrix fails before document validation with an
+actionable reason rather than receiving a partial overlay.
+See the spec’s [support matrix](docs/softschema-spec.md#support-matrix) for the exact
+boundary and author workarounds.
+
 ## v0.6.2—2026-08-22
 
 Fixes a validation gap that could pass a build while checking nothing: the CLI bound

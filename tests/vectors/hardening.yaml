@@ -94,6 +94,15 @@ structural:
     valid: false
     code: schema_invalid
     reason: pattern
+  - id: invalid_pattern_in_resource
+    schema: { $ref: "urn:example:pattern" }
+    resources:
+      urn:example:pattern:
+        { $id: "urn:example:pattern", type: string, pattern: "(?P<name>a)" }
+    value: a
+    valid: false
+    code: schema_invalid
+    reason: pattern
   - id: unresolved_remote_reference
     schema: { $ref: "https://example.invalid/remote-schema" }
     value: anything
@@ -129,17 +138,626 @@ canonicalization:
     before: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
     after: { type: object, dependentSchemas: { credit_card: { title: Billing, type: object } } }
 
+# The enforced-closure overlay. `closure` is the keyword the overlay must inject at the
+# schema root (`none` = the root must stay open); `defs_closure` pins the same for named
+# `$defs` entries. Reusable definition roots stay open; each `$ref` application site is
+# closed independently. Asserting the keyword, not merely that closure happened, keeps
+# the applicator split honest: in-place applicators are never closed internally and
+# force `unevaluatedProperties` at their parent, while self-contained lexical objects
+# keep `additionalProperties`.
 enforcement:
   - id: simple_object
     schema: { type: object, properties: { name: { type: string } } }
-    supported: true
+    closure: additionalProperties
+  - id: free_form_mapping
+    schema: { type: object }
+    closure: none
   - id: composed_object
     schema:
       allOf:
         - { type: object, properties: { first: { type: string } } }
         - { type: object, properties: { last: { type: string } } }
-    supported: false
-    code: enforcement_unsupported
+    closure: unevaluatedProperties
+  - id: conditional_object
+    schema:
+      type: object
+      required: [kind]
+      properties:
+        kind: { enum: [plain, special] }
+        extra: { type: string }
+      allOf:
+        - if: { properties: { kind: { const: special } }, required: [kind] }
+          then: { required: [extra] }
+    closure: unevaluatedProperties
+  - id: alternative_object
+    schema:
+      anyOf:
+        - { type: object, required: [a], properties: { a: { type: string } } }
+        - { type: object, required: [b], properties: { b: { type: string } } }
+    closure: unevaluatedProperties
+  - id: direct_conditional
+    schema:
+      properties: { kind: { enum: [plain, special] } }
+      if: { properties: { kind: { const: special } }, required: [kind] }
+      then: { properties: { extra: { type: string } } }
+    closure: unevaluatedProperties
+  - id: ref_from_fragment
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Address" }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    # Every reference to Address runs through a fragment, so Address is a fragment by
+    # use and is left open; the root closes over it instead, which annotations make
+    # correct. Following the `$ref` is what lets the root know it declares anything.
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: ref_extension_idiom
+    # The commonest composed shape in the wild: extend a base definition with one more
+    # branch. Closing Address lexically would reject `extra`, declared one branch over.
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Address" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: ref_from_both_contexts
+    # Reached from a fragment and from `properties`. The definition remains reusable
+    # and open; each referring site receives annotation-aware closure independently.
+    schema:
+      type: object
+      properties:
+        addr: { $ref: "#/$defs/Address" }
+      allOf:
+        - { $ref: "#/$defs/Address" }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: ref_to_free_form_def
+    # The reference resolves to a free-form mapping, so it declares nothing and the
+    # root must stay open. Assuming any `$ref` declares something would close this
+    # schema against every key.
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Anything" }
+      $defs:
+        Anything: { type: object }
+    closure: none
+    defs_closure:
+      Anything: none
+  - id: ref_adjacent_to_properties
+    # `$ref` is an in-place applicator, so its annotations reach the referring node.
+    # A node that both references and declares needs the annotation-aware keyword, and
+    # the definition it composes with must stay open for the same reason as the
+    # extension idiom above.
+    schema:
+      $ref: "#/$defs/Address"
+      properties: { extra: { type: string } }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: unevaluatedProperties
+    defs_closure:
+      Address: none
+  - id: standalone_ref_closes_its_definition
+    # The only reference is a bare property value. The reference application site closes
+    # with `unevaluatedProperties`; the reusable definition itself remains open.
+    schema:
+      type: object
+      properties:
+        addr: { $ref: "#/$defs/Address" }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    closure: additionalProperties
+    defs_closure:
+      Address: none
+  - id: prohibition_only
+    # `not` names what must be absent. Those properties are not declarations, and `not`
+    # contributes no annotations, so closing over them would admit nothing at all.
+    schema:
+      type: object
+      not: { properties: { b: { type: string } }, required: [b] }
+    closure: none
+  - id: dependent_object
+    schema:
+      type: object
+      properties: { a: { type: string } }
+      dependentSchemas:
+        a: { required: [b], properties: { b: { type: string } } }
+    closure: unevaluatedProperties
+  - id: pattern_object
+    schema:
+      type: object
+      patternProperties: { "^x_": { type: string } }
+    closure: additionalProperties
+
+# Raw-versus-enforced outcomes are the primary semantic oracle. A valid authored schema
+# may narrow only because a present property is unevaluated; an invalid authored schema
+# must never become valid. `unsupported` is the checked profile's explicit answer when
+# it cannot prove a safe placement.
+enforcement_semantics:
+  - id: anyof_collects_all_successful_annotations
+    schema:
+      anyOf:
+        - { type: object, required: [a], properties: { a: { type: string } } }
+        - { type: object, required: [b], properties: { b: { type: string } } }
+    value: { a: x, b: y }
+    raw: valid
+    enforced: valid
+  - id: anyof_rejects_only_the_unevaluated_key
+    schema:
+      anyOf:
+        - { type: object, required: [a], properties: { a: { type: string } } }
+        - { type: object, required: [b], properties: { b: { type: string } } }
+    value: { a: x, b: y, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: oneof_branch_selection_is_preserved
+    schema:
+      oneOf:
+        - { type: object, properties: { a: { type: string } } }
+        - { type: object, properties: { b: { type: string } } }
+    value: { a: x }
+    raw: invalid
+    enforced: invalid
+  - id: oneof_reference_target_would_change_selection
+    schema:
+      oneOf:
+        - { $ref: "#/$defs/NestedBranch" }
+        - { type: object, properties: { child: true } }
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { child: { x: 1, detail: changes-selection } }
+    raw: invalid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: allof_reference_target_would_change_nested_intersection
+    schema:
+      allOf:
+        - { $ref: "#/$defs/NestedBranch" }
+        - properties:
+            child:
+              type: object
+              properties: { detail: { type: string } }
+              additionalProperties: true
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { child: { x: 1, detail: declared-by-sibling } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: conditional_reference_target_would_change_branch_success
+    schema:
+      type: object
+      properties:
+        kind: { type: string }
+        child:
+          type: object
+          properties: { detail: { type: string } }
+          additionalProperties: true
+      if: { properties: { kind: { const: special } }, required: [kind] }
+      then: { $ref: "#/$defs/NestedBranch" }
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { kind: special, child: { x: 1, detail: declared-at-parent } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: reference_with_validation_sibling_reaches_modified_target
+    schema:
+      $ref: "#/$defs/NestedBranch"
+      properties:
+        child:
+          type: object
+          properties: { detail: { type: string } }
+          additionalProperties: true
+      $defs:
+        NestedBranch:
+          type: object
+          properties:
+            child:
+              type: object
+              properties: { x: { type: number } }
+    value: { child: { x: 1, detail: declared-by-sibling } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: mixed_reference_contexts_do_not_interfere
+    schema:
+      type: object
+      properties: { addr: { $ref: "#/$defs/Address" } }
+      allOf:
+        - { $ref: "#/$defs/Address" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Address: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: reference_site_explicit_opt_out
+    schema:
+      $ref: "#/$defs/Base"
+      unevaluatedProperties: true
+      $defs:
+        Base: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: 1 }
+    raw: valid
+    enforced: valid
+  - id: nullable_reference_to_explicitly_closed_generated_graph
+    # Pydantic and Zod commonly encode `Model | null` as `anyOf: [$ref, null]`.
+    # Every structured object is already explicit here, so checked enforcement has
+    # nothing to infer and must not refuse the nullable reference context.
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        company_facts:
+          anyOf:
+            - { $ref: "#/$defs/CompanyFacts" }
+            - { type: "null" }
+      $defs:
+        CompanyFacts:
+          type: object
+          additionalProperties: false
+          properties:
+            brands:
+              type: array
+              items: { $ref: "#/$defs/CompanyBrand" }
+        CompanyBrand:
+          type: object
+          additionalProperties: false
+          properties: { name: { type: string } }
+    value: { company_facts: { brands: [{ name: Acme }] } }
+    raw: valid
+    enforced: valid
+  - id: pattern_only_object
+    schema:
+      type: object
+      patternProperties: { "^x_": { type: string } }
+    value: { x_ok: yes, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: reference_with_sibling_pattern
+    schema:
+      $ref: "#/$defs/Base"
+      patternProperties: { "^x_": { type: string } }
+      $defs:
+        Base: { type: object, properties: { street: { type: string } } }
+    value: { street: s, x_ok: yes }
+    raw: valid
+    enforced: valid
+  - id: overlapping_patterns
+    schema:
+      type: object
+      patternProperties:
+        "^x": { type: string }
+        "ok$": { minLength: 2 }
+    value: { x_ok: yes }
+    raw: valid
+    enforced: valid
+  - id: array_items_close_each_element
+    schema:
+      type: array
+      items:
+        type: object
+        properties: { name: { type: string } }
+    value: [{ name: Ada, bogus: 1 }]
+    raw: valid
+    enforced: invalid
+    errors:
+      - { code: undeclared_property, path: [0], property: bogus }
+  - id: prefix_items_and_items_are_disjoint
+    schema:
+      type: array
+      prefixItems:
+        - { type: object, properties: { head: { type: string } } }
+      items: { type: object, properties: { tail: { type: string } } }
+    value: [{ head: first }, { tail: second }]
+    raw: valid
+    enforced: valid
+  - id: contains_is_a_matcher
+    schema:
+      type: array
+      contains:
+        type: object
+        required: [match]
+        properties: { match: { const: true } }
+    value: [{ match: true, detail: stays-open }]
+    raw: valid
+    enforced: valid
+  - id: contains_nested_object_requires_explicit_closure
+    schema:
+      type: array
+      contains:
+        type: object
+        properties:
+          nested:
+            type: object
+            properties: { x: { type: number } }
+    value: [{ nested: { x: 1, detail: changes-match } }]
+    raw: valid
+    enforced: unsupported
+    reason: nested_instance_composition
+  - id: contains_reference_target_would_change_match
+    schema:
+      type: array
+      contains: { $ref: "#/$defs/Element" }
+      $defs:
+        Element:
+          type: object
+          properties:
+            nested:
+              type: object
+              properties: { x: { type: number } }
+    value: [{ nested: { x: 1, detail: changes-match } }]
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
+  - id: items_and_contains_child_overlap
+    schema:
+      type: array
+      items:
+        type: object
+        properties: { a: { type: string } }
+      contains:
+        type: object
+        required: [b]
+        properties: { b: { type: number } }
+    value: [{ a: x, b: 1 }]
+    raw: valid
+    enforced: unsupported
+    reason: child_evaluator_overlap
+  - id: literal_and_pattern_child_overlap
+    schema:
+      type: object
+      properties:
+        ab: { type: object, properties: { x: { type: number } } }
+      patternProperties:
+        "^a": { type: object, properties: { y: { type: number } } }
+    value: { ab: { x: 1, y: 2 } }
+    raw: valid
+    enforced: unsupported
+    reason: child_evaluator_overlap
+  - id: structured_pattern_pair_is_refused_conservatively
+    schema:
+      type: object
+      patternProperties:
+        "^x": { type: object, properties: { left: { type: number } } }
+        "^y": { type: object, properties: { right: { type: number } } }
+    value: { x_key: { left: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: child_evaluator_overlap
+  - id: conditional_branch_declaration_is_success_sensitive
+    schema:
+      type: object
+      properties: { kind: { enum: [plain, special] } }
+      if: { properties: { kind: { const: special } }, required: [kind] }
+      then:
+        required: [extra]
+        properties: { extra: { type: string } }
+    value: { kind: plain, extra: fine }
+    raw: valid
+    enforced: invalid
+    properties: [extra]
+  - id: anchor_reference_extension
+    schema:
+      allOf:
+        - { $ref: "#Base" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Base:
+          $anchor: Base
+          type: object
+          properties: { street: { type: string } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: escaped_pointer_extension
+    schema:
+      allOf:
+        - { $ref: "#/$defs/a~1b" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        a/b: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: nested_definition_extension
+    schema:
+      allOf:
+        - { $ref: "#/$defs/Container/$defs/Base" }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Container:
+          $defs:
+            Base: { type: object, properties: { street: { type: string } } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: embedded_resource_extension
+    schema:
+      $id: "https://example.test/root"
+      allOf:
+        - { $ref: base }
+        - { properties: { extra: { type: string } } }
+      $defs:
+        Base:
+          $id: base
+          type: object
+          properties: { street: { type: string } }
+    value: { street: s, extra: x }
+    raw: valid
+    enforced: valid
+  - id: external_resource_is_closed_at_the_reference_site
+    schema: { $ref: "urn:example:address" }
+    resources:
+      urn:example:address:
+        $id: "urn:example:address"
+        type: object
+        properties: { street: { type: string } }
+    value: { street: s, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: alternatives_nested_in_fragment
+    schema:
+      allOf:
+        - anyOf:
+            - { properties: { a: { type: string } } }
+            - { properties: { b: { type: string } } }
+    value: { a: x, bogus: 1 }
+    raw: valid
+    enforced: invalid
+    properties: [bogus]
+  - id: nested_object_inside_fragment
+    schema:
+      type: object
+      properties: { kind: { type: string } }
+      allOf:
+        - properties:
+            extra: { type: object, properties: { name: { type: string } } }
+    value: { kind: k, extra: { name: n, zzz: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: nested_instance_composition
+  - id: nested_reference_inside_fragment
+    schema:
+      type: object
+      allOf:
+        - properties:
+            extra: { $ref: "#/$defs/Nested" }
+      $defs:
+        Nested: { type: object, properties: { name: { type: string } } }
+    value: { extra: { name: n, zzz: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: nested_instance_composition
+  - id: conditional_matcher_requires_site_declaration
+    schema:
+      type: object
+      properties: { known: { type: string } }
+      if: { properties: { mode: { const: strict } } }
+    value: { known: yes, mode: strict }
+    raw: valid
+    enforced: unsupported
+    reason: conditional_annotation_scope
+  - id: embedded_resource_at_nested_application_site
+    schema:
+      type: object
+      properties:
+        child:
+          $id: "https://example.test/child"
+          type: object
+          properties: { name: { type: string } }
+    value: { child: { name: n, bogus: 1 } }
+    raw: valid
+    enforced: unsupported
+    reason: embedded_resource_context
+  - id: supplied_resource_identity_must_match_key
+    schema: { $ref: "https://example.test/retrieval" }
+    resources:
+      https://example.test/retrieval:
+        $id: "https://example.test/canonical"
+        type: object
+        properties: { name: { type: string } }
+    value: { name: n }
+    raw: skip
+    enforced: invalid
+    kind: schema_invalid
+    reason: resource_identity
+  - id: invalid_dynamic_reference_is_a_dialect_error
+    schema: { $dynamicRef: 42 }
+    value: { name: n }
+    raw: invalid
+    enforced: invalid
+    kind: schema_invalid
+    reason: dialect
+  - id: dynamic_reference_is_outside_the_profile
+    schema:
+      $dynamicRef: "#Node"
+      $defs:
+        Node:
+          $dynamicAnchor: Node
+          type: object
+          properties: { name: { type: string } }
+    value: { name: n }
+    raw: skip
+    enforced: unsupported
+    reason: dynamic_reference
+
+# Cross-implementation error-record deviations that are accepted, not bugs.
+#
+# The parity contract is that both engines produce identical output, with one exception:
+# a deviation explicitly listed here, where jsonschema and ajv report the same verdict
+# through a different number of records and no normalization removes the difference
+# cleanly. Python is the reference. Each runtime asserts ITS OWN listed record set
+# exactly, so a *listed* deviation passes while any drift — on either side — fails, and
+# an unlisted divergence has nothing to pass against.
+#
+# Records are compared on (code, validator, path); message and value are covered by the
+# golden corpus. `verdict` states the agreement that makes the deviation acceptable.
+engine_deviations:
+  - id: dependent_schema_closure
+    schema:
+      type: object
+      properties: { a: { type: string } }
+      dependentSchemas:
+        a: { required: [b], properties: { b: { type: string } } }
+    value: { a: "x" }
+    strict_extras: true
+    verdict: invalid
+    why: >-
+      When a dependent schema fails, ajv additionally reports the root closure as
+      unevaluated for a property that top-level `properties` already evaluated. Dropping
+      it would need closure-record suppression keyed on a sibling failure, which would
+      also hide genuine undeclared keys.
+    python:
+      - { code: missing_property, validator: required, path: [] }
+    typescript:
+      - { code: missing_property, validator: required, path: [] }
+      - { code: undeclared_property, validator: unevaluatedProperties, path: [] }
+  - id: anyof_branch_multiplicity
+    schema:
+      anyOf:
+        - { type: string }
+        - { type: integer }
+    value: { x: 1 }
+    strict_extras: true
+    verdict: invalid
+    why: >-
+      Pre-existing and unrelated to composition closure: jsonschema reports the failing
+      `anyOf` once, while ajv reports every branch's failure alongside it. Collapsing
+      branch records would discard which alternatives were tried. Pinned here because
+      this is the first vector set to cover it.
+    python:
+      - { code: invalid_value, validator: anyOf, path: [] }
+    typescript:
+      - { code: invalid_value, validator: anyOf, path: [] }
+      - { code: invalid_value, validator: type, path: [] }
+      - { code: invalid_value, validator: type, path: [] }
 
 identity:
   - { id: contract_and_schema_id, contract: "example.people:Person/v1", schema_id: "https://example.com/schemas/person-v1", valid: true }

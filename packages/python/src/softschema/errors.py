@@ -1,8 +1,8 @@
 """Engine-neutral structural error records.
 
-`jsonschema` (Python) and `ajv` (the future TypeScript port) word the same
-violation differently. To keep structural errors byte-identical across
-implementations, softschema does not surface the engine's native message.
+`jsonschema` (Python) and Ajv (the TypeScript port) word the same violation
+differently. To keep structural errors portable, softschema does not surface the
+engine's native message.
 Instead it normalizes each engine error into a stable record and synthesizes
 the human-readable ``message`` from a shared template keyed on the failing
 JSON Schema keyword (``validator``).
@@ -11,12 +11,22 @@ Record shape (every structural validation error):
 
     {
         "kind": "schema_violation",
+        "code": "invalid_value" | "undeclared_property" | ...,  # softschema category
         "path": ["properties", "..."] | [...],   # JSON path to the value
+        "property": "field_name",                 # field-repair records only
         "validator": "enum" | "minimum" | ...,    # the JSON Schema keyword
         "validator_value": <the keyword's value>,
         "value": <the offending instance value>,
         "message": "<synthesized, engine-neutral>",
     }
+
+``kind`` + ``code`` + ``path`` + ``property`` is the documented field-repair match
+surface. ``property`` is present for missing and undeclared-property records.
+``validator`` names the
+*mechanism* — which JSON Schema keyword fired — and is diagnostic: one authoring mistake
+can reach a consumer through more than one keyword, because an undeclared key reports
+``additionalProperties`` on a simple schema and ``unevaluatedProperties`` on a composed
+one. ``code`` names *what the author got wrong* and is stable across both.
 
 Numeric values in a record (and in the rendered message) use a canonical form:
 a whole-valued float renders without a trailing fraction (``2.0`` -> ``2``), the
@@ -33,6 +43,57 @@ from __future__ import annotations
 from typing import Any
 
 SCHEMA_VIOLATION_KIND = "schema_violation"
+
+# The stable category for a structural violation, as a pure function of ``validator``.
+# Consumers match on this; see the module docstring. Keep in lockstep with the
+# equivalent map in the TypeScript ``errors.ts``.
+_UNDECLARED_PROPERTY_VALIDATORS = frozenset({"additionalProperties", "unevaluatedProperties"})
+_MISSING_PROPERTY_VALIDATORS = frozenset({"required"})
+
+# Every keyword the message table above renders a specific template for. A keyword
+# outside this allowlist is reported as ``unmapped_keyword`` rather than silently
+# folded into ``invalid_value``, so the gap is greppable instead of invisible.
+_INVALID_VALUE_VALIDATORS = frozenset(
+    {
+        "enum",
+        "type",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "multipleOf",
+        "const",
+        "minProperties",
+        "maxProperties",
+        "anyOf",
+        "oneOf",
+        "allOf",
+        "not",
+        "dependentRequired",
+        "format",
+        "contains",
+        "propertyNames",
+        "prefixItems",
+        "items",
+    }
+)
+
+
+def structural_error_code(validator: str) -> str:
+    """Return the stable softschema category for one JSON Schema keyword."""
+    if validator in _UNDECLARED_PROPERTY_VALIDATORS:
+        return "undeclared_property"
+    if validator in _MISSING_PROPERTY_VALIDATORS:
+        return "missing_property"
+    if validator in _INVALID_VALUE_VALIDATORS:
+        return "invalid_value"
+    return "unmapped_keyword"
 
 
 def canonical_number(value: Any) -> Any:
@@ -87,6 +148,7 @@ def render_structural_message(
     validator: str,
     validator_value: Any,
     value: Any,
+    property_name: str | None = None,
 ) -> str:
     """Synthesize a stable, engine-neutral message for one structural error.
 
@@ -103,6 +165,8 @@ def render_structural_message(
     if validator == "type":
         return f"value {_fmt(value)} is not of type {_fmt_list(validator_value)}"
     if validator == "required":
+        if property_name is not None:
+            return f"required property {_fmt(property_name)} is missing"
         return f"required property {_fmt(validator_value)} is missing"
     if validator == "minimum":
         return f"value {_fmt(value)} is less than the minimum of {_fmt(validator_value)}"
@@ -122,7 +186,11 @@ def render_structural_message(
         return f"string is longer than the maximum length of {_fmt(validator_value)}"
     if validator == "pattern":
         return f"value {_fmt(value)} does not match pattern {_fmt(validator_value)}"
-    if validator == "additionalProperties":
+    if validator in _UNDECLARED_PROPERTY_VALIDATORS:
+        if property_name is not None:
+            return f"property {_fmt(property_name)} is not allowed"
+        # Both closure keywords are one category to the author, so they share a message.
+        # The generic fallback would otherwise spill the whole payload into the string.
         return "object has properties that are not allowed"
     if validator == "multipleOf":
         return f"value {_fmt(value)} is not a multiple of {_fmt(validator_value)}"
@@ -136,17 +204,22 @@ def structural_error_record(
     validator: str,
     validator_value: Any,
     value: Any,
+    property_name: str | None = None,
 ) -> dict[str, Any]:
     """Build one engine-neutral structural error record."""
     # Store numbers in canonical form so the echoed `value`/`validator_value`
     # fields match the rendered message and the TS records byte-for-byte.
     validator_value = _canonical(validator_value)
     value = _canonical(value)
-    return {
+    record = {
         "kind": SCHEMA_VIOLATION_KIND,
+        "code": structural_error_code(validator),
         "path": path,
         "validator": validator,
         "validator_value": validator_value,
         "value": value,
-        "message": render_structural_message(validator, validator_value, value),
+        "message": render_structural_message(validator, validator_value, value, property_name),
     }
+    if property_name is not None:
+        record["property"] = property_name
+    return record

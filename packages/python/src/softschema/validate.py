@@ -15,7 +15,8 @@ public for callers that need a single layer.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from ast import literal_eval
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -28,7 +29,11 @@ from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
 from softschema._portable import PortableInputError, parse_yaml, read_utf8
-from softschema.canonicalize import EnforcementUnsupportedError, apply_enforced_extras
+from softschema.enforcement import (
+    EnforcementUnsupportedError,
+    SchemaGraphError,
+    prepare_schema_graph,
+)
 from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
@@ -124,13 +129,18 @@ def _build_validator(
     schema = parse_yaml(schema_text)
     if not isinstance(schema, dict):
         raise _SchemaRootNotAMapping
-    _check_patterns(schema)
-    Draft202012Validator.check_schema(schema)
-    _check_schema_identities(schema, resources or {})
+    resource_schemas = dict(resources or {})
+    for document in (schema, *resource_schemas.values()):
+        _check_patterns(document)
+        Draft202012Validator.check_schema(document)
     if strict_extras:
-        schema = apply_enforced_extras(schema)
+        prepared = prepare_schema_graph(schema, resource_schemas)
+        schema = prepared.root
+        resource_schemas = prepared.resources
+    else:
+        _check_schema_identities(schema, resource_schemas)
     registry: Registry[Any] = Registry()
-    for key, resource_schema in (resources or {}).items():
+    for key, resource_schema in resource_schemas.items():
         resource_id = str(resource_schema.get("$id", key))
         registry = registry.with_resource(
             resource_id,
@@ -197,22 +207,13 @@ def validate_structural(
 ) -> StructuralResult:
     """Validate values against a compiled JSON Schema (YAML or JSON).
 
-    With ``strict_extras=True`` (the ``status: enforced`` overlay), object
-    schemas that declare ``properties`` but omit ``additionalProperties`` are
-    validated as ``additionalProperties: false``; see
-    :func:`softschema.canonicalize.apply_enforced_extras`.
+    With ``strict_extras=True``, the root and supplied resources are prepared under the
+    checked enforced profile before compilation; unsupported composition fails with a
+    stable ``enforcement_unsupported`` record.
     """
     try:
         validator = _validator_for(schema_yaml_path, strict_extras, resources)
-        errors = [
-            structural_error_record(
-                path=list(error.absolute_path),
-                validator=str(error.validator),
-                validator_value=error.validator_value,
-                value=error.instance,
-            )
-            for error in validator.iter_errors(values)
-        ]
+        errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
         return _schema_invalid("syntax", "compiled schema root must be a mapping")
     except PortableInputError as exc:
@@ -226,14 +227,105 @@ def validate_structural(
     except EnforcementUnsupportedError as exc:
         return StructuralResult(
             ok=False,
-            errors=[{"kind": "enforcement_unsupported", "message": str(exc)}],
+            errors=[
+                {
+                    "kind": "enforcement_unsupported",
+                    "reason": exc.reason,
+                    "schema_path": exc.schema_path,
+                    "message": str(exc),
+                }
+            ],
         )
+    except SchemaGraphError as exc:
+        return _schema_invalid(exc.reason, str(exc))
     except Exception as exc:
         return _schema_invalid(_schema_failure_reason(exc), str(exc))
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
-    errors.sort(key=lambda record: ([str(part) for part in record["path"]], record["validator"]))
+    errors.sort(
+        key=lambda record: (
+            [str(part) for part in record["path"]],
+            record["validator"],
+            record.get("property", ""),
+        )
+    )
     return StructuralResult(ok=not errors, errors=errors)
+
+
+def _structural_error_records(errors: Iterator[Any]) -> Iterator[dict[str, Any]]:
+    """Normalize jsonschema errors without parsing required-property messages."""
+    expanded_required_sites: set[tuple[tuple[Any, ...], tuple[Any, ...]]] = set()
+    for error in errors:
+        if str(error.validator) == "required":
+            site = (tuple(error.absolute_path), tuple(error.absolute_schema_path))
+            if site in expanded_required_sites:
+                continue
+            expanded_required_sites.add(site)
+        for property_name in _structural_error_properties(error):
+            yield structural_error_record(
+                path=list(error.absolute_path),
+                validator=str(error.validator),
+                validator_value=error.validator_value,
+                value=error.instance,
+                property_name=property_name,
+            )
+
+
+def _structural_error_properties(error: Any) -> Sequence[str | None]:
+    """Return portable offending-property details from one jsonschema error."""
+    validator = str(error.validator)
+    if (
+        validator == "required"
+        and isinstance(error.instance, dict)
+        and isinstance(error.validator_value, list)
+    ):
+        missing = [
+            value
+            for value in error.validator_value
+            if isinstance(value, str) and value not in error.instance
+        ]
+        if missing:
+            return missing
+    if validator == "additionalProperties" and isinstance(error.instance, dict):
+        schema = error.schema if isinstance(error.schema, dict) else {}
+        declared = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+        patterns = (
+            tuple(schema["patternProperties"])
+            if isinstance(schema.get("patternProperties"), dict)
+            else ()
+        )
+        extras = sorted(
+            key
+            for key in error.instance
+            if key not in declared and not any(re.search(pattern, key) for pattern in patterns)
+        )
+        if extras:
+            return extras
+    if validator == "unevaluatedProperties":
+        extras = _unexpected_properties(error.message)
+        if extras:
+            return extras
+    return [None]
+
+
+def _unexpected_properties(message: str) -> list[str]:
+    start = message.find("(")
+    if start < 0 or not message.endswith(")"):
+        return []
+    details = message[start + 1 : -1]
+    found_suffix = False
+    for suffix in (" were unexpected", " was unexpected"):
+        if details.endswith(suffix):
+            details = details[: -len(suffix)]
+            found_suffix = True
+            break
+    if not found_suffix:
+        return []
+    try:
+        values = literal_eval(f"[{details}]")
+    except (SyntaxError, ValueError):
+        return []
+    return sorted(value for value in values if isinstance(value, str))
 
 
 _SCHEMA_MAPS = frozenset(
@@ -342,6 +434,8 @@ def validate_values(
     *,
     model: type[BaseModel] | None = None,
     schema: Path | None = None,
+    status: SchemaStatus = SchemaStatus.soft,
+    resources: Mapping[str, dict[str, Any]] | None = None,
 ) -> ValidationResult:
     """Validate a pre-extracted values mapping against a model, a schema, or both.
 
@@ -355,7 +449,17 @@ def validate_values(
     """
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")
-    structural = validate_structural(values, schema) if schema else StructuralResult(ok=True)
+    if schema is not None:
+        structural = validate_structural(
+            values,
+            schema,
+            strict_extras=status == SchemaStatus.enforced,
+            resources=resources,
+        )
+    else:
+        # The semantic model is the requested validator; the structural slot remains an
+        # unrequested successful pass so callers can read both result fields uniformly.
+        structural = StructuralResult(ok=True)
     semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
     return ValidationResult(structural=structural, semantic=semantic)
 

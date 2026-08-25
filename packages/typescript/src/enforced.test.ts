@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, writeFileSync as wf } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
-import { applyEnforcedExtras, EnforcementUnsupportedError } from "./canonicalize.js";
+import { applyEnforcedExtras } from "./canonicalize.js";
 import type { Contract } from "./models.js";
 import { validateArtifact, validateStructural } from "./validate.js";
 
@@ -43,12 +43,14 @@ describe("applyEnforcedExtras", () => {
   test("injects closed objects where properties are present", () => {
     const out = applyEnforcedExtras(baseSchema()) as {
       additionalProperties: unknown;
-      properties: { meta: Schema };
+      properties: { meta: Schema; primary: Schema; secondary: Schema };
       $defs: { Address: Schema };
     };
     expect(out.additionalProperties).toBe(false);
     expect(out.properties.meta.additionalProperties).toBe(false);
-    expect(out.$defs.Address.additionalProperties).toBe(false);
+    expect(out.properties.primary.unevaluatedProperties).toBe(false);
+    expect(out.properties.secondary.unevaluatedProperties).toBe(false);
+    expect(CLOSURE_KEYWORDS.filter((key) => key in out.$defs.Address)).toEqual([]);
   });
 
   test("free-form objects without properties are untouched", () => {
@@ -69,12 +71,12 @@ describe("applyEnforcedExtras", () => {
     expect(out.properties.meta.additionalProperties).toEqual({ type: "string" });
   });
 
-  test("recurses into anyOf branches", () => {
+  test("closes over anyOf without changing its branches", () => {
     const out = applyEnforcedExtras({
       anyOf: [{ type: "object", properties: { a: { type: "string" } } }, { type: "null" }],
-    }) as { anyOf: Schema[] };
-    expect(out.anyOf[0]?.additionalProperties).toBe(false);
-    expect("additionalProperties" in out).toBe(false);
+    }) as { anyOf: Schema[]; unevaluatedProperties: unknown };
+    expect(out.unevaluatedProperties).toBe(false);
+    expect(CLOSURE_KEYWORDS.filter((key) => key in (out.anyOf[0] as Schema))).toEqual([]);
   });
 
   test("a field named 'properties' is a name, not the keyword", () => {
@@ -193,30 +195,303 @@ describe("validateArtifact document (single read)", () => {
   });
 });
 
+const CLOSURE_KEYWORDS = ["additionalProperties", "unevaluatedProperties"];
+
+const THEN = "then";
+
+/** One engine's expected record for a documented cross-implementation deviation. */
+type DeviationRecord = { code: unknown; validator: unknown; path: unknown };
+
+/** Read one nested mapping out of an overlay result, for assertions below. */
+function mapping(node: unknown, ...keys: string[]): Record<string, unknown> {
+  let current = node as Record<string, unknown>;
+  for (const key of keys) {
+    current = current[key] as Record<string, unknown>;
+  }
+  return current;
+}
+
+test("fragments are never closed internally", () => {
+  // Closing a fragment is the failure this rule exists to prevent: an `allOf` branch
+  // would reject keys its sibling declares, and an `if` matcher would stop firing.
+  // `then` is set through a computed key: biome's noThenProperty rule guards against
+  // accidentally thenable objects, and the JSON Schema keyword of that name trips it.
+  const conditional: Record<string, unknown> = {
+    if: { properties: { kind: { const: "special" } } },
+  };
+  conditional[THEN] = { properties: { extra: { type: "string" } } };
+  const out = applyEnforcedExtras({
+    type: "object",
+    properties: { kind: { type: "string" } },
+    allOf: [{ properties: { first: { type: "string" } } }],
+    ...conditional,
+  } as Schema);
+
+  expect(out.unevaluatedProperties).toBe(false);
+  const fragments = [(out.allOf as unknown[])[0], out.if, out[THEN]];
+  for (const fragment of fragments) {
+    expect(fragment).not.toHaveProperty("additionalProperties");
+    expect(fragment).not.toHaveProperty("unevaluatedProperties");
+  }
+});
+
+test("a definition reached only through a fragment stays open", () => {
+  // The `allOf: [{$ref: Base}, {properties: ...}]` extension idiom. Closing Address
+  // lexically rejects `extra`, which the sibling branch declares.
+  const out = applyEnforcedExtras({
+    allOf: [{ $ref: "#/$defs/Address" }, { properties: { extra: { type: "string" } } }],
+    $defs: { Address: { type: "object", properties: { street: { type: "string" } } } },
+  } as Schema);
+
+  expect(mapping(out, "$defs", "Address")).not.toHaveProperty("additionalProperties");
+  expect(mapping(out, "$defs", "Address")).not.toHaveProperty("unevaluatedProperties");
+  // The root closes over the definition instead; annotations make that correct.
+  expect(out.unevaluatedProperties).toBe(false);
+});
+
+test("a definition reached from multiple sites stays reusable", () => {
+  const out = applyEnforcedExtras({
+    type: "object",
+    properties: { addr: { $ref: "#/$defs/Address" } },
+    allOf: [{ $ref: "#/$defs/Address" }],
+    $defs: { Address: { type: "object", properties: { street: { type: "string" } } } },
+  } as Schema);
+
+  expect(CLOSURE_KEYWORDS.filter((key) => key in mapping(out, "$defs", "Address"))).toEqual([]);
+  expect(mapping(out, "properties", "addr").unevaluatedProperties).toBe(false);
+});
+
+test("a fragment $ref to a free-form definition does not close the root", () => {
+  // Treating any `$ref` as a declaration would close this schema against every key.
+  const out = applyEnforcedExtras({
+    allOf: [{ $ref: "#/$defs/Anything" }],
+    $defs: { Anything: { type: "object" } },
+  } as Schema);
+
+  expect(out).not.toHaveProperty("additionalProperties");
+  expect(out).not.toHaveProperty("unevaluatedProperties");
+});
+
+test("cyclic local references terminate", () => {
+  applyEnforcedExtras({
+    allOf: [{ $ref: "#/$defs/A" }],
+    $defs: { A: { $ref: "#/$defs/B" }, B: { $ref: "#/$defs/A" } },
+  } as Schema);
+});
+
+test("shared subschema objects are rejected", () => {
+  const shared = { type: "object", properties: { street: { type: "string" } } };
+  const schema = {
+    properties: { home: shared },
+    $defs: { Address: shared },
+  };
+
+  // Prime the content-addressed validator cache with the same JSON tree but distinct
+  // object identities. Sharing is graph structure, not JSON content, so cache lookup
+  // must not bypass the identity check below.
+  const copied = JSON.parse(JSON.stringify(schema)) as Schema;
+  expect(validateStructural({ home: { street: "Main" } }, copied, { strictExtras: true }).ok).toBe(
+    true,
+  );
+
+  const result = validateStructural({ home: { street: "Main" } }, schema, {
+    strictExtras: true,
+  });
+
+  expect(result.ok).toBe(false);
+  expect(result.errors[0]?.kind).toBe("schema_invalid");
+  expect((result.errors[0] as Record<string, unknown> | undefined)?.reason).toBe(
+    "shared_subschema",
+  );
+  expect(result.errors[0]?.message).toContain("deep-copy shared subschemas");
+});
+
+test("properties under not are prohibitions, not declarations", () => {
+  // `not` contributes no annotations, so closing over its properties would leave the
+  // schema admitting nothing at all.
+  const out = applyEnforcedExtras({
+    type: "object",
+    not: { properties: { b: { type: "string" } }, required: ["b"] },
+  } as Schema);
+
+  expect(out).not.toHaveProperty("additionalProperties");
+  expect(out).not.toHaveProperty("unevaluatedProperties");
+});
+
+test("explicit unevaluatedProperties always wins", () => {
+  const out = applyEnforcedExtras({
+    properties: { a: { type: "string" } },
+    allOf: [{ properties: { b: { type: "string" } } }],
+    unevaluatedProperties: true,
+  } as Schema);
+  expect(out.unevaluatedProperties).toBe(true);
+});
+
 test("shared enforcement vectors", () => {
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
     string,
     Array<Record<string, unknown>>
   >;
   for (const item of vectors.enforcement ?? []) {
-    if (item.supported) {
-      expect(applyEnforcedExtras(item.schema as Schema).additionalProperties).toBe(false);
-    } else {
-      expect(() => applyEnforcedExtras(item.schema as Schema)).toThrow(EnforcementUnsupportedError);
+    const out = applyEnforcedExtras(item.schema as Schema);
+    const injected = CLOSURE_KEYWORDS.filter((keyword) => keyword in out);
+    const expected = item.closure === "none" ? [] : [item.closure as string];
+    expect(injected, item.id as string).toEqual(expected);
+    const defsClosure = (item.defs_closure ?? {}) as Record<string, string>;
+    for (const [name, keyword] of Object.entries(defsClosure)) {
+      const definition = mapping(out, "$defs", name);
+      if (keyword === "none") {
+        expect(
+          CLOSURE_KEYWORDS.filter((closure) => closure in definition),
+          `${item.id}/${name}`,
+        ).toEqual([]);
+      } else {
+        expect(definition[keyword], `${item.id}/${name}`).toBe(false);
+      }
     }
   }
 });
 
-test("structural validation reports unsupported enforcement", () => {
+test("composed schemas validate instead of refusing", () => {
+  // The shape the refusal was built for. Both documents were `invalid` with an
+  // `enforcement_unsupported` record before the applicator split.
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
     string,
     Array<Record<string, unknown>>
   >;
-  const item = (vectors.enforcement ?? []).find((candidate) => !candidate.supported);
+  const item = (vectors.enforcement ?? []).find((candidate) => candidate.id === "composed_object");
+  const schema = item?.schema as Record<string, unknown>;
+
+  const ok = validateStructural({ first: "Ada", last: "Lovelace" }, schema, {
+    strictExtras: true,
+  });
+  expect(ok.ok, JSON.stringify(ok.errors)).toBe(true);
+
+  const rejected = validateStructural({ first: "Ada", last: "Lovelace", bogus: 1 }, schema, {
+    strictExtras: true,
+  });
+  expect(rejected.ok).toBe(false);
+  expect(rejected.errors.map((error) => error.code)).toEqual(["undeclared_property"]);
+  expect(rejected.errors[0]?.validator).toBe("unevaluatedProperties");
+});
+
+test("a conditional reports the real violation", () => {
+  // Issue #41 case (b): the conditional must fire and name the missing property,
+  // rather than being masked by a generic message about `allOf`.
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  const item = (vectors.enforcement ?? []).find(
+    (candidate) => candidate.id === "conditional_object",
+  );
+  const schema = item?.schema as Record<string, unknown>;
+
+  expect(validateStructural({ kind: "plain" }, schema, { strictExtras: true }).ok).toBe(true);
+
+  const violation = validateStructural({ kind: "special" }, schema, { strictExtras: true });
+  expect(violation.ok).toBe(false);
+  // ajv also emits an `if` wrapper restating the cause; normalization drops it so the
+  // record set matches Python's.
+  expect(violation.errors.map((error) => error.code)).toEqual(["missing_property"]);
+  expect(violation.errors[0]?.property).toBe("extra");
+  expect(violation.errors[0]?.message).toBe("required property 'extra' is missing");
+});
+
+test("documented engine deviations", () => {
+  // Each runtime asserts its own listed record set exactly, so a documented deviation
+  // passes while drift on either side fails. See the section comment in the vectors.
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.engine_deviations ?? []) {
+    const result = validateStructural(item.value, item.schema as Record<string, unknown>, {
+      strictExtras: item.strict_extras as boolean,
+    });
+    expect(result.ok, item.id as string).toBe(item.verdict === "valid");
+    const actual = result.errors.map((error) => ({
+      code: error.code,
+      validator: error.validator,
+      path: error.path,
+    }));
+    expect(actual, item.id as string).toEqual(item.typescript as DeviationRecord[]);
+  }
+});
+
+test("shared enforcement semantics", () => {
+  // Raw-versus-enforced verdicts are the primary oracle. Unsupported shapes must fail
+  // explicitly instead of silently returning an under- or over-enforced verdict.
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.enforcement_semantics ?? []) {
+    const resources = item.resources as Record<string, Record<string, unknown>> | undefined;
+    if (item.raw !== "skip") {
+      const raw = validateStructural(item.value, item.schema as Schema, { resources });
+      expect(raw.ok, `${item.id}/raw: ${JSON.stringify(raw.errors)}`).toBe(item.raw === "valid");
+    }
+
+    const enforced = validateStructural(item.value, item.schema as Schema, {
+      strictExtras: true,
+      resources,
+    });
+    if (item.enforced === "unsupported") {
+      expect(enforced.ok, item.id as string).toBe(false);
+      expect(enforced.errors[0]?.kind, item.id as string).toBe("enforcement_unsupported");
+      expect(
+        (enforced.errors[0] as Record<string, unknown> | undefined)?.reason,
+        item.id as string,
+      ).toBe(item.reason);
+    } else {
+      expect(enforced.ok, `${item.id}/enforced: ${JSON.stringify(enforced.errors)}`).toBe(
+        item.enforced === "valid",
+      );
+    }
+    if (typeof item.kind === "string") {
+      expect(enforced.errors[0]?.kind, item.id as string).toBe(item.kind);
+    }
+    if (typeof item.reason === "string" && item.enforced !== "unsupported") {
+      expect(
+        (enforced.errors[0] as Record<string, unknown> | undefined)?.reason,
+        item.id as string,
+      ).toBe(item.reason);
+    }
+    if (Array.isArray(item.properties)) {
+      const actual = enforced.errors
+        .filter((error) => error.code === "undeclared_property")
+        .map((error) => error.property)
+        .sort();
+      expect(actual, item.id as string).toEqual(item.properties);
+    }
+    if (Array.isArray(item.errors)) {
+      const actual = enforced.errors.map((error) => ({
+        code: error.code,
+        path: error.path,
+        property: error.property,
+      }));
+      expect(actual, item.id as string).toEqual(item.errors);
+    }
+  }
+});
+
+test("multiple undeclared keys preserve field identity", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  const item = (vectors.enforcement ?? []).find((candidate) => candidate.id === "composed_object");
+
   const result = validateStructural(
-    { first: "Ada", last: "Lovelace" },
+    { first: "Ada", last: "Lovelace", bogus: 1, other: 2 },
     item?.schema as Record<string, unknown>,
     { strictExtras: true },
   );
-  expect(result.errors[0]?.kind).toBe("enforcement_unsupported");
+
+  expect(result.errors.map((error) => error.code)).toEqual([
+    "undeclared_property",
+    "undeclared_property",
+  ]);
+  expect(result.errors.map((error) => error.property)).toEqual(["bogus", "other"]);
 });

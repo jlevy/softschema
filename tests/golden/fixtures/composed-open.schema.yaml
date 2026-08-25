@@ -1,0 +1,15 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: demo:Composed/v1
+title: Composed
+# Deliberately silent about closure, and every property is declared inside an `allOf`
+# branch rather than at the root. That is what forces the overlay to inject
+# `unevaluatedProperties` — the path the other enforced fixtures cannot reach, because
+# their schemas carry an explicit `additionalProperties`.
+type: object
+allOf:
+- properties:
+    first:
+      type: string
+- properties:
+    last:
+      type: string

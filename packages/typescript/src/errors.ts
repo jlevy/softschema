@@ -2,19 +2,75 @@
  * Engine-neutral structural error records. ajv words violations differently from
  * Python's jsonschema, so the message is synthesized here from the same template
  * table as the Python `errors.py`, and ajv errors are normalized into the same
- * record shape. Output must be byte-identical across implementations.
+ * record shape. Checked-profile verdicts must match; explicitly pinned native-engine
+ * record-set deviations are allowed.
  */
 import type { ErrorObject } from "ajv";
 
 export const SCHEMA_VIOLATION_KIND = "schema_violation";
 
+/**
+ * `kind` + `code` + `path` + `property` is the documented field-repair match surface.
+ * `validator` names the *mechanism* — which JSON Schema keyword fired — and is
+ * diagnostic: one authoring mistake can reach a consumer through more than one keyword,
+ * because an undeclared key reports `additionalProperties` on a simple schema and
+ * `unevaluatedProperties` on a composed one. `code` names *what the author got wrong*
+ * and is stable across both.
+ */
 export interface StructuralErrorRecord {
   kind: string;
+  code: string;
   path: (string | number)[];
+  property?: string;
   validator: string;
   validator_value: unknown;
   value: unknown;
   message: string;
+}
+
+// The stable category for a structural violation, as a pure function of `validator`.
+// Keep in lockstep with the equivalent map in the Python `errors.py`.
+const UNDECLARED_PROPERTY_VALIDATORS = new Set(["additionalProperties", "unevaluatedProperties"]);
+const MISSING_PROPERTY_VALIDATORS = new Set(["required"]);
+
+// Every keyword the message table renders a specific template for. A keyword outside
+// this allowlist is reported as `unmapped_keyword` rather than silently folded into
+// `invalid_value`, so the gap is greppable instead of invisible.
+const INVALID_VALUE_VALIDATORS = new Set([
+  "enum",
+  "type",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "minItems",
+  "maxItems",
+  "uniqueItems",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "multipleOf",
+  "const",
+  "minProperties",
+  "maxProperties",
+  "anyOf",
+  "oneOf",
+  "allOf",
+  "not",
+  "dependentRequired",
+  "format",
+  "contains",
+  "propertyNames",
+  "prefixItems",
+  "items",
+]);
+
+/** Return the stable softschema category for one JSON Schema keyword. */
+export function structuralErrorCode(validator: string): string {
+  if (UNDECLARED_PROPERTY_VALIDATORS.has(validator)) return "undeclared_property";
+  if (MISSING_PROPERTY_VALIDATORS.has(validator)) return "missing_property";
+  if (INVALID_VALUE_VALIDATORS.has(validator)) return "invalid_value";
+  return "unmapped_keyword";
 }
 
 /**
@@ -113,6 +169,7 @@ export function renderStructuralMessage(
   validator: string,
   validatorValue: unknown,
   value: unknown,
+  property?: string,
 ): string {
   switch (validator) {
     case "enum":
@@ -120,7 +177,7 @@ export function renderStructuralMessage(
     case "type":
       return `value ${pyRepr(value)} is not of type ${pyReprList(validatorValue)}`;
     case "required":
-      return `required property ${pyRepr(validatorValue)} is missing`;
+      return `required property ${pyRepr(property ?? validatorValue)} is missing`;
     case "minimum":
       return `value ${pyRepr(value)} is less than the minimum of ${pyRepr(validatorValue)}`;
     case "maximum":
@@ -139,8 +196,13 @@ export function renderStructuralMessage(
       return `string is longer than the maximum length of ${pyRepr(validatorValue)}`;
     case "pattern":
       return `value ${pyRepr(value)} does not match pattern ${pyRepr(validatorValue)}`;
+    // Both closure keywords are one category to the author, so they share a message.
+    // The generic fallback would otherwise spill the whole payload into the string.
     case "additionalProperties":
-      return "object has properties that are not allowed";
+    case "unevaluatedProperties":
+      return property === undefined
+        ? "object has properties that are not allowed"
+        : `property ${pyRepr(property)} is not allowed`;
     case "multipleOf":
       return `value ${pyRepr(value)} is not a multiple of ${pyRepr(validatorValue)}`;
     default:
@@ -150,22 +212,54 @@ export function renderStructuralMessage(
 
 export function structuralErrorRecord(args: {
   path: (string | number)[];
+  property?: string;
   validator: string;
   validatorValue: unknown;
   value: unknown;
 }): StructuralErrorRecord {
-  return {
+  const record: StructuralErrorRecord = {
     kind: SCHEMA_VIOLATION_KIND,
+    code: structuralErrorCode(args.validator),
     path: args.path,
     validator: args.validator,
     validator_value: args.validatorValue,
     value: args.value,
-    message: renderStructuralMessage(args.validator, args.validatorValue, args.value),
+    message: renderStructuralMessage(
+      args.validator,
+      args.validatorValue,
+      args.value,
+      args.property,
+    ),
   };
+  if (args.property !== undefined) record.property = args.property;
+  return record;
 }
 
 function decodePointerToken(token: string): string {
   return token.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+const ARRAY_INDEX_TOKEN = /^(?:0|[1-9][0-9]*)$/u;
+
+function decodeInstancePath(instancePath: string, instance: unknown): (string | number)[] {
+  let current = instance;
+  return instancePath
+    .split("/")
+    .slice(1)
+    .map((token) => {
+      const decoded = decodePointerToken(token);
+      if (Array.isArray(current) && ARRAY_INDEX_TOKEN.test(decoded)) {
+        const index = Number(decoded);
+        current = current[index];
+        return index;
+      }
+      if (current !== null && typeof current === "object") {
+        current = (current as Record<string, unknown>)[decoded];
+      } else {
+        current = undefined;
+      }
+      return decoded;
+    });
 }
 
 /**
@@ -179,39 +273,69 @@ function decodePointerToken(token: string): string {
  * lives in `params.multipleOf`, not `params.limit`, and `required` is the missing key,
  * not the required list); `schema`/`data` sidestep all of that.
  */
-export function normalizeAjvError(error: ErrorObject): StructuralErrorRecord {
-  const path = error.instancePath.split("/").slice(1).map(decodePointerToken);
+export function normalizeAjvError(error: ErrorObject, instance?: unknown): StructuralErrorRecord {
+  const path = decodeInstancePath(error.instancePath, instance);
+  const property = ajvErrorProperty(error);
   return structuralErrorRecord({
     path,
+    property,
     validator: error.keyword,
     validatorValue: error.schema,
     value: error.data,
   });
 }
 
+/** Extract the affected field name from ajv's keyword-specific parameters. */
+function ajvErrorProperty(error: ErrorObject): string | undefined {
+  const params = error.params as Record<string, unknown>;
+  if (error.keyword === "required" && typeof params.missingProperty === "string") {
+    return params.missingProperty;
+  }
+  if (error.keyword === "additionalProperties" && typeof params.additionalProperty === "string") {
+    return params.additionalProperty;
+  }
+  if (error.keyword === "unevaluatedProperties" && typeof params.unevaluatedProperty === "string") {
+    return params.unevaluatedProperty;
+  }
+  return undefined;
+}
+
 /**
- * Collapse `additionalProperties` errors to one record per object path.
+ * Deduplicate undeclared-property errors by object path and affected property.
  *
- * ajv (with `allErrors`) reports one `additionalProperties` error per disallowed key,
- * whereas Python jsonschema reports a single error for the whole object. After
- * normalization the ajv records for the same object are byte-identical, so keeping the
- * first per path reproduces jsonschema's one-record shape. Other keywords (e.g.
- * `required`, which jsonschema also reports once per missing key) are left untouched.
+ * ajv can report the same closure violation through multiple evaluated branches. Keep
+ * one record for each affected field so consumers never lose field identity.
+ *
+ * Keyed on the `undeclared_property` code rather than a keyword list, so this stays
+ * correct for both closure keywords: a simple schema reports `additionalProperties`
+ * and a composed one reports `unevaluatedProperties`, and ajv over-reports both.
  */
-export function collapseAdditionalProperties(
+export function collapseUndeclaredProperties(
   records: StructuralErrorRecord[],
 ): StructuralErrorRecord[] {
   const seen = new Set<string>();
   return records.filter((record) => {
-    if (record.validator !== "additionalProperties") return true;
-    const key = JSON.stringify(record.path);
+    if (record.code !== "undeclared_property") return true;
+    const key = JSON.stringify([record.path, record.property ?? null]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
-/** Deterministic, engine-independent order: by path (element-wise), then validator. */
+/**
+ * Drop ajv's `if` wrapper records.
+ *
+ * When a conditional fails, ajv emits the inner cause *and* an `if` record reading
+ * `must match "then" schema`, which only restates it. Python's jsonschema never emits
+ * one — a failing `if` is a false condition, not an error — so dropping the wrapper
+ * aligns the engines without losing information.
+ */
+export function dropConditionalWrappers(records: StructuralErrorRecord[]): StructuralErrorRecord[] {
+  return records.filter((record) => record.validator !== "if");
+}
+
+/** Deterministic, engine-independent order: path, keyword, then affected property. */
 export function compareStructuralRecords(
   a: StructuralErrorRecord,
   b: StructuralErrorRecord,
@@ -227,5 +351,9 @@ export function compareStructuralRecords(
   if (pa.length !== pb.length) return pa.length - pb.length;
   if (a.validator < b.validator) return -1;
   if (a.validator > b.validator) return 1;
+  const propertyA = a.property ?? "";
+  const propertyB = b.property ?? "";
+  if (propertyA < propertyB) return -1;
+  if (propertyA > propertyB) return 1;
   return 0;
 }

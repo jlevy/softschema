@@ -53,6 +53,32 @@ describe("validateValues", () => {
     expect(r.structural.ok).toBe(false);
     expect(r.structural.errors[0]?.validator).toBe("minimum");
   });
+  test("enforced model-only calls preserve semantic validation", () => {
+    const r = validateValues(
+      { name: "hi", count: 1, bogus: 1 },
+      { model: Sample, status: "enforced" },
+    );
+    expect(r.structural.ok).toBe(true);
+    expect(r.structural.errors).toEqual([]);
+    expect(r.structural.skipped_reason).toBeNull();
+    expect(r.semantic.ok).toBe(false);
+    expect(r.semantic.errors[0]?.code).toBe("unrecognized_keys");
+  });
+});
+
+test("validateArtifact enforced model-only contracts preserve semantic validation", () => {
+  const doc = tmpFile("sample.yaml", "name: hi\ncount: 1\nbogus: 1\n");
+  const result = validateArtifact(
+    doc,
+    contract({ model: "./sample-model.mjs", profile: "pure-yaml", status: "enforced" }),
+    { semanticModel: Sample },
+  );
+
+  expect(result.ok).toBe(false);
+  expect(result.structural.ok).toBe(true);
+  expect(result.structural.errors).toEqual([]);
+  expect(result.structural.skipped_reason).toBe("inferred_via_model");
+  expect(result.semantic.errors[0]?.code).toBe("unrecognized_keys");
 });
 
 describe("date-shaped portable values", () => {

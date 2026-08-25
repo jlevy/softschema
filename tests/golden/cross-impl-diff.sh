@@ -106,6 +106,19 @@ diff_cmd "generate (missing file, exit 2)"   generate tests/golden/fixtures/does
 diff_cmd "validate (metadata-only, soft stage)" validate tests/golden/fixtures/extra-field-permissive.md
 diff_cmd "validate (enforced overlay rejects extras)" validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml --status enforced
 diff_cmd "validate (document-declared enforced)" validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml
+# Composed schemas (issue #41). These are the shapes that newly reach the validator, so
+# they are also where the engines have the most room to disagree: ajv emits one closure
+# error per key where jsonschema emits one per object, and adds an `if` wrapper record
+# restating a failed conditional. Both are normalized away, and these three cases are
+# what keep that true.
+diff_cmd "validate (composed, valid)"            validate tests/golden/fixtures/conditional-ok.md --schema tests/golden/fixtures/conditional.schema.yaml
+diff_cmd "validate (composed, conditional fires)" validate tests/golden/fixtures/conditional-violation.md --schema tests/golden/fixtures/conditional.schema.yaml
+diff_cmd "validate (composed, undeclared key)"   validate tests/golden/fixtures/conditional-undeclared.md --schema tests/golden/fixtures/conditional.schema.yaml
+# The injected-`unevaluatedProperties` path: schema silent about closure, properties
+# declared only in `allOf` branches. The conditional fixtures cannot reach it because
+# their schema carries an explicit `additionalProperties`, which wins.
+diff_cmd "validate (injected closure, valid)"    validate tests/golden/fixtures/composed-open-ok.md --schema tests/golden/fixtures/composed-open.schema.yaml
+diff_cmd "validate (injected closure, two undeclared keys)" validate tests/golden/fixtures/composed-open-undeclared.md --schema tests/golden/fixtures/composed-open.schema.yaml
 
 if [ "$fail" -ne 0 ]; then
   echo "cross-impl parity FAILED" >&2

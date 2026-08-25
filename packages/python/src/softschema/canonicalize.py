@@ -136,80 +136,11 @@ def _is_nullable_union(union: list[Any]) -> bool:
 
 
 def apply_enforced_extras(schema: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of ``schema`` with the ``status: enforced`` strictness overlay.
+    """Apply the checked enforced profile to one self-contained schema graph.
 
-    Under ``enforced`` the schema is authoritative at the boundary: every object
-    schema that declares ``properties`` but is silent about
-    ``additionalProperties`` is validated as ``additionalProperties: false``.
-    An explicit ``additionalProperties`` (``true``, ``false``, or a subschema)
-    always wins, so a schema can opt specific objects out of strictness.
-    Object schemas without ``properties`` (free-form mappings such as
-    ``dict[str, X]``) are unaffected.
-
-    This is a validation-time overlay applied by ``validate_structural`` when the
-    effective status is ``enforced``. It never changes compiled schemas.
+    Kept here as the compatibility entry point; graph analysis and transformation live
+    in :mod:`softschema.enforcement`.
     """
-    result = _apply_enforced_extras(schema)
-    assert isinstance(result, dict)
-    return result
+    from softschema.enforcement import apply_enforced_extras as apply_checked_profile
 
-
-class EnforcementUnsupportedError(ValueError):
-    """The requested closure would change composed-schema meaning."""
-
-
-def _apply_enforced_extras(node: Any) -> Any:
-    if not isinstance(node, dict):
-        return node
-    union = node.get("allOf")
-    if isinstance(union, list) and any(_contains_open_properties(branch) for branch in union):
-        raise EnforcementUnsupportedError(
-            "enforced closure is unsupported for allOf object composition"
-        )
-    dependent = node.get("dependentSchemas")
-    if isinstance(dependent, dict) and any(
-        _contains_open_properties(branch) for branch in dependent.values()
-    ):
-        raise EnforcementUnsupportedError(
-            "enforced closure is unsupported for dependent object composition"
-        )
-    if any(_contains_open_properties(node.get(key)) for key in ("if", "then", "else", "not")):
-        raise EnforcementUnsupportedError(
-            "enforced closure is unsupported for conditional object composition"
-        )
-    out: dict[str, Any] = {}
-    for key, value in node.items():
-        if key in _NAME_MAP_KEYWORDS and isinstance(value, dict):
-            out[key] = {name: _apply_enforced_extras(sub) for name, sub in value.items()}
-        elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):
-            out[key] = [_apply_enforced_extras(item) for item in value]
-        elif key in _SCHEMA_KEYWORDS:
-            out[key] = _apply_enforced_extras(value)
-        else:
-            out[key] = value
-    if isinstance(out.get("properties"), dict) and "additionalProperties" not in out:
-        out["additionalProperties"] = False
-    return out
-
-
-def _contains_open_properties(node: Any) -> bool:
-    if not isinstance(node, dict):
-        return False
-    if isinstance(node.get("properties"), dict) and "additionalProperties" not in node:
-        return True
-    for key, value in node.items():
-        if key in _SCHEMA_KEYWORDS and _contains_open_properties(value):
-            return True
-        if (
-            key in _SCHEMA_LIST_KEYWORDS
-            and isinstance(value, list)
-            and any(_contains_open_properties(item) for item in value)
-        ):
-            return True
-        if (
-            key in _NAME_MAP_KEYWORDS
-            and isinstance(value, dict)
-            and any(_contains_open_properties(item) for item in value.values())
-        ):
-            return True
-    return False
+    return apply_checked_profile(schema)

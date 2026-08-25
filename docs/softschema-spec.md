@@ -311,19 +311,258 @@ It is not required to be an import path or a class name.
 | --- | --- |
 | `soft` | A convention exists, but no boundary schema is enforced. |
 | `permissive` | Known fields validate; extension fields may be allowed by the source model. |
-| `enforced` | The schema is authoritative at the boundary. |
+| `enforced` | A bound structural schema is authoritative at the boundary. |
 
 `status` records intended maturity, and `enforced` tightens validation:
 
 - `soft` and `permissive` do not change validation behavior; whether a model allows
   extra fields is configured on the source model.
-- `enforced` makes the schema authoritative at the boundary: a conforming validator
-  treats every object schema that declares `properties` but omits `additionalProperties`
-  as `additionalProperties: false`. An explicit `additionalProperties` value in the
-  schema (true, false, or a subschema) always wins, so a schema can opt specific objects
-  out of strictness. Object schemas without `properties` (free-form mappings) are
-  unaffected. The overlay applies at validation time only; it never changes the compiled
-  schema.
+- When a structural schema is bound, `enforced` makes it authoritative at the boundary.
+  At a supported object schema that declares properties but omits an explicit
+  undeclared-property rule, the validator rejects each present property not evaluated by
+  a successful applicable schema at that object location.
+  Which keyword the validator inserts depends on whether declarations compose at that
+  instance site. An explicit `additionalProperties` or `unevaluatedProperties` value at
+  the site always wins.
+  Free-form mappings remain open.
+  The checked overlay applies at validation time only; it never changes the compiled
+  schema or `schema_sha256`. A topology outside the support matrix returns
+  `enforcement_unsupported` rather than a guessed document verdict.
+- `status` does not bind a validator by itself.
+  If a trusted host supplies only a Pydantic or Zod model, structural validation is
+  skipped and the native model decides the semantic result, including its own
+  unknown-key policy. If neither a schema nor a model is bound, validation checks only
+  the artifact format and metadata.
+  These two paths preserve language-specific or metadata-only workflows; they do not
+  provide the cross-language structural guarantee described above.
+
+### Rejecting undeclared properties under `enforced`
+
+In this spec, **object closure** means rejecting each present property whose value is
+not evaluated by any successful applicable schema at the same object instance location.
+`additionalProperties: false` and `unevaluatedProperties: false` are the two JSON Schema
+mechanisms used to impose that rule.
+Closure is local to one object; it does not close every nested object unless the
+validator also closes the schema site for that child.
+
+Object closure turns `enforced` from an intention into a check.
+It is worth deriving rather than memorizing, because the obvious implementation is wrong
+for any schema that composes constraints, and the reason is not obvious.
+
+#### The invariant
+
+Closure must satisfy two conditions at once:
+
+1. **Reject unevaluated keys.** A present property whose value is not evaluated by any
+   successful applicable schema at that instance location is an authoring bug.
+2. **Preserve authored acceptance for evaluated data.** A document the authored schema
+   accepts, and whose present properties are all evaluated by its successful applicable
+   schemas, must stay valid when `enforced` is switched on.
+   Closure may reject an otherwise valid document only for properties left unevaluated.
+
+Condition 2 is the one that constrains the design.
+Everything below follows from asking which successful schema evaluation admitted a
+present property value.
+
+#### Why `additionalProperties` cannot close composed declarations
+
+`additionalProperties` applies to property values whose names match neither `properties`
+nor `patternProperties` in the exact schema object containing the `additionalProperties`
+keyword. Here, “the same schema object” means the exact YAML mapping that contains the
+keyword. It does not mean a parent or child mapping, another entry under `allOf`, or a
+schema reached through `$ref`.
+
+For a schema that declares everything in one mapping, this rule is exactly right:
+
+```yaml
+type: object
+properties: {name: {type: string}}
+additionalProperties: false      # permits `name`; rejects every other property
+```
+
+Now compose.
+In JSON Schema, an *in-place applicator* is a keyword whose subschemas apply
+to **the same instance location** as the parent — `allOf`, `anyOf`, `oneOf`, `not`,
+`if`/`then`/`else`, `dependentSchemas`, and `$ref`. (Contrast a *child* applicator like
+`properties` or `items`, whose subschemas apply to a child location.)
+In-place applicators mean a single instance location can be described by several schema
+objects at once:
+
+```yaml
+type: object
+properties: {ticker: {type: string}}
+allOf:
+  - properties: {score: {type: number}}
+additionalProperties: false
+```
+
+The `properties` under `allOf` validates `score` when it is present, but it is in a
+different schema object.
+The outer `additionalProperties` keyword therefore treats `score` as additional.
+`{"ticker": "AAPL"}` is valid, while `{"ticker": "AAPL", "score": 0.8}` is invalid.
+Condition 2 is violated.
+The rule implemented by `additionalProperties` was never a general definition of
+“declared”; it coincides with that definition only when all declarations sit in one
+schema object.
+
+#### The annotation answer
+
+2020-12 provides the non-lexical answer.
+When a subschema validates **successfully**, its `properties` keyword produces an
+*annotation* naming the keys it matched, and annotations from in-place applicators
+propagate to the schema object containing them.
+`unevaluatedProperties` consults those collected annotations instead of its lexical
+siblings:
+
+```yaml
+type: object
+properties: {ticker: {type: string}}
+allOf:
+  - properties: {score: {type: number}}
+unevaluatedProperties: false
+```
+
+`{"ticker": "AAPL", "score": 0.8}` now passes, and
+`{"ticker": "AAPL", "tickre": "AAPL"}` is still rejected.
+Both conditions hold.
+
+Two properties of the annotation model drive every rule that follows:
+
+- **Annotations propagate upward to the composition root, not sideways.** A branch
+  cannot see its siblings’ annotations.
+  So the closure keyword must be placed at the object where the applicators meet — not
+  inside any of them.
+- **Only successful subschemas contribute.** A failing branch, a `not` whose subschema
+  failed, or an `if` whose condition was false all contribute nothing.
+
+#### Where closure belongs
+
+No in-place branch is assumed to be a complete object description.
+`allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `dependentSchemas`, and `$ref` all
+contribute at their parent’s instance location, so the overlay leaves their subschemas
+unchanged and closes at the parent with `unevaluatedProperties: false`.
+
+This placement is especially important for alternatives.
+Every successful `anyOf` branch contributes annotations, while `oneOf` validity depends
+on exactly one branch succeeding.
+Closing branches independently can reject a valid multi-branch `anyOf` or make an
+invalid `oneOf` valid by changing which branches succeed.
+Parent closure preserves branch selection.
+`not` is also left unchanged, but its negated annotations do not declare fields for the
+parent.
+
+#### The rules
+
+The overlay implements these rules over the root and every explicitly supplied resource
+as one offline graph:
+
+1. A present object field is admitted when its value is evaluated by a successful
+   applicable schema at that instance location.
+   `properties`, `patternProperties`, and supported in-place applicators can contribute
+   those evaluations. Conditional and dependent branches contribute only when they apply
+   and succeed. `required`, `dependentRequired`, and `propertyNames` do not evaluate
+   property values. Evaluations below `not` do not escape it.
+2. A self-contained lexical site receives `additionalProperties: false`. A site that
+   composes declarations through `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`,
+   `dependentSchemas`, or `$ref` receives `unevaluatedProperties: false`. No closure is
+   injected inside those branches.
+3. Reusable `$defs`, legacy `definitions`, embedded-resource roots, and
+   supplied-resource roots stay unchanged unless the author closed them explicitly.
+   A structured `$ref` application site receives annotation-aware closure independently,
+   so using one target at pure application sites cannot make those sites interfere.
+   A pure reference to a target that already states `additionalProperties` or
+   `unevaluatedProperties` receives no redundant closure keyword.
+   A reference inside context-sensitive composition, or in the same schema object as
+   other validation keywords, is refused when its evaluated target subtree would receive
+   inferred closure.
+4. An explicit `additionalProperties` or `unevaluatedProperties` on the site prevents
+   injection there. Explicit keywords inside referenced targets and composition branches
+   retain their ordinary Draft 2020-12 assertion and annotation behavior.
+   A schema with no declaration reachable at its site remains a free-form mapping.
+
+For example, the common extension shape leaves `Base` reusable and closes only where its
+annotations meet the sibling declaration:
+
+```yaml
+allOf:
+  - $ref: "#/$defs/Base"
+  - properties: {extra: {type: string}}
+$defs:
+  Base: {type: object, properties: {street: {type: string}}}
+```
+
+#### Graph preparation and references
+
+Before either runtime compiles an enforced schema, it checks portable regex syntax and
+the Draft 2020-12 metaschema for the root and every supplied resource.
+It then indexes resource identities and resolves supported `$ref` targets.
+Supported spellings include:
+
+- local JSON Pointers, including `~0` and `~1` escaping;
+- plain-name `$anchor` fragments;
+- nested `$defs` and legacy `definitions` targets;
+- embedded resources whose `$id` changes the base URI; and
+- supplied resources keyed by an absolute URI without a fragment.
+
+A supplied resource’s root `$id`, when present, must resolve to its mapping key.
+All resources are supplied explicitly; neither runtime performs network retrieval.
+Valid `$dynamicRef` and `$dynamicAnchor` schemas are outside this profile.
+Caller-constructed schema graphs must also use a distinct mapping object at every schema
+location. JSON and portable YAML already have this property.
+Reusing one in-memory mapping at several locations is `schema_invalid` with reason
+`shared_subschema`, because location-specific graph metadata would otherwise depend on
+traversal order.
+
+For reference-context analysis, a pure `$ref` site may also carry `$schema`, `$id`,
+`$anchor`, `$comment`, `$defs`, legacy `definitions`, `title`, `description`, `default`,
+`examples`, `deprecated`, `readOnly`, or `writeOnly`. These keywords do not add
+validation siblings at that instance location.
+Any other sibling is treated conservatively as validation behavior.
+
+#### Support matrix
+
+This table defines exactly which schema shapes `status: enforced` transforms and which
+ones it refuses.
+
+| Shape | `status: enforced` behavior |
+| --- | --- |
+| Direct `properties` | Close lexically with `additionalProperties` |
+| Nonempty `patternProperties` | Close lexically; scalar and otherwise nonclosing overlaps keep native intersection semantics |
+| Literal `properties` plus a matching structured `patternProperties` value, or two structured pattern values | Refuse as `child_evaluator_overlap` when either value schema’s evaluated subtree would receive inferred closure; pattern-pair overlap is treated conservatively because the profile does not prove that regexes are disjoint |
+| `allOf`, `anyOf`, `oneOf` | Leave branches unchanged and close their parent with `unevaluatedProperties` |
+| `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site, while fields declared only in `then` or `else` are admitted only when that branch applies and succeeds |
+| `dependentSchemas` branch declarations | Admit fields only when the trigger is present and the dependent schema succeeds |
+| `not` | Preserve the prohibition; declarations below it do not cause closure |
+| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
+| Plain structured `items` | Close each element schema independently when no `contains` schema co-describes its elements |
+| `prefixItems` with `items` | Close their structured value schemas independently; they apply to disjoint index ranges |
+| `contains` | Preserve the matcher without inferred closure so enforcement cannot change which elements match; an unclosed structured child below the matcher is unsupported |
+| Structured `contains` with an inferred-closed structured `items` or `prefixItems` schema | Refuse as `child_evaluator_overlap`, because the sibling applicators can evaluate the same element |
+| Explicit closure on a site | Preserve it; do not inject another closure keyword there |
+| Free-form mapping | Leave open |
+| Supplied resources | Check, analyze, transform, and register offline with the root |
+
+### Unsupported enforced shapes
+
+For a shape outside that matrix, `status: enforced` returns one
+`enforcement_unsupported` record with stable `reason`, `schema_path`, and `message`
+fields when it cannot prove a safe placement.
+It does not validate the document against a partial overlay.
+Current reasons are:
+
+| `reason` | Shape | Author action |
+| --- | --- | --- |
+| `dynamic_reference` | `$dynamicRef` or `$dynamicAnchor` | Use a supported static `$ref`, or author explicit closure and validate outside the overlay |
+| `nested_instance_composition` | An unclosed structured child instance appears below an in-place composition branch or selection matcher | Put explicit closure on that child schema, or hoist the complete child schema outside the composition or matcher |
+| `conditional_annotation_scope` | An `if` matcher evaluates fields not unconditionally evaluated at the closure site | Declare matcher fields at that site, directly or through an unconditional `$ref`/`allOf` path |
+| `child_evaluator_overlap` | Sibling child applicators can evaluate the same object or array element and inferred closure would change one value schema’s evaluated subtree independently | Make closure explicit at every affected structured descendant in the co-describing value schemas, or separate the property, pattern, item, and match domains |
+| `composition_reference_context` | A `$ref` under `allOf`, `anyOf`, `oneOf`, `dependentSchemas`, `if`, `then`, `else`, `not`, or `contains`, or in the same schema object as other validation keywords, reaches a reusable target whose evaluated subtree would receive inferred closure | Add explicit closure to the target’s structured descendants, or use the reference at a pure application site outside context-sensitive composition |
+| `embedded_resource_context` | A structured embedded `$id` resource is also applied directly at a nested site | Add explicit closure or move the reusable resource to `$defs` |
+| `reference_target_context` | A structured `$ref` target is also a directly applied, non-reusable schema, including a structured root referenced as `$ref: "#"` | Move the target to `$defs` or a supplied resource, or close it explicitly. For a recursive root, make the root a bare `$ref` into `$defs` and recurse through that definition |
+
+Malformed or unresolved graphs use `schema_invalid`, not `enforcement_unsupported`.
+Stable reasons include `dialect`, `pattern`, `reference`, `resource_identity`, and
+`shared_subschema`.
 
 The effective status is resolved by the caller (for example a registry contract or a
 `--status` flag), falling back to the document’s declared `softschema.status`.
@@ -341,9 +580,47 @@ Markdown body prose and tables are reader-facing and never authoritative.
 ## Compiled Schemas
 
 A compiled schema is a generated validation contract, usually JSON Schema written as
-YAML. It is the language-neutral form of a contract: a Pydantic class or Zod schema
-compiles to it (provably identically—the conformance machinery guarantees an equal
-`schema_sha256`), and any language can validate against it.
+YAML. It is the language-neutral form of a contract, and any language can validate
+against it. Equivalent Pydantic and Zod sources within softschema’s model-compiler
+profile compile to the same canonical content and `schema_sha256`. This guarantee is
+covered by shared conformance fixtures; it does not extend to every feature that either
+model library can express.
+
+### Release-Level Mapping Across JSON Schema, Pydantic, and Zod
+
+The compiled JSON Schema is the portable boundary.
+The table below summarizes the key areas exercised by the shared
+[Pydantic model](../examples/parity/model.py),
+[Zod schema](../packages/typescript/test/fixtures/parity.ts), and
+[compiled-schema fixture](../examples/parity/parity.schema.yaml).
+
+| Area | Canonical Draft 2020-12 form | Pydantic source | Zod source | Guarantee in this release |
+| --- | --- | --- | --- | --- |
+| Scalar types and field presence | `type`, object `properties`, and `required` | `str`, `int`, `float`, and `bool` fields on a `BaseModel`; a field without a default is required | `z.string()`, `z.int()`, `z.number()`, and `z.boolean()` inside `z.object()` or `z.strictObject()`; `.optional()` makes a key optional | Equivalent fixture shapes compile to the same structural schema |
+| Numeric, string, and choice constraints | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minLength`, `maxLength`, `pattern`, and `enum` | `Field(ge=, le=, gt=, lt=, multiple_of=, min_length=, max_length=, pattern=)` and `Literal` | `.min()`, `.max()`, `.gt()`, `.lt()`, `.multipleOf()`, string `.min()`, string `.max()`, `.regex()`, and `z.enum()` | Equivalent fixture constraints compile identically; regular expressions must satisfy the portable subset below |
+| Optional, nullable, union, and default forms | Omission from `required`, `anyOf`, `type: "null"`, and the `default` annotation | Field defaults, `Optional[T]`, and ordinary union types | `.optional()`, `.nullable()`, `.default()`, and `z.union()` | The compiler normalizes the fixture forms to common shapes; `default` remains an annotation and structural validation does not insert it |
+| Arrays and typed maps | `type: array`, `items`, `minItems`, and object `additionalProperties` with a schema | `list[T]`, `Field(min_length=)`, and `dict[str, T]` | `z.array(T)`, array `.min()`, and `z.record(z.string(), T)` | Equivalent fixture shapes compile identically |
+| Nested and reused objects | Nested `properties`, `$defs`, and `$ref` | Nested `BaseModel` types | Named object schemas with `.meta({ id })` | The compiler normalizes named reuse to common `$defs` and `$ref` shapes |
+| Closed simple objects | `additionalProperties: false` | `ConfigDict(extra="forbid")` | `z.strictObject()` | Equivalent strict objects compile identically; `status: enforced` separately adds checked undeclared-property rejection to supported composed schemas |
+| Temporal values | `type: string` with `format` annotations | `date`, `datetime`, `time`, and `timedelta` fields | `z.iso.date()`, `z.iso.datetime()`, `z.iso.time()`, and `z.iso.duration()` | The structural schema is format-only; Pydantic and Zod can accept different string sets during semantic validation |
+| Descriptions and softschema metadata | `title`, `description`, `default`, and `x-softschema` annotations | Model and `Field` metadata; `SoftField` | `.meta()`, `.default()`, and `softField()` | The canonical compiler preserves the common annotation forms exercised by the fixture |
+| Composition and field dependencies | Hand-authored `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `dependentSchemas`, `patternProperties`, and related applicators | Author the compiled JSON Schema directly; softschema defines no equivalent general Pydantic construct | Author the compiled JSON Schema directly; softschema defines no equivalent general Zod construct | Structural validation uses Draft 2020-12; `status: enforced` accepts only the topologies in the support matrix above |
+| Native semantic rules | No general JSON Schema representation for arbitrary runtime code | `@field_validator` and `@model_validator` | `.refine()`, `.superRefine()`, and `.check()` | A caller may add this independent validation layer. It is implementation-specific and is not covered by `schema_sha256` |
+
+When a caller supplies both a compiled schema and a native model, the values must pass
+both layers; a native model cannot rescue a structural failure.
+A trusted host may instead supply only a native model.
+That explicitly delegates the validation result to Pydantic or Zod, including
+library-specific refinements and unknown-key behavior, while the structural layer
+reports that it was skipped.
+This is the optional language-specific fallback, not part of the portable cross-language
+profile. The artifact’s `status` does not select or configure a native model by itself.
+
+This table is intentionally area-level for this release.
+A future profile may enumerate each Pydantic and Zod source construct, its
+canonicalization rule, accepted-value caveats, and its conformance vector.
+Until then, an unlisted model-library feature is implementation-specific unless its
+canonical output is covered by cross-runtime tests.
 
 An artifact may bind to its compiled schema with the optional `softschema.schema` key.
 The compiled schema a validator uses is resolved in this precedence (highest first):
@@ -413,6 +690,8 @@ A validator must reject:
   keys without an explicit envelope designation)
 - a missing or unreadable compiled schema when one is bound (`schema_missing`)
 - a bound file that is not a valid schema (`schema_invalid`)
+- a valid schema topology outside the `status: enforced` support matrix
+  (`enforcement_unsupported`)
 - a JSON Schema validation failure
 - a model validation failure
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
@@ -423,6 +702,36 @@ Across implementations, structural error records have the same engine-neutral fi
 portable meaning, and machine-readable JSON is compared as parsed data rather than as
 presentation bytes. The portable value domain accepts integers only within the IEEE-754
 safe-integer range (`abs < 2^53`) so both runtimes retain the same numeric value.
+Validation verdict parity is required for every shared vector.
+Error-record-set parity is required except for cases explicitly listed in the shared
+`engine_deviations` vectors; each runtime pins its own complete record set for those
+cases so unlisted drift fails.
+
+### Matching on structural error records
+
+A structural error record carries both the JSON Schema keyword that failed and a
+softschema-owned category:
+
+| `code` | Emitted for | Meaning |
+| --- | --- | --- |
+| `undeclared_property` | `additionalProperties`, `unevaluatedProperties` | a key the schema does not declare |
+| `missing_property` | `required` | a declared key the document omits |
+| `invalid_value` | every other mapped keyword | a value the schema rejects |
+| `unmapped_keyword` | a keyword with no template yet | a gap in the message table, not a category |
+
+For a field-level repair, match on **`kind` + `code` + `path` + `property`**. `property`
+is present on `missing_property` and `undeclared_property` records; one record is
+emitted per affected field.
+For errors that do not concern one field, match on `kind` + `code` + `path`. `validator`
+and `validator_value` name the *mechanism* and are diagnostic; `message` wording may
+improve within a minor release.
+
+The distinction matters most for closure.
+One authoring mistake — an undeclared key — reports `additionalProperties` on a simple
+schema and `unevaluatedProperties` on a composed one, so a consumer matching `validator`
+sees only half the cases.
+Both report `code: undeclared_property`, and both name the affected field in `property`
+and `message`.
 
 ## Generated Sections
 

@@ -8,6 +8,7 @@
  * at serialization time.
  */
 
+import { applyCheckedEnforcement } from "./enforcement.js";
 import { isMapping } from "./guards.js";
 
 type Json = unknown;
@@ -96,78 +97,11 @@ function isNullableUnion(union: Json[]): boolean {
 }
 
 /**
- * Return a copy of `schema` with the `status: enforced` strictness overlay: every object
- * schema that declares `properties` but is silent about `additionalProperties` is
- * validated as `additionalProperties: false`. An explicit `additionalProperties` always
- * wins, and object schemas without `properties` (free-form mappings) are unaffected.
- * Validation-time only; never changes compiled schemas. Mirrors the Python
- * `apply_enforced_extras` exactly.
+ * Apply the checked `status: enforced` profile to a self-contained schema graph.
+ *
+ * This compatibility entry point has no external-resource argument. Validation uses
+ * `prepareSchemaGraph` directly when resources are present.
  */
 export function applyEnforcedExtras(schema: Record<string, Json>): Record<string, Json> {
-  return applyEnforced(schema) as Record<string, Json>;
-}
-
-export class EnforcementUnsupportedError extends Error {}
-
-function applyEnforced(node: Json): Json {
-  if (!isMapping(node)) {
-    return node;
-  }
-  if (Array.isArray(node.allOf) && node.allOf.some(containsOpenProperties)) {
-    throw new EnforcementUnsupportedError(
-      "enforced closure is unsupported for allOf object composition",
-    );
-  }
-  if (
-    isMapping(node.dependentSchemas) &&
-    Object.values(node.dependentSchemas).some(containsOpenProperties)
-  ) {
-    throw new EnforcementUnsupportedError(
-      "enforced closure is unsupported for dependent object composition",
-    );
-  }
-  if ([node.if, node.then, node.else, node.not].some(containsOpenProperties)) {
-    throw new EnforcementUnsupportedError(
-      "enforced closure is unsupported for conditional object composition",
-    );
-  }
-  const out: Record<string, Json> = {};
-  for (const [key, value] of Object.entries(node)) {
-    if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
-      const mapped: Record<string, Json> = {};
-      for (const [name, sub] of Object.entries(value)) {
-        mapped[name] = applyEnforced(sub);
-      }
-      out[key] = mapped;
-    } else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) {
-      out[key] = value.map(applyEnforced);
-    } else if (SCHEMA_KEYWORDS.has(key)) {
-      out[key] = applyEnforced(value);
-    } else {
-      out[key] = value;
-    }
-  }
-  if (isMapping(out.properties) && !("additionalProperties" in out)) {
-    out.additionalProperties = false;
-  }
-  return out;
-}
-
-function containsOpenProperties(node: Json): boolean {
-  if (!isMapping(node)) return false;
-  if (isMapping(node.properties) && !("additionalProperties" in node)) return true;
-  for (const [key, value] of Object.entries(node)) {
-    if (SCHEMA_KEYWORDS.has(key) && containsOpenProperties(value)) return true;
-    if (
-      SCHEMA_LIST_KEYWORDS.has(key) &&
-      Array.isArray(value) &&
-      value.some(containsOpenProperties)
-    ) {
-      return true;
-    }
-    if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) {
-      if (Object.values(value).some(containsOpenProperties)) return true;
-    }
-  }
-  return false;
+  return applyCheckedEnforcement(schema);
 }

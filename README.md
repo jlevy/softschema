@@ -202,6 +202,13 @@ flags.
 
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
+When a structural schema is bound, `status: enforced` rejects a present property at each
+supported object location unless a successful applicable schema admits it.
+With only a host-supplied Pydantic or Zod model, validation delegates to that model and
+does not invent a structural schema; with neither, validation checks metadata only.
+The spec’s [support matrix](docs/softschema-spec.md#support-matrix) lists the composed,
+referenced, and array-contained object shapes for which the validator can apply that
+rule without changing the authored schema’s other behavior.
 Contract IDs follow an enforced shape, `[namespace:]Name[/version]`—for example
 `example.movies:MoviePage/v1` or `com.acme.docs:IncidentReview/1.0`—naming a payload
 contract, not a class or import path.
