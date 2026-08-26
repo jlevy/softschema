@@ -1,9 +1,10 @@
 # softschema
 
-`softschema` applies gradual contracts to Markdown and YAML artifacts.
-In Markdown, values a downstream tool reads live in YAML frontmatter under a named
-contract; the body remains prose.
-Add a field when a consumer needs it, and tighten validation as the shape settles.
+`softschema` applies gradual contracts to YAML data.
+The standard profile is Markdown with YAML frontmatter and an optional body.
+Pure YAML is also supported when the structured record stands on its own.
+Validate the stable fields first, then make the compiled schema authoritative when the
+workflow should reject undeclared fields.
 
 This is the TypeScript/Zod implementation of
 [softschema](https://github.com/jlevy/softschema).
@@ -22,9 +23,9 @@ bun add softschema
 `softschema-ts` exposes the same commands and flags as the Python `softschema`:
 
 ```bash
-softschema-ts validate <doc.md> --schema <schema.yaml> [--model mod.ts:Export] [--envelope key]
+softschema-ts validate <artifact> --schema <schema.yaml> [--model mod.ts:Export] [--envelope key]
 softschema-ts compile <mod.ts:ZodSchema> --contract <id> --out <schema.yaml> [--check]
-softschema-ts inspect <doc.md>
+softschema-ts inspect <artifact>
 softschema-ts generate <doc.md> [--check]
 softschema-ts docs --list [--json] | softschema-ts docs <topic>
 softschema-ts skill --brief

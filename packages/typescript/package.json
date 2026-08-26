@@ -1,7 +1,7 @@
 {
   "name": "softschema",
   "version": "0.7.0",
-  "description": "Gradual contracts for Markdown and YAML artifacts that mix prose with values code reads",
+  "description": "Gradual contracts for YAML data, with optional Markdown context",
   "license": "MIT",
   "author": "Joshua Levy (https://github.com/jlevy)",
   "homepage": "https://github.com/jlevy/softschema",

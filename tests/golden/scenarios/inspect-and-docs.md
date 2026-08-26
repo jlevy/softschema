@@ -62,27 +62,38 @@ Copy examples from the printed docs or from the repository files; the CLI does n
 $ softschema skill --brief
 # softschema Skill Brief
 
-Use soft schemas when humans or agents write Markdown/YAML artifacts and tools need to
-consume some values reliably.
+Use soft schemas when humans, agents, or software produce YAML records whose consumed
+structure should stabilize over time.
 
-- YAML/frontmatter is authoritative for any consumed value.
+- Choose the artifact profile independently of the contract status.
+  Use the standard `frontmatter-md` profile when the YAML payload benefits from a
+  Markdown body carrying context; use `pure-yaml` when the whole artifact is structured.
+- YAML is authoritative for any consumed value.
+  In `frontmatter-md`, the Markdown body is reader-facing.
   Do not parse Markdown body prose or tables for structured fields.
+- Treat `soft`, `permissive`, and `enforced` as boundary maturity.
+  Start with a named convention, validate the stable fields under authored rules, and
+  enforce a bound structural schema when undeclared fields should fail.
+- Evolve the schema as records and consumers reveal stable fields and constraints.
+  Changing the schema or status does not require changing a Markdown body.
 - Date- and timestamp-shaped YAML scalars are portable strings, quoted or unquoted.
   JSON Schema `format` is annotation-only; use a semantic model or an explicit
   structural assertion when date validity matters.
 - The `softschema:` block is the self-description quartet: `contract` (the payload
   contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
   key), `status` (strictness).
-  A fully self-describing artifact validates with `$SS validate doc.md`, no flags.
-- Promote a value into YAML only when something consumes it; leave exploratory or
-  judgment-heavy content as prose.
+  A fully self-describing artifact validates with `$SS validate <artifact>`, no flags.
+- Add a field to the contract when a consumer relies on its name and meaning.
+  Leave uncertain YAML extensions outside the contract until they stabilize.
+- Use the optional Markdown body for provenance, reasoning, and caveats that do not fit
+  fixed fields.
 - Read `$SS docs guide` for the mental model.
 - Read `$SS docs spec` for the exact artifact format.
 - Inspect `$SS docs example` and `$SS docs example-artifact` for the copyable movie
   example; `$SS docs example-schema` prints its compiled schema.
 - Validate at the boundary with `$SS validate`: no flags for a self-describing artifact;
   `--schema` to override with a compiled schema; `--model` for a Pydantic/Zod model
-  (imports and runs local code — trusted models only; `--schema` is the safe path for
+  (imports and runs local code; trusted models only; `--schema` is the safe path for
   untrusted input). Run `$SS validate --help` for exact syntax.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.

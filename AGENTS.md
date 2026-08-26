@@ -27,8 +27,10 @@ For implementer reference (only when changing a package itself):
 
 Key rules:
 
-- Treat YAML/frontmatter as the authoritative structured data.
+- Treat YAML as the authoritative structured data in both artifact profiles.
 - Do not parse Markdown body prose or tables for consumed values.
+- Treat artifact profile and contract status as independent: `pure-yaml` and
+  `frontmatter-md` both support `soft`, `permissive`, and `enforced` maturity.
 - Use `softschema.contract`, not `schema`, in authored artifact metadata.
 - Contract IDs name artifact payload contracts, not a specific Python class.
 - Keep examples public and practical; do not introduce private business context,
@@ -48,8 +50,10 @@ uv run softschema skill --brief
 ```
 
 When adding a schema, start by identifying the values downstream consumers actually
-need. Promote those values into YAML, validate them at the boundary, and leave the rest
-as readable Markdown unless it is truly consumed as data.
+need. Add stable values and constraints to the contract, validate them at the boundary,
+and tighten enforcement as producers and consumers settle.
+Use a Markdown body for reader-facing context when it helps; pure YAML is also a
+first-class artifact profile.
 
 Documentation rules:
 

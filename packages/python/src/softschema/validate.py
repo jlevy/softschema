@@ -443,9 +443,10 @@ def validate_values(
     fields. Engines that were not requested are reported as ok (with no errors)
     so callers can read either field without checking which one ran.
 
-    Use this when values come from somewhere other than a Markdown frontmatter
-    document (a body-form runtime, a structured-output adapter, a hand-written
-    fixture). For Markdown documents use ``validate_artifact`` instead.
+    Use this when values are already extracted or come from outside a softschema
+    artifact (a body-form runtime, a structured-output adapter, or a hand-written
+    fixture). For files in either the ``frontmatter-md`` or ``pure-yaml`` profile,
+    use ``validate_artifact`` instead.
     """
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")

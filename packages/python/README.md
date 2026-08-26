@@ -1,9 +1,10 @@
 # softschema (Python)
 
-`softschema` applies gradual contracts to Markdown and YAML artifacts.
-In Markdown, values a downstream tool reads live in YAML frontmatter under a named
-contract; the body remains prose.
-Add a field when a consumer needs it, and tighten validation as the shape settles.
+`softschema` applies gradual contracts to YAML data.
+The standard profile is Markdown with YAML frontmatter and an optional body.
+Pure YAML is also supported when the structured record stands on its own.
+Validate the stable fields first, then make the compiled schema authoritative when the
+workflow should reject undeclared fields.
 
 This is the Python implementation of [softschema](https://github.com/jlevy/softschema),
 published on [PyPI](https://pypi.org/project/softschema/). The synchronized TypeScript

@@ -409,7 +409,7 @@ two places where the current docs already address the concern:
 
 1. **Fixed: surface the agent behavior.** The README now explains the failure mode,
    gives the authoritative-YAML rule, and names the workflows that follow from it.
-   The guide expands that rule into a six-step agent playbook.
+   The guide expands that rule into an agent playbook.
 2. **Fixed for versioned surfaces: align descriptions.** The root README, guide, package
    READMEs, `pyproject.toml`, and npm metadata now share the same present-state
    description at appropriate lengths.
@@ -433,21 +433,32 @@ two places where the current docs already address the concern:
 
 ### Reconciliation on 2026-08-25
 
-Since the original review, `main` has added pure-YAML artifact profiles, checked
+Since the original review, `main` has added the `pure-yaml` artifact profile, checked
 enforcement for composed and dependent schemas, stable structural error categories, and
 the research and specification material behind those behaviors.
 These changes refine validation after an artifact reaches a boundary.
 They do not replace the authoring rule or explain why an agent should use it while
 designing a workflow.
 
+Maintainer feedback on the rebased draft identified a remaining scope error in the
+original review: it treated gradual promotion from Markdown prose into frontmatter as
+the center of the pattern.
+softschema also supports `pure-yaml`, and contract maturity is independent of the
+artifact profile. A schema can gain fields and constraints, move from `soft` through
+`permissive` to `enforced`, and converge on a database or API import boundary without
+any Markdown change or Markdown body.
+
 The rebased PR therefore retains the original public-surface scope:
 
-- The README explains the failure mode, the authoritative-YAML boundary, and the
-  operations that boundary supports across agent steps and sessions.
-- The guide adds workflow shapes and a six-step agent playbook.
+- The README explains gradual data modeling, the independent profile and status choices,
+  and the shared boundary used by agents and software.
+- The guide covers `pure-yaml` record collections, schema refinement, database and API
+  staging, optional Markdown context, and a seven-step agent playbook.
   The repair step now points to v0.7’s stable `code` and `path` fields and the
   `property` field on missing- and undeclared-property records.
 - The package READMEs and package metadata use the same present-state description.
+- The installed skill teaches agents that Markdown is optional and schema maturity can
+  advance without changing the artifact profile.
 - This review remains the dated decision record; the newer composed-schema material
   remains in the spec, guide’s advanced playbook, and research brief.
 
