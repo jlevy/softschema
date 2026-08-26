@@ -35,7 +35,7 @@ To set up softschema in a repository with an agent, tell the agent:
 The help output points the agent to the explicit install command, which writes the
 portable Agent Skills location and the Claude Code discovery mirror.
 
-## Why Explain Soft Schemas to an Agent?
+## Why Give Soft Schemas to an Agent?
 
 A coding agent often has to build a data workflow before the final record shape is
 known. A closed schema written too early turns guesses into constraints.
