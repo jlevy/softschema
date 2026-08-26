@@ -1,7 +1,15 @@
 # softschema
 
-Soft schemas: gradual, practical validation for Markdown/YAML artifacts that mix prose
-and structured data—built for humans and coding agents.
+`softschema` applies gradual contracts to YAML data.
+The standard profile is Markdown with YAML frontmatter and an optional body.
+Pure YAML is also supported when the structured record stands on its own.
+Start with a named convention, validate the fields that have stabilized, and make the
+compiled schema authoritative once undeclared fields should fail.
+
+This gives agents and software a shared path from loose records to enforced schemas.
+The contract can evolve without changing an artifact’s profile or its Markdown body.
+When a record needs explanation, Markdown keeps that context next to values software can
+read.
 
 ## Quick Start
 
@@ -27,113 +35,122 @@ To set up softschema in a repository with an agent, tell the agent:
 The help output points the agent to the explicit install command, which writes the
 portable Agent Skills location and the Claude Code discovery mirror.
 
-## What Are Soft Schemas?
+## Why Give Soft Schemas to an Agent?
 
-Soft schemas are a practice for adding structure gradually to artifacts that mix
-flexible document context and machine-readable values.
+A coding agent often has to build a data workflow before the final record shape is
+known. A closed schema written too early turns guesses into constraints.
+A collection left entirely loose gives later code no stable boundary.
 
-The idea is quite simple, but I’ve found it non-obvious enough that coding agents do not
-come up with this approach themselves.
+A soft schema gives the agent an iterative method.
+It can collect records in YAML, name a contract, add stable fields and constraints as
+the records and consumers reveal them, and move the contract from `soft` to `permissive`
+to `enforced`. The schema and payload can change without a profile migration.
+A Markdown body can stay unchanged, or be absent from the start.
 
-However, if given the information and tools in this repo, soft schemas are unreasonably
-effective. Agents become far better at designing and building complex workflows that mix
-structured and unstructured data, such as document processing, data extraction,
-scientific or financial analyses, and many similar applications.
+That progression supports:
 
-**Soft schemas** are what we call the general practice.
-**softschema** is the name of this repository’s Markdown-and-YAML spec and the matching
-`softschema` CLI that implements it.
+- **Gradual data modeling.** The agent can formalize the stable core of a record while
+  leaving extension fields open until their purpose and type are understood.
+- **Agent and software coordination.** Agent steps, scripts, services, QA checks, and
+  report generators read the same named payload fields under the same contract.
+- **Validation-guided refinement.** `softschema validate` returns structural and
+  semantic results. Stable categories and paths let an agent repair a field, revise a
+  constraint, or identify an extension that belongs in the schema.
+- **Context beside data.** When a record needs provenance, judgment, or caveats that do
+  not belong in fixed fields, the Markdown profile keeps that prose next to the YAML
+  payload. Consumers still read YAML only.
+- **Interoperability with strict systems.** A contract can converge on the fields and
+  constraints required by a database, API, or other import boundary.
+  Enforced validation rejects incompatible records before the handoff.
+- **Derived views and durable memory.** Code can regenerate indexes, ledgers, and
+  summaries from validated payloads, while optional prose preserves the reasoning that
+  future humans or agents need.
 
-## How Do Soft Schemas Work?
+The structured payload is the software interface, and its status states how mature that
+boundary is. The optional body supplies local context without forcing software to parse
+prose. Together, the two profiles support context engineering alongside database-style
+schema development without making prose part of the machine interface.
 
-The practice is very simple and language neutral.
-The simplest approach is to use artifacts in a process or pipeline that are Markdown
-documents with YAML frontmatter.
-The YAML carries selected structured values.
-The Markdown body stays readable for humans and agents and offers additional context.
-There are no strict rules about duplicating content between Markdown and YAML, but you
-can gradually adjust and enforce rules.
+The project skill makes the rule discoverable to agents working in a repository.
+The CLI makes it testable: `compile --check` detects drift between a model and its
+compiled schema, `generate --check` detects stale generated sections, and the same
+compiled contract works with the Python and TypeScript implementations.
 
-A *hard* schema imposes structure up front: define a rigid contract, then reject
-anything that doesn’t fit.
-That suits data that is already uniform, but it is a poor fit for documents a human or
-agent writes, where most of the content is prose and only a few values need to be
-machine-readable.
+## The Convention
 
-A *soft* schema lets you add structure gradually to the artifacts that pass between
-steps of a workflow.
+**Soft schemas** name the practice of developing a data contract as the records and
+their consumers become better understood.
+**softschema** is this repository’s YAML-based artifact specification and the matching
+CLI and libraries. Artifact payloads use YAML in both profiles; softschema does not
+define a JSON artifact profile.
 
-Structure runs along a spectrum, and each value moves along it only when it earns the
-move:
+Two choices are independent:
+
+| Choice | Options | What It Controls |
+| --- | --- | --- |
+| Artifact profile | `frontmatter-md` or `pure-yaml` | Whether the artifact also carries a Markdown body or consists only of structured data. |
+| Contract status | `soft`, `permissive`, or `enforced` | Whether the contract is a convention, validates known fields under authored rules, or makes a bound structural schema authoritative. |
+
+In `pure-yaml`, the document root is the payload after softschema metadata is removed.
+In `frontmatter-md`, YAML frontmatter holds the payload and the body holds reader-facing
+context. The body may repeat values for readers, but consumers never parse it as data.
+
+The same record family can move through increasing schema maturity without changing its
+artifact profile:
 
 ```text
-plain Markdown prose
-  -> plain Markdown with a few YAML frontmatter values for specific fields
-  -> plain Markdown with more YAML fields and a bit of loose validation
-  -> plain Markdown with YAML frontmatter fully validated against JSON Schema (or Pydantic/Zod)
-  -> plain Markdown with separate structured data files or database records
+loose YAML records
+  -> named field conventions                              (soft)
+  -> validation for the stable fields                     (permissive)
+  -> more fields and constraints as consumers reveal them (permissive)
+  -> an authoritative structural boundary                 (enforced)
+  -> validation before a database, API, or other strict system
 ```
 
-The structured values live in the YAML payload, the boundary a tool reads, while the
-prose body stays unconstrained.
-Validation rules can be easily removed or changed if greater flexibility is needed.
+At any stage, use Markdown with frontmatter when the record benefits from nearby
+explanation, provenance, or review notes.
+Use pure YAML when the whole artifact is structured data.
+Tightening the schema does not require changing that prose.
 
-Promote a value into YAML when a tool reads it, validate it at the boundary when
-correctness matters, and tighten enforcement over time.
-Each promotion buys efficiency for some downstream consumer, so structure and efficiency
-grow together, value by value.
+## Where Soft Schemas Fit
 
-Start with processes and data defined in Markdown with data right in the text.
-Have coding agents try them.
-Only add structure when it pays for itself.
+Use a soft schema when records have a useful but incomplete shape, or when a workflow
+needs a controlled path toward a strict downstream boundary.
+Common shapes include:
 
-## When and Why Are Soft Schemas Useful?
+- **Record enhancement and harmonization.** Start with heterogeneous pure YAML records,
+  identify recurring fields, normalize them, and expand the contract as each field
+  becomes reliable enough for aggregation.
+- **Software boundaries.** Let batch jobs, services, QA checks, and report generators
+  exchange permissive records while their shared contract develops.
+  Enforce it once unknown fields represent integration errors.
+- **Database and API staging.** Align a YAML contract with a target system’s required
+  fields and constraints, then validate records under `enforced` before import.
+- **Agent pipelines.** Give agents the same contract progression while they develop
+  producers and consumers together.
+  Structured errors make both bad data and premature constraints visible during
+  refinement.
+- **Context-rich records.** Use the Markdown profile for research results, application
+  content, incident records, or decisions that need structured fields plus provenance,
+  interpretation, or caveats.
 
-You should consider using soft schemas if:
-
-1. You wish to have coding agents perform complex processing workflows involving both
-   data and documents
-
-2. Some aspects of the workflow involve structured data that is processed efficiently
-   via code and some aspects are ill-defined
-
-3. The boundary between structured and unstructured data might evolve as you scale and
-   improve the workflows
-
-A plain text document offers flexible context for humans and agents.
-Structured records are far better when code or agents need to read values consistently
-and efficiently.
-
-Balancing these needs is often difficult and the source of significant complexity.
-
-Some engineers see the goal of productionizing an agent workflow as the process of
-converting it to reusable code or structured forms, like relational database schemas.
-
-But the reality is that *prematurely structuring data* before you understand the
-structures that best serve a workflow involving code and agents has a cost.
-At the same time, *poorly defined structure* has costs in consistency and efficiency.
-
-What is actually needed is **gradual addition of structure** and **flexible addition of
-textual context** at any time.
-
-Soft schemas are simple habits and conventions to make the boundary between structured
-and unstructured data easier to adjust in either direction as a workflow’s needs for
-flexibility, consistency, and efficiency evolve (code vs LLM calls).
-Keeping prose and structured values in one artifact is more convenient and
-context-efficient. A reader (human or agent) has only one place to look, and information
-can stay as loose prose until a downstream consumer needs it in more formal schemas.
+If no downstream consumer reads structured values, no contract is needed.
+If the full closed schema is already known and an ordinary validator covers the
+workflow, gradual contract maturity may add little.
+The [guide](docs/softschema-guide.md#when-to-use-it) gives the full adoption criteria.
 
 ## Example: Recording a Research Loop
 
 A research loop is any process that repeatedly proposes an idea, measures it, and
 decides: optimizing a program, tuning prompts against an eval, comparing libraries.
-Each iteration produces a record with two halves that resist a single format: numbers a
-tool must read, and reasoning only the author can write.
-In one project’s performance work, each of 51 experiments is one artifact whose enforced
-frontmatter carries the hypothesis ID, the host and subject fingerprints, the measured
-medians with confidence intervals, and a verdict drawn from a fixed set, while the
-Markdown body explains what the profiler suggested, what was tried, and why the numbers
-meant what they said.
+This is one case where the Markdown profile fits: each iteration has measurements a tool
+must read and interpretation that does not fit fixed fields.
+In the
+[performance work that motivated this playbook](https://github.com/jlevy/softschema/pull/33),
+each of 51 experiments is one artifact whose enforced frontmatter carries the hypothesis
+ID, the host and subject fingerprints, the measured medians with confidence intervals,
+and a verdict drawn from a fixed set, while the Markdown body explains what the profiler
+suggested, what was tried, and why the numbers meant what they said.
 Code reads the YAML to apply the accept rule and regenerate a ledger; humans and agents
 read the prose.
 
@@ -150,9 +167,15 @@ See
 [Playbook: Record a Research Loop](docs/softschema-guide.md#playbook-record-a-research-loop)
 for the artifact shape and the four habits that keep the record and the report in sync.
 
-## The Artifact Shape
+## Artifact Profiles
 
-The default shape is Markdown with YAML frontmatter.
+A softschema artifact is either Markdown with YAML frontmatter or pure YAML. Both use
+the same contracts and status progression.
+
+The standard example uses `frontmatter-md` because it shows the structured payload and
+optional context together.
+This profile is usually the better authoring surface when a record needs explanation,
+provenance, or review notes.
 The `softschema:` block is the self-description quartet: `contract` names the payload
 contract, `schema` points at the compiled JSON Schema (relative to the document),
 `envelope` names the payload key, and `status` sets validation strictness:
@@ -200,6 +223,22 @@ frontmatter conventions a static-site generator, doc indexer, or other tool alre
 expects. Because the artifact declares `envelope: movie`, validation still needs no
 flags.
 
+Use `pure-yaml` when the structured record stands on its own.
+The whole document root is the payload after the `softschema:` metadata block is
+removed:
+
+```yaml
+softschema:
+  contract: example.records:SourceRecord/v1
+  status: soft
+source_id: article-1842
+title: Example source
+language: en
+```
+
+This record can acquire a model and move through `permissive` to `enforced` without a
+Markdown wrapper.
+
 Every key after `contract` is optional; a minimal artifact carries `contract` alone and
 binds its schema some other way (a `--schema` flag, or a host registry in library use).
 When a structural schema is bound, `status: enforced` rejects any property the schema
@@ -227,9 +266,9 @@ A self-describing artifact validates with no flags; flags override the document 
 need to point a run elsewhere:
 
 ```bash
-softschema validate doc.md                              # uses the document's bindings
-softschema validate doc.md --schema candidate.schema.yaml   # try a different schema
-softschema validate doc.md --envelope incident          # designate the payload key
+softschema validate incident.md                         # frontmatter Markdown
+softschema validate record.yaml                         # pure YAML
+softschema validate incident.md --schema candidate.schema.yaml  # override its schema
 ```
 
 `validate` reports structural (JSON Schema) and semantic (Pydantic/Zod model) results
@@ -332,8 +371,8 @@ Re-run `skill --install` to refresh after upgrading the CLI.
 
 ## Two Synchronized Implementations
 
-softschema ships **two complete, fully supported implementations** with the same CLI and
-library surface:
+softschema ships two interchangeable implementations with the same CLI and library
+surface:
 
 - **Python / Pydantic**: [`softschema`](docs/softschema-python-design.md) on PyPI (run
   as `softschema` or `softschema-py`).

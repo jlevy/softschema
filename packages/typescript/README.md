@@ -1,8 +1,14 @@
 # softschema
 
-The TypeScript/Zod implementation of [softschema](https://github.com/jlevy/softschema):
-validate and structure Markdown/YAML artifacts with frontmatter contracts.
-It is the idiomatic Zod counterpart to the Python/Pydantic package.
+`softschema` applies gradual contracts to YAML data.
+The standard profile is Markdown with YAML frontmatter and an optional body.
+Pure YAML is also supported when the structured record stands on its own.
+Validate the stable fields first, then make the compiled schema authoritative when the
+workflow should reject undeclared fields.
+
+This is the TypeScript/Zod implementation of
+[softschema](https://github.com/jlevy/softschema).
+It is the Zod counterpart to the Python/Pydantic package.
 Both provide the same commands, exit classes, structured result meaning, and canonical
 compiled JSON Schema with an equal `schema_sha256`.
 
@@ -17,9 +23,9 @@ bun add softschema
 `softschema-ts` exposes the same commands and flags as the Python `softschema`:
 
 ```bash
-softschema-ts validate <doc.md> --schema <schema.yaml> [--model mod.ts:Export] [--envelope key]
+softschema-ts validate <artifact> --schema <schema.yaml> [--model mod.ts:Export] [--envelope key]
 softschema-ts compile <mod.ts:ZodSchema> --contract <id> --out <schema.yaml> [--check]
-softschema-ts inspect <doc.md>
+softschema-ts inspect <artifact>
 softschema-ts generate <doc.md> [--check]
 softschema-ts docs --list [--json] | softschema-ts docs <topic>
 softschema-ts skill --brief

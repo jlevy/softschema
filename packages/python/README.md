@@ -1,11 +1,14 @@
 # softschema (Python)
 
-Soft schemas: gradual, practical validation for Markdown/YAML artifacts that mix prose
-and structured data—built for humans and coding agents.
+`softschema` applies gradual contracts to YAML data.
+The standard profile is Markdown with YAML frontmatter and an optional body.
+Pure YAML is also supported when the structured record stands on its own.
+Validate the stable fields first, then make the compiled schema authoritative when the
+workflow should reject undeclared fields.
 
 This is the Python implementation of [softschema](https://github.com/jlevy/softschema),
-published on [PyPI](https://pypi.org/project/softschema/). A fully synchronized
-TypeScript implementation is also available on npm.
+published on [PyPI](https://pypi.org/project/softschema/). The synchronized TypeScript
+implementation is also available on npm.
 
 ## Install
 
