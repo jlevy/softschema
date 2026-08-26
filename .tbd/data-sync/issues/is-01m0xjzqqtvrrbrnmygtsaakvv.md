@@ -5,13 +5,13 @@ title: "Reconcile PR #37 with current softschema documentation"
 kind: task
 status: closed
 priority: 1
-version: 6
+version: 9
 labels: []
 dependencies: []
 created_at: 2026-08-25T23:09:48.154Z
-updated_at: 2026-08-26T00:28:55.080Z
-closed_at: 2026-08-26T00:28:55.078Z
-close_reason: "Reconciled PR #37 with current softschema behavior; centered profile-independent schema maturity, kept frontmatter Markdown as the standard example, documented pure YAML and software/database workflows, applied common-doc rules, updated the public skill brief and golden, pushed commit debbedc, updated the PR, and confirmed all 18 CI checks pass."
+updated_at: 2026-08-26T00:41:38.120Z
+closed_at: 2026-08-26T00:41:38.119Z
+close_reason: Renamed the README heading to “Why Give Soft Schemas to an Agent?”, ran Flowmark and documentation lint, committed and pushed 882008c, and confirmed all 18 PR checks pass.
 resolution: null
 duplicate_of: null
 ---
