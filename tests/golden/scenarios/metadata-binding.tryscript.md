@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: a self-describing artifact validates with no flags
@@ -14,7 +12,7 @@ declared envelope picks the payload out of a multi-key frontmatter, so
 `softschema validate <doc>` needs no flags at all.
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-ok.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-ok.md
 {
   "contract": {
     "envelope_key": "data",
@@ -63,7 +61,7 @@ The committed example artifact is fully self-describing (`contract`, `schema`,
 the artifact also carries a host `title:` key.
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md
+$ $SOFTSCHEMA validate examples/movie_page/spirited-away.md
 {
   "contract": {
     "envelope_key": "movie",
@@ -148,7 +146,7 @@ schema that additionally requires `extra` proves the flag outranks the metadata:
 run fails with that schema's error, not the binding's success.
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fixtures/requires-extra.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fixtures/requires-extra.schema.yaml
 {
   "contract": {
     "envelope_key": "data",
@@ -211,7 +209,7 @@ $ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fi
 # Test: a bound schema that does not exist is schema_missing (exit 1)
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-missing-schema.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-missing-schema.md
 {
   "contract": {
     "envelope_key": "data",
@@ -265,7 +263,7 @@ A document may only bind a relative path; absolute paths are caller territory
 (`--schema`).
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-absolute-schema.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-absolute-schema.md
 {
   "contract": {
     "envelope_key": "data",
@@ -320,7 +318,7 @@ directory or the working directory, so a `../../...` value cannot bind an arbitr
 file.
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-escaping-schema.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-escaping-schema.md
 {
   "contract": {
     "envelope_key": "data",
@@ -374,7 +372,7 @@ The metadata block is rejected at parse time; the diagnostic wording is
 engine-specific, so the stable prefix is asserted and the tail elided.
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-bad-value.md 2>&1
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-bad-value.md 2>&1
 softschema validate: [..]
 ...
 ? 2
@@ -383,7 +381,7 @@ softschema validate: [..]
 # Test: a declared envelope absent from the document is envelope_mismatch (exit 1)
 
 ```console
-$ softschema validate tests/golden/fixtures/bound-envelope-absent.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/bound-envelope-absent.md
 {
   "contract": {
     "envelope_key": "data",
@@ -441,7 +439,7 @@ is exempt from single-key inference and multi-key ambiguity rejection, so the tw
 sibling keys here are the payload rather than an ambiguity error.
 
 ```console
-$ softschema validate tests/golden/fixtures/pure-yaml-report.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml
 {
   "contract": {
     "envelope_key": null,
@@ -492,7 +490,7 @@ project could wire this command into CI and get a passing build that checked not
 `name: 42` violates the bound schema, so the run must fail structurally with exit 1.
 
 ```console
-$ softschema validate tests/golden/fixtures/pure-yaml-enforced.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-enforced.yaml
 {
   "contract": {
     "envelope_key": null,
@@ -551,7 +549,7 @@ With `envelope:` declared, the named key nests the payload exactly as it does in
 frontmatter, so only `reading:` is validated against the contract.
 
 ```console
-$ softschema validate tests/golden/fixtures/pure-yaml-envelope.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-envelope.yaml
 {
   "contract": {
     "envelope_key": "reading",
@@ -600,7 +598,7 @@ looks like to that reader, which is the `no_frontmatter` this command reported f
 every pure-yaml artifact before detection existed.
 
 ```console
-$ softschema validate tests/golden/fixtures/pure-yaml-report.yaml --profile frontmatter-md --contract test.runs:BacktestReport/v1
+$ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml --profile frontmatter-md --contract test.runs:BacktestReport/v1
 {
   "contract": {
     "envelope_key": null,
@@ -648,7 +646,7 @@ pure-yaml artifact from prose that happens to parse as YAML — a Markdown file 
 frontmatter still reports `no_frontmatter` as it always has.
 
 ```console
-$ softschema validate tests/golden/fixtures/pure-yaml-unnamed.data
+$ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-unnamed.data
 {
   "contract": {
     "envelope_key": null,

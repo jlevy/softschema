@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: status permissive leaves undeclared fields alone
@@ -13,7 +11,7 @@ The lenient schema declares `name` and `meta.source` and says nothing about
 `meta.fetched_by`) pass.
 
 ```console
-$ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml
 {
   "contract": {
     "envelope_key": "record",
@@ -68,7 +66,7 @@ document-status-mismatch warning. Enabling strictness enforces it; the schema it
 is unchanged.
 
 ```console
-$ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml --status enforced
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml --status enforced
 {
   "contract": {
     "envelope_key": "record",
@@ -159,7 +157,7 @@ The same payload whose own metadata says `status: enforced` is rejected with no
 flags at all.
 
 ```console
-$ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml
 {
   "contract": {
     "envelope_key": "record",
@@ -246,7 +244,7 @@ Composition used to make every document `invalid` with a single
 conditional, and the document passes.
 
 ```console
-$ softschema validate tests/golden/fixtures/conditional-ok.md --schema tests/golden/fixtures/conditional.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/conditional-ok.md --schema tests/golden/fixtures/conditional.schema.yaml
 {
   "contract": {
     "envelope_key": "thing",
@@ -294,7 +292,7 @@ The error names the missing property — the actionable one — rather than a ge
 message about `allOf`.
 
 ```console
-$ softschema validate tests/golden/fixtures/conditional-violation.md --schema tests/golden/fixtures/conditional.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/conditional-violation.md --schema tests/golden/fixtures/conditional.schema.yaml
 {
   "contract": {
     "envelope_key": "thing",
@@ -357,7 +355,7 @@ rejected. Both this and a simple schema's undeclared key report
 `code: undeclared_property`, which is the stable surface to match on.
 
 ```console
-$ softschema validate tests/golden/fixtures/conditional-undeclared.md --schema tests/golden/fixtures/conditional.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/conditional-undeclared.md --schema tests/golden/fixtures/conditional.schema.yaml
 {
   "contract": {
     "envelope_key": "thing",
@@ -420,7 +418,7 @@ closure, so the overlay must inject the annotation-aware keyword. The other enfo
 fixtures carry an explicit `additionalProperties`, which wins and hides this path.
 
 ```console
-$ softschema validate tests/golden/fixtures/composed-open-ok.md --schema tests/golden/fixtures/composed-open.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-ok.md --schema tests/golden/fixtures/composed-open.schema.yaml
 {
   "contract": {
     "envelope_key": "composed",
@@ -469,7 +467,7 @@ jsonschema groups the keys while ajv reports them separately; normalization pres
 one record per field in both runtimes.
 
 ```console
-$ softschema validate tests/golden/fixtures/composed-open-undeclared.md --schema tests/golden/fixtures/composed-open.schema.yaml
+$ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-undeclared.md --schema tests/golden/fixtures/composed-open.schema.yaml
 {
   "contract": {
     "envelope_key": "composed",

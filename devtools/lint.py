@@ -8,7 +8,15 @@ from pathlib import Path
 from rich import get_console, reconfigure
 from rich import print as rprint
 
-SRC_PATHS = ["packages/python/src", "packages/python/tests", "devtools", "examples"]
+SRC_PATHS = [
+    "packages/python/src",
+    "packages/python/tests",
+    "devtools",
+    "examples",
+    # The golden-corpus runner is Python too, and is exactly the kind of script that
+    # rots unnoticed: nothing imports it, so only CI would ever find a mistake in it.
+    "tests/golden/run_golden_tests.py",
+]
 DOC_PATHS = [
     "README.md",
     "AGENTS.md",

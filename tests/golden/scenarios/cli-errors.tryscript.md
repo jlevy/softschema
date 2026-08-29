@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: ambiguous envelope is a usage error (exit 2, message on stderr)
@@ -14,7 +12,7 @@ explains how to disambiguate with `--envelope`. This message is byte-identical a
 implementations, so it is asserted in full on stderr (`!`).
 
 ```console
-$ softschema validate tests/golden/fixtures/multi-key-no-envelope.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/multi-key-no-envelope.md
 ! softschema validate: multiple top-level frontmatter keys; pass --envelope to designate the softschema payload (candidates: title, record)
 ? 2
 ```
@@ -26,7 +24,7 @@ engine-specific (Pydantic's multi-line report vs a one-line message), so the sta
 prefix is asserted and the tail elided.
 
 ```console
-$ softschema validate tests/golden/fixtures/unknown-metadata-key.md 2>&1
+$ $SOFTSCHEMA validate tests/golden/fixtures/unknown-metadata-key.md 2>&1
 softschema validate: [..]
 ...
 ? 2
@@ -40,7 +38,7 @@ diagnostic wording is engine-specific (Pydantic's multi-line report vs a one-lin
 message), so the stable prefix is asserted and the tail elided.
 
 ```console
-$ softschema validate tests/golden/fixtures/malformed-contract.md --schema examples/movie_page/movie-page.schema.yaml --envelope record 2>&1
+$ $SOFTSCHEMA validate tests/golden/fixtures/malformed-contract.md --schema examples/movie_page/movie-page.schema.yaml --envelope record 2>&1
 softschema validate: [..]
 ...
 ? 2
@@ -55,7 +53,7 @@ so only the stable prefix is asserted; the divergent tail is elided with `[..]`.
 are merged with `2>&1` so the single error line is matched as output.
 
 ```console
-$ softschema validate tests/golden/fixtures/does-not-exist.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie 2>&1
+$ $SOFTSCHEMA validate tests/golden/fixtures/does-not-exist.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie 2>&1
 softschema validate: [..]
 ? 2
 ```
@@ -66,7 +64,7 @@ The error text is multi-line and engine-specific, so the stable prefix is assert
 the remaining lines are elided with `...`.
 
 ```console
-$ softschema validate tests/golden/fixtures/malformed-frontmatter.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie 2>&1
+$ $SOFTSCHEMA validate tests/golden/fixtures/malformed-frontmatter.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie 2>&1
 softschema validate: [..]
 ...
 ? 2
@@ -75,7 +73,7 @@ softschema validate: [..]
 # Test: inspect on a missing file is a clean usage error (exit 2)
 
 ```console
-$ softschema inspect tests/golden/fixtures/does-not-exist.md 2>&1
+$ $SOFTSCHEMA inspect tests/golden/fixtures/does-not-exist.md 2>&1
 softschema inspect: [..]
 ? 2
 ```
@@ -87,7 +85,7 @@ The `softschema:` block is a list, not a string or mapping. Both CLIs reject it 
 is asserted.
 
 ```console
-$ softschema inspect tests/golden/fixtures/malformed-meta.md 2>&1
+$ $SOFTSCHEMA inspect tests/golden/fixtures/malformed-meta.md 2>&1
 softschema inspect: [..]
 ? 2
 ```
@@ -99,7 +97,7 @@ Both CLIs reject an unknown topic with exit 2. The diagnostic differs in structu
 diagnostic are asserted.
 
 ```console
-$ softschema docs no-such-topic 2>&1
+$ $SOFTSCHEMA docs no-such-topic 2>&1
 ...
 ? 2
 ```
@@ -111,7 +109,7 @@ reserved for `--check` drift. The tail after the prefix is engine-specific (Pyth
 `[Errno 2]` vs Node `ENOENT`), so only the stable prefix is asserted.
 
 ```console
-$ softschema generate tests/golden/fixtures/does-not-exist.md 2>&1
+$ $SOFTSCHEMA generate tests/golden/fixtures/does-not-exist.md 2>&1
 softschema generate: [..]
 ? 2
 ```

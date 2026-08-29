@@ -64,9 +64,9 @@ bun run build       # copy-resources + bunup → dist/ (required by the ts golde
 bun run publint
 cd ../..
 
-SOFTSCHEMA_IMPL=py     bash tests/golden/run.sh
-SOFTSCHEMA_IMPL=ts     bash tests/golden/run.sh
-SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
+SOFTSCHEMA_IMPL=py     ./tests/golden/run_golden_tests.py
+SOFTSCHEMA_IMPL=ts     ./tests/golden/run_golden_tests.py
+SOFTSCHEMA_IMPL=ts-bun ./tests/golden/run_golden_tests.py
 bash tests/golden/cross-impl-diff.sh              # "cross-impl parity OK"
 
 make format-check   # flowmark drift; requires a Markdown-clean working tree

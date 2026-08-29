@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: validate --model runs the Pydantic semantic layer (model-only, structural skipped)
@@ -15,7 +13,7 @@ other implementation (semantic logic itself is per-language by design and is not
 beyond pass/empty-errors here).
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --model examples.movie_page.model:MoviePage --envelope movie
+$ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.movie_page.model:MoviePage --envelope movie
 {
   "contract": {
     "envelope_key": "movie",

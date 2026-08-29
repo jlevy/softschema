@@ -41,8 +41,8 @@ An artifact needing no repair comes back byte-identical.
   schema an artifact is judged against, so validation and repair cannot disagree about
   it.
 - Shared `yaml_repair` and `schema_conform` vector sections, and the
-  `tests/golden/scenarios/validate-repair.md` journey, which runs against Python, Node,
-  and Bun.
+  `tests/golden/scenarios/validate-repair.tryscript.md` journey, which runs against
+  Python, Node, and Bun.
 
 ### Changed
 

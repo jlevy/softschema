@@ -463,13 +463,15 @@ Pydantic-versus-Zod behavior out of the shared corpus, so Pydantic `string_type`
 
 ### The golden journey is the parity oracle
 
-`tests/golden/scenarios/validate-repair.md` runs against Python, Node, and Bun through
-`SOFTSCHEMA_IMPL`, so it is the one place the whole feature is checked as a caller sees
-it. Three consequences for how it is written:
+`tests/golden/scenarios/validate-repair.tryscript.md` runs against Python, Node, and Bun
+through `SOFTSCHEMA_IMPL`, so it is the one place the whole feature is checked as a
+caller sees it. Three consequences for how it is written:
 
 **Fixtures must be copied, not mutated in place.** `--repair` rewrites its input, so a
 scenario that points at a checked-in fixture passes once and then fails on a dirty tree.
-Each case copies its fixture to a scratch path first.
+The file runs under `sandbox: true` and declares its starting layout in `fixtures:`, one
+directory per journey — the sandbox is per file, not per command, and three journeys
+start from the same fixture.
 This is the one place these tests differ structurally from every existing scenario, and
 getting it wrong makes the whole file non-reproducible.
 
@@ -478,8 +480,9 @@ not tested the feature — the write is the deliverable.
 Each mutating case `cat`s the file afterward, so the repaired bytes are in the
 transcript and a reviewer reads the actual diff rather than trusting an `ok: true`.
 
-**Elisions are for genuinely variable text only.** `[..]` covers scratch paths and
-digests. It must not paper over a field that should be pinned, which for this feature
+**Elisions are for genuinely variable text only.** `[..]` covers digests and
+engine-specific parser wording, and the sandbox is what keeps the paths themselves
+pinned. It must not paper over a field that should be pinned, which for this feature
 means the `repairs` array is never elided — it is the field a caller reads to tell “was
 already valid” from “was repaired into validity”, and an elided one would hide a pass
 that silently stopped firing.

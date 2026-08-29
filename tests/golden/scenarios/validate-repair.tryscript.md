@@ -1,9 +1,34 @@
 ---
-cwd: ../../..
+sandbox: true
+fixtures:
+  # Every journey below rewrites its artifact, so each works in its own directory, named
+  # for the journey. Declaring the layout here is what keeps each command line down to the
+  # one command the journey is about.
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: rescue/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: rescue/repair.schema.yaml}
+  - {source: ../fixtures/repair-scalar-drift.md, dest: drift/repair-scalar-drift.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: drift/repair.schema.yaml}
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: twice/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: twice/repair.schema.yaml}
+  - {source: ../fixtures/repair-already-valid.md, dest: valid/repair-already-valid.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: valid/repair.schema.yaml}
+  - {source: ../fixtures/repair-missing-required.md, dest: missing/repair-missing-required.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: missing/repair.schema.yaml}
+  - {source: ../fixtures/repair-unrepairable.md, dest: floor/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: check/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: check/repair.schema.yaml}
+  - {source: ../fixtures/repair-already-valid.md, dest: check-clean/repair-already-valid.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: check-clean/repair.schema.yaml}
+  - {source: ../fixtures/repair-pure.yaml, dest: pure/repair-pure.yaml}
+  - {source: ../fixtures/repair.schema.yaml, dest: pure/repair.schema.yaml}
+  # Untouched copies, so the journeys that must prove a file was *not* rewritten have the
+  # bytes as authored to diff against.
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: original/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair-already-valid.md, dest: original/repair-already-valid.md}
+  - {source: ../fixtures/repair-missing-required.md, dest: original/repair-missing-required.md}
+  - {source: ../fixtures/repair-unrepairable.md, dest: original/repair-unrepairable.md}
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Journey: `validate --repair` rescues a document nothing could read
@@ -11,25 +36,26 @@ path:
 `--repair` **rewrites the artifact it is given**, which makes this file different from
 every other one in the corpus in three ways, all downstream of that write:
 
-- Each journey copies its fixture into a scratch directory first. Pointing a mutating
-  command at a checked-in fixture would pass once and then fail on a dirty tree.
-- The scratch directory is a **fixed path**, recreated by the same command that uses it
-  (tryscript gives each command a fresh shell, so no variable survives between commands —
-  but the filesystem does). A fixed path is what lets the transcripts below pin the
-  **complete JSON result**, byte for byte with the `path` field included, instead of
-  grepping fragments out of it: broad state, per the golden-testing discipline, so an
-  unexpected change anywhere in the verdict shows up as a diff.
+- It runs in a **sandbox**: tryscript gives the file a fresh temporary directory and copies
+  in the layout declared above. Pointing a mutating command at a checked-in fixture would
+  pass once and then fail on a dirty tree, and each journey gets its own directory because
+  three of them start from the same fixture and must not inherit each other's writes.
+- Those paths are short and stable, which is what lets each transcript below pin the
+  **complete JSON result** — the `path` field included — instead of grepping fragments out
+  of it. Broad state, per the golden-testing discipline: an unexpected change anywhere in
+  the verdict shows up as a diff.
 - Each mutating journey prints the file afterward. The write is the deliverable; the
   repaired bytes in the transcript are what surface an emitter that starts restyling what
-  it was only asked to quote.
+  it was only asked to quote. The journeys that must prove a file was *left alone* diff it
+  against the untouched copy under `original/`.
 
 Without `--repair`, an unquoted `: ` inside a value makes the whole document unreadable —
 a total loss over one character, and exit `2` (an input error), not a validation verdict.
 The parser's wording is engine-specific, so here (and only here) the stable prefix is
-asserted and the rest elided, matching `cli-errors.md`.
+asserted and the rest elided, matching `cli-errors.tryscript.md`.
 
 ```console
-$ softschema validate tests/golden/fixtures/repair-unquoted-colon.md 2>&1
+$ $SOFTSCHEMA validate original/repair-unquoted-colon.md 2>&1
 softschema validate: [..]
 ...
 ? 2
@@ -40,7 +66,7 @@ The `repairs` array is what distinguishes "was already valid" from "was repaired
 validity" — an exit code cannot say which happened.
 
 ```console
-$ D=tests/golden/tmp/repair-rescue && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-unquoted-colon.md" --repair
+$ $SOFTSCHEMA validate rescue/repair-unquoted-colon.md --repair
 {
   "contract": {
     "envelope_key": "data",
@@ -58,7 +84,7 @@ $ D=tests/golden/tmp/repair-rescue && rm -rf "$D" && mkdir -p "$D" && cp tests/g
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-rescue/repair-unquoted-colon.md",
+  "path": "rescue/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
   "repairs": [
     {
@@ -95,7 +121,7 @@ Only the one scalar differs from the original; the body prose and every other li
 untouched.
 
 ```console
-$ cat tests/golden/tmp/repair-rescue/repair-unquoted-colon.md
+$ cat rescue/repair-unquoted-colon.md
 ---
 softschema:
   contract: test.repair:Doc/v1
@@ -116,7 +142,7 @@ type marker and no serializer was in the path to quote it. `--repair` writes the
 the missing serializer would have; the scalar's own source text is the replacement.
 
 ```console
-$ D=tests/golden/tmp/repair-drift && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-scalar-drift.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-scalar-drift.md" --repair
+$ $SOFTSCHEMA validate drift/repair-scalar-drift.md --repair
 {
   "contract": {
     "envelope_key": "data",
@@ -134,7 +160,7 @@ $ D=tests/golden/tmp/repair-drift && rm -rf "$D" && mkdir -p "$D" && cp tests/go
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-drift/repair-scalar-drift.md",
+  "path": "drift/repair-scalar-drift.md",
   "profile": "frontmatter-md",
   "repairs": [
     {
@@ -168,7 +194,7 @@ $ D=tests/golden/tmp/repair-drift && rm -rf "$D" && mkdir -p "$D" && cp tests/go
 ```
 
 ```console
-$ cat tests/golden/tmp/repair-drift/repair-scalar-drift.md
+$ cat drift/repair-scalar-drift.md
 ---
 softschema:
   contract: test.repair:Doc/v1
@@ -188,7 +214,7 @@ Idempotence, visible rather than asserted: the second run's complete result show
 empty `repairs` array, and the bytes on disk are unchanged.
 
 ```console
-$ D=tests/golden/tmp/repair-twice && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-unquoted-colon.md" --repair > /dev/null && cp "$D/repair-unquoted-colon.md" "$D/once.md" && softschema validate "$D/repair-unquoted-colon.md" --repair
+$ $SOFTSCHEMA validate twice/repair-unquoted-colon.md --repair > /dev/null && cp twice/repair-unquoted-colon.md twice/once.md && $SOFTSCHEMA validate twice/repair-unquoted-colon.md --repair
 {
   "contract": {
     "envelope_key": "data",
@@ -206,7 +232,7 @@ $ D=tests/golden/tmp/repair-twice && rm -rf "$D" && mkdir -p "$D" && cp tests/go
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-twice/repair-unquoted-colon.md",
+  "path": "twice/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
@@ -231,7 +257,7 @@ $ D=tests/golden/tmp/repair-twice && rm -rf "$D" && mkdir -p "$D" && cp tests/go
 ```
 
 ```console
-$ diff tests/golden/tmp/repair-twice/once.md tests/golden/tmp/repair-twice/repair-unquoted-colon.md && echo "bytes unchanged"
+$ diff twice/once.md twice/repair-unquoted-colon.md && echo "bytes unchanged"
 bytes unchanged
 ? 0
 ```
@@ -242,7 +268,7 @@ The no-widening invariant. `--repair` on a document that needs nothing must not 
 it, requote it, or touch its line endings.
 
 ```console
-$ D=tests/golden/tmp/repair-valid && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-already-valid.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-already-valid.md" --repair
+$ $SOFTSCHEMA validate valid/repair-already-valid.md --repair
 {
   "contract": {
     "envelope_key": "data",
@@ -260,7 +286,7 @@ $ D=tests/golden/tmp/repair-valid && rm -rf "$D" && mkdir -p "$D" && cp tests/go
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-valid/repair-already-valid.md",
+  "path": "valid/repair-already-valid.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
@@ -285,7 +311,7 @@ $ D=tests/golden/tmp/repair-valid && rm -rf "$D" && mkdir -p "$D" && cp tests/go
 ```
 
 ```console
-$ diff tests/golden/fixtures/repair-already-valid.md tests/golden/tmp/repair-valid/repair-already-valid.md && echo "byte-identical"
+$ diff original/repair-already-valid.md valid/repair-already-valid.md && echo "byte-identical"
 byte-identical
 ? 0
 ```
@@ -297,7 +323,7 @@ Inferring the rename would be guessing intent, so the document is left exactly a
 authored, the `repairs` array stays empty, and the verdict stays honest.
 
 ```console
-$ D=tests/golden/tmp/repair-missing && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-missing-required.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-missing-required.md" --repair
+$ $SOFTSCHEMA validate missing/repair-missing-required.md --repair
 {
   "contract": {
     "envelope_key": "data",
@@ -315,7 +341,7 @@ $ D=tests/golden/tmp/repair-missing && rm -rf "$D" && mkdir -p "$D" && cp tests/
     "status": null
   },
   "outcome": "invalid",
-  "path": "tests/golden/tmp/repair-missing/repair-missing-required.md",
+  "path": "missing/repair-missing-required.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
@@ -357,7 +383,7 @@ $ D=tests/golden/tmp/repair-missing && rm -rf "$D" && mkdir -p "$D" && cp tests/
 ```
 
 ```console
-$ diff tests/golden/fixtures/repair-missing-required.md tests/golden/tmp/repair-missing/repair-missing-required.md && echo "byte-identical"
+$ diff original/repair-missing-required.md missing/repair-missing-required.md && echo "byte-identical"
 byte-identical
 ? 0
 ```
@@ -372,7 +398,7 @@ cannot be read. The parse-failure `message` is engine wording, so that one line 
 elided; every other field is pinned.
 
 ```console
-$ D=tests/golden/tmp/repair-floor && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unrepairable.md "$D" && softschema validate "$D/repair-unrepairable.md" --repair --contract test.repair:Doc/v1 --envelope data
+$ $SOFTSCHEMA validate floor/repair-unrepairable.md --repair --contract test.repair:Doc/v1 --envelope data
 {
   "contract": {
     "envelope_key": "data",
@@ -385,7 +411,7 @@ $ D=tests/golden/tmp/repair-floor && rm -rf "$D" && mkdir -p "$D" && cp tests/go
   "contract_id": "test.repair:Doc/v1",
   "document_metadata": null,
   "outcome": "invalid",
-  "path": "tests/golden/tmp/repair-floor/repair-unrepairable.md",
+  "path": "floor/repair-unrepairable.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
@@ -412,7 +438,7 @@ $ D=tests/golden/tmp/repair-floor && rm -rf "$D" && mkdir -p "$D" && cp tests/go
 ```
 
 ```console
-$ diff tests/golden/fixtures/repair-unrepairable.md tests/golden/tmp/repair-floor/repair-unrepairable.md && echo "byte-identical"
+$ diff original/repair-unrepairable.md floor/repair-unrepairable.md && echo "byte-identical"
 byte-identical
 ? 0
 ```
@@ -423,7 +449,7 @@ What a gate runs when it wants to know whether an artifact *would* be repaired, 
 mutating one under review. Exit `1` means something would change; the file does not.
 
 ```console
-$ D=tests/golden/tmp/repair-check && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-unquoted-colon.md" --check-repair
+$ $SOFTSCHEMA validate check/repair-unquoted-colon.md --check-repair
 {
   "contract": {
     "envelope_key": "data",
@@ -441,7 +467,7 @@ $ D=tests/golden/tmp/repair-check && rm -rf "$D" && mkdir -p "$D" && cp tests/go
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-check/repair-unquoted-colon.md",
+  "path": "check/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
   "repairs": [
     {
@@ -475,7 +501,7 @@ $ D=tests/golden/tmp/repair-check && rm -rf "$D" && mkdir -p "$D" && cp tests/go
 ```
 
 ```console
-$ diff tests/golden/fixtures/repair-unquoted-colon.md tests/golden/tmp/repair-check/repair-unquoted-colon.md && echo "not written"
+$ diff original/repair-unquoted-colon.md check/repair-unquoted-colon.md && echo "not written"
 not written
 ? 0
 ```
@@ -483,7 +509,7 @@ not written
 On a document that needs nothing, it exits `0`.
 
 ```console
-$ D=tests/golden/tmp/repair-check-clean && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-already-valid.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-already-valid.md" --check-repair
+$ $SOFTSCHEMA validate check-clean/repair-already-valid.md --check-repair
 {
   "contract": {
     "envelope_key": "data",
@@ -501,7 +527,7 @@ $ D=tests/golden/tmp/repair-check-clean && rm -rf "$D" && mkdir -p "$D" && cp te
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-check-clean/repair-already-valid.md",
+  "path": "check-clean/repair-already-valid.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
@@ -531,7 +557,7 @@ The profile with no fence at all, and its payload keys at column 0 — the case 
 upstream repair matcher could not reach, because it required leading indentation.
 
 ```console
-$ D=tests/golden/tmp/repair-pure && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-pure.yaml tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-pure.yaml" --repair
+$ $SOFTSCHEMA validate pure/repair-pure.yaml --repair
 {
   "contract": {
     "envelope_key": "data",
@@ -549,7 +575,7 @@ $ D=tests/golden/tmp/repair-pure && rm -rf "$D" && mkdir -p "$D" && cp tests/gol
     "status": null
   },
   "outcome": "valid",
-  "path": "tests/golden/tmp/repair-pure/repair-pure.yaml",
+  "path": "pure/repair-pure.yaml",
   "profile": "pure-yaml",
   "repairs": [
     {
@@ -591,7 +617,7 @@ $ D=tests/golden/tmp/repair-pure && rm -rf "$D" && mkdir -p "$D" && cp tests/gol
 ```
 
 ```console
-$ cat tests/golden/tmp/repair-pure/repair-pure.yaml
+$ cat pure/repair-pure.yaml
 softschema:
   contract: test.repair:Doc/v1
   schema: repair.schema.yaml
@@ -605,7 +631,7 @@ data:
 # Journey: the two flags are mutually exclusive
 
 ```console
-$ softschema validate tests/golden/fixtures/repair-already-valid.md --repair --check-repair
+$ $SOFTSCHEMA validate original/repair-already-valid.md --repair --check-repair
 softschema validate: --repair and --check-repair are mutually exclusive
 ? 2
 ```

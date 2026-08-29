@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: generate --check reports no drift for the committed marker
@@ -13,7 +11,7 @@ referenced compiled schema through SchemaView, and re-renders the enum table. Bo
 implementations render byte-identical bodies, so `--check` reports no drift.
 
 ```console
-$ softschema generate examples/movie_page/README.md --check
+$ $SOFTSCHEMA generate examples/movie_page/README.md --check
 {
   "check": true,
   "drift": false,
@@ -36,7 +34,7 @@ reports it and exits 1. The drift detail names the file and section, byte-identi
 across implementations.
 
 ```console
-$ softschema generate tests/golden/fixtures/stale-generated.md --check
+$ $SOFTSCHEMA generate tests/golden/fixtures/stale-generated.md --check
 {
   "check": true,
   "drift": true,
@@ -62,7 +60,7 @@ not a file path. The message is byte-identical across implementations, so it is 
 in full on stderr (`!`).
 
 ```console
-$ softschema generate tests/golden/fixtures/legacy-contract-marker.md
+$ $SOFTSCHEMA generate tests/golden/fixtures/legacy-contract-marker.md
 ! softschema generate: tests/golden/fixtures/legacy-contract-marker.md: softschema:generated marker uses the removed "contract" attribute for a schema path; rename it to "schema" (contract is a logical ID, not a file path)
 ? 2
 ```
