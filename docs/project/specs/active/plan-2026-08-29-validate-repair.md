@@ -1,0 +1,466 @@
+---
+title: Validate with Repair
+description: Let the producing agent run the repair-and-conform pass its judge runs, as `softschema validate --repair`
+author: Claude Code, with maintainer direction from Joshua Levy
+---
+# Feature: Validate with Repair
+
+**Date:** 2026-08-29 (last updated 2026-08-29)
+
+**Author:** Claude Code, with maintainer direction from Joshua Levy
+
+**Status:** Draft
+
+**Tracking:** `ss-z65x` (repair), `ss-1l9v` (conform), `ss-0rsk` (CLI wiring), `ss-loj9`
+(near-miss hint), `ss-q368` (metaproc coordination), from GitHub issue
+[#50](https://github.com/jlevy/softschema/issues/50)
+
+## Overview
+
+A model authoring a contract-bearing artifact writes YAML by hand, with no serializer in
+the path and no schema in front of it.
+Its characteristic failures are near-misses: an unquoted colon that makes the document
+unparseable, or a name like `1850` that arrives as an integer against a `type: string`
+field.
+Both are one-turn repairs for the model that produced them, and both are currently
+discovered after that model’s session has exited.
+
+At least one downstream consumer, [metaproc](https://github.com/jlevy/metaproc), already
+repairs and conforms an artifact before validating it.
+An agent running `softschema validate` today therefore sees failures its judge would
+have silently fixed, and its verdict disagrees with the gate’s.
+
+This adds one escalating pass behind one flag, in both implementations:
+
+```bash
+softschema validate             # read-only check, as today
+softschema validate --repair    # repair, conform, validate; writes the file
+```
+
+Because `--repair` writes, the artifact the orchestrator’s boundary later reads is
+already repaired, so the operation is idempotent rather than duplicated.
+
+## Goals
+
+- One operation both a producing agent and an orchestrator boundary invoke, so the two
+  agree by construction rather than by convention.
+- Repair an unparseable document, which is a total loss today.
+- Conform a scalar to the type its contract declares, in the one direction that can be
+  corrected without guessing intent.
+- Full Python/TypeScript parity: identical flag surface, identical verdicts, identical
+  repair records.
+- No new dependencies in either package.
+
+## Non-Goals
+
+- **Inferring a synonym rename.** A `reason` key where the contract wants `rationale` is
+  a *missing field*, not a type error.
+  Renaming it guesses intent.
+  It is reported, never rewritten.
+- **A second opinion about the schema.** The only defects acted on are the ones the
+  existing validation layers already name.
+  Nothing here decides independently what a document should look like.
+- **A `repair` subcommand.** Repair without a verdict serves no caller; see
+  [Rejected Alternatives](#rejected-alternatives).
+- **Repairing files softschema does not validate.** Compiled schemas, generated
+  sections, and installed skills keep their current owners.
+- **Restyling.** A one-scalar fix must not reflow the document.
+
+## Background
+
+### What the issue proposed, and what the code shows
+
+Issue #50 proposes migrating two modules out of metaproc (`engine/yaml_repair.py`, ~203
+lines; `engine/schema_conform.py`, ~374 lines) on the grounds that neither is about
+orchestration and both are about what a soft-schema artifact is allowed to look like.
+That dependency-direction argument is correct — `schema_conform` already imports
+`softschema.Contracts` — and both modules should move.
+
+Review against the current tree changes four things about *how*.
+
+#### 1. The stated prerequisite is already shipped
+
+The issue treats the `required` message naming every required property as a load-bearing
+prerequisite. That was fixed in v0.7.0, in both implementations, and the CHANGELOG lists
+it as a breaking change.
+`_structural_error_properties` (Python) and `ajvErrorProperty` (TypeScript) emit **one
+record per absent property**, each carrying `property`:
+
+```json
+{"code": "missing_property", "property": "rationale",
+ "message": "required property 'rationale' is missing", "path": []}
+```
+
+Acceptance criteria 1 and 5 from the issue already pass.
+The patch the issue suggests would be a regression: it rebuilds an aggregate record with
+a filtered list, discarding the per-property `property` field that
+[the spec](../../../softschema-spec.md#matching-on-structural-error-records) now
+documents as the field-level repair match surface.
+This section is dropped from the plan.
+
+#### 2. Pydantic `string_type` is unavailable on the path this feature exists to serve
+
+`Contract.model` is `None` unless the caller passes `--model module:Class`, which
+imports arbitrary local code and is documented as trusted-only.
+The flagship agent flow — a self-describing artifact binding a compiled schema through
+`softschema.schema` — has no Pydantic model at all, and neither does any TypeScript
+caller that is not using Zod.
+
+A conform pass keyed on Pydantic’s `string_type` error therefore **cannot fire for
+`softschema validate --repair <artifact>`**, the exact command the issue proposes.
+
+The structural layer already emits the JSON-Schema-native equivalent, with no model
+required and the instance path attached:
+
+```json
+{"code": "invalid_value", "validator": "type", "validator_value": "string",
+ "path": ["name"], "value": 1850, "message": "value 1850 is not of type 'string'"}
+```
+
+Keying conform on that record preserves the issue’s narrowness argument exactly — one
+keyword, one direction, no inference — while making the feature work where it is needed,
+and it is emitted identically by Ajv, which is what makes parity achievable at all.
+
+#### 3. Parity is a hard repo invariant, and the proposal is Python-only
+
+[`docs/development.md`](../../../development.md) makes “equal flag/command surface” a
+parity invariant enforced by the golden corpus, run twice through `SOFTSCHEMA_IMPL`. A
+Python-only `--repair` fails that corpus.
+
+Parity is achievable with no new dependencies.
+TypeScript already parses through `parseDocument` from `yaml` — the round-trip,
+comment-preserving API that is the direct analogue of ruamel’s `typ="rt"` — and already
+depends on `atomically` for atomic writes.
+Python already depends on `ruamel.yaml` and on `strif`, whose `atomic_write_text` is
+what `compile` and `generate` write through today.
+
+#### 4. Neither module can move verbatim
+
+`yaml_repair`:
+
+- Its line matcher is `^(\s+\w[\w_]*): `, which **requires leading whitespace**. In
+  metaproc every payload sits under an envelope, so keys are always indented.
+  softschema must also repair unindented keys: the frontmatter root, and the entire
+  `pure-yaml` profile, whose payload root sits at column 0. Verified: `name: Note: hi`
+  does not match; ` name: Note: hi` does.
+- It handles only the `---` fence.
+  The `pure-yaml` profile has no fence.
+- Its self-check is ruamel `YAML(typ="safe")`, not softschema’s `parse_yaml`. The
+  portable reader adds rules ruamel does not: aliases and anchors rejected, merge keys,
+  explicit tags, non-string mapping keys, depth 64, the IEEE-754 safe-integer range,
+  negative zero, lone surrogates.
+  A repair that satisfies ruamel but not `parse_yaml` would log “repaired” and then fail
+  validation — precisely the failure its own docstring says it exists to prevent, moved
+  up one layer.
+
+`schema_conform`:
+
+- Its `_COERCIBLE` set includes `datetime.date`, `time`, and `datetime`. softschema’s
+  portable reader maps `tag:yaml.org,2002:timestamp` to a **string** on read (verified:
+  `released: 2024-01-01` arrives as `"2024-01-01"`), and `_check_value` rejects
+  host-native dates outright.
+  A round-trip load, however, *does* produce `datetime.date`. The two parses disagree,
+  which is a live hazard for a pass that writes back: conform must never re-emit a value
+  the portable reader would then reject.
+- Its alias-preservation machinery (`allow_aliases=True`, the pinned null representer,
+  the `represented_objects` bookkeeping) exists to protect anchors.
+  softschema rejects anchors and aliases at read time, so an artifact containing them
+  never validates. That machinery can go — but the null-spelling behavior it also pinned
+  must be preserved another way, or a null the pass did not touch changes shape.
+
+### Two further findings
+
+**`--repair` makes softschema a writer of artifacts for the first time.** Today it
+writes only files it owns: compiled schemas, generated sections, installed skills.
+`validate` is read-only, and many library callers depend on that.
+The closest precedent is `generate`, which pairs its write with `--check` and writes
+atomically. `--repair` should follow that shape.
+
+**The repair vocabulary is already shipped and must be reconciled.** `soft_field.py`
+exports `RepairKind = Literal["none", "safe_coerce", "suggest_alias"]` — documented as
+“how a *future repair pass* may treat near-miss values” — plus
+`aliases: dict[str, list[str]]`, “controlled-vocabulary repair table”.
+Both are propagated verbatim into compiled schemas.
+This is that future repair pass.
+See [Open Questions](#open-questions).
+
+### Failure-class coverage
+
+Measured against the four classes the issue names:
+
+| Class | Today | After this plan |
+| --- | --- | --- |
+| Frontmatter syntax (unquoted `: `) | total loss; nothing downstream reads it | repaired |
+| Scalar type drift (`1850` vs `type: string`) | `invalid_value` failure | conformed |
+| Synonym substitution (`reason` for `rationale`) | `missing_property`, correct field named | reported, plus an optional near-miss hint |
+| Envelope indentation (keys outdented past the envelope) | two `missing_property` records; the stray keys are **invisible** | reported, plus the same hint |
+
+The last row is worth stating plainly, because neither migrating module addresses it:
+`yaml_repair` sees a document that parses fine, and `schema_conform` sees no type error.
+Verified against the current tree — the outdented keys produce no diagnostic of their
+own. The near-miss hint is the right treatment, and for this case it must look at the
+**frontmatter root**, not only at the envelope instance, because the stray keys are
+siblings of the envelope rather than members of it.
+
+## Design
+
+### Approach
+
+One escalating pass, exposed as one flag:
+
+1. **Read.** Parse the document under the portable rules.
+2. **Repair** (schema-free).
+   If the parse failed, quote unsafe plain scalars and re-parse with `parse_yaml`. If it
+   still fails, stop and report the original error.
+3. **Conform** (schema-aware).
+   Validate structurally.
+   For each `{code: "invalid_value", validator: "type"}` record whose `validator_value`
+   admits `string`, replace the scalar at `path` with its own source text.
+4. **Write**, atomically, only if something changed.
+5. **Validate** the result and report both the verdict and what was changed.
+
+Each step is guarded by the next: a repair that does not produce a parseable document is
+discarded, and a conform that does not produce a portable value is discarded.
+
+### Components
+
+| Module | Owns |
+| --- | --- |
+| `softschema/repair.py` / `src/repair.ts` | syntactic repair; no schema dependency |
+| `softschema/conform.py` / `src/conform.ts` | type conform, keyed on structural records |
+| `validate.py` / `validate.ts` | the escalating pass; unchanged read-only entry points |
+| `cli.py` / `cli.ts` | `--repair`, `--check-repair`; result reporting |
+
+Repair and conform stay separate modules because they answer different questions and
+have different dependencies: repair runs on documents that do not yet parse and needs no
+schema; conform assumes a parseable document and needs the compiled schema.
+
+### API Changes
+
+Additive. `validate_artifact` keeps its read-only guarantee — a function named
+`validate_` must not write the file its caller passed.
+
+```python
+def repair_artifact(path: Path) -> RepairResult:
+    """Repair YAML that does not parse. Schema-free; runs before validation."""
+
+def conform_artifact(path: Path, schema_path: Path, *, envelope_key: str | None) -> ConformResult:
+    """Coerce scalars to the types the compiled schema declares. `type: string` only."""
+
+def repair_and_validate_artifact(
+    doc_path: Path, *, contract: Contract, write: bool = True
+) -> ArtifactValidationResult:
+    """Repair, conform, then validate. With write=False, report without touching the file."""
+```
+
+`ArtifactValidationResult` gains a `repairs: list[RepairRecord]` field, default empty,
+so an existing consumer sees no change.
+Each record reuses the documented match surface (`kind`, `code`, `path`) rather than
+prose, so a caller matches a repair the same way it matches an error.
+
+TypeScript mirrors all four, with the same names in camelCase.
+
+### CLI surface
+
+```
+softschema validate <path>                  # unchanged; read-only
+softschema validate <path> --repair         # repair, conform, write, validate
+softschema validate <path> --check-repair   # report what --repair would change; no write
+```
+
+`--check-repair` mirrors `generate --check` and exists so a CI gate can ask “would this
+have been repaired?”
+without mutating a reviewed artifact.
+Cheap now, awkward to retrofit.
+
+Exit codes: `0` when the document validates (repaired or not), `1` when it does not, `2`
+for usage and input errors, as today.
+The JSON result distinguishes “was already valid” from “was repaired into validity”
+through a non-empty `repairs`, because a gate cannot infer that from the exit code
+alone. `--check-repair` exits `1` if anything would change.
+
+### Invariants
+
+These are the properties to test, not aspirations:
+
+1. **Idempotence.** `--repair` twice produces the same bytes as once.
+2. **Portable round-trip.** Any value conform writes is a value `parse_yaml` reads back
+   unchanged. This is what keeps the date hazard closed.
+3. **Minimal diff.** A document with one bad scalar differs by that scalar alone: no
+   reflow, no re-indent, no requoting elsewhere, no line-ending change.
+   Note that `read_frontmatter_doc` splits on `splitlines()` and rejoins with `"\n"`, so
+   the write path must not go through the read path.
+4. **No widening.** A document that validates without `--repair` is byte-identical after
+   `--repair`.
+5. **Parity.** Python and TypeScript produce the same bytes and the same records for
+   every corpus document.
+
+## Implementation Plan
+
+### Phase 1: Syntactic repair, both implementations
+
+Self-contained, no schema dependency, and the largest single win: an unparseable
+document is a total loss today.
+
+- [ ] Port `yaml_repair` to `softschema/repair.py`, dropping metaproc imports.
+- [ ] Replace the self-check with `parse_yaml`, so repair is judged by the reader that
+  will judge the artifact.
+- [ ] Relax the line matcher to unindented keys, and cover the `pure-yaml` profile (no
+  fence, payload at column 0).
+- [ ] Exclude the portable violations that are not typos — aliases, anchors, merge keys,
+  explicit tags — up front, with their existing error codes.
+- [ ] Port to `src/repair.ts` on `parseDocument`.
+- [ ] Shared vectors for the repair corpus, including the unindented and pure-yaml cases
+  that metaproc’s version cannot reach.
+
+### Phase 2: Type conform, both implementations
+
+- [ ] `softschema/conform.py`, keyed on `{code: "invalid_value", validator: "type"}`
+  records whose `validator_value` admits `string`, resolving the scalar through the
+  record’s `path`.
+- [ ] Derive the coercible set from softschema’s portable value domain, not metaproc’s:
+  settle the `datetime` members against the round-trip/portable parse disagreement.
+- [ ] Drop the alias machinery; keep the null-spelling pin under its own test.
+- [ ] Preserve the source text of the scalar (`1.10` stays `1.10`, `007` stays `007`),
+  so the fix is lossless.
+- [ ] Port to `src/conform.ts`.
+- [ ] Shared vectors, including every notation the round trip does not preserve.
+
+### Phase 3: Wire the pass and the flags
+
+- [ ] `repair_and_validate_artifact` in both implementations.
+- [ ] `--repair` and `--check-repair` on `validate`, in both CLIs.
+- [ ] `repairs` on the result; atomic writes through `strif` and `atomically`.
+- [ ] Golden scenario in `tests/golden/scenarios/`, run through all three
+  `SOFTSCHEMA_IMPL` variants.
+- [ ] Spec, guide, design docs, SKILL.md, and CHANGELOG.
+
+### Phase 4 (separate change): near-miss key hint
+
+Touches the message contract, so it lands on its own.
+
+- [ ] When a required property is absent and the instance carries an undeclared
+  near-miss key, name it.
+- [ ] Extend the search to the frontmatter root, so the envelope-indentation class gets
+  a diagnostic.
+- [ ] Byte-identical strings in both implementations, with golden coverage in each.
+
+## Testing Strategy
+
+Following the ownership rules in [`docs/development.md`](../../../development.md) — one
+primary owner per case, not the same case at every layer:
+
+- **Shared YAML vectors** own the repair and conform rules: which documents repair,
+  which conform, which are deliberately left alone.
+  This is where the four invariants above are pinned.
+- **Golden journeys** own the CLI surface: `--repair`, `--check-repair`, exit codes, the
+  `repairs` field, and the side effect on disk.
+- **Adapter unit tests** own the filesystem boundary: atomic write, unwritable path,
+  CRLF, no trailing newline, symlink.
+- **`cross-impl-diff.sh`** confirms the two implementations write the same bytes.
+
+Ported from metaproc’s suites (`test_yaml_repair.py`, ~354 lines;
+`test_schema_conform.py`, ~407 lines), which already cover the recorded notation limits
+and are a substantial head start.
+
+The four acceptance criteria that survive from the issue:
+
+1. `--repair` on a document with an unquoted colon repairs it, writes it, and validates.
+2. `--repair` on `1850` against `type: string` conforms it and validates clean.
+3. A missing required field is not auto-fixed, and neither is a near-miss synonym key.
+4. Every case above holds identically in Python and TypeScript.
+
+(The issue’s criteria 1 and 5, on the `required` message, already pass; regression
+coverage exists.)
+
+## Rollout Plan
+
+Minor release: new CLI flags, new public functions, one additive result field.
+No existing verdict changes, and `validate` without `--repair` is untouched.
+
+Coordinated with metaproc, which pins `softschema>=0.7.0,<0.8`:
+
+1. Release softschema with the migrated code.
+2. In one metaproc change: bump the pin, delete `engine/yaml_repair.py` and the
+   per-artifact half of `engine/schema_conform.py`, retire the
+   `metaproc softschema repair` subcommand, and repoint `repair_declared_outputs` and
+   `conform_declared_outputs` at the softschema functions.
+
+The orchestration wrapper stays in metaproc: `resolve_templates`,
+`resolve_output_fpath`, `IOSpec`, and `plugins.discovery` are about declared outputs,
+not about what an artifact may look like.
+
+Both releases land together.
+A metaproc pinned to a softschema without the migrated code, with its own copies already
+deleted, silently loses repair at its boundary.
+
+## Rejected Alternatives
+
+**A `repair` subcommand.** Steps 2 and 3 are already validation and step 1 must precede
+it, so these are not separable operations with independent value.
+Telling a caller a document was repaired without telling it whether the document is now
+acceptable serves nobody.
+(metaproc has such a subcommand today; it is retired rather than moved.)
+
+**`--forgiving`.** `SchemaStatus` already has `enforced`, `permissive`, and `soft`, and
+artifacts declare `status: permissive` in their own frontmatter.
+A fourth tolerance-sounding word invites confusion about which leniency is in force.
+`--repair` names the action, not a disposition.
+
+**A retry policy keyed to what failed.** A policy declared for the failure kind observed
+at the time does not fire for the next kind, and the same loss returns wearing a
+different label.
+A declaration naming `semantic` does nothing for a `structural` failure,
+and a default retryable set covering *absent* or *unreadable* artifacts covers none of
+the ways a *present* artifact can be wrong.
+Letting the producer see and fix its own failures does not depend on classifying them
+correctly after the fact.
+
+**Keying conform on Pydantic `string_type`.** See
+[Background](#2-pydantic-string_type-is-unavailable-on-the-path-this-feature-exists-to-serve).
+It cannot fire for the CLI flow this feature exists to serve, and it has no TypeScript
+analogue that keeps parity.
+
+## Open Questions
+
+1. **Is string coercion unconditional, or gated on `repair: safe_coerce`?** The issue
+   argues it is intent-free and therefore always safe.
+   The shipped `RepairKind` vocabulary defaults to `none`, which reads as opt-in.
+   *Recommendation:* unconditional for the `type: string` case — a provably lossless fix
+   should not need per-field opt-in — and repurpose `suggest_alias` plus the `aliases`
+   table to power **non-mutating** suggestions in the error records.
+   That keeps the shipped vocabulary meaningful without making the safe fix opt-in.
+   Needs a maintainer decision before Phase 2, since it is a documented public
+   annotation.
+
+2. **Does `--repair` write a file that still fails validation?** A document can be
+   repaired into parseability and still be invalid.
+   *Recommendation:* yes — write it.
+   The repair is independently correct, and leaving an unparseable file on disk to
+   preserve a failing verdict helps nobody.
+   Needs confirming, since it means a failing gate can still mutate a file.
+
+3. **What does `--repair` do for a `pure-yaml` artifact?** Repairing the whole document,
+   rather than a fenced region, is a larger blast radius.
+   *Recommendation:* same treatment, same invariants.
+   Excluding it would leave one of two supported profiles without the feature.
+
+4. **Does the near-miss hint (Phase 4) belong in `message`, or in a new record field?**
+   `message` wording may improve within a minor release, but the parity contract makes
+   every wording change a two-implementation change with golden updates in both.
+   A separate field is cheaper to evolve and easier to match on.
+
+## References
+
+- [Issue #50](https://github.com/jlevy/softschema/issues/50): the original proposal.
+- [softschema Spec](../../../softschema-spec.md): validation expectations and the
+  structural-error match surface.
+- [Development guide](../../../development.md): the parity loop and its invariants.
+- [Python design](../../../softschema-python-design.md): the `SoftField` `repair` and
+  `aliases` annotations.
+- [metaproc](https://github.com/jlevy/metaproc): `src/metaproc/engine/yaml_repair.py`
+  and `src/metaproc/engine/schema_conform.py`, the code being migrated.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
