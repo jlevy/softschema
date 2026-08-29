@@ -76,7 +76,7 @@ orchestration and both are about what a soft-schema artifact is allowed to look 
 That dependency-direction argument is correct — `schema_conform` already imports
 `softschema.Contracts` — and both modules should move.
 
-Review against the current tree changes four things about *how*.
+Review against the current tree changes five things about *how*.
 
 #### 1. The stated prerequisite is already shipped
 
