@@ -471,6 +471,37 @@ consumers exists or is about to be wired:
 When none of those consumers exists or is on the roadmap, leave `Field` alone.
 Add `SoftField` annotations field by field as the consumer that reads them lands.
 
+### Repair and Conform
+
+Two modules put back what a missing serializer would have done, and a third runs them in
+order.
+
+`softschema.repair` is schema-free and runs first, because a document that does not
+parse has no values to validate.
+`repair_artifact()` quotes a plain scalar whose text YAML would read as structure.
+Its self-check is `parse_yaml`, not a bare YAML parse: the portable reader enforces
+rules an ordinary parser does not, and a repair judged by the looser one would report
+success and then fail validation.
+
+`softschema.conform` needs the contract, and reads **both** validation layers rather
+than one. The same defect has a spelling in each — JSON Schema reports
+`{"validator": "type", "validator_value": "string"}`, Pydantic reports `string_type` —
+and which is available depends on how the caller bound the contract.
+The CLI binds a compiled schema and has no model; a host registering contracts as
+Pydantic models binds no schema and gets `skipped_reason="no_schema"` from the
+structural layer. Keying on either alone is a silent no-op for the other’s callers.
+
+`softschema.pipeline.repair_and_validate_artifact()` runs the two and validates the
+result, writing once.
+`validate_artifact()` stays read-only: a function of that name must not rewrite the file
+its caller passed.
+
+The `repair` and `aliases` annotations on `SoftField` are related but not what this pass
+reads. String coercion is unconditional, because restoring a missing serializer is
+intent-free and a provably lossless fix should not need per-field opt-in.
+`suggest_alias` and the `aliases` table remain reserved for non-mutating suggestions,
+which no pass emits yet.
+
 ### Schema View
 
 `SchemaView` is the single read-only navigator over a compiled JSON Schema.

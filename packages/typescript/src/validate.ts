@@ -53,6 +53,17 @@ export interface ValidationResult {
   semantic: SemanticResult;
 }
 
+/**
+ * One change a repair pass made, shaped like a structural error record so a consumer
+ * matches a repair the way it matches a failure.
+ */
+export interface RepairRecord {
+  kind: string;
+  code: string;
+  path: (string | number)[];
+  message: string;
+}
+
 export interface ArtifactValidationResult {
   readonly ok: boolean;
   contract: Record<string, unknown>;
@@ -66,6 +77,15 @@ export interface ArtifactValidationResult {
   structural: StructuralResult;
   values: Record<string, unknown> | null;
   warnings: SchemaWarning[];
+  /**
+   * What a repair pass changed on the way to this verdict, empty for a plain validate.
+   *
+   * Populated by `repairAndValidateArtifact`. It is what distinguishes "was already valid"
+   * from "was repaired into validity", which an exit code cannot say. Records carry the
+   * same `kind`/`code`/`path` surface as errors, so a consumer matches a repair the way it
+   * matches a failure.
+   */
+  repairs: RepairRecord[];
 }
 
 export type MetadataMode = "enforced" | "advisory";
@@ -112,7 +132,18 @@ function parseYaml(text: string): unknown {
  * the result is equivalent to letting `validateArtifact` read the file itself.
  */
 function readFrontmatterDoc(path: string): ParsedDocument {
-  const text = readUtf8(path);
+  return parseFrontmatterText(readUtf8(path), path);
+}
+
+/**
+ * The text-level half of `readFrontmatterDoc`.
+ *
+ * Separated so a caller holding a document in memory — a repair pass validating what it
+ * just produced, rather than what is still on disk — parses it through exactly this code
+ * path instead of a second implementation that could disagree with it. `source` only names
+ * the document in error messages.
+ */
+export function parseFrontmatterText(text: string, source = "<text>"): ParsedDocument {
   const lines = text.split(/\r?\n/);
   if (lines[0]?.trimEnd() !== "---") return { hasFence: false, value: null };
   let end = -1;
@@ -123,7 +154,7 @@ function readFrontmatterDoc(path: string): ParsedDocument {
     }
   }
   if (end === -1) {
-    throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${path}\``);
+    throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${source}\``);
   }
   // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
@@ -133,7 +164,7 @@ function readFrontmatterDoc(path: string): ParsedDocument {
     // `null`), a list, or a bare scalar. Use the portable type names from the shared
     // error contract.
     throw new YamlParseError(
-      `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${path}\``,
+      `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${source}\``,
     );
   }
   return { hasFence: true, value: parsed };
@@ -146,7 +177,35 @@ function readFrontmatterDoc(path: string): ParsedDocument {
  * rules, which a host YAML library does not enforce; see `validateArtifact`.
  */
 function readYamlDoc(path: string): ParsedDocument {
-  return { hasFence: false, value: parsePortableYaml(readUtf8(path)) };
+  return parseYamlText(readUtf8(path));
+}
+
+/** The text-level half of `readYamlDoc`, for the same reason. */
+export function parseYamlText(text: string): ParsedDocument {
+  return { hasFence: false, value: parsePortableYaml(text) };
+}
+
+/**
+ * The compiled schema in force for this artifact, or null when none is bound.
+ *
+ * Applies the documented precedence — a caller or registry `schemaPath`, then the
+ * document's own `softschema.schema` binding — and is the single answer to "which schema
+ * is this artifact judged against".
+ *
+ * Exported because the repair pass needs the same answer validation will use. Asking the
+ * question twice is how the pass that rewrites a document and the pass that judges it end
+ * up disagreeing about which contract applies. A schema that cannot be resolved returns
+ * null here; reporting that as `schema_missing` stays validation's job.
+ */
+export function resolveBoundSchema(
+  contract: Contract,
+  docPath: string,
+  metadata: SchemaMetadata | null,
+): string | null {
+  if (contract.schemaPath !== null) return resolveSchemaPath(contract.schemaPath, docPath);
+  const schemaRef = metadata?.schema ?? null;
+  if (schemaRef === null) return null;
+  return resolveMetadataSchema(schemaRef, docPath).path;
 }
 
 function resolveSchemaPath(schemaPath: string, docPath: string): string | null {
@@ -426,11 +485,19 @@ function schemaInvalid(reason: string, message: string): StructuralResult {
 export function validateSemantic(values: unknown, model: z.ZodType): SemanticResult {
   const result = model.safeParse(values);
   if (result.success) return { ok: true, errors: [], skipped_reason: null };
-  const errors = result.error.issues.map((issue) => ({
-    code: issue.code,
-    path: issue.path,
-    message: issue.message,
-  }));
+  const errors = result.error.issues.map((issue) => {
+    // `expected` is what identifies a type disagreement — without it an `invalid_type`
+    // issue says only that something was wrong, not what was wanted, and the conform pass
+    // cannot tell a string-type miss from any other. Zod sets it only on the issues that
+    // have one, so it is omitted rather than nulled where it does not apply.
+    const expected = (issue as { expected?: unknown }).expected;
+    return {
+      code: issue.code,
+      path: issue.path,
+      message: issue.message,
+      ...(expected === undefined ? {} : { expected }),
+    };
+  });
   return { ok: false, errors, skipped_reason: null };
 }
 
@@ -492,6 +559,11 @@ function buildResult(args: {
     structural,
     values: args.values,
     warnings: args.warnings,
+    // Always present, never omitted when empty: a consumer reading `repairs` to tell
+    // "was already valid" from "was repaired into validity" must not have to distinguish
+    // an absent key from an empty one, and Python's dataclass default makes it present
+    // there unconditionally.
+    repairs: [] as RepairRecord[],
   } as ArtifactValidationResult;
   Object.defineProperty(result, "ok", { value: ok, enumerable: false });
   return result;

@@ -35,6 +35,7 @@ $ softschema validate examples/movie_page/spirited-away.md --model examples.movi
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,

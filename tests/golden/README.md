@@ -32,6 +32,7 @@ The neutral journeys are:
 | File | Responsibility |
 | --- | --- |
 | `validate.md` | structural success/failure, envelope failure, metadata-only validation |
+| `validate-repair.md` | `--repair` / `--check-repair`: what is fixed, what is refused, and the resulting file |
 | `metadata-binding.md` | document schema/envelope bindings, precedence, and bounded paths |
 | `enforced-status.md` | permissive and enforced extra-field behavior |
 | `cli-errors.md` | usage/input failures, diagnostics, and exit `2` |
@@ -49,6 +50,17 @@ Adapter journeys are:
 
 `cross-impl-diff.sh` runs representative commands through Python and Node directly.
 It structurally normalizes JSON before comparison and compares non-JSON output exactly.
+
+## Mutating scenarios
+
+`validate-repair.md` is the one journey whose commands **rewrite their input**. Two rules
+follow, and a new mutating scenario has to keep both:
+
+- Copy the fixture into a scratch directory inside the command. Pointing a mutating command
+  at a checked-in fixture passes once and then fails on a dirty tree.
+- Print the file afterward. The write is the deliverable, so a transcript showing only the
+  JSON verdict has not covered it, and having the bytes in the transcript is what surfaces
+  an emitter that starts restyling what it was asked to fix.
 
 ## Updating
 

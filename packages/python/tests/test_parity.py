@@ -50,6 +50,8 @@ def test_shared_hardening_vectors_are_readable() -> None:
         "compiler_titles",
         "schema_view",
         "digests",
+        "yaml_repair",
+        "schema_conform",
     ]
     ids = [case["id"] for cases in vectors.values() for case in cases]
     assert len(ids) == len(set(ids))

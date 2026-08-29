@@ -124,7 +124,7 @@ function pyReprNumber(value: number): string {
 }
 
 /** Mimic Python's `repr()` for the value kinds that appear in messages. */
-function pyRepr(value: unknown): string {
+export function pyRepr(value: unknown): string {
   if (value === null || value === undefined) return "None";
   if (typeof value === "boolean") return value ? "True" : "False";
   if (typeof value === "number") return pyReprNumber(value);

@@ -36,6 +36,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -120,6 +121,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bad-movie.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -209,6 +211,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
   "outcome": "invalid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": false,
@@ -264,6 +267,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md
   "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,

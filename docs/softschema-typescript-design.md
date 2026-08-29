@@ -24,11 +24,14 @@ test; see the parity development process in [development.md](development.md).
 | `enforcement` | Checked enforced-profile analysis and offline schema-resource graph preparation |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
 | `errors` | Engine-neutral structural error records and ajv normalization |
-| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, `clearValidatorCache`, and the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root |
+| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, `clearValidatorCache`, the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root, and `resolveBoundSchema` |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a compiled schema |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
+| `repair` | `repairArtifact`/`repairYamlText`: schema-free quoting of scalars YAML reads as structure |
+| `conform` | `conformArtifact`: retype a scalar to the string its contract declares, reading both validation layers |
+| `repairValidate` | `repairAndValidateArtifact`: the escalating pass, writing once |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
-| `cli` | `commander` program: `validate`, `compile`, `inspect`, `docs`, `generate`, `skill` |
+| `cli` | `commander` program: `validate` (with `--repair`/`--check-repair`), `compile`, `inspect`, `docs`, `generate`, `skill` |
 
 ## Idiomatic Zod Choices
 
@@ -144,6 +147,10 @@ explicitly in the shared vectors.
 | `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes and errors |
 | `SchemaMetadata` | `SchemaMetadata` | quartet: `contract_id`/`schema_ref`/`envelope`/`status` (Python); `contractId`/`schema`/`envelope`/`status` (TS); serialized as `{contract, envelope, schema, status}` |
 | `_resolve_metadata_schema` | `resolveMetadataSchema` | bounded relative-path resolution from document directory + cwd |
+| `repair_artifact` | `repairArtifact` | byte-identical repaired output; same records |
+| `conform_artifact` | `conformArtifact` | same structural source; the model source is Pydantic ↔ Zod and per-language |
+| `repair_and_validate_artifact` | `repairAndValidateArtifact` | same escalating pass, same single write, same `repairs` list |
+| `resolve_bound_schema` | `resolveBoundSchema` | the one answer to which schema an artifact is judged against, shared by validation and repair |
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |

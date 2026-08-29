@@ -805,3 +805,143 @@ digests:
   - id: large_integral_float
     value: { whole: 98765432109876543210.0 }
     canonical: '{"whole":98765432109876540000}'
+
+# Syntactic repair: which documents `--repair` can rescue, and which it deliberately
+# leaves alone. `repaired: false` with a `code` is the interesting half — quoting cannot
+# fix a semantic choice, and a repair pass that tried would replace a precise diagnostic
+# with a vague one.
+yaml_repair:
+  - id: unquoted_colon_indented
+    profile: frontmatter-md
+    text: "---\nthing:\n  summary: Note: actually Q1\n---\nBody.\n"
+    repaired: true
+    expected_text: "---\nthing:\n  summary: \"Note: actually Q1\"\n---\nBody.\n"
+  # The upstream matcher required leading whitespace, so a key at column 0 went
+  # unrepaired. Every metaproc payload sits under an envelope; the frontmatter root and
+  # the whole pure-yaml profile do not.
+  - id: unquoted_colon_column_zero
+    profile: pure-yaml
+    text: "summary: Note: actually Q1\ncount: 3\n"
+    repaired: true
+    expected_text: "summary: \"Note: actually Q1\"\ncount: 3\n"
+  - id: unbalanced_quoted_phrase
+    profile: pure-yaml
+    text: "note: \"near me\" trends accelerated\n"
+    repaired: true
+    expected_text: "note: \"\\\"near me\\\" trends accelerated\"\n"
+  # The no-widening invariant: a document that already parses is returned untouched.
+  - id: already_valid
+    profile: frontmatter-md
+    text: "---\nthing:\n  name: fine\n---\nBody.\n"
+    repaired: false
+  - id: trailing_comment_preserved
+    profile: pure-yaml
+    text: "summary: Note: actually Q1  # keep me\n"
+    repaired: true
+    expected_text: "summary: \"Note: actually Q1\"  # keep me\n"
+  # Not typos. Each is something the author meant, and the original code survives.
+  - id: alias_present
+    profile: pure-yaml
+    text: "base: &b\n  a: 1\ncopy: *b\n"
+    repaired: false
+    code: yaml_alias
+  - id: merge_key_present
+    profile: pure-yaml
+    text: "base: &b\n  a: 1\nchild:\n  <<: *b\n"
+    repaired: false
+    code: yaml_merge_key
+  - id: explicit_tag
+    profile: pure-yaml
+    text: "value: !!binary aGk=\n"
+    repaired: false
+    code: yaml_custom_tag
+  # Quoting does not rescue this one, so the original parse failure is what is reported
+  # rather than the residue of a failed guess.
+  - id: repair_insufficient
+    profile: pure-yaml
+    text: "thing: [unclosed\n"
+    repaired: false
+    code: yaml_parse_error
+
+# Type conform, structural source only. The semantic source (Pydantic `string_type` /
+# Zod `invalid_type`) is per-language by design and lives in each adapter's own tests.
+#
+# `schema` is the compiled JSON Schema; `envelope` names the payload key.
+schema_conform:
+  - id: integer_name
+    schema: { type: object, properties: { name: { type: string } } }
+    text: "---\nthing:\n  name: 1850\n---\nB.\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  name: '1850'\n---\nB.\n"
+  # Lossless: the text comes from the scalar as written, not from `str()` of the parsed
+  # value, so a notation the author chose survives being retyped.
+  - id: float_notation
+    schema: { type: object, properties: { ratio: { type: string } } }
+    text: "---\nthing:\n  ratio: 1.10\n---\nB.\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  ratio: '1.10'\n---\nB.\n"
+  - id: leading_zeros
+    schema: { type: object, properties: { code: { type: string } } }
+    text: "---\nthing:\n  code: 007\n---\nB.\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  code: '007'\n---\nB.\n"
+  - id: union_admits_value
+    schema: { type: object, properties: { n: { type: [string, integer] } } }
+    text: "---\nthing:\n  n: 42\n---\nB.\n"
+    envelope: thing
+    changed: false
+  # A null is an absent value, not a notation accident; stringifying one would invent data.
+  - id: explicit_null
+    schema: { type: object, properties: { note: { type: string } } }
+    text: "---\nthing:\n  note: null\n---\nB.\n"
+    envelope: thing
+    changed: false
+  # A missing field is not a type error, and a near-miss key is not a rename. Neither is
+  # repairable without guessing what the author meant.
+  - id: missing_required_field
+    schema:
+      type: object
+      required: [rationale]
+      properties: { rationale: { type: string } }
+    text: "---\nthing:\n  reason: because\n---\nB.\n"
+    envelope: thing
+    changed: false
+  - id: genuinely_wrong_value
+    schema: { type: object, properties: { count: { type: integer } } }
+    text: "---\nthing:\n  count: not-a-number\n---\nB.\n"
+    envelope: thing
+    changed: false
+  # A correction can unlock a branch that did not previously apply, which is what the
+  # bounded fixed-point loop is for.
+  - id: nested_under_if_then
+    schema:
+      type: object
+      properties: { kind: { type: string } }
+      if: { properties: { kind: { const: "1" } } }
+      then: { properties: { label: { type: string } } }
+    text: "---\nthing:\n  kind: 1\n  label: 2\n---\nB.\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  kind: '1'\n  label: '2'\n---\nB.\n"
+  # `parse_yaml` maps an implicit timestamp to a string on read, so a date never reaches
+  # validation as a date and there is nothing to conform.
+  - id: date_scalar_reads_as_string
+    schema: { type: object, properties: { released: { type: string } } }
+    text: "---\nthing:\n  released: 2024-01-01\n---\nB.\n"
+    envelope: thing
+    changed: false
+  - id: crlf_preserved
+    schema: { type: object, properties: { name: { type: string } } }
+    text: "---\r\nthing:\r\n  name: 1850\r\n---\r\nB.\r\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\r\nthing:\r\n  name: '1850'\r\n---\r\nB.\r\n"
+  - id: no_trailing_newline
+    schema: { type: object, properties: { name: { type: string } } }
+    text: "---\nthing:\n  name: 1850\n---\nB."
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  name: '1850'\n---\nB."

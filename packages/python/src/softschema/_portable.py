@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import date
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -164,3 +166,108 @@ def _check_value(root: Any) -> None:
         raise PortableInputError(
             "yaml_unsupported_scalar", f"unsupported YAML value: {type(value).__name__}"
         )
+
+
+@dataclass(frozen=True)
+class FrontmatterSplit:
+    """Where a frontmatter-md document's metadata sits inside its text.
+
+    All three fields are character offsets into the *original* text, so a caller can put
+    the document back together exactly:
+
+        text[:metadata_offset] + new_metadata + text[metadata_end:body_offset] + body
+
+    That middle slice is the closing fence, kept verbatim rather than re-synthesized.
+    This is the difference from :func:`read_frontmatter_doc`, which splits on
+    ``splitlines()`` and rejoins with ``"\n"``: fine for reading values, lossy for
+    writing the file back.
+    """
+
+    metadata_text: str
+    metadata_offset: int
+    body_offset: int
+
+    @property
+    def metadata_end(self) -> int:
+        return self.metadata_offset + len(self.metadata_text)
+
+
+def split_frontmatter(text: str) -> FrontmatterSplit | None:
+    """Split a frontmatter-md document without disturbing its body.
+
+    Returns ``None`` when the document has no frontmatter, matching what
+    :func:`read_frontmatter_doc` reports: no leading fence, an unterminated fence, or an
+    empty block whose end fence is the very next line.
+
+    The scan is deliberately hand-rolled and byte-oriented rather than delegated to
+    ``frontmatter_format``, for two reasons. The fence rules have to stay identical to
+    that reader's — if the two disagree about where the frontmatter ends, a repair pass
+    writes one region and validation reads another. And the TypeScript implementation has
+    no equivalent package, so writing the same scan twice is what keeps the two runtimes
+    splitting identically.
+    """
+    first = _line_end(text, 0)
+    if first is None or text[: first[0]].rstrip() != "---":
+        return None
+    metadata_offset = first[1]
+    cursor = metadata_offset
+    while cursor < len(text):
+        line = _line_end(text, cursor)
+        if line is None:
+            return None  # unterminated fence: no frontmatter to speak of
+        if text[cursor : line[0]].rstrip() == "---":
+            metadata_text = text[metadata_offset:cursor]
+            # An empty block (end fence on the very next line) is the portable
+            # no_frontmatter case, the same as the reader's ``end == 1``.
+            if not metadata_text.strip():
+                return None
+            return FrontmatterSplit(
+                metadata_text=metadata_text,
+                metadata_offset=metadata_offset,
+                body_offset=line[1],
+            )
+        cursor = line[1]
+    return None
+
+
+def _line_end(text: str, start: int) -> tuple[int, int] | None:
+    """The content end (before the line break) and the start of the next line."""
+    index = text.find("\n", start)
+    if index == -1:
+        return None
+    return index, index + 1
+
+
+def round_trip_yaml() -> YAML:
+    """A ruamel round-trip parser/emitter that preserves how the author wrote things.
+
+    Round-trip mode is what lets a one-scalar correction stay a one-scalar diff: quotes,
+    comments, key order, and long lines survive because the loader hands back nodes that
+    remember their own notation.
+
+    ``allow_aliases`` is deliberately absent. metaproc's equivalent enables it to keep an
+    author's ``*ref`` from expanding into a duplicated mapping, but softschema's
+    :func:`parse_yaml` rejects aliases and anchors outright, so an artifact carrying one
+    never reaches this emitter.
+
+    The null representer is pinned anyway. ruamel spells a null as an empty value once
+    any object has been represented and as ``null`` before that, which makes the spelling
+    depend on position in the document. A null this pass did not touch changing shape is
+    exactly the unasked-for diff round-trip mode exists to prevent.
+    """
+    yaml = YAML(typ="rt")
+    yaml.preserve_quotes = True
+    yaml.width = 4096  # never re-wrap an author's long line
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    yaml.representer.add_representer(
+        type(None),
+        lambda dumper, _data: dumper.represent_scalar("tag:yaml.org,2002:null", "null"),
+    )
+    return yaml
+
+
+def dump_round_trip(yaml: YAML, document: Any) -> str:
+    """Serialize a round-trip document back to text."""
+    buffer = StringIO()
+    yaml.dump(document, buffer)
+    return buffer.getvalue()

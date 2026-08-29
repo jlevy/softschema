@@ -22,7 +22,7 @@ from GitHub issue [#50](https://github.com/jlevy/softschema/issues/50)
 A model authoring a contract-bearing artifact writes YAML by hand, with no serializer in
 the path and no schema in front of it.
 Its characteristic failures are near-misses: an unquoted colon that makes the document
-unparseable, or a name like `1850` that arrives as an integer against a `type: string`
+unparsable, or a name like `1850` that arrives as an integer against a `type: string`
 field.
 Both are one-turn repairs for the model that produced them, and both are currently
 discovered after that model’s session has exited.
@@ -46,7 +46,7 @@ already repaired, so the operation is idempotent rather than duplicated.
 
 - One operation both a producing agent and an orchestrator boundary invoke, so the two
   agree by construction rather than by convention.
-- Repair an unparseable document, which is a total loss today.
+- Repair an unparsable document, which is a total loss today.
 - Conform a scalar to the type its contract declares, in the one direction that can be
   corrected without guessing intent.
 - Full Python/TypeScript parity: identical flag surface, identical verdicts, identical
@@ -377,8 +377,8 @@ These are the properties to test, not aspirations:
 
 ### Phase 1: Syntactic repair, both implementations
 
-Self-contained, no schema dependency, and the largest single win: an unparseable
-document is a total loss today.
+Self-contained, no schema dependency, and the largest single win: an unparsable document
+is a total loss today.
 
 - [ ] Add the offset-preserving frontmatter split and the round-trip writer in both
   languages, since every later step writes through them.
@@ -620,7 +620,7 @@ See [Background](#2-conform-has-to-read-both-validation-layers-not-one).
 2. **Does `--repair` write a file that still fails validation?** A document can be
    repaired into parseability and still be invalid.
    *Recommendation:* yes — write it.
-   The repair is independently correct, and leaving an unparseable file on disk to
+   The repair is independently correct, and leaving an unparsable file on disk to
    preserve a failing verdict helps nobody.
    Needs confirming, since it means a failing gate can still mutate a file.
 

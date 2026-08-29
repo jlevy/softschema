@@ -33,6 +33,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
   "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -87,6 +88,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md --schema t
   "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -177,6 +179,7 @@ $ softschema validate tests/golden/fixtures/extra-field-enforced.md --schema tes
   "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-enforced.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -263,6 +266,7 @@ $ softschema validate tests/golden/fixtures/conditional-ok.md --schema tests/gol
   "outcome": "valid",
   "path": "tests/golden/fixtures/conditional-ok.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -310,6 +314,7 @@ $ softschema validate tests/golden/fixtures/conditional-violation.md --schema te
   "outcome": "invalid",
   "path": "tests/golden/fixtures/conditional-violation.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -372,6 +377,7 @@ $ softschema validate tests/golden/fixtures/conditional-undeclared.md --schema t
   "outcome": "invalid",
   "path": "tests/golden/fixtures/conditional-undeclared.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -434,6 +440,7 @@ $ softschema validate tests/golden/fixtures/composed-open-ok.md --schema tests/g
   "outcome": "valid",
   "path": "tests/golden/fixtures/composed-open-ok.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -482,6 +489,7 @@ $ softschema validate tests/golden/fixtures/composed-open-undeclared.md --schema
   "outcome": "invalid",
   "path": "tests/golden/fixtures/composed-open-undeclared.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,

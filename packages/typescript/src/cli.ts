@@ -27,12 +27,16 @@ import {
   parseSchemaMetadata,
   type SchemaProfile,
 } from "./models.js";
-import { PortableInputError } from "./portable.js";
+import { PortableInputError, readUtf8, splitFrontmatter } from "./portable.js";
+import { repairArtifact } from "./repair.js";
+import { repairAndValidateArtifact } from "./repairValidate.js";
 import { stableStringify } from "./settings.js";
 import {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type ParsedDocument,
+  parseFrontmatterText,
+  parseYamlText,
   readFrontmatterDoc,
   readYamlDoc,
   validateArtifact,
@@ -510,6 +514,8 @@ interface ValidateOptions {
   profile?: string;
   schema?: string;
   status?: string;
+  repair?: boolean;
+  checkRepair?: boolean;
 }
 
 function profileFromOpts(opts: { profile?: string }): SchemaProfile | undefined {
@@ -554,6 +560,12 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
 
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
+    if (opts.repair === true && opts.checkRepair === true) {
+      throw new UsageError("--repair and --check-repair are mutually exclusive");
+    }
+    if (opts.repair === true || opts.checkRepair === true) {
+      return await runRepairValidate(path, opts, opts.repair === true);
+    }
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
@@ -602,6 +614,95 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // message + exit 2 (see reportUserError). Never an uncaught stack trace for a user
     // mistake, never a masked exit 2 for a programmer bug.
     return reportUserError("validate", err);
+  }
+}
+
+/**
+ * The `--repair` / `--check-repair` path.
+ *
+ * Repair runs *before* binding inference, not after. The document this flag exists to
+ * rescue is one that does not parse, and the contract, schema, and envelope are all read
+ * out of that same unparsable frontmatter — inferring the binding first would fail on
+ * exactly the artifacts the flag is for.
+ *
+ * The repair is then handed to the pipeline rather than recomputed, so the file is still
+ * read once and written at most once.
+ */
+async function runRepairValidate(
+  path: string,
+  opts: ValidateOptions,
+  write: boolean,
+): Promise<number> {
+  const profile = profileFromOpts(opts) ?? detectProfile(path);
+  const repaired = repairArtifact(path, { profile, write: false });
+  const document = parseAfterRepair(repaired.text, profile);
+  const root = document?.value ?? null;
+  const fm = isRecord(root) ? root : {};
+  if (!isRecord(root) && opts.contract === undefined) {
+    throw new UsageError(missingContractReason(profile));
+  }
+  const metadata = parseSchemaMetadata(fm.softschema ?? null);
+  const contractId = opts.contract ?? metadata?.contractId;
+  if (contractId === undefined) {
+    throw new UsageError("missing --contract because the document has no softschema.contract");
+  }
+  let status: Contract["status"] = "soft";
+  if (opts.status !== undefined) {
+    if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
+    status = opts.status;
+  } else if (metadata?.status) {
+    status = metadata.status;
+  }
+  const contract: Contract = {
+    id: contractId,
+    model: opts.model ?? null,
+    envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null, profile),
+    status,
+    profile,
+    schemaPath: opts.schema ?? null,
+  };
+  const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
+  const result = repairAndValidateArtifact(path, contract, { semanticModel, write, repaired });
+  writeText(stableStringify(result));
+  // `--check-repair` answers "would this change?", so a document needing repair fails the
+  // check even when it would validate afterward. Same shape as `generate --check`, and it
+  // is what lets a gate reject an unrepaired artifact.
+  if (!write && result.repairs.length > 0) return 1;
+  return result.outcome === "valid" ? 0 : 1;
+}
+
+/**
+ * Detect an artifact's profile without requiring it to parse.
+ *
+ * The ordinary detection in `readArtifact` parses the document, which an artifact awaiting
+ * repair does not do. Every rule that does not need a successful parse is kept: the
+ * filename, then the presence of a frontmatter fence. A fenceless document that will not
+ * parse falls back to frontmatter-md and reports `no_frontmatter`, exactly as it does
+ * without `--repair`.
+ */
+function detectProfile(path: string): SchemaProfile {
+  if (YAML_SUFFIXES.includes(fileSuffix(path))) return "pure-yaml";
+  let text: string;
+  try {
+    text = readUtf8(path);
+  } catch {
+    return "frontmatter-md";
+  }
+  if (splitFrontmatter(text.replaceAll("\r\n", "\n")) !== null) return "frontmatter-md";
+  const root = yamlRootOrNull(path);
+  if (isRecord(root) && "softschema" in root) return "pure-yaml";
+  return "frontmatter-md";
+}
+
+/** Parse the repaired text for binding inference, tolerating one that still fails. */
+function parseAfterRepair(text: string | null, profile: SchemaProfile): ParsedDocument | null {
+  if (text === null) return null;
+  try {
+    return profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text);
+  } catch {
+    // Repair could not rescue it. Binding inference falls back to the flags, and validation
+    // reports the parse failure itself.
+    return null;
   }
 }
 
@@ -812,6 +913,15 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       "override the artifact profile. Optional; without it a *.yaml/*.yml file, or a " +
         "fenceless document whose root carries a softschema: block, is read as " +
         "pure-yaml and anything else as frontmatter-md",
+    )
+    .option(
+      "--repair",
+      "repair unparsable YAML and conform scalars to the declared types, write the " +
+        "file, then validate. Reports every change under `repairs`",
+    )
+    .option(
+      "--check-repair",
+      "report what --repair would change without writing; exit 1 if anything would",
     )
     .action(async (path: string, opts: ValidateOptions) => {
       exitCode = await runValidate(path, opts);

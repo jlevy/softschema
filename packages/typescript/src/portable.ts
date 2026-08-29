@@ -166,3 +166,101 @@ export function checkPortableValue(root: unknown): void {
     );
   }
 }
+
+/**
+ * Where a frontmatter-md document's metadata sits inside its text.
+ *
+ * All three offsets index into the *original* text, so a caller can put the document
+ * back together exactly:
+ *
+ *     text.slice(0, metadataOffset) + newMetadata +
+ *       text.slice(metadataEnd, bodyOffset) + text.slice(bodyOffset)
+ *
+ * That middle slice is the closing fence, kept verbatim rather than re-synthesized. This
+ * is the difference from `readFrontmatterDoc`, which splits on `/\r?\n/` and rejoins
+ * with `"\n"`: fine for reading values, lossy for writing the file back.
+ */
+export interface FrontmatterSplit {
+  metadataText: string;
+  metadataOffset: number;
+  metadataEnd: number;
+  bodyOffset: number;
+}
+
+/**
+ * Split a frontmatter-md document without disturbing its body.
+ *
+ * Returns `null` when the document has no frontmatter, matching what
+ * `readFrontmatterDoc` reports: no leading fence, an unterminated fence, or an empty
+ * block whose end fence is the very next line.
+ *
+ * This is the same hand-rolled scan as Python's `split_frontmatter`, line for line, and
+ * deliberately so. The fence rules have to stay identical to the reader's — if the two
+ * disagree about where the frontmatter ends, a repair pass writes one region and
+ * validation reads another — and writing the scan twice is what keeps the two runtimes
+ * splitting identically.
+ */
+export function splitFrontmatter(text: string): FrontmatterSplit | null {
+  // Scan by offset rather than by `split()`, because the offsets are the whole point: a
+  // `\r\n` document must keep its `\r\n` body byte-for-byte.
+  const first = lineEnd(text, 0);
+  if (first === null || text.slice(0, first.contentEnd).trimEnd() !== "---") return null;
+  const metadataOffset = first.next;
+  let cursor = metadataOffset;
+  while (cursor < text.length) {
+    const line = lineEnd(text, cursor);
+    if (line === null) return null; // unterminated fence: no frontmatter to speak of
+    if (text.slice(cursor, line.contentEnd).trimEnd() === "---") {
+      const metadataText = text.slice(metadataOffset, cursor);
+      // An empty block (end fence on the very next line) is the portable
+      // no_frontmatter case, the same as the reader's `end === 1`.
+      if (metadataText.trim() === "") return null;
+      return { metadataText, metadataOffset, metadataEnd: cursor, bodyOffset: line.next };
+    }
+    cursor = line.next;
+  }
+  return null;
+}
+
+/** The content end (before the line break) and the start of the next line. */
+function lineEnd(text: string, from: number): { contentEnd: number; next: number } | null {
+  const index = text.indexOf("\n", from);
+  if (index === -1) return null;
+  return { contentEnd: index, next: index + 1 };
+}
+
+/**
+ * Parse YAML in round-trip mode: the document keeps how the author wrote it.
+ *
+ * Round-trip parsing is what lets a one-scalar correction stay a one-scalar diff. The
+ * `yaml` package's `parseDocument` retains quotes, comments, key order, and line
+ * structure, which is the direct analogue of ruamel's `typ="rt"` on the Python side.
+ */
+export function parseRoundTrip(text: string): ReturnType<typeof parseDocument> {
+  return parseDocument(text, { uniqueKeys: true });
+}
+
+/**
+ * Serialize a round-trip document with the emitter settings Python's `round_trip_yaml`
+ * uses, so both runtimes write the same bytes for the same edit.
+ *
+ * `lineWidth: 0` disables re-wrapping (ruamel's `width = 4096` in practice), and
+ * `nullStr: "null"` pins the spelling ruamel is pinned to — left alone, both emitters
+ * make it depend on position in the document.
+ *
+ * `singleQuote: true` earns its place twice. It is what makes a newly quoted scalar come
+ * out `'1850'` here as it does in ruamel, rather than `"1850"`, which is a byte-parity
+ * break in the one value this pass exists to write. It also stops the emitter rewriting
+ * an author's `'single'` into `"double"` — a whole-file restyling diff around a
+ * one-scalar fix. Without it both regressions appear together, and only the second one
+ * is visible in a golden transcript.
+ */
+export function dumpRoundTrip(document: ReturnType<typeof parseDocument>): string {
+  return document.toString({
+    lineWidth: 0,
+    indent: 2,
+    indentSeq: true,
+    nullStr: "null",
+    singleQuote: true,
+  });
+}

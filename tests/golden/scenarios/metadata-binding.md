@@ -34,6 +34,7 @@ $ softschema validate tests/golden/fixtures/bound-ok.md
   "outcome": "valid",
   "path": "tests/golden/fixtures/bound-ok.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -82,6 +83,7 @@ $ softschema validate examples/movie_page/spirited-away.md
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -166,6 +168,7 @@ $ softschema validate tests/golden/fixtures/bound-ok.md --schema tests/golden/fi
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-ok.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -228,6 +231,7 @@ $ softschema validate tests/golden/fixtures/bound-missing-schema.md
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-missing-schema.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -281,6 +285,7 @@ $ softschema validate tests/golden/fixtures/bound-absolute-schema.md
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-absolute-schema.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -335,6 +340,7 @@ $ softschema validate tests/golden/fixtures/bound-escaping-schema.md
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-escaping-schema.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -397,6 +403,7 @@ $ softschema validate tests/golden/fixtures/bound-envelope-absent.md
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bound-envelope-absent.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": false,
@@ -454,6 +461,7 @@ $ softschema validate tests/golden/fixtures/pure-yaml-report.yaml
   "outcome": "valid",
   "path": "tests/golden/fixtures/pure-yaml-report.yaml",
   "profile": "pure-yaml",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -504,6 +512,7 @@ $ softschema validate tests/golden/fixtures/pure-yaml-enforced.yaml
   "outcome": "invalid",
   "path": "tests/golden/fixtures/pure-yaml-enforced.yaml",
   "profile": "pure-yaml",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -562,6 +571,7 @@ $ softschema validate tests/golden/fixtures/pure-yaml-envelope.yaml
   "outcome": "valid",
   "path": "tests/golden/fixtures/pure-yaml-envelope.yaml",
   "profile": "pure-yaml",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -605,6 +615,7 @@ $ softschema validate tests/golden/fixtures/pure-yaml-report.yaml --profile fron
   "outcome": "invalid",
   "path": "tests/golden/fixtures/pure-yaml-report.yaml",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": false,
@@ -657,6 +668,7 @@ $ softschema validate tests/golden/fixtures/pure-yaml-unnamed.data
   "outcome": "valid",
   "path": "tests/golden/fixtures/pure-yaml-unnamed.data",
   "profile": "pure-yaml",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,

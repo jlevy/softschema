@@ -133,15 +133,21 @@ def _canonical(value: Any) -> Any:
     return canonical_number(value)
 
 
-def _fmt(value: Any) -> str:
-    """Render a value compactly and deterministically for messages."""
+def fmt_value(value: Any) -> str:
+    """Render a value compactly and deterministically for messages.
+
+    Python's ``repr`` is the shared spelling: the TypeScript ``pyRepr`` reproduces it so
+    both implementations word the same violation identically. Any message that quotes a
+    value — a structural error, a conform record — goes through here, or the two
+    implementations drift on quoting alone.
+    """
     return repr(value)
 
 
 def _fmt_list(values: Any) -> str:
     if isinstance(values, list | tuple):
-        return ", ".join(_fmt(v) for v in values)
-    return _fmt(values)
+        return ", ".join(fmt_value(v) for v in values)
+    return fmt_value(values)
 
 
 def render_structural_message(
@@ -161,41 +167,43 @@ def render_structural_message(
     value = _canonical(value)
     validator_value = _canonical(validator_value)
     if validator == "enum":
-        return f"value {_fmt(value)} is not one of [{_fmt_list(validator_value)}]"
+        return f"value {fmt_value(value)} is not one of [{_fmt_list(validator_value)}]"
     if validator == "type":
-        return f"value {_fmt(value)} is not of type {_fmt_list(validator_value)}"
+        return f"value {fmt_value(value)} is not of type {_fmt_list(validator_value)}"
     if validator == "required":
         if property_name is not None:
-            return f"required property {_fmt(property_name)} is missing"
-        return f"required property {_fmt(validator_value)} is missing"
+            return f"required property {fmt_value(property_name)} is missing"
+        return f"required property {fmt_value(validator_value)} is missing"
     if validator == "minimum":
-        return f"value {_fmt(value)} is less than the minimum of {_fmt(validator_value)}"
+        return f"value {fmt_value(value)} is less than the minimum of {fmt_value(validator_value)}"
     if validator == "maximum":
-        return f"value {_fmt(value)} is greater than the maximum of {_fmt(validator_value)}"
+        return (
+            f"value {fmt_value(value)} is greater than the maximum of {fmt_value(validator_value)}"
+        )
     if validator == "exclusiveMinimum":
-        return f"value {_fmt(value)} is not greater than {_fmt(validator_value)}"
+        return f"value {fmt_value(value)} is not greater than {fmt_value(validator_value)}"
     if validator == "exclusiveMaximum":
-        return f"value {_fmt(value)} is not less than {_fmt(validator_value)}"
+        return f"value {fmt_value(value)} is not less than {fmt_value(validator_value)}"
     if validator == "minItems":
-        return f"array is shorter than the minimum of {_fmt(validator_value)} items"
+        return f"array is shorter than the minimum of {fmt_value(validator_value)} items"
     if validator == "maxItems":
-        return f"array is longer than the maximum of {_fmt(validator_value)} items"
+        return f"array is longer than the maximum of {fmt_value(validator_value)} items"
     if validator == "minLength":
-        return f"string is shorter than the minimum length of {_fmt(validator_value)}"
+        return f"string is shorter than the minimum length of {fmt_value(validator_value)}"
     if validator == "maxLength":
-        return f"string is longer than the maximum length of {_fmt(validator_value)}"
+        return f"string is longer than the maximum length of {fmt_value(validator_value)}"
     if validator == "pattern":
-        return f"value {_fmt(value)} does not match pattern {_fmt(validator_value)}"
+        return f"value {fmt_value(value)} does not match pattern {fmt_value(validator_value)}"
     if validator in _UNDECLARED_PROPERTY_VALIDATORS:
         if property_name is not None:
-            return f"property {_fmt(property_name)} is not allowed"
+            return f"property {fmt_value(property_name)} is not allowed"
         # Both closure keywords are one category to the author, so they share a message.
         # The generic fallback would otherwise spill the whole payload into the string.
         return "object has properties that are not allowed"
     if validator == "multipleOf":
-        return f"value {_fmt(value)} is not a multiple of {_fmt(validator_value)}"
+        return f"value {fmt_value(value)} is not a multiple of {fmt_value(validator_value)}"
     # Fallback keeps unknown keywords legible without leaking engine text.
-    return f"value {_fmt(value)} failed {validator} constraint {_fmt(validator_value)}"
+    return f"value {fmt_value(value)} failed {validator} constraint {fmt_value(validator_value)}"
 
 
 def structural_error_record(

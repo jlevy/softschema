@@ -5,6 +5,13 @@ export {
   compileSchema,
 } from "./compile.js";
 export {
+  CONFORM_KIND,
+  type ConformOptions,
+  type ConformRecord,
+  type ConformResult,
+  conformArtifact,
+} from "./conform.js";
+export {
   type GeneratedSection,
   type RegenerateResult,
   regenerate,
@@ -19,6 +26,16 @@ export {
   type WarningCode,
 } from "./models.js";
 export { Contracts } from "./registry.js";
+export {
+  REPAIR_KIND,
+  type RepairResult,
+  repairArtifact,
+  repairYamlText,
+} from "./repair.js";
+export {
+  type RepairAndValidateOptions,
+  repairAndValidateArtifact,
+} from "./repairValidate.js";
 export { type FieldInfo, SchemaView } from "./schemaView.js";
 export {
   type RepairKind,
@@ -33,6 +50,7 @@ export {
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
   type ParsedDocument,
+  type RepairRecord,
   readFrontmatterDoc,
   readYamlDoc,
   type SemanticResult,

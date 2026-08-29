@@ -95,6 +95,14 @@ structure should stabilize over time.
   `--schema` to override with a compiled schema; `--model` for a Pydantic/Zod model
   (imports and runs local code; trusted models only; `--schema` is the safe path for
   untrusted input). Run `$SS validate --help` for exact syntax.
+- **Check your own artifact before you finish, with `$SS validate --repair`.** After
+  writing a contract-bearing artifact, run it on that file.
+  It fixes the two mistakes a model makes writing YAML by hand — an unquoted `: ` inside
+  a value, and a scalar like `1850` that reads as a number where the contract wants a
+  string — writes the file, and reports the verdict.
+  Anything it does not fix, such as a missing field or a key that is a near-miss for the
+  declared one, is yours to correct: it reports those and never guesses at them.
+  Use `--check-repair` to see what would change without writing.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.
 ? 0

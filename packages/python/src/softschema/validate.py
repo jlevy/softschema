@@ -86,6 +86,14 @@ class ArtifactValidationResult:
     document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
     warnings: list[SchemaWarning] = field(default_factory=list)
+    repairs: list[dict[str, Any]] = field(default_factory=list)
+    """What a repair pass changed on the way to this verdict, empty for a plain validate.
+
+    Populated by :func:`softschema.pipeline.repair_and_validate_artifact`. It is what
+    distinguishes "was already valid" from "was repaired into validity", which an exit code
+    cannot say. Records carry the same ``kind``/``code``/``path`` surface as errors, so a
+    consumer matches a repair the way it matches a failure.
+    """
     outcome: Literal["valid", "invalid", "input_error"] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -844,6 +852,29 @@ def _validate_extracted_values(
     )
 
 
+def resolve_bound_schema(
+    contract: Contract, doc_path: Path, metadata: SchemaMetadata | None
+) -> Path | None:
+    """The compiled schema in force for this artifact, or ``None`` when none is bound.
+
+    Applies the documented precedence — a caller or registry ``schema_path``, then the
+    document's own ``softschema.schema`` binding — and is the single answer to "which
+    schema is this artifact judged against".
+
+    Exported because the repair pass needs the same answer validation will use. Asking the
+    question twice is how the pass that rewrites a document and the pass that judges it end
+    up disagreeing about which contract applies. A schema that cannot be resolved returns
+    ``None`` here; reporting that as ``schema_missing`` stays validation's job.
+    """
+    if contract.schema_path is not None:
+        return _resolve_schema_path(contract.schema_path, doc_path)
+    schema_ref = metadata.schema_ref if metadata is not None else None
+    if schema_ref is None:
+        return None
+    bound, _error_message = _resolve_metadata_schema(schema_ref, doc_path)
+    return bound
+
+
 def _resolve_schema_path(path: Path | None, doc_path: Path) -> Path | None:
     """Resolve a compiled schema path, searching only the document directory and cwd.
 
@@ -921,14 +952,24 @@ def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
     letting ``validate_artifact`` read the file itself. Returns ``None`` for the mapping
     when the document has no frontmatter.
     """
-    text = read_utf8(path)
+    return parse_frontmatter_text(read_utf8(path), source=str(path))
+
+
+def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, Any | None]:
+    """The text-level half of :func:`read_frontmatter_doc`.
+
+    Separated so a caller holding a document in memory — a repair pass validating what it
+    just produced, rather than what is still on disk — parses it through exactly this code
+    path instead of a second implementation that could disagree with it. ``source`` only
+    names the document in error messages.
+    """
     lines = text.splitlines()
     if not lines or lines[0].rstrip() != "---":
         return text, None
     end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)
     if end < 0:
         raise PortableInputError(
-            "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{path}`"
+            "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{source}`"
         )
     if end == 1:
         return "\n".join(lines[2:]), None
@@ -937,7 +978,7 @@ def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
     if not isinstance(value, dict):
         raise PortableInputError(
             "yaml_parse_error",
-            f"Expected YAML metadata to be a dict, got {type(value).__name__}: `{path}`",
+            f"Expected YAML metadata to be a dict, got {type(value).__name__}: `{source}`",
         )
     return "\n".join(lines[end + 1 :]), value
 
@@ -951,6 +992,11 @@ def read_yaml_doc(path: Path) -> Any:
     library does not enforce; see :func:`validate_artifact` on why that matters.
     """
     return parse_yaml(read_utf8(path))
+
+
+def parse_yaml_text(text: str) -> Any:
+    """The text-level half of :func:`read_yaml_doc`, for the same reason."""
+    return parse_yaml(text)
 
 
 def _portable_error_kind(error: Exception) -> str:
