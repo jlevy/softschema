@@ -855,6 +855,14 @@ yaml_repair:
     text: "value: !!binary aGk=\n"
     repaired: false
     code: yaml_custom_tag
+  # Both implementations pin the conservative ASCII key class: Python's `\w` is
+  # Unicode-aware and JavaScript's is not, so a shared Unicode semantics would have to be
+  # hand-built on the TS side. A non-ASCII key is left unrepaired identically instead.
+  - id: non_ascii_key
+    profile: pure-yaml
+    text: "título: Note: actually Q1\ncount: 3\n"
+    repaired: false
+    code: yaml_parse_error
   # Quoting does not rescue this one, so the original parse failure is what is reported
   # rather than the residue of a failed guess.
   - id: repair_insufficient

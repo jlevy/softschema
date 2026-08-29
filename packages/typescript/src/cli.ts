@@ -558,6 +558,45 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
   return schema;
 }
 
+/**
+ * Build the `Contract` a validate invocation runs under: flags first, then the
+ * document's own `softschema:` block, then inference.
+ *
+ * One helper for both the plain and the `--repair` path — the mirror of Python's
+ * `_infer_validation_binding` — so a precedence tweak or a new flag cannot land in one
+ * mode and not the other.
+ */
+function inferValidationBinding(
+  opts: ValidateOptions,
+  root: Record<string, unknown> | null,
+  profile: SchemaProfile,
+): Contract {
+  if (root === null && opts.contract === undefined) {
+    throw new UsageError(missingContractReason(profile));
+  }
+  const fm = root ?? {};
+  const metadata = parseSchemaMetadata(fm.softschema ?? null);
+  const contractId = opts.contract ?? metadata?.contractId;
+  if (contractId === undefined) {
+    throw new UsageError("missing --contract because the document has no softschema.contract");
+  }
+  let status: Contract["status"] = "soft";
+  if (opts.status !== undefined) {
+    if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
+    status = opts.status;
+  } else if (metadata?.status) {
+    status = metadata.status;
+  }
+  return {
+    id: contractId,
+    model: opts.model ?? null,
+    envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null, profile),
+    status,
+    profile,
+    schemaPath: opts.schema ?? null,
+  };
+}
+
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
     if (opts.repair === true && opts.checkRepair === true) {
@@ -573,31 +612,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     // Read the document once here; both binding inference and validateArtifact reuse
     // that parse (passed as `document`), so the file is parsed a single time.
     const read = readArtifact(path, profileFromOpts(opts));
-    const root = rootMapping(read);
-    if (root === null && opts.contract === undefined) {
-      throw new UsageError(missingContractReason(read.profile));
-    }
-    const fm = root ?? {};
-    const metadata = parseSchemaMetadata(fm.softschema ?? null);
-    const contractId = opts.contract ?? metadata?.contractId;
-    if (contractId === undefined) {
-      throw new UsageError("missing --contract because the document has no softschema.contract");
-    }
-    let status: Contract["status"] = "soft";
-    if (opts.status !== undefined) {
-      if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
-      status = opts.status;
-    } else if (metadata?.status) {
-      status = metadata.status;
-    }
-    const contract: Contract = {
-      id: contractId,
-      model: opts.model ?? null,
-      envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null, read.profile),
-      status,
-      profile: read.profile,
-      schemaPath: opts.schema ?? null,
-    };
+    const contract = inferValidationBinding(opts, rootMapping(read), read.profile);
     const result = validateArtifact(path, contract, {
       semanticModel,
       document: read.document,
@@ -637,30 +652,7 @@ async function runRepairValidate(
   const repaired = repairArtifact(path, { profile, write: false });
   const document = parseAfterRepair(repaired.text, profile);
   const root = document?.value ?? null;
-  const fm = isRecord(root) ? root : {};
-  if (!isRecord(root) && opts.contract === undefined) {
-    throw new UsageError(missingContractReason(profile));
-  }
-  const metadata = parseSchemaMetadata(fm.softschema ?? null);
-  const contractId = opts.contract ?? metadata?.contractId;
-  if (contractId === undefined) {
-    throw new UsageError("missing --contract because the document has no softschema.contract");
-  }
-  let status: Contract["status"] = "soft";
-  if (opts.status !== undefined) {
-    if (!isSchemaStatus(opts.status)) throw new UsageError(`invalid status: ${opts.status}`);
-    status = opts.status;
-  } else if (metadata?.status) {
-    status = metadata.status;
-  }
-  const contract: Contract = {
-    id: contractId,
-    model: opts.model ?? null,
-    envelopeKey: inferEnvelope(fm, opts.envelope, metadata?.envelope ?? null, profile),
-    status,
-    profile,
-    schemaPath: opts.schema ?? null,
-  };
+  const contract = inferValidationBinding(opts, isRecord(root) ? root : null, profile);
   const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
   const result = repairAndValidateArtifact(path, contract, { semanticModel, write, repaired });
   writeText(stableStringify(result));

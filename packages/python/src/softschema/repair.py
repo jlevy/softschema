@@ -36,13 +36,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from strif import atomic_output_file
-
 from softschema._portable import (
     PortableInputError,
     parse_yaml,
     read_utf8,
     split_frontmatter,
+    write_artifact_text,
 )
 from softschema.models import SchemaProfile
 
@@ -78,7 +77,12 @@ _NOT_REPAIRABLE = frozenset(
 # upstream version this is ported from, which required it. Every payload there sits under
 # an envelope so its keys are always indented; here the frontmatter root and the whole
 # pure-yaml profile put keys at column 0.
-_MAPPING_LINE = re.compile(r"^(?P<indent>[ \t]*)(?P<key>[\w.-]+): (?P<value>.+)$")
+#
+# The character class is spelled out rather than using `\w`, which is Unicode-aware in
+# Python and ASCII-only in JavaScript — the two implementations must agree on which keys
+# they will touch, and the conservative ASCII set is the pinned choice (a non-ASCII key is
+# left unrepaired identically on both sides; the shared vectors lock this in).
+_MAPPING_LINE = re.compile(r"^(?P<indent>[ \t]*)(?P<key>[A-Za-z0-9_.-]+): (?P<value>.+)$")
 
 
 @dataclass(frozen=True)
@@ -280,11 +284,5 @@ def repair_artifact(
         )
 
     if write and repaired_document is not None:
-        _write(path, repaired_document)
+        write_artifact_text(path, repaired_document)
     return RepairResult(ok=True, changed=True, text=repaired_document, records=result.records)
-
-
-def _write(path: Path, text: str) -> None:
-    """Write an artifact back, atomically and without touching its line endings."""
-    with atomic_output_file(path) as tmp:
-        Path(tmp).write_text(text, encoding="utf-8", newline="")

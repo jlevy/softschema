@@ -26,13 +26,13 @@ job, and only when asked.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
-from strif import atomic_output_file
 
-from softschema._portable import PortableInputError
+from softschema._portable import PortableInputError, write_artifact_text
 from softschema.conform import conform_artifact
 from softschema.models import Contract, SchemaMetadata, SchemaProfile, parse_schema_metadata
 from softschema.repair import RepairResult, repair_artifact
@@ -98,10 +98,18 @@ def repair_and_validate_artifact(
 
     changed = bool(records)
     if changed and write and text is not None:
-        _write(doc_path, text)
+        write_artifact_text(doc_path, text)
 
-    document = _reparse(text, profile) if text is not None else _UNREAD
-    result = validate_artifact(doc_path, contract=contract, document=document)
+    document, have_document = (None, False) if text is None else _reparse(text, profile)
+    if have_document:
+        result = validate_artifact(doc_path, contract=contract, document=document)
+    else:
+        # Nothing usable to hand over — the repair could not produce readable text, or
+        # there was no text at all. Omitting `document` (rather than passing a sentinel of
+        # our own that `validate_artifact` would mistake for a parsed root) makes
+        # validation read the file itself and produce its own diagnostic, exactly as a
+        # plain `validate` on the same artifact would.
+        result = validate_artifact(doc_path, contract=contract)
     return _with_repairs(result, records)
 
 
@@ -125,20 +133,7 @@ def _document_metadata(text: str | None) -> SchemaMetadata | None:
         return None
 
 
-def _write(path: Path, text: str) -> None:
-    """Write the artifact back atomically, without touching its line endings."""
-    with atomic_output_file(path) as tmp:
-        Path(tmp).write_text(text, encoding="utf-8", newline="")
-
-
-class _Unread:
-    """Sentinel telling :func:`validate_artifact` to read the file itself."""
-
-
-_UNREAD = _Unread()
-
-
-def _reparse(text: str, profile: SchemaProfile) -> Any:
+def _reparse(text: str, profile: SchemaProfile) -> tuple[Any, bool]:
     """Parse the post-repair text the way validation would parse the file.
 
     Validation must judge what this pass produced, not what was on disk when it started.
@@ -146,18 +141,20 @@ def _reparse(text: str, profile: SchemaProfile) -> Any:
     ``write=False`` there is no repaired file to re-read, so the in-memory text is the only
     correct source.
 
-    Both branches go through the same readers validation uses, so there is no second parse
-    implementation here to drift from the first.
+    Returns ``(document, True)`` on success — where ``document`` may legitimately be
+    ``None`` for a file with no frontmatter — and ``(None, False)`` when the text still
+    does not parse, in which case the caller omits ``document`` entirely so validation
+    reads the file and reports the failure itself. Both branches go through the same
+    readers validation uses, so there is no second parse implementation here to drift from
+    the first.
     """
     try:
         if profile is SchemaProfile.pure_yaml:
-            return parse_yaml_text(text)
+            return parse_yaml_text(text), True
         _body, frontmatter = parse_frontmatter_text(text)
     except PortableInputError:
-        # Still unreadable after repair. Let validation read the file and produce its own
-        # diagnostic rather than inventing one here.
-        return _UNREAD
-    return frontmatter
+        return None, False
+    return frontmatter, True
 
 
 def _with_repairs(
@@ -165,9 +162,7 @@ def _with_repairs(
 ) -> ArtifactValidationResult:
     """Attach repair records to a validation result.
 
-    ``ArtifactValidationResult`` is frozen, which is the right default for something
-    handed to many readers. This one field is filled in by the pass that produced the
-    result, immediately after construction and before any caller sees it.
+    ``replace`` rather than mutation keeps the frozen contract intact: ``outcome`` is
+    ``init=False`` and is recomputed by ``__post_init__``, so the copy is complete.
     """
-    object.__setattr__(result, "repairs", records)
-    return result
+    return dataclasses.replace(result, repairs=records)

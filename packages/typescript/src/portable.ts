@@ -6,6 +6,7 @@
  * document mean the same thing in both runtimes.
  */
 import { readFileSync } from "node:fs";
+import { writeFileSync } from "atomically";
 import { isAlias, isCollection, isPair, isScalar, parseDocument, visit } from "yaml";
 
 /** Largest integer that survives a round trip through a JS number. */
@@ -263,4 +264,15 @@ export function dumpRoundTrip(document: ReturnType<typeof parseDocument>): strin
     nullStr: "null",
     singleQuote: true,
   });
+}
+
+/**
+ * Write an artifact back: atomically, and without touching its line endings.
+ *
+ * The one write path for every pass that rewrites an artifact (repair, conform, the
+ * combined pipeline), so the "atomic, endings untouched" contract has a single home. The
+ * text carries exactly the endings the caller preserved.
+ */
+export function writeArtifactText(path: string, text: string): void {
+  writeFileSync(path, text, { encoding: "utf8" });
 }

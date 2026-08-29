@@ -58,7 +58,6 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
-from strif import atomic_output_file
 
 from softschema._portable import (
     PortableInputError,
@@ -66,6 +65,7 @@ from softschema._portable import (
     parse_yaml,
     round_trip_yaml,
     split_frontmatter,
+    write_artifact_text,
 )
 from softschema.errors import fmt_value
 from softschema.models import SchemaProfile
@@ -324,8 +324,7 @@ def conform_artifact(
         return ConformResult(changed=False, text=text, skipped_reason="not_portable")
 
     if write:
-        with atomic_output_file(path) as tmp:
-            Path(tmp).write_text(conformed, encoding="utf-8", newline="")
+        write_artifact_text(path, conformed)
     return ConformResult(changed=True, text=conformed, records=records)
 
 

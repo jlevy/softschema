@@ -188,3 +188,39 @@ def test_pipeline_does_not_invent_a_missing_field(tmp_path: Path) -> None:
     # The near-miss key is reported, never renamed.
     assert _read(path) == "---\nthing:\n  reason: because\n---\nBody.\n"
     assert [error["code"] for error in result.structural.errors] == ["missing_property"]
+
+
+def test_pipeline_unrepairable_document_matches_plain_validate(tmp_path: Path) -> None:
+    """The failure path hands validation the file, not a sentinel of the pipeline's own.
+
+    Regression guard: an earlier draft passed a pipeline-private "unread" marker that
+    ``validate_artifact`` mistook for a parsed document, so an unrepairable artifact was
+    reported as ``frontmatter_not_mapping`` instead of its real parse failure. The
+    contract is that ``--repair`` on a document repair cannot rescue reports exactly what
+    plain ``validate`` reports.
+    """
+    path = tmp_path / "a.md"
+    _write(path, "---\nthing: [unclosed\n---\nBody.\n")
+    contract = Contract(id="test:Thing")
+
+    from softschema.validate import validate_artifact
+
+    repaired = repair_and_validate_artifact(path, contract=contract, write=True)
+    plain = validate_artifact(path, contract=contract)
+
+    assert repaired.repairs == []
+    assert repaired.outcome == plain.outcome
+    assert repaired.structural.errors[0]["kind"] == plain.structural.errors[0]["kind"]
+    assert repaired.structural.errors[0]["kind"] == "yaml_parse_error"
+    # The failed repair leaves the document exactly as it was found.
+    assert _read(path) == "---\nthing: [unclosed\n---\nBody.\n"
+
+
+def test_pipeline_missing_file_is_an_input_error(tmp_path: Path) -> None:
+    result = repair_and_validate_artifact(
+        tmp_path / "nope.md", contract=Contract(id="test:Thing"), write=True
+    )
+
+    assert result.outcome == "input_error"
+    assert result.structural.errors[0]["kind"] == "artifact_unreadable"
+    assert result.repairs == []

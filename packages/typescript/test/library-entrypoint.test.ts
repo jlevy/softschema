@@ -90,6 +90,7 @@ describe("library entrypoint (issue #16)", () => {
       "repairAndValidateArtifact",
       "repairArtifact",
       "repairYamlText",
+      "resolveBoundSchema",
       "softField",
       "validateArtifact",
       "validateSemantic",

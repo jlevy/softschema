@@ -271,3 +271,17 @@ def dump_round_trip(yaml: YAML, document: Any) -> str:
     buffer = StringIO()
     yaml.dump(document, buffer)
     return buffer.getvalue()
+
+
+def write_artifact_text(path: Path, text: str) -> None:
+    """Write an artifact back: atomically, and without touching its line endings.
+
+    The one write path for every pass that rewrites an artifact (repair, conform, the
+    combined pipeline), so the "atomic, endings untouched" contract has a single home.
+    ``newline=""`` disables Python's newline translation — the text carries exactly the
+    endings the caller preserved.
+    """
+    from strif import atomic_output_file
+
+    with atomic_output_file(path) as tmp:
+        Path(tmp).write_text(text, encoding="utf-8", newline="")

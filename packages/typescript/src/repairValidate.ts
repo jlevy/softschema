@@ -26,11 +26,10 @@
  *
  * Kept in step with the Python `softschema/pipeline.py`.
  */
-import { writeFileSync } from "atomically";
 import type { z } from "zod";
 import { conformArtifact } from "./conform.js";
 import { type Contract, parseSchemaMetadata, type SchemaMetadata } from "./models.js";
-import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
+import { PortableInputError, parsePortableYaml, readUtf8, writeArtifactText } from "./portable.js";
 import { type RepairResult, repairArtifact } from "./repair.js";
 import {
   type ArtifactValidationResult,
@@ -40,6 +39,7 @@ import {
   type RepairRecord,
   resolveBoundSchema,
   validateArtifact,
+  YamlParseError,
 } from "./validate.js";
 
 export interface RepairAndValidateOptions {
@@ -94,7 +94,7 @@ export function repairAndValidateArtifact(
   }
 
   if (records.length > 0 && write && text !== undefined) {
-    writeFileSync(docPath, text, { encoding: "utf8" });
+    writeArtifactText(docPath, text);
   }
 
   const document = text === undefined ? undefined : reparse(text, profile);
@@ -171,9 +171,11 @@ function reparse(text: string, profile: Contract["profile"]): ParsedDocument | u
   try {
     return profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text);
   } catch (error) {
-    if (error instanceof PortableInputError || error instanceof Error) {
-      // Still unreadable after repair. Let validation read the file and produce its own
-      // diagnostic rather than inventing one here.
+    // Only the failures the readers themselves throw mean "still unreadable after
+    // repair"; those fall back to letting validation read the file and produce its own
+    // diagnostic. Anything else is a programming error and must crash rather than be
+    // quietly reclassified — mirroring Python's `except PortableInputError`.
+    if (error instanceof PortableInputError || error instanceof YamlParseError) {
       return undefined;
     }
     throw error;

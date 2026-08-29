@@ -32,9 +32,14 @@
  * Kept line for line with the Python `softschema/repair.py`; the shared vectors check
  * that the two agree.
  */
-import { writeFileSync } from "atomically";
 import type { SchemaProfile } from "./models.js";
-import { PortableInputError, parsePortableYaml, readUtf8, splitFrontmatter } from "./portable.js";
+import {
+  PortableInputError,
+  parsePortableYaml,
+  readUtf8,
+  splitFrontmatter,
+  writeArtifactText,
+} from "./portable.js";
 import type { RepairRecord } from "./validate.js";
 
 export type { RepairRecord };
@@ -76,8 +81,9 @@ const NOT_REPAIRABLE = new Set([
  * frontmatter root and the whole pure-yaml profile put keys at column 0.
  *
  * The character class is spelled out rather than using `\w`, which is ASCII-only in
- * JavaScript and Unicode-aware in Python — transliterating it would make the two
- * implementations disagree on a non-ASCII key.
+ * JavaScript and Unicode-aware in Python. Both implementations pin this same conservative
+ * ASCII set, so a non-ASCII key is left unrepaired identically on both sides; the shared
+ * vectors lock this in.
  */
 const MAPPING_LINE = /^(?<indent>[ \t]*)(?<key>[A-Za-z0-9_.-]+): (?<value>.+)$/;
 
@@ -242,10 +248,13 @@ export function repairArtifact(
     if (error instanceof PortableInputError) {
       return result({ errorCode: error.code, errorMessage: error.message });
     }
-    return result({
-      errorCode: "artifact_unreadable",
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
+    // A filesystem failure (missing file, permissions) carries an errno code; that is the
+    // `artifact_unreadable` class, mirroring Python's `except OSError`. Anything else is
+    // a programming error and must crash rather than be reclassified as a bad artifact.
+    if (isErrnoException(error)) {
+      return result({ errorCode: "artifact_unreadable", errorMessage: error.message });
+    }
+    throw error;
   }
 
   // The line scan below works in `\n`; a CRLF document is normalized for the duration and
@@ -293,7 +302,12 @@ export function repairArtifact(
   }
 
   if (write && repairedDocument !== null) {
-    writeFileSync(path, repairedDocument, { encoding: "utf8" });
+    writeArtifactText(path, repairedDocument);
   }
   return result({ ok: true, changed: true, text: repairedDocument, records: inner.records });
+}
+
+/** A Node filesystem error: an `Error` carrying a string `code` like ENOENT or EACCES. */
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && typeof (error as NodeJS.ErrnoException).code === "string";
 }

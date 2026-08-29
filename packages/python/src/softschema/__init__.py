@@ -16,7 +16,7 @@ from softschema.models import (
 )
 from softschema.pipeline import repair_and_validate_artifact
 from softschema.registry import Contracts
-from softschema.repair import RepairResult, repair_artifact
+from softschema.repair import RepairResult, repair_artifact, repair_yaml_text
 from softschema.schema_view import FieldInfo, SchemaView
 from softschema.soft_field import (
     RepairKind,
@@ -34,6 +34,7 @@ from softschema.validate import (
     infer_envelope_key,
     read_frontmatter_doc,
     read_yaml_doc,
+    resolve_bound_schema,
     validate_artifact,
     validate_semantic,
     validate_structural,
@@ -74,6 +75,8 @@ __all__ = [
     "regenerate",
     "repair_and_validate_artifact",
     "repair_artifact",
+    "repair_yaml_text",
+    "resolve_bound_schema",
     "validate_artifact",
     "validate_semantic",
     "validate_structural",

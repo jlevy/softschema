@@ -91,6 +91,8 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "regenerate",
         "repair_and_validate_artifact",
         "repair_artifact",
+        "repair_yaml_text",
+        "resolve_bound_schema",
         "validate_artifact",
         "validate_semantic",
         "validate_structural",

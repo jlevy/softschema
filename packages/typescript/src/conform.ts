@@ -34,7 +34,6 @@
  * Kept in step with the Python `softschema/conform.py`; the shared vectors check that the
  * structural half agrees, and each language's own tests cover its model half.
  */
-import { writeFileSync } from "atomically";
 import type { z } from "zod";
 import { pyRepr } from "./errors.js";
 import type { SchemaProfile } from "./models.js";
@@ -45,6 +44,7 @@ import {
   parseRoundTrip,
   readUtf8,
   splitFrontmatter,
+  writeArtifactText,
 } from "./portable.js";
 // One-directional: this module reads validation, and the combined repair-and-validate
 // entry point lives in `repairValidate.ts`, so neither of these two imports the other.
@@ -280,7 +280,7 @@ export function conformArtifact(path: string, options: ConformOptions = {}): Con
     return outcome({ text, skipped_reason: "not_portable" });
   }
 
-  if (write) writeFileSync(path, conformed, { encoding: "utf8" });
+  if (write) writeArtifactText(path, conformed);
   return outcome({ changed: true, text: conformed, records });
 }
 

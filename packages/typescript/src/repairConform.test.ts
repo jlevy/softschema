@@ -17,6 +17,7 @@ import { conformArtifact } from "./conform.js";
 import type { Contract, SchemaProfile } from "./models.js";
 import { repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
+import { validateArtifact } from "./validate.js";
 
 const VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
@@ -216,5 +217,39 @@ describe("the escalating pass", () => {
     expect(result.repairs).toEqual([]);
     expect(readFileSync(path, "utf8")).toBe("---\nthing:\n  reason: because\n---\nBody.\n");
     expect(result.structural.errors.map((e) => e.code)).toEqual(["missing_property"]);
+  });
+});
+
+describe("the failure path", () => {
+  /**
+   * The failure path hands validation the file, not a marker of the pipeline's own.
+   *
+   * Regression guard for the Python sentinel bug: `--repair` on a document repair cannot
+   * rescue must report exactly what plain `validate` reports — same kind, same outcome.
+   */
+  test("an unrepairable document matches plain validate", () => {
+    const path = join(scratch(), "a.md");
+    const original = "---\nthing: [unclosed\n---\nBody.\n";
+    writeFileSync(path, original);
+    const contract = contractFor({ envelopeKey: null });
+
+    const repaired = repairAndValidateArtifact(path, contract, { write: true });
+    const plain = validateArtifact(path, contract);
+
+    expect(repaired.repairs).toEqual([]);
+    expect(repaired.outcome).toBe(plain.outcome);
+    expect(repaired.structural.errors[0]?.kind).toBe(plain.structural.errors[0]?.kind);
+    expect(repaired.structural.errors[0]?.kind).toBe("yaml_parse_error");
+    expect(readFileSync(path, "utf8")).toBe(original);
+  });
+
+  test("a missing file is an input error", () => {
+    const result = repairAndValidateArtifact(join(scratch(), "nope.md"), contractFor(), {
+      write: true,
+    });
+
+    expect(result.outcome).toBe("input_error");
+    expect(result.structural.errors[0]?.kind).toBe("artifact_unreadable");
+    expect(result.repairs).toEqual([]);
   });
 });

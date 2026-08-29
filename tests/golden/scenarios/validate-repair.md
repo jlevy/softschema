@@ -177,6 +177,23 @@ data:
 ? 0
 ```
 
+# Journey: a document repair cannot rescue reports its real failure
+
+The escalation has a floor: when quoting does not make the document parse, `--repair`
+reports exactly what plain `validate` reports — the parse failure, not a repair artifact
+of its own — and the file is left exactly as it was found. The binding is passed as flags
+because the document's own `softschema:` block sits inside the very frontmatter that
+cannot be read. The engine wording varies, so the stable JSON `kind` is pinned instead.
+
+```console
+$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-unrepairable.md "$D/" && softschema validate "$D/repair-unrepairable.md" --repair --contract test.repair:Doc/v1 --envelope data > "$D/out.json"; echo "exit=$?"; grep -o '"kind": "yaml_parse_error"' "$D/out.json"; grep -c '"repairs": \[\]' "$D/out.json"; diff tests/golden/fixtures/repair-unrepairable.md "$D/repair-unrepairable.md" && echo "byte-identical"
+exit=1
+"kind": "yaml_parse_error"
+1
+byte-identical
+? 0
+```
+
 # Journey: the two flags are mutually exclusive
 
 ```console

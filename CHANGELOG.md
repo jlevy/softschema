@@ -33,9 +33,10 @@ An artifact needing no repair comes back byte-identical.
 
 ### Added
 
-- `repair_artifact` / `repairArtifact`, `conform_artifact` / `conformArtifact`, and
-  `repair_and_validate_artifact` / `repairAndValidateArtifact` on the public API, with
-  their result types.
+- `repair_artifact` / `repairArtifact`, `repair_yaml_text` / `repairYamlText`,
+  `conform_artifact` / `conformArtifact`, and `repair_and_validate_artifact` /
+  `repairAndValidateArtifact` on the public API of both packages, with their result
+  types.
 - `resolve_bound_schema` / `resolveBoundSchema`: the single answer to which compiled
   schema an artifact is judged against, so validation and repair cannot disagree about
   it.

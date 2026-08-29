@@ -53,6 +53,7 @@ export {
   type RepairRecord,
   readFrontmatterDoc,
   readYamlDoc,
+  resolveBoundSchema,
   type SemanticResult,
   type StructuralResult,
   type ValidationResult,
