@@ -11,9 +11,11 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Status:** Draft
 
-**Tracking:** `ss-z65x` (repair), `ss-1l9v` (conform), `ss-0rsk` (CLI wiring), `ss-loj9`
-(near-miss hint), `ss-q368` (metaproc coordination), from GitHub issue
-[#50](https://github.com/jlevy/softschema/issues/50)
+**Tracking:** `ss-pac1` (epic), with file-level children `ss-uwp6`/`ss-l3dc` (portable
+helpers), `ss-arqr`/`ss-ioej`/`ss-ibay` (repair), `ss-1obx`/`ss-xisi`/`ss-roh1`
+(conform), `ss-oguz`/`ss-unny`/`ss-xri1`/`ss-g5tr` (wiring), `ss-y3h8` (golden journey),
+`ss-umu2` (docs), and the deferred `ss-e56b` (near-miss hint) and `ss-vt54` (metaproc),
+from GitHub issue [#50](https://github.com/jlevy/softschema/issues/50)
 
 ## Overview
 
@@ -434,28 +436,111 @@ Touches the message contract, so it lands on its own.
 
 ## Testing Strategy
 
+A pass that **writes the file it was asked to check** needs its testing settled up
+front, not discovered case by case.
+Two things make it unusual for this repo: the observable output includes a side effect
+on disk, and the safety argument rests on what the pass *declines* to do.
+Both shape what is tested and where.
+
+### What owns what
+
 Following the ownership rules in [`docs/development.md`](../../../development.md) — one
-primary owner per case, not the same case at every layer:
+primary owner per case, never the same case at every layer:
 
-- **Shared YAML vectors** own the repair and structural-conform rules: which documents
-  repair, which conform, which are deliberately left alone.
-  This is where the five invariants above are pinned.
-- **Golden journeys** own the CLI surface: `--repair`, `--check-repair`, exit codes, the
-  `repairs` field, and the side effect on disk.
-  Include the two bound-layer cases the CLI can reach — schema-bound and metadata-only —
-  so a conform that silently cannot fire is a test failure rather than a passing run.
-- **Adapter unit tests** own the filesystem boundary and the semantic source: atomic
-  write, unwritable path, CRLF, no trailing newline, symlink, and the model-only conform
-  path in each language.
-  CRLF and the trailing newline matter more than usual here, because the existing
-  readers normalize both and the write path deliberately does not go through them.
-- **`cross-impl-diff.sh`** confirms the two implementations write the same bytes.
+| Layer | Owns | Does not own |
+| --- | --- | --- |
+| Shared vectors (`tests/vectors/hardening.yaml`) | which documents repair, which conform, which are deliberately left alone | anything about the CLI, or the filesystem |
+| Golden journeys (`tests/golden/scenarios/`) | the CLI surface, exit codes, the `repairs` array, and the side effect on disk | library rules already pinned by a vector |
+| Adapter unit tests | the filesystem boundary and the semantic source | restating the vector corpus |
+| `cross-impl-diff.sh` | that both implementations write the same bytes | new cases of its own |
 
-Ported from metaproc’s suites (`test_yaml_repair.py`, ~354 lines;
-`test_schema_conform.py`, ~407 lines), which already cover the recorded notation limits
-and are a substantial head start.
+The shared corpus is the primary owner for repair and for the **structural** conform
+source, because Ajv and `jsonschema` emit the same engine-neutral record and the rule is
+therefore genuinely portable.
+The **semantic** source is per-language on purpose: `docs/development.md` already scopes
+Pydantic-versus-Zod behavior out of the shared corpus, so Pydantic `string_type` and Zod
+`invalid_type` get adapter tests instead of vectors.
 
-The four acceptance criteria that survive from the issue:
+### The golden journey is the parity oracle
+
+`tests/golden/scenarios/validate-repair.md` runs against Python, Node, and Bun through
+`SOFTSCHEMA_IMPL`, so it is the one place the whole feature is checked as a caller sees
+it. Three consequences for how it is written:
+
+**Fixtures must be copied, not mutated in place.** `--repair` rewrites its input, so a
+scenario that points at a checked-in fixture passes once and then fails on a dirty tree.
+Each case copies its fixture to a scratch path first.
+This is the one place these tests differ structurally from every existing scenario, and
+getting it wrong makes the whole file non-reproducible.
+
+**The file is part of the output.** A transcript that shows only the JSON verdict has
+not tested the feature — the write is the deliverable.
+Each mutating case `cat`s the file afterward, so the repaired bytes are in the
+transcript and a reviewer reads the actual diff rather than trusting an `ok: true`.
+
+**Elisions are for genuinely variable text only.** `[..]` covers scratch paths and
+digests. It must not paper over a field that should be pinned, which for this feature
+means the `repairs` array is never elided — it is the field a caller reads to tell “was
+already valid” from “was repaired into validity”, and an elided one would hide a pass
+that silently stopped firing.
+
+### The invariants are test cases, not prose
+
+Each of the five [invariants](#invariants) gets a case that fails if it breaks:
+
+| Invariant | Where | Shape |
+| --- | --- | --- |
+| Idempotence | golden | `--repair` twice; the second run reports no change |
+| Portable round-trip | vectors | every conformed value re-read through `parse_yaml` |
+| Minimal diff | golden | `cat` after repair; one scalar differs, nothing else |
+| No widening | golden | a valid document is byte-identical after `--repair` |
+| Parity | `cross-impl-diff.sh` | same bytes, same records, both runtimes |
+
+Minimal diff and no widening are the two most likely to rot silently, because a
+formatting regression still validates.
+Putting both in the transcript rather than in an assertion is deliberate: a reviewer
+sees a whole-file diff the moment an emitter starts restyling.
+
+### Negative cases carry the safety argument
+
+The reason to trust this pass is the set of defects it refuses to touch.
+That set is only real if it is tested, so each refusal is a named case rather than an
+absence:
+
+- a missing required field is **not** invented
+- a near-miss synonym key (`reason` for `rationale`) is **not** renamed
+- an explicit null is **not** stringified
+- a union that already admits the value is **not** rewritten
+- a genuinely wrong value is **not** coerced into looking right
+- an alias, merge key, or explicit tag is **not** “repaired” — it is a semantic choice,
+  not a typo, and quoting cannot fix it
+
+A change that widens the fixable set has to delete one of these to land, which is the
+point.
+
+### Two regression guards worth naming
+
+**The model-only conform path.** Assert directly, in both adapter suites, that a
+contract with a model and no `schema_path` still conforms.
+This is the metaproc case, and the failure mode is a silent no-op that every other test
+passes through happily.
+
+**Line endings and the trailing newline.** Both existing readers normalize CRLF and can
+invent a trailing newline; the write path deliberately does not go through them.
+A CRLF fixture and a fixture with no final newline both belong in the adapter suites,
+because a golden transcript will not show the difference.
+
+### Ported coverage
+
+metaproc’s suites (`test_yaml_repair.py`, ~354 lines; `test_schema_conform.py`, ~407
+lines) are a substantial head start, and its `TestRecordedNotationLimits` already pins
+the two notations a round trip does not preserve (a bool comes back canonically spelled,
+an integer’s leading `+` is dropped).
+Port the cases; do not port the structure, since ownership here splits differently.
+
+### Acceptance criteria
+
+The four that survive from the issue:
 
 1. `--repair` on a document with an unquoted colon repairs it, writes it, and validates.
 2. `--repair` on `1850` against `type: string` conforms it and validates clean.
@@ -464,6 +549,13 @@ The four acceptance criteria that survive from the issue:
 
 (The issue’s criteria 1 and 5, on the `required` message, already pass; regression
 coverage exists.)
+
+Plus three this review adds:
+
+5. A model-only contract still conforms.
+6. `--repair` on an already-valid document leaves it byte-identical.
+7. `--check-repair` never writes, and exits 1 exactly when `--repair` would change
+   something.
 
 ## Rollout Plan
 
