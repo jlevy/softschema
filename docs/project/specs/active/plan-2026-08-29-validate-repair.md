@@ -98,28 +98,50 @@ a filtered list, discarding the per-property `property` field that
 documents as the field-level repair match surface.
 This section is dropped from the plan.
 
-#### 2. Pydantic `string_type` is unavailable on the path this feature exists to serve
+#### 2. Conform has to read both validation layers, not one
+
+The issue keys conform on Pydantic’s `string_type` error.
+That covers only half the callers, and not the half the feature exists to serve.
 
 `Contract.model` is `None` unless the caller passes `--model module:Class`, which
 imports arbitrary local code and is documented as trusted-only.
 The flagship agent flow — a self-describing artifact binding a compiled schema through
-`softschema.schema` — has no Pydantic model at all, and neither does any TypeScript
-caller that is not using Zod.
-
-A conform pass keyed on Pydantic’s `string_type` error therefore **cannot fire for
+`softschema.schema` — has no Pydantic model at all.
+A conform pass keyed on `string_type` **cannot fire for
 `softschema validate --repair <artifact>`**, the exact command the issue proposes.
 
-The structural layer already emits the JSON-Schema-native equivalent, with no model
-required and the instance path attached:
+The mirror of that is just as sharp.
+metaproc registers every built-in contract with a model and **no `schema_path`**
+(`plugins/registry.py`), and softschema answers a missing schema with
+`StructuralResult(ok=True, skipped_reason="no_schema")`. So a conform keyed only on the
+structural layer would be a silent no-op for the very consumer this migration is for — a
+regression from the code being moved.
 
-```json
-{"code": "invalid_value", "validator": "type", "validator_value": "string",
- "path": ["name"], "value": 1850, "message": "value 1850 is not of type 'string'"}
-```
+softschema already runs
+[two independent layers](../../../softschema-spec.md#validation-expectations) and
+reports them separately.
+The same defect simply has two spellings, and conform reads whichever ran:
 
-Keying conform on that record preserves the issue’s narrowness argument exactly — one
-keyword, one direction, no inference — while making the feature work where it is needed,
-and it is emitted identically by Ajv, which is what makes parity achievable at all.
+| Source | Record | Available when |
+| --- | --- | --- |
+| Structural (JSON Schema) | `{code: "invalid_value", validator: "type", validator_value: "string", path: [...]}` | a compiled schema is bound |
+| Semantic (Pydantic) | `{"type": "string_type", "loc": [...]}` | a model is bound |
+| Semantic (Zod) | `invalid_type` issue with `expected: "string"` | a model is bound |
+
+The structural source preserves the issue’s narrowness argument exactly — one keyword,
+one direction, no inference — needs no model, and is emitted identically by Ajv, which
+is what makes shared-corpus parity possible.
+The semantic source keeps model-only callers working and is per-language by design,
+which the parity policy already allows for Pydantic-versus-Zod behavior.
+
+When neither is bound, validation is metadata-only, so conform has nothing to key on and
+only repair runs. That is the correct outcome, and the result should say so rather than
+report a silent success.
+
+One TypeScript detail this exposes: `validateSemantic` currently maps a Zod issue to
+`{code, path, message}` and **discards `expected`**, which is the field that identifies
+a string-type issue.
+The mapping has to carry it for the semantic source to work at all.
 
 #### 3. Parity is a hard repo invariant, and the proposal is Python-only
 
@@ -169,6 +191,30 @@ what `compile` and `generate` write through today.
   never validates. That machinery can go — but the null-spelling behavior it also pinned
   must be preserved another way, or a null the pass did not touch changes shape.
 
+#### 5. “Substitute softschema’s own” names two things softschema does not have
+
+The issue’s migration table dismisses `atomic_output_file`, `fmf_split_frontmatter`, and
+`new_yaml` in one row.
+Only the first is a straight substitution (`strif.atomic_write_text` in Python,
+`atomically` in TypeScript, both already used by `compile` and `generate`). The other
+two are new work in both languages:
+
+- **An offset-preserving frontmatter splitter.** metaproc splices the body back by byte
+  offset, which is what keeps the body untouched.
+  softschema’s readers do not expose offsets: both `read_frontmatter_doc` and
+  `readFrontmatterDoc` split on lines and rejoin with `"\n"`, so a CRLF document is
+  silently reflowed and a missing trailing newline is invented.
+  Python can adopt `frontmatter_format.fmf_split_frontmatter`, already a dependency,
+  which returns `(metadata_str, body_offset, meta_start)`. **TypeScript has no
+  equivalent** and needs one written, reproducing the existing fence rules exactly —
+  including the `trimEnd()` on the fence line and the `\r?\n` split, so repair and
+  validation never disagree about where the frontmatter is.
+- **A round-trip YAML writer.** softschema has no configured round-trip emitter in
+  either language. Python’s `compile.py` uses `frontmatter_format.new_yaml` to write
+  compiled schemas, but that is a fresh-document writer, not a formatting-preserving
+  one. Both languages need an emitter configured for this pass: preserved quotes, no
+  re-wrapping, the artifact’s own indentation, and the pinned null spelling noted above.
+
 ### Two further findings
 
 **`--repair` makes softschema a writer of artifacts for the first time.** Today it
@@ -214,21 +260,39 @@ One escalating pass, exposed as one flag:
    If the parse failed, quote unsafe plain scalars and re-parse with `parse_yaml`. If it
    still fails, stop and report the original error.
 3. **Conform** (schema-aware).
-   Validate structurally.
-   For each `{code: "invalid_value", validator: "type"}` record whose `validator_value`
-   admits `string`, replace the scalar at `path` with its own source text.
-4. **Write**, atomically, only if something changed.
+   Validate, and for each string-type disagreement either layer reports (see the table
+   [above](#2-conform-has-to-read-both-validation-layers-not-one)), replace the scalar
+   at that path with its own source text.
+4. **Write**, atomically, once, only if something changed.
 5. **Validate** the result and report both the verdict and what was changed.
 
 Each step is guarded by the next: a repair that does not produce a parseable document is
 discarded, and a conform that does not produce a portable value is discarded.
+
+Two details the pass depends on:
+
+**One write, not two.** metaproc writes in both its passes because they are separate
+call sites. Here they are one operation, so repair hands its output to conform in memory
+and the file is touched once.
+That is what makes idempotence and the minimal-diff invariant testable rather than
+emergent, and it means a conform failure cannot leave a half-applied file behind.
+
+**Conform iterates to a fixed point, bounded.** A defect can hide another: fixing a
+parent can reveal a child the validator never reached, which is why metaproc bounds
+itself at `_MAX_ROUNDS = 3`. The pressure is lower here on the structural path, because
+`iter_errors` and Ajv report the whole set at once — but not absent, since a corrected
+type can newly satisfy an `if`/`then`, `anyOf`, or `$ref` branch that did not previously
+apply, and the model path behaves exactly as metaproc’s does.
+Keep the bound, and terminate on the first round that changes nothing rather than on the
+round count, so the common case costs one pass.
 
 ### Components
 
 | Module | Owns |
 | --- | --- |
 | `softschema/repair.py` / `src/repair.ts` | syntactic repair; no schema dependency |
-| `softschema/conform.py` / `src/conform.ts` | type conform, keyed on structural records |
+| `softschema/conform.py` / `src/conform.ts` | type conform, keyed on both layers’ records |
+| `softschema/_portable.py` / `src/portable.ts` | offset-preserving frontmatter split; round-trip writer |
 | `validate.py` / `validate.ts` | the escalating pass; unchanged read-only entry points |
 | `cli.py` / `cli.ts` | `--repair`, `--check-repair`; result reporting |
 
@@ -245,8 +309,19 @@ Additive. `validate_artifact` keeps its read-only guarantee — a function named
 def repair_artifact(path: Path) -> RepairResult:
     """Repair YAML that does not parse. Schema-free; runs before validation."""
 
-def conform_artifact(path: Path, schema_path: Path, *, envelope_key: str | None) -> ConformResult:
-    """Coerce scalars to the types the compiled schema declares. `type: string` only."""
+def conform_artifact(
+    path: Path,
+    *,
+    schema_path: Path | None = None,
+    model: type[BaseModel] | None = None,
+    envelope_key: str | None = None,
+) -> ConformResult:
+    """Coerce scalars to the string type the contract declares.
+
+    Reads whichever validation layer is bound: the structural `type` record from
+    `schema_path`, the semantic `string_type` record from `model`, or both. With
+    neither, there is nothing to conform against and the result says so.
+    """
 
 def repair_and_validate_artifact(
     doc_path: Path, *, contract: Contract, write: bool = True
@@ -303,6 +378,10 @@ These are the properties to test, not aspirations:
 Self-contained, no schema dependency, and the largest single win: an unparseable
 document is a total loss today.
 
+- [ ] Add the offset-preserving frontmatter split and the round-trip writer in both
+  languages, since every later step writes through them.
+  Python adopts `frontmatter_format.fmf_split_frontmatter`; TypeScript needs one written
+  against the existing fence rules.
 - [ ] Port `yaml_repair` to `softschema/repair.py`, dropping metaproc imports.
 - [ ] Replace the self-check with `parse_yaml`, so repair is judged by the reader that
   will judge the artifact.
@@ -319,13 +398,20 @@ document is a total loss today.
 - [ ] `softschema/conform.py`, keyed on `{code: "invalid_value", validator: "type"}`
   records whose `validator_value` admits `string`, resolving the scalar through the
   record’s `path`.
+- [ ] Add the semantic source alongside it, so model-only callers (metaproc’s registered
+  contracts among them) keep the behavior being migrated.
+- [ ] Carry `expected` through the TypeScript Zod issue mapping, which currently drops
+  it, so the semantic source can identify a string-type issue at all.
+- [ ] Iterate to a fixed point under a bound; terminate on the first no-change round.
 - [ ] Derive the coercible set from softschema’s portable value domain, not metaproc’s:
   settle the `datetime` members against the round-trip/portable parse disagreement.
 - [ ] Drop the alias machinery; keep the null-spelling pin under its own test.
 - [ ] Preserve the source text of the scalar (`1.10` stays `1.10`, `007` stays `007`),
   so the fix is lossless.
 - [ ] Port to `src/conform.ts`.
-- [ ] Shared vectors, including every notation the round trip does not preserve.
+- [ ] Shared vectors for the structural source, including every notation the round trip
+  does not preserve; per-language tests for the semantic source, as the parity policy
+  already requires for Pydantic-versus-Zod behavior.
 
 ### Phase 3: Wire the pass and the flags
 
@@ -351,13 +437,18 @@ Touches the message contract, so it lands on its own.
 Following the ownership rules in [`docs/development.md`](../../../development.md) — one
 primary owner per case, not the same case at every layer:
 
-- **Shared YAML vectors** own the repair and conform rules: which documents repair,
-  which conform, which are deliberately left alone.
-  This is where the four invariants above are pinned.
+- **Shared YAML vectors** own the repair and structural-conform rules: which documents
+  repair, which conform, which are deliberately left alone.
+  This is where the five invariants above are pinned.
 - **Golden journeys** own the CLI surface: `--repair`, `--check-repair`, exit codes, the
   `repairs` field, and the side effect on disk.
-- **Adapter unit tests** own the filesystem boundary: atomic write, unwritable path,
-  CRLF, no trailing newline, symlink.
+  Include the two bound-layer cases the CLI can reach — schema-bound and metadata-only —
+  so a conform that silently cannot fire is a test failure rather than a passing run.
+- **Adapter unit tests** own the filesystem boundary and the semantic source: atomic
+  write, unwritable path, CRLF, no trailing newline, symlink, and the model-only conform
+  path in each language.
+  CRLF and the trailing newline matter more than usual here, because the existing
+  readers normalize both and the write path deliberately does not go through them.
 - **`cross-impl-diff.sh`** confirms the two implementations write the same bytes.
 
 Ported from metaproc’s suites (`test_yaml_repair.py`, ~354 lines;
@@ -417,10 +508,10 @@ the ways a *present* artifact can be wrong.
 Letting the producer see and fix its own failures does not depend on classifying them
 correctly after the fact.
 
-**Keying conform on Pydantic `string_type`.** See
-[Background](#2-pydantic-string_type-is-unavailable-on-the-path-this-feature-exists-to-serve).
-It cannot fire for the CLI flow this feature exists to serve, and it has no TypeScript
-analogue that keeps parity.
+**Keying conform on one validation layer.** Either layer alone leaves half the callers
+unserved: Pydantic `string_type` cannot fire for the CLI flow this feature exists to
+serve, and the structural record cannot fire for model-only contracts like metaproc’s.
+See [Background](#2-conform-has-to-read-both-validation-layers-not-one).
 
 ## Open Questions
 
