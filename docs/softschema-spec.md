@@ -720,6 +720,43 @@ Error-record-set parity is required except for cases explicitly listed in the sh
 `engine_deviations` vectors; each runtime pins its own complete record set for those
 cases so unlisted drift fails.
 
+### Repair
+
+A validator may offer a repair mode that corrects an artifact before judging it, so the
+process that produced a document can run the same check its consumer will run rather
+than discovering the verdict after it has exited.
+
+Repair is one escalating pass: parse, repair the document if it does not parse, conform
+its scalars to the types the contract declares, write once if anything changed, then
+validate.
+
+Exactly two corrections are in scope, and both restore what a serializer would have
+done:
+
+- **Quoting a plain scalar** whose text YAML would otherwise read as structure, so a
+  document that does not parse becomes one that does.
+  This needs no schema and runs first.
+- **Retyping a scalar as a string** where the contract declares `type: string` and the
+  value arrived as another scalar.
+  The replacement text is the scalar as written, so a notation the author chose (`1.10`,
+  `007`) survives.
+
+Everything else is reported and left alone.
+A missing required property is not invented, a key that is a near-miss for a declared
+one is not renamed, an explicit null is not stringified, and a value a union already
+admits is not rewritten.
+A parse failure that quoting cannot fix — an alias, a merge key, an explicit tag — keeps
+its original error code, because each is a choice the author made rather than a slip.
+
+A conforming implementation must leave an artifact that needs no repair byte-identical,
+must produce the same bytes when repair is applied twice, and must never write a value
+its own reader would then reject.
+
+Changes are reported as records carrying `kind`, `code`, and `path`, the same match
+surface as structural errors, so a consumer identifies a repair the way it identifies a
+failure. A result with no changes and one repaired into validity are distinguishable by
+that list.
+
 ### Matching on structural error records
 
 A structural error record carries both the JSON Schema keyword that failed and a

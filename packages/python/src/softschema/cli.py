@@ -18,14 +18,18 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 from strif import atomic_write_text
 
-from softschema._portable import PortableInputError
+from softschema._portable import PortableInputError, read_utf8, split_frontmatter
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaProfile, SchemaStatus, parse_schema_metadata
+from softschema.pipeline import repair_and_validate_artifact
+from softschema.repair import repair_artifact
 from softschema.validate import (
     EnvelopeAmbiguityError,
     infer_envelope_key,
+    parse_frontmatter_text,
+    parse_yaml_text,
     read_frontmatter_doc,
     read_yaml_doc,
     validate_artifact,
@@ -218,6 +222,19 @@ def main(argv: list[str] | None = None) -> int:
             "as pure-yaml and anything else as frontmatter-md."
         ),
     )
+    validate_parser.add_argument(
+        "--repair",
+        action="store_true",
+        help=(
+            "Repair unparsable YAML and conform scalars to the declared types, write the "
+            "file, then validate. Reports every change under `repairs`."
+        ),
+    )
+    validate_parser.add_argument(
+        "--check-repair",
+        action="store_true",
+        help="Report what --repair would change without writing; exit 1 if anything would.",
+    )
     validate_parser.set_defaults(func=_validate_cmd)
 
     compile_parser = subparsers.add_parser("compile", help="Compile a Pydantic model.")
@@ -381,6 +398,13 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Read the document once here; both binding inference and validate_artifact
     # reuse that parse, so the file is parsed a single time.
+    repair, check_repair = args.repair, args.check_repair
+    if repair and check_repair:
+        raise UsageError("--repair and --check-repair are mutually exclusive")
+
+    if repair or check_repair:
+        return _repair_validate_cmd(args, write=repair)
+
     read = _read_artifact(args.path, _profile_from_args(args))
     contract_id, status, envelope_key = _infer_validation_binding(args, read.document, read.profile)
     model = _load_model(args.model) if args.model else None
@@ -399,6 +423,79 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     if result.outcome == "valid":
         return 0
     return 1
+
+
+def _repair_validate_cmd(args: argparse.Namespace, *, write: bool) -> int:
+    """The `--repair` / `--check-repair` path.
+
+    Repair runs *before* binding inference, not after. The document this flag exists to
+    rescue is one that does not parse, and the contract, schema, and envelope are all read
+    out of that same unparsable frontmatter — inferring the binding first would fail on
+    exactly the artifacts the flag is for.
+
+    The repair is then handed to the pipeline rather than recomputed, so the file is still
+    read once and written at most once.
+    """
+    profile = _profile_from_args(args) or _detect_profile(args.path)
+    repaired = repair_artifact(args.path, profile=profile, write=False)
+    document = _parse_after_repair(repaired.text, profile)
+    contract_id, status, envelope_key = _infer_validation_binding(args, document, profile)
+    contract = Contract(
+        id=contract_id,
+        model=_load_model(args.model) if args.model else None,
+        envelope_key=envelope_key,
+        schema_path=args.schema,
+        status=status,
+        profile=profile,
+    )
+    result = repair_and_validate_artifact(
+        args.path, contract=contract, write=write, repaired=repaired
+    )
+    print(_json(result))
+    # `--check-repair` answers "would this change?", so a document needing repair fails the
+    # check even when it would validate afterward. Same shape as `generate --check`, and it
+    # is what lets a gate reject an unrepaired artifact.
+    if not write and result.repairs:
+        return 1
+    return 0 if result.outcome == "valid" else 1
+
+
+def _detect_profile(path: Path) -> SchemaProfile:
+    """Detect an artifact's profile without requiring it to parse.
+
+    The ordinary detection in `_read_artifact` parses the document, which an artifact
+    awaiting repair does not do. Every rule that does not need a successful parse is kept:
+    the filename, then the presence of a frontmatter fence. A fenceless document that will
+    not parse falls back to frontmatter-md and reports `no_frontmatter`, exactly as it does
+    without `--repair`.
+    """
+    if path.suffix.lower() in _YAML_SUFFIXES:
+        return SchemaProfile.pure_yaml
+    try:
+        text = read_utf8(path)
+    except (OSError, PortableInputError):
+        return SchemaProfile.frontmatter_md
+    if split_frontmatter(text.replace("\r\n", "\n")) is not None:
+        return SchemaProfile.frontmatter_md
+    root = _yaml_root_or_none(path)
+    if isinstance(root, dict) and "softschema" in root:
+        return SchemaProfile.pure_yaml
+    return SchemaProfile.frontmatter_md
+
+
+def _parse_after_repair(text: str | None, profile: SchemaProfile) -> Any:
+    """Parse the repaired text for binding inference, tolerating one that still fails."""
+    if text is None:
+        return None
+    try:
+        if profile is SchemaProfile.pure_yaml:
+            return parse_yaml_text(text)
+        _body, frontmatter = parse_frontmatter_text(text)
+    except PortableInputError:
+        # Repair could not rescue it. Binding inference falls back to the flags, and
+        # validation reports the parse failure itself.
+        return None
+    return frontmatter
 
 
 def _profile_from_args(args: argparse.Namespace) -> SchemaProfile | None:

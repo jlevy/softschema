@@ -839,8 +839,14 @@ Use this sequence:
    when producers can supply it and consumers need it.
    Changing the schema does not require changing the Markdown body.
 
-5. **Validate and repair at each handoff.** Run `softschema validate ...` immediately
-   after an agent writes an artifact and return the JSON result to the agent.
+5. **Validate and repair at each handoff.** Run `softschema validate --repair ...`
+   immediately after an agent writes an artifact and return the JSON result to the
+   agent. `--repair` quotes a scalar that made the document unparsable and retypes one
+   the contract wants as a string, writes the file, and then validates — so the
+   producing agent sees the same verdict its consumer will, while it is still in a
+   position to fix what remains.
+   Plain `validate` stays read-only, and `--check-repair` reports what would change
+   without writing, which is what a gate runs against an artifact under review.
    Structural and semantic failures are separate.
    For a structural repair, match `kind`, `code`, and `path`; records for missing or
    undeclared properties also include `property`. Do not parse `message`; see

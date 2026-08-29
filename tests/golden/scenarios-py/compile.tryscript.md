@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: compile --check finds no drift against the committed sidecar
@@ -16,7 +14,7 @@ committed file is checked byte-for-byte by the cross-implementation conformance
 test.
 
 ```console
-$ softschema compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check
+$ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check
 {
   "drift": false,
   "drift_diff": null,
@@ -34,7 +32,7 @@ title, and the digest, so `--check` against the committed sidecar reports drift 
 exits 1.
 
 ```console
-$ softschema compile examples.movie_page.model:MoviePage --contract wrong:Movie/v1 --out examples/movie_page/movie-page.schema.yaml --check
+$ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract wrong:Movie/v1 --out examples/movie_page/movie-page.schema.yaml --check
 {
   "drift": true,
   "drift_diff": "committed schema at examples/movie_page/movie-page.schema.yaml differs from compile output",

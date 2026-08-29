@@ -4,6 +4,57 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### `softschema validate --repair`
+
+Validation normally happens after the process that wrote an artifact has exited.
+By then the session that could fix the document is gone, so a large, nearly-correct
+artifact is discarded over one field.
+`--repair` lets the producer run the same check its consumer will run, while it can
+still act on the answer.
+
+```bash
+softschema validate <path>                  # unchanged; read-only
+softschema validate <path> --repair         # repair, conform, write, validate
+softschema validate <path> --check-repair   # report what would change; no write
+```
+
+One escalating pass, writing the file once: parse, quote a scalar whose text YAML reads
+as structure, retype a scalar the contract declares `type: string`, then validate.
+The replacement text is the scalar as written, so `1.10` and `007` survive being
+retyped.
+
+What it declines to do is the point.
+A missing required property is not invented, a near-miss key is not renamed, an explicit
+null is not stringified, and a parse failure quoting cannot fix — an alias, a merge key,
+an explicit tag — keeps its original error code.
+An artifact needing no repair comes back byte-identical.
+
+### Added
+
+- `repair_artifact` / `repairArtifact`, `repair_yaml_text` / `repairYamlText`,
+  `conform_artifact` / `conformArtifact`, and `repair_and_validate_artifact` /
+  `repairAndValidateArtifact` on the public API of both packages, with their result
+  types.
+- `resolve_bound_schema` / `resolveBoundSchema`: the single answer to which compiled
+  schema an artifact is judged against, so validation and repair cannot disagree about
+  it.
+- Shared `yaml_repair` and `schema_conform` vector sections, and the
+  `tests/golden/scenarios/validate-repair.tryscript.md` journey, which runs against
+  Python, Node, and Bun.
+
+### Changed
+
+- `ArtifactValidationResult` gains `repairs`, a list of what a repair pass changed.
+  It is always present and empty for a plain `validate`, so every `validate` JSON result
+  now carries a `"repairs": []` key.
+  Records use the documented `kind`/`code`/`path` match surface, so a consumer
+  identifies a repair the way it identifies an error.
+- TypeScript semantic error records now carry `expected` on the Zod issues that have
+  one. It is what identifies a type disagreement; without it an `invalid_type` issue says
+  only that something was wrong, not what was wanted.
+
 ## v0.7.0—2026-08-25
 
 This is a minor release because structural diagnostic records and supplied-resource

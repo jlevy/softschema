@@ -43,6 +43,8 @@ test("shared hardening vectors are readable", () => {
     "compiler_titles",
     "schema_view",
     "digests",
+    "yaml_repair",
+    "schema_conform",
   ]);
   const ids = Object.values(vectors).flatMap((cases) => cases.map(({ id }) => id));
   expect(new Set(ids).size).toBe(ids.length);

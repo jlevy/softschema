@@ -2,11 +2,9 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
-# Test: validate --model runs the Zod semantic layer (model-only, structural skipped)
+# Test: validate --model runs the Pydantic semantic layer (model-only, structural skipped)
 
 Exercises the `--model` loading path: the CLI imports the model and runs semantic
 validation (no `--schema`, so structural is skipped as `inferred_via_model`). The model
@@ -15,12 +13,12 @@ other implementation (semantic logic itself is per-language by design and is not
 beyond pass/empty-errors here).
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --model packages/typescript/test/fixtures/movie-model.mjs:MoviePage --envelope movie
+$ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.movie_page.model:MoviePage --envelope movie
 {
   "contract": {
     "envelope_key": "movie",
     "id": "example.movies:MoviePage/v1",
-    "model": "packages/typescript/test/fixtures/movie-model.mjs:MoviePage",
+    "model": "examples.movie_page.model:MoviePage",
     "profile": "frontmatter-md",
     "schema_path": null,
     "status": "enforced"
@@ -35,6 +33,7 @@ $ softschema validate examples/movie_page/spirited-away.md --model packages/type
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,

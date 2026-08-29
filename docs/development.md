@@ -199,9 +199,9 @@ When you change any behavior, follow this loop so the two never drift:
    runtime-specific integration; or a golden journey for public CLI output and exit
    behavior. Do not add the same case at every layer.
 2. **Implement in Python**, then `uv run pytest` and
-   `SOFTSCHEMA_IMPL=py bash tests/golden/run.sh`.
+   `SOFTSCHEMA_IMPL=py ./tests/golden/run_golden_tests.py`.
 3. **Port to TypeScript**, then `bun test` (in `packages/typescript`) and
-   `SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh`.
+   `SOFTSCHEMA_IMPL=ts ./tests/golden/run_golden_tests.py`.
 4. **Both green and conformance.** Both golden runs and the cross-implementation
    conformance test (the Zod and Pydantic compilers produce an identical canonical
    compiled schema) pass in CI.

@@ -194,7 +194,7 @@ jobs:
           node-version: "24"
 
       - name: Run golden corpus (Python CLI)
-        run: SOFTSCHEMA_IMPL=py bash tests/golden/run.sh
+        run: SOFTSCHEMA_IMPL=py ./tests/golden/run_golden_tests.py
 
   typescript:
     runs-on: ubuntu-latest
@@ -240,11 +240,11 @@ jobs:
 
       - name: Run golden corpus (TypeScript CLI under Node, the published runtime)
         working-directory: ${{ github.workspace }}
-        run: SOFTSCHEMA_IMPL=ts bash tests/golden/run.sh
+        run: SOFTSCHEMA_IMPL=ts ./tests/golden/run_golden_tests.py
 
       - name: Run golden corpus (TypeScript CLI under Bun)
         working-directory: ${{ github.workspace }}
-        run: SOFTSCHEMA_IMPL=ts-bun bash tests/golden/run.sh
+        run: SOFTSCHEMA_IMPL=ts-bun ./tests/golden/run_golden_tests.py
 
   cross-impl:
     # Direct Python-vs-TypeScript(Node) semantic comparison on the same inputs, so a

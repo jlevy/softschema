@@ -2,21 +2,19 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: validate the movie example against the schema (structural ok)
 
 The neutral `softschema` command resolves to `softschema-py` or `softschema-ts`
-depending on `SOFTSCHEMA_IMPL` (see `tests/golden/run.sh`). Both implementations
+depending on `SOFTSCHEMA_IMPL` (see `tests/golden/run_golden_tests.py`). Both implementations
 produce the same portable structure for this input. Validation uses only the
 language-neutral JSON Schema sidecar (`--schema`); the semantic layer (Pydantic / Zod) is
 implementation-specific and is exercised per-language, not here, so the semantic
 block is skipped identically.
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml --envelope movie
+$ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml --envelope movie
 {
   "contract": {
     "envelope_key": "movie",
@@ -36,6 +34,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -100,7 +99,7 @@ A bad fixture fails structural validation. Errors are engine-neutral records
 and `ajv` produce identical output.
 
 ```console
-$ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie
+$ $SOFTSCHEMA validate tests/golden/fixtures/bad-movie.md --schema examples/movie_page/movie-page.schema.yaml --contract example.movies:MoviePage/v1 --envelope movie
 {
   "contract": {
     "envelope_key": "movie",
@@ -120,6 +119,7 @@ $ softschema validate tests/golden/fixtures/bad-movie.md --schema examples/movie
   "outcome": "invalid",
   "path": "tests/golden/fixtures/bad-movie.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,
@@ -189,7 +189,7 @@ result is a structural `envelope_mismatch` record (not a usage error): exit 1 wi
 full result whose `actual_keys` lists the keys that *are* present.
 
 ```console
-$ softschema validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml --envelope nope
+$ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --schema examples/movie_page/movie-page.schema.yaml --envelope nope
 {
   "contract": {
     "envelope_key": "nope",
@@ -209,6 +209,7 @@ $ softschema validate examples/movie_page/spirited-away.md --schema examples/mov
   "outcome": "invalid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": false,
@@ -244,7 +245,7 @@ envelope only; the structural and semantic layers report skipped reasons.
 This serves the `soft` stage, before any schema or model exists.
 
 ```console
-$ softschema validate tests/golden/fixtures/extra-field-permissive.md
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md
 {
   "contract": {
     "envelope_key": "record",
@@ -264,6 +265,7 @@ $ softschema validate tests/golden/fixtures/extra-field-permissive.md
   "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
+  "repairs": [],
   "semantic": {
     "errors": [],
     "ok": true,

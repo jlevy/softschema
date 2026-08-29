@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: inspect reports envelope keys and softschema metadata
@@ -12,7 +10,7 @@ path:
 block beside `has_frontmatter: false` is explained rather than surprising.
 
 ```console
-$ softschema inspect examples/movie_page/spirited-away.md
+$ $SOFTSCHEMA inspect examples/movie_page/spirited-away.md
 {
   "envelope_keys": [
     "title",
@@ -34,7 +32,7 @@ $ softschema inspect examples/movie_page/spirited-away.md
 # Test: docs --list shows the bundled documentation topics
 
 ```console
-$ softschema docs --list
+$ $SOFTSCHEMA docs --list
 Available softschema docs:
 
   development        Local development workflow.
@@ -59,7 +57,7 @@ Copy examples from the printed docs or from the repository files; the CLI does n
 # Test: skill --brief prints the agent operating rules
 
 ```console
-$ softschema skill --brief
+$ $SOFTSCHEMA skill --brief
 # softschema Skill Brief
 
 Use soft schemas when humans, agents, or software produce YAML records whose consumed
@@ -95,6 +93,14 @@ structure should stabilize over time.
   `--schema` to override with a compiled schema; `--model` for a Pydantic/Zod model
   (imports and runs local code; trusted models only; `--schema` is the safe path for
   untrusted input). Run `$SS validate --help` for exact syntax.
+- **Check your own artifact before you finish, with `$SS validate --repair`.** After
+  writing a contract-bearing artifact, run it on that file.
+  It fixes the two mistakes a model makes writing YAML by hand — an unquoted `: ` inside
+  a value, and a scalar like `1850` that reads as a number where the contract wants a
+  string — writes the file, and reports the verdict.
+  Anything it does not fix, such as a missing field or a key that is a near-miss for the
+  declared one, is yours to correct: it reports those and never guesses at them.
+  Use `--check-repair` to see what would change without writing.
 - Keep examples copyable; do not scaffold or mutate a target project unless the user
   explicitly asks for that workflow.
 ? 0
@@ -103,7 +109,7 @@ structure should stabilize over time.
 # Test: docs --list --json emits structured topic metadata
 
 ```console
-$ softschema docs --list --json
+$ $SOFTSCHEMA docs --list --json
 {
   "copyable_examples": [
     "example",
@@ -200,7 +206,7 @@ $ softschema docs --list --json
 # Test: docs <topic> prints the bundled document (both CLIs, from bundled resources)
 
 ```console
-$ softschema docs spec
+$ $SOFTSCHEMA docs spec
 # softschema Spec
 ...
 ? 0
@@ -211,7 +217,7 @@ $ softschema docs spec
 A single non-`softschema` key is reported as the envelope; metadata is null.
 
 ```console
-$ softschema inspect tests/golden/fixtures/plain-doc.md
+$ $SOFTSCHEMA inspect tests/golden/fixtures/plain-doc.md
 {
   "envelope_keys": [
     "movie"
@@ -227,7 +233,7 @@ $ softschema inspect tests/golden/fixtures/plain-doc.md
 # Test: inspect a document with no frontmatter at all
 
 ```console
-$ softschema inspect tests/golden/fixtures/no-frontmatter.md
+$ $SOFTSCHEMA inspect tests/golden/fixtures/no-frontmatter.md
 {
   "envelope_keys": [],
   "has_frontmatter": false,
@@ -246,7 +252,7 @@ held byte-identical across packages by the skill-mirror drift unit test, and
 `skill --brief` above is the un-elided bundled-resource check.
 
 ```console
-$ softschema skill
+$ $SOFTSCHEMA skill
 ---
 name: softschema
 ...
@@ -261,7 +267,7 @@ remaining root keys are the envelope candidates, while `has_frontmatter` stays l
 a pure-yaml artifact has no frontmatter to report.
 
 ```console
-$ softschema inspect tests/golden/fixtures/pure-yaml-report.yaml
+$ $SOFTSCHEMA inspect tests/golden/fixtures/pure-yaml-report.yaml
 {
   "envelope_keys": [
     "run_id",

@@ -2,8 +2,6 @@
 cwd: ../../..
 env:
   NO_COLOR: "1"
-path:
-  - $SOFTSCHEMA_BIN_DIR
 ---
 
 # Test: compile (Zod) --check finds no drift against the committed canonical sidecar
@@ -15,7 +13,7 @@ Pydantic; the same `schema_sha256` proves exact cross-language schema parity. Th
 `schema_yaml` string is elided.
 
 ```console
-$ softschema compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract example.parity:KitchenSink/v1 --out examples/parity/parity.schema.yaml --check
+$ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract example.parity:KitchenSink/v1 --out examples/parity/parity.schema.yaml --check
 {
   "drift": false,
   "drift_diff": null,
@@ -29,7 +27,7 @@ $ softschema compile packages/typescript/test/fixtures/parity.ts:KitchenSink --c
 # Test: compile --check reports drift for a different contract id
 
 ```console
-$ softschema compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract wrong:Sink/v1 --out examples/parity/parity.schema.yaml --check
+$ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract wrong:Sink/v1 --out examples/parity/parity.schema.yaml --check
 {
   "drift": true,
   "drift_diff": "committed schema at examples/parity/parity.schema.yaml differs from compile output",
