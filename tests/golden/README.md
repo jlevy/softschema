@@ -53,11 +53,18 @@ It structurally normalizes JSON before comparison and compares non-JSON output e
 
 ## Mutating scenarios
 
-`validate-repair.md` is the one journey whose commands **rewrite their input**. Two rules
-follow, and a new mutating scenario has to keep both:
+`validate-repair.md` is the one journey file whose commands **rewrite their input**. Three
+rules follow, and a new mutating scenario has to keep all of them:
 
 - Copy the fixture into a scratch directory inside the command. Pointing a mutating command
   at a checked-in fixture passes once and then fails on a dirty tree.
+- Use a **fixed** scratch path (under the gitignored `tests/golden/tmp/`), recreated by the
+  command that uses it. tryscript gives each command a fresh shell, so no variable survives
+  between commands — but the filesystem does, and a deterministic path is what lets the
+  transcript pin the **complete JSON result** (its `path` field included) instead of
+  grepping fragments out of it. Broad state over surgical checks: a grep pins one field and
+  lets a regression in any other slip through green, which is how a failure-path bug once
+  survived this corpus.
 - Print the file afterward. The write is the deliverable, so a transcript showing only the
   JSON verdict has not covered it, and having the bytes in the transcript is what surfaces
   an emitter that starts restyling what it was asked to fix.

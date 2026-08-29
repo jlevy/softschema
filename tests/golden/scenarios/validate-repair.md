@@ -8,25 +8,25 @@ path:
 
 # Journey: `validate --repair` rescues a document nothing could read
 
-`--repair` **rewrites the artifact it is given**, which makes this journey different from
-every other one in the corpus in two ways.
+`--repair` **rewrites the artifact it is given**, which makes this file different from
+every other one in the corpus in three ways, all downstream of that write:
 
-Each case copies its fixture into a fresh scratch directory first. Pointing a mutating
-command at a checked-in fixture would pass once and then fail on a dirty tree, so the
-transcript would only be reproducible on a clean checkout. Each case does its copy and its
-command together, so no state has to survive between blocks.
+- Each journey copies its fixture into a scratch directory first. Pointing a mutating
+  command at a checked-in fixture would pass once and then fail on a dirty tree.
+- The scratch directory is a **fixed path**, recreated by the same command that uses it
+  (tryscript gives each command a fresh shell, so no variable survives between commands —
+  but the filesystem does). A fixed path is what lets the transcripts below pin the
+  **complete JSON result**, byte for byte with the `path` field included, instead of
+  grepping fragments out of it: broad state, per the golden-testing discipline, so an
+  unexpected change anywhere in the verdict shows up as a diff.
+- Each mutating journey prints the file afterward. The write is the deliverable; the
+  repaired bytes in the transcript are what surface an emitter that starts restyling what
+  it was only asked to quote.
 
-And each mutating case prints the file afterward. The write is the deliverable here: a
-transcript showing only the JSON verdict would not have tested the feature, and having the
-repaired bytes in the transcript is what lets a reviewer catch an emitter that starts
-restyling what it was only asked to quote.
-
-Without `--repair`, an unquoted `: ` inside a value makes the whole document unreadable, so
-nothing downstream sees any of it — a total loss over one character. Note that this is exit
-`2`, an input error, not a validation verdict.
-
-The parser's wording is engine-specific, so the stable prefix is asserted and the rest is
-elided, matching how `cli-errors.md` handles the same class of failure.
+Without `--repair`, an unquoted `: ` inside a value makes the whole document unreadable —
+a total loss over one character, and exit `2` (an input error), not a validation verdict.
+The parser's wording is engine-specific, so here (and only here) the stable prefix is
+asserted and the rest elided, matching `cli-errors.md`.
 
 ```console
 $ softschema validate tests/golden/fixtures/repair-unquoted-colon.md 2>&1
@@ -36,12 +36,66 @@ softschema validate: [..]
 ```
 
 With `--repair` the quotes go back in, the file is written, and the document validates.
+The `repairs` array is what distinguishes "was already valid" from "was repaired into
+validity" — an exit code cannot say which happened.
+
+```console
+$ D=tests/golden/tmp/repair-rescue && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-unquoted-colon.md" --repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-rescue/repair-unquoted-colon.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 0
+```
+
 Only the one scalar differs from the original; the body prose and every other line are
 untouched.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-unquoted-colon.md" --repair > "$D/out.json"; echo "exit=$?"; cat "$D/repair-unquoted-colon.md"
-exit=0
+$ cat tests/golden/tmp/repair-rescue/repair-unquoted-colon.md
 ---
 softschema:
   contract: test.repair:Doc/v1
@@ -55,39 +109,66 @@ Body prose stays put.
 ? 0
 ```
 
-# Journey: the `repairs` array says what changed
-
-An exit code cannot distinguish "was already valid" from "was repaired into validity", so
-the result carries a record per change, shaped like a structural error record.
-
-```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-unquoted-colon.md" --repair | grep -A 5 '"repairs"'
-  "repairs": [
-    {
-      "code": "yaml_quoted_scalar",
-      "kind": "repair_applied",
-      "message": "quoted the value of 'summary'",
-      "path": [
-? 0
-```
-
 # Journey: scalar type drift is conformed
 
 A brand genuinely named `1850` arrives as an integer, because YAML plain scalars carry no
-type marker and no serializer was in the path to quote it. Plain `validate` reports it as a
-type violation (the exit code below is `grep`'s, not the CLI's; the CLI exits `1`).
+type marker and no serializer was in the path to quote it. `--repair` writes the quotes
+the missing serializer would have; the scalar's own source text is the replacement.
 
 ```console
-$ softschema validate tests/golden/fixtures/repair-scalar-drift.md | grep '"message"'
-        "message": "value 1850 is not of type 'string'",
+$ D=tests/golden/tmp/repair-drift && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-scalar-drift.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-scalar-drift.md" --repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-drift/repair-scalar-drift.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "scalar_conformed",
+      "kind": "conform_applied",
+      "message": "conformed 1850 to the string '1850'",
+      "path": [
+        "name"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "1850",
+    "summary": "A brand named like a number."
+  },
+  "warnings": []
+}
 ? 0
 ```
 
-`--repair` writes the quotes the missing serializer would have.
-
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-scalar-drift.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-scalar-drift.md" --repair > /dev/null; echo "exit=$?"; cat "$D/repair-scalar-drift.md"
-exit=0
+$ cat tests/golden/tmp/repair-drift/repair-scalar-drift.md
 ---
 softschema:
   contract: test.repair:Doc/v1
@@ -103,13 +184,54 @@ Body prose stays put.
 
 # Journey: repairing twice changes nothing
 
-Idempotence, visible in the transcript rather than asserted: the second run reports an
-empty `repairs` array and the bytes are unchanged.
+Idempotence, visible rather than asserted: the second run's complete result shows an
+empty `repairs` array, and the bytes on disk are unchanged.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-unquoted-colon.md" --repair > /dev/null && cp "$D/repair-unquoted-colon.md" "$D/once.md" && softschema validate "$D/repair-unquoted-colon.md" --repair | grep -A 1 '"repairs"' && diff "$D/once.md" "$D/repair-unquoted-colon.md" && echo "bytes unchanged"
+$ D=tests/golden/tmp/repair-twice && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-unquoted-colon.md" --repair > /dev/null && cp "$D/repair-unquoted-colon.md" "$D/once.md" && softschema validate "$D/repair-unquoted-colon.md" --repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-twice/repair-unquoted-colon.md",
+  "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 0
+```
+
+```console
+$ diff tests/golden/tmp/repair-twice/once.md tests/golden/tmp/repair-twice/repair-unquoted-colon.md && echo "bytes unchanged"
 bytes unchanged
 ? 0
 ```
@@ -120,7 +242,50 @@ The no-widening invariant. `--repair` on a document that needs nothing must not 
 it, requote it, or touch its line endings.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-already-valid.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-already-valid.md" --repair > /dev/null && diff tests/golden/fixtures/repair-already-valid.md "$D/repair-already-valid.md" && echo "byte-identical"
+$ D=tests/golden/tmp/repair-valid && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-already-valid.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-already-valid.md" --repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-valid/repair-already-valid.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Already fine."
+  },
+  "warnings": []
+}
+? 0
+```
+
+```console
+$ diff tests/golden/fixtures/repair-already-valid.md tests/golden/tmp/repair-valid/repair-already-valid.md && echo "byte-identical"
 byte-identical
 ? 0
 ```
@@ -128,13 +293,126 @@ byte-identical
 # Journey: a missing field is never invented, a near-miss key never renamed
 
 `reason` where the contract wants `rationale` is a *missing field*, not a type error.
-Inferring the rename would be guessing intent, so the document is left exactly as authored
-and the verdict stays honest.
+Inferring the rename would be guessing intent, so the document is left exactly as
+authored, the `repairs` array stays empty, and the verdict stays honest.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-missing-required.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-missing-required.md" --repair > "$D/out.json"; echo "exit=$?"; grep -c '"repairs": \[\]' "$D/out.json"; diff tests/golden/fixtures/repair-missing-required.md "$D/repair-missing-required.md" && echo "byte-identical"
-exit=1
-1
+$ D=tests/golden/tmp/repair-missing && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-missing-required.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-missing-required.md" --repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/tmp/repair-missing/repair-missing-required.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "code": "missing_property",
+        "kind": "schema_violation",
+        "message": "required property 'summary' is missing",
+        "path": [],
+        "property": "summary",
+        "validator": "required",
+        "validator_value": [
+          "name",
+          "summary"
+        ],
+        "value": {
+          "name": "Acme",
+          "reason": "a near-miss key, not a rename"
+        }
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "reason": "a near-miss key, not a rename"
+  },
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ diff tests/golden/fixtures/repair-missing-required.md tests/golden/tmp/repair-missing/repair-missing-required.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+# Journey: a document repair cannot rescue reports its real failure
+
+The escalation has a floor: when quoting does not make the document parse, `--repair`
+reports exactly what plain `validate` reports — the parse failure, not a repair artifact
+of its own — and the file is left exactly as it was found. The binding is passed as flags
+because the document's own `softschema:` block sits inside the very frontmatter that
+cannot be read. The parse-failure `message` is engine wording, so that one line is
+elided; every other field is pinned.
+
+```console
+$ D=tests/golden/tmp/repair-floor && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unrepairable.md "$D" && softschema validate "$D/repair-unrepairable.md" --repair --contract test.repair:Doc/v1 --envelope data
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "tests/golden/tmp/repair-floor/repair-unrepairable.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "yaml_parse_error"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "yaml_parse_error",
+        "message": [..]
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ diff tests/golden/fixtures/repair-unrepairable.md tests/golden/tmp/repair-floor/repair-unrepairable.md && echo "byte-identical"
 byte-identical
 ? 0
 ```
@@ -145,8 +423,59 @@ What a gate runs when it wants to know whether an artifact *would* be repaired, 
 mutating one under review. Exit `1` means something would change; the file does not.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-unquoted-colon.md" --check-repair > /dev/null; echo "exit=$?"; diff tests/golden/fixtures/repair-unquoted-colon.md "$D/repair-unquoted-colon.md" && echo "not written"
-exit=1
+$ D=tests/golden/tmp/repair-check && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-unquoted-colon.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-unquoted-colon.md" --check-repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-check/repair-unquoted-colon.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ diff tests/golden/fixtures/repair-unquoted-colon.md tests/golden/tmp/repair-check/repair-unquoted-colon.md && echo "not written"
 not written
 ? 0
 ```
@@ -154,19 +483,115 @@ not written
 On a document that needs nothing, it exits `0`.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-already-valid.md tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-already-valid.md" --check-repair > /dev/null; echo "exit=$?"
-exit=0
+$ D=tests/golden/tmp/repair-check-clean && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-already-valid.md tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-already-valid.md" --check-repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-check-clean/repair-already-valid.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Already fine."
+  },
+  "warnings": []
+}
 ? 0
 ```
 
 # Journey: pure-yaml gets the same treatment
 
-The profile with no fence at all, and its payload keys at column 0 — the case the upstream
-repair matcher could not reach, because it required leading indentation.
+The profile with no fence at all, and its payload keys at column 0 — the case the
+upstream repair matcher could not reach, because it required leading indentation.
 
 ```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-pure.yaml tests/golden/fixtures/repair.schema.yaml "$D/" && softschema validate "$D/repair-pure.yaml" --repair > /dev/null; echo "exit=$?"; cat "$D/repair-pure.yaml"
-exit=0
+$ D=tests/golden/tmp/repair-pure && rm -rf "$D" && mkdir -p "$D" && cp tests/golden/fixtures/repair-pure.yaml tests/golden/fixtures/repair.schema.yaml "$D" && softschema validate "$D/repair-pure.yaml" --repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "pure-yaml",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "tests/golden/tmp/repair-pure/repair-pure.yaml",
+  "profile": "pure-yaml",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    },
+    {
+      "code": "scalar_conformed",
+      "kind": "conform_applied",
+      "message": "conformed 1850 to the string '1850'",
+      "path": [
+        "name"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "1850",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 0
+```
+
+```console
+$ cat tests/golden/tmp/repair-pure/repair-pure.yaml
 softschema:
   contract: test.repair:Doc/v1
   schema: repair.schema.yaml
@@ -174,23 +599,6 @@ softschema:
 data:
   name: '1850'
   summary: "Note: actually Q1"
-? 0
-```
-
-# Journey: a document repair cannot rescue reports its real failure
-
-The escalation has a floor: when quoting does not make the document parse, `--repair`
-reports exactly what plain `validate` reports — the parse failure, not a repair artifact
-of its own — and the file is left exactly as it was found. The binding is passed as flags
-because the document's own `softschema:` block sits inside the very frontmatter that
-cannot be read. The engine wording varies, so the stable JSON `kind` is pinned instead.
-
-```console
-$ D=$(mktemp -d) && cp tests/golden/fixtures/repair-unrepairable.md "$D/" && softschema validate "$D/repair-unrepairable.md" --repair --contract test.repair:Doc/v1 --envelope data > "$D/out.json"; echo "exit=$?"; grep -o '"kind": "yaml_parse_error"' "$D/out.json"; grep -c '"repairs": \[\]' "$D/out.json"; diff tests/golden/fixtures/repair-unrepairable.md "$D/repair-unrepairable.md" && echo "byte-identical"
-exit=1
-"kind": "yaml_parse_error"
-1
-byte-identical
 ? 0
 ```
 

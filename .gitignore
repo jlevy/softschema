@@ -229,3 +229,4 @@ __marimo__/
 
 # TS bundled doc/skill resources (generated at build by copy-resources)
 packages/typescript/resources/
+tests/golden/tmp/
