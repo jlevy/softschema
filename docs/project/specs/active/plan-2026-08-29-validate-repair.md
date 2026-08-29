@@ -9,7 +9,7 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Draft
+**Status:** Implemented (phases 1-3); phase 4 and the metaproc coordination deferred
 
 **Tracking:** `ss-pac1` (epic), with file-level children `ss-uwp6`/`ss-l3dc` (portable
 helpers), `ss-arqr`/`ss-ioej`/`ss-ibay` (repair), `ss-1obx`/`ss-xisi`/`ss-roh1`
@@ -607,8 +607,11 @@ See [Background](#2-conform-has-to-read-both-validation-layers-not-one).
 
 ## Open Questions
 
-1. **Is string coercion unconditional, or gated on `repair: safe_coerce`?** The issue
-   argues it is intent-free and therefore always safe.
+Questions 1-3 were settled during implementation and are recorded here with what was
+decided; question 4 is still open, and belongs to the deferred phase 4.
+
+1. **Is string coercion unconditional, or gated on `repair: safe_coerce`?** *Decided:
+   unconditional.* The issue argues it is intent-free and therefore always safe.
    The shipped `RepairKind` vocabulary defaults to `none`, which reads as opt-in.
    *Recommendation:* unconditional for the `type: string` case — a provably lossless fix
    should not need per-field opt-in — and repurpose `suggest_alias` plus the `aliases`
@@ -617,15 +620,16 @@ See [Background](#2-conform-has-to-read-both-validation-layers-not-one).
    Needs a maintainer decision before Phase 2, since it is a documented public
    annotation.
 
-2. **Does `--repair` write a file that still fails validation?** A document can be
-   repaired into parseability and still be invalid.
+2. **Does `--repair` write a file that still fails validation?** *Decided: yes.* A
+   document can be repaired into parseability and still be invalid.
    *Recommendation:* yes — write it.
    The repair is independently correct, and leaving an unparsable file on disk to
    preserve a failing verdict helps nobody.
    Needs confirming, since it means a failing gate can still mutate a file.
 
-3. **What does `--repair` do for a `pure-yaml` artifact?** Repairing the whole document,
-   rather than a fenced region, is a larger blast radius.
+3. **What does `--repair` do for a `pure-yaml` artifact?** *Decided: same treatment, and
+   it is covered by both the shared vectors and the golden journey.* Repairing the whole
+   document, rather than a fenced region, is a larger blast radius.
    *Recommendation:* same treatment, same invariants.
    Excluding it would leave one of two supported profiles without the feature.
 
