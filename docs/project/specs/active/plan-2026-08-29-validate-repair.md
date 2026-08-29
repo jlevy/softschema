@@ -141,8 +141,9 @@ what `compile` and `generate` write through today.
 - Its line matcher is `^(\s+\w[\w_]*): `, which **requires leading whitespace**. In
   metaproc every payload sits under an envelope, so keys are always indented.
   softschema must also repair unindented keys: the frontmatter root, and the entire
-  `pure-yaml` profile, whose payload root sits at column 0. Verified: `name: Note: hi`
-  does not match; ` name: Note: hi` does.
+  `pure-yaml` profile, whose payload root sits at column 0. Verified against the
+  compiled pattern: the same key/value line matches when it is indented and fails to
+  match at column 0, so a top-level `title: Note: actually Q1` is left unrepaired.
 - It handles only the `---` fence.
   The `pure-yaml` profile has no fence.
 - Its self-check is ruamel `YAML(typ="safe")`, not softschema’s `parse_yaml`. The
