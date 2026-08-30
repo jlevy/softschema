@@ -702,6 +702,59 @@ def test_detect_profile_keeps_a_yaml_file_with_a_document_start_marker_pure(
     assert cli._detect_profile(path) is SchemaProfile.pure_yaml
 
 
+# --- Fences at end of file --------------------------------------------------------
+#
+# A final line with no trailing newline is a line to both readers (`splitlines()` /
+# `split(/\r?\n/)`), so the offset scan in `_portable` has to agree. It once did not:
+# `_line_end` returned None at EOF, which made `split_frontmatter` report "no region to
+# rewrite" for a document ending exactly at its closing fence — `--repair` silently
+# skipped an artifact it could fix — and made `opens_frontmatter_fence` call a lone
+# `---` fenceless.
+
+
+def test_opens_frontmatter_fence_agrees_with_the_reader_at_eof() -> None:
+    from softschema._portable import opens_frontmatter_fence
+
+    # No trailing newline. The reader treats this as an opened, unterminated fence, so
+    # detection must too, or the two disagree about what the document even is.
+    assert opens_frontmatter_fence("---") is True
+    assert opens_frontmatter_fence("---\n") is True
+    assert opens_frontmatter_fence("") is False
+    assert opens_frontmatter_fence("name: Acme") is False
+
+
+def test_split_frontmatter_finds_a_region_ending_at_the_closing_fence() -> None:
+    from softschema._portable import split_frontmatter
+
+    # The closing fence is the last thing in the file, with no trailing newline — a very
+    # ordinary shape for agent-written text, and one `--repair` must not skip.
+    ended_at_fence = split_frontmatter("---\nname: Acme\n---")
+    assert ended_at_fence is not None
+    assert ended_at_fence.metadata_text == "name: Acme\n"
+    # An empty body, and the file's missing trailing newline preserved by the offsets.
+    assert ended_at_fence.body_offset == len("---\nname: Acme\n---")
+
+    # Unchanged: a fence that never closes still has no region to rewrite.
+    assert split_frontmatter("---\nname: Acme") is None
+
+
+def test_repair_fixes_a_document_that_ends_at_its_closing_fence(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Two documents differing only in a trailing newline must get the same verdict.
+    # Before the fix the newline-less one was reported unreadable and left unrepaired.
+    body = (
+        "---\nsoftschema:\n  contract: test.detect:Doc/v1\n  schema: mini.schema.yaml\n"
+        "  envelope: rec\nrec:\n  name: Note: actually Q1\n---"
+    )
+    for name, text in (("with-nl.md", body + "\n"), ("no-nl.md", body)):
+        path = _detect_case(tmp_path, name, text)
+        assert softschema_main(["validate", str(path), "--check-repair"]) == 1
+        result = json.loads(capsys.readouterr().out)
+        assert result["outcome"] == "valid", name
+        assert [r["code"] for r in result["repairs"]] == ["yaml_quoted_scalar"], name
+
+
 def test_unparsable_frontmatter_names_the_parse_failure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

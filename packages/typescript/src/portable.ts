@@ -217,7 +217,7 @@ export function splitFrontmatter(text: string): FrontmatterSplit | null {
   let cursor = metadataOffset;
   while (cursor < text.length) {
     const line = lineEnd(text, cursor);
-    if (line === null) return null; // unterminated fence: no region to rewrite (still a reader error)
+    if (line === null) break; // unreachable: the loop guard guarantees a line remains
     if (text.slice(cursor, line.contentEnd).trimEnd() === "---") {
       const metadataText = text.slice(metadataOffset, cursor);
       // An empty block (end fence on the very next line) is the portable
@@ -227,7 +227,7 @@ export function splitFrontmatter(text: string): FrontmatterSplit | null {
     }
     cursor = line.next;
   }
-  return null;
+  return null; // unterminated fence: no region to rewrite (still a reader error)
 }
 
 /**
@@ -248,10 +248,27 @@ export function opensFrontmatterFence(text: string): boolean {
   return first !== null && text.slice(0, first.contentEnd).trimEnd() === "---";
 }
 
-/** The content end (before the line break) and the start of the next line. */
+/**
+ * The content end (before the line break) and the start of the next line.
+ *
+ * A final line with no trailing newline is a line. Its content ends at EOF, and the
+ * "next line" starts there too, so a caller that keeps scanning stops on the next
+ * iteration.
+ *
+ * That has to be so, because `readFrontmatterDoc` splits with `split(/\r?\n/)` and
+ * Python's `read_frontmatter_doc` with `splitlines()`, and both keep such a line. A scan
+ * that dropped it would disagree with the reader about where a document's fences are,
+ * which is the disagreement this module exists to prevent. Concretely, it made
+ * `splitFrontmatter` report "no region to rewrite" for a document ending exactly at its
+ * closing fence, so `--repair` silently skipped an artifact it could fix, and it made
+ * `opensFrontmatterFence` call a lone `---` fenceless.
+ *
+ * Returns `null` only when `from` is at or past the end, where no line remains.
+ */
 function lineEnd(text: string, from: number): { contentEnd: number; next: number } | null {
+  if (from >= text.length) return null;
   const index = text.indexOf("\n", from);
-  if (index === -1) return null;
+  if (index === -1) return { contentEnd: text.length, next: text.length };
   return { contentEnd: index, next: index + 1 };
 }
 

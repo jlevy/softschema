@@ -21,6 +21,8 @@ fixtures:
   - {source: ../fixtures/repair.schema.yaml, dest: check-clean/repair.schema.yaml}
   - {source: ../fixtures/repair-pure.yaml, dest: pure/repair-pure.yaml}
   - {source: ../fixtures/repair-unterminated-fence.md, dest: fence/repair-unterminated-fence.md}
+  - {source: ../fixtures/repair-ends-at-fence.md, dest: fence/repair-ends-at-fence.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: fence/repair.schema.yaml}
   - {source: ../fixtures/repair.schema.yaml, dest: pure/repair.schema.yaml}
   # Untouched copies, so the journeys that must prove a file was *not* rewritten have the
   # bytes as authored to diff against.
@@ -643,12 +645,15 @@ it, which inverts the premise of `--repair`. Both implementations diverged the s
 so `cross-impl-diff.sh` stayed clean through it; only a transcript pinning the expected
 verdict catches this class of defect.
 
-The parser's wording is engine-specific, so the stable prefix is asserted and the rest
-elided, as elsewhere in this file.
+This message is softschema's own, not the YAML engine's, so it is asserted in full
+rather than elided. Elsewhere in this file `[..]` hides an engine-specific tail because
+PyYAML and the `yaml` npm package word a malformed document differently; there is no
+such excuse here, and eliding it would leave the journey matching any usage error at all
+— including the wrong one this journey exists to catch.
 
 ```console
 $ $SOFTSCHEMA validate fence/repair-unterminated-fence.md 2>&1
-softschema validate: [..]
+softschema validate: Delimiter `---` for end of frontmatter not found: `fence/repair-unterminated-fence.md`
 ? 2
 ```
 
@@ -657,13 +662,87 @@ no YAML frontmatter" would send an agent looking for a block that is plainly the
 
 ```console
 $ $SOFTSCHEMA validate fence/repair-unterminated-fence.md --check-repair 2>&1
-softschema validate: missing --contract because the document could not be read: [..]
+softschema validate: missing --contract because the document could not be read: Delimiter `---` for end of frontmatter not found: `fence/repair-unterminated-fence.md`
 ? 2
 ```
 
 ```console
 $ diff original/repair-unterminated-fence.md fence/repair-unterminated-fence.md && echo "byte-identical"
 byte-identical
+? 0
+```
+
+# Journey: a document ending at its closing fence is still repaired
+
+A file whose last byte is the closing `---`, with no trailing newline, is an ordinary
+shape for agent-written text. It differs from a well-formed artifact by one byte, and
+the repair verdict must not.
+
+It once did. The offset scan behind `split_frontmatter` treated "no newline left" as
+"no closing fence", so it reported no region to rewrite and `--repair` skipped an
+artifact it could fix — while the reader, which splits into lines and keeps a final
+unterminated one, read the same frontmatter without complaint. That is the same
+detector-versus-reader disagreement as the journey above, one function over.
+
+```console
+$ cd fence && $SOFTSCHEMA validate repair-ends-at-fence.md --check-repair
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "repair-ends-at-fence.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 1
+```
+
+Writing it quotes the scalar and leaves the fence exactly as authored. The last four
+bytes are still a newline and the closing `---`, with nothing after it: repair rewrote
+the metadata region and did not normalize the file's ending.
+
+```console
+$ cd fence && $SOFTSCHEMA validate repair-ends-at-fence.md --repair > /dev/null && tail -c 4 repair-ends-at-fence.md | od -c | head -1
+0000000  \n   -   -   -
 ? 0
 ```
 

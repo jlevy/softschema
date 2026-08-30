@@ -222,7 +222,7 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
     while cursor < len(text):
         line = _line_end(text, cursor)
         if line is None:
-            return None  # unterminated fence: no region to rewrite (still a reader error)
+            break  # unreachable: the loop guard guarantees a line remains
         if text[cursor : line[0]].rstrip() == "---":
             metadata_text = text[metadata_offset:cursor]
             # An empty block (end fence on the very next line) is the portable
@@ -235,7 +235,7 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
                 body_offset=line[1],
             )
         cursor = line[1]
-    return None
+    return None  # unterminated fence: no region to rewrite (still a reader error)
 
 
 def opens_frontmatter_fence(text: str) -> bool:
@@ -256,10 +256,27 @@ def opens_frontmatter_fence(text: str) -> bool:
 
 
 def _line_end(text: str, start: int) -> tuple[int, int] | None:
-    """The content end (before the line break) and the start of the next line."""
+    """The content end (before the line break) and the start of the next line.
+
+    A final line with no trailing newline is a line. Its content ends at EOF, and the
+    "next line" starts there too, so a caller that keeps scanning stops on the next
+    iteration.
+
+    That has to be so, because :func:`read_frontmatter_doc` splits with ``splitlines()``
+    and ``readFrontmatterDoc`` with ``split(/\r?\n/)``, and both keep such a line. A scan
+    that dropped it would disagree with the reader about where a document's fences are,
+    which is the disagreement this module exists to prevent. Concretely, it made
+    :func:`split_frontmatter` report "no region to rewrite" for a document ending exactly
+    at its closing fence, so ``--repair`` silently skipped an artifact it could fix, and
+    it made :func:`opens_frontmatter_fence` call a lone ``---`` fenceless.
+
+    Returns ``None`` only when ``start`` is at or past the end, where no line remains.
+    """
+    if start >= len(text):
+        return None
     index = text.find("\n", start)
     if index == -1:
-        return None
+        return len(text), len(text)
     return index, index + 1
 
 

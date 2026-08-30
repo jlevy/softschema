@@ -413,8 +413,14 @@ interface ArtifactRead {
 function readArtifact(path: string, profile: SchemaProfile | undefined): ArtifactRead {
   // Reuse the single frontmatter parser from validate.ts so the fence-scanning and
   // empty-frontmatter handling cannot drift between the two entry points. Surface a
-  // malformed-YAML failure as a usage error (exit 2) with the message, mirroring the
-  // Python CLI's FmFormatError handling, rather than letting it escape as a stack trace.
+  // malformed-YAML failure as a usage error (exit 2) carrying the reader's message
+  // verbatim, rather than letting it escape as a stack trace.
+  //
+  // Verbatim is the point. Python's `_run_cmd` prints the `PortableInputError` message
+  // with no wrapper, so any prefix added here makes the two CLIs word softschema's own
+  // diagnostics differently for the same file. The engine-specific YAML text below a
+  // softschema message legitimately differs between runtimes; the softschema message
+  // itself must not, and `cross-impl-diff.sh` compares machine JSON and cannot catch it.
   try {
     if (profile === "pure-yaml") return { profile, document: readYamlDoc(path) };
     if (profile === "frontmatter-md") return { profile, document: readFrontmatterDoc(path) };
@@ -430,7 +436,7 @@ function readArtifact(path: string, profile: SchemaProfile | undefined): Artifac
     return { profile: "frontmatter-md", document: parsed };
   } catch (err) {
     if (err instanceof YamlParseError) {
-      throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
+      throw new UsageError(err.message);
     }
     throw err;
   }
@@ -719,10 +725,16 @@ function parseAfterRepair(
       profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text, source);
     return { document, parseError: null };
   } catch (error) {
-    return {
-      document: null,
-      parseError: error instanceof Error ? error : new Error(String(error)),
-    };
+    // Only the failures the readers themselves throw mean "still unreadable after
+    // repair". Anything else is a programming error and must crash rather than be
+    // quietly reclassified — mirroring Python's `except PortableInputError`, and the
+    // same narrowing `reparse` in repairValidate.ts makes. A catch-all here is worse
+    // than a silent `null`: the message now reaches the user as "the document could not
+    // be read: ...", presenting an internal fault as a defect in their file.
+    if (error instanceof PortableInputError || error instanceof YamlParseError) {
+      return { document: null, parseError: error };
+    }
+    throw error;
   }
 }
 
