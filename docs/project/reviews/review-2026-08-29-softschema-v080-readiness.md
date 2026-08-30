@@ -9,13 +9,23 @@ author: Claude, with maintainer direction from Joshua Levy
 
 **Author:** Claude, with maintainer direction from Joshua Levy
 
-**Status:** Reviewed and recommended.
+**Status:** Superseded on the release question by the
+[`--repair` end-to-end review](review-2026-08-30-validate-repair-e2e.md), which found a
+release-blocking defect.
 Not yet released — the version bump, the changelog cut, and the manual e2e phases are
 still open.
 
 ## Decision
 
 Ship the unreleased work as **v0.8.0, a minor**, not a patch.
+
+> **Update, 2026-08-30.** The version call stands, but the release does not.
+> End-to-end testing of `--repair` against real agent output found that `validate` and
+> `--repair` disagree about whether an unterminated-frontmatter document is readable:
+> the producer is told `valid` where the consumer cannot read the file at all.
+> That inverts the feature’s premise and is present in both implementations.
+> See [the end-to-end review](review-2026-08-30-validate-repair-e2e.md), Finding 1. Fix
+> before tagging.
 
 `publishing.md` draws the line at “patch bumps cover docs-only changes and small
 additive features; reserve minor bumps for changes that meaningfully shift the API or
@@ -106,6 +116,9 @@ No open pull requests and no open issues.
 None of these is a defect in the code; they are the release steps and two small loose
 ends.
 
+0. **Fix the `validate` / `--repair` profile-inference divergence** — Finding 1 of the
+   [end-to-end review](review-2026-08-30-validate-repair-e2e.md).
+   Release-blocking.
 1. **Bump `packages/typescript/package.json` to `0.8.0`.** It still reads `0.7.0`. The
    Python version derives from the tag, but the npm publish job aborts on a mismatch.
 2. **Cut the changelog.** `## Unreleased` becomes `## v0.8.0—<date>`.
