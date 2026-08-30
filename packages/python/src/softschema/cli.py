@@ -18,7 +18,7 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 from strif import atomic_write_text
 
-from softschema._portable import PortableInputError, read_utf8, split_frontmatter
+from softschema._portable import PortableInputError, opens_frontmatter_fence, read_utf8
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
@@ -438,8 +438,10 @@ def _repair_validate_cmd(args: argparse.Namespace, *, write: bool) -> int:
     """
     profile = _profile_from_args(args) or _detect_profile(args.path)
     repaired = repair_artifact(args.path, profile=profile, write=False)
-    document = _parse_after_repair(repaired.text, profile)
-    contract_id, status, envelope_key = _infer_validation_binding(args, document, profile)
+    document, parse_error = _parse_after_repair(repaired.text, profile, str(args.path))
+    contract_id, status, envelope_key = _infer_validation_binding(
+        args, document, profile, parse_error
+    )
     contract = Contract(
         id=contract_id,
         model=_load_model(args.model) if args.model else None,
@@ -468,6 +470,13 @@ def _detect_profile(path: Path) -> SchemaProfile:
     the filename, then the presence of a frontmatter fence. A fenceless document that will
     not parse falls back to frontmatter-md and reports `no_frontmatter`, exactly as it does
     without `--repair`.
+
+    The fence test asks whether the document *opens* a fence, not whether it can be
+    split. A document that opens a fence and never closes it is frontmatter-md and the
+    reader rejects it; treating it as fenceless would route it to the pure-yaml rule
+    below, where its leading `---` reads as a YAML document-start marker and the whole
+    file parses cleanly. That is how `--repair` once called an artifact valid that plain
+    `validate` could not read at all.
     """
     if path.suffix.lower() in _YAML_SUFFIXES:
         return SchemaProfile.pure_yaml
@@ -475,7 +484,7 @@ def _detect_profile(path: Path) -> SchemaProfile:
         text = read_utf8(path)
     except (OSError, PortableInputError):
         return SchemaProfile.frontmatter_md
-    if split_frontmatter(text.replace("\r\n", "\n")) is not None:
+    if opens_frontmatter_fence(text.replace("\r\n", "\n")):
         return SchemaProfile.frontmatter_md
     root = _yaml_root_or_none(path)
     if isinstance(root, dict) and "softschema" in root:
@@ -483,19 +492,26 @@ def _detect_profile(path: Path) -> SchemaProfile:
     return SchemaProfile.frontmatter_md
 
 
-def _parse_after_repair(text: str | None, profile: SchemaProfile) -> Any:
-    """Parse the repaired text for binding inference, tolerating one that still fails."""
+def _parse_after_repair(
+    text: str | None, profile: SchemaProfile, source: str = "<text>"
+) -> tuple[Any, PortableInputError | None]:
+    """Parse the repaired text for binding inference, tolerating one that still fails.
+
+    Returns the parsed document and, when repair could not rescue it, the error that
+    stopped it. Binding inference falls back to the flags either way, but the error has
+    to travel with the ``None``: without it the caller cannot tell a document whose
+    frontmatter would not parse from one that never had frontmatter, and would report
+    the latter for both.
+    """
     if text is None:
-        return None
+        return None, None
     try:
         if profile is SchemaProfile.pure_yaml:
-            return parse_yaml_text(text)
-        _body, frontmatter = parse_frontmatter_text(text)
-    except PortableInputError:
-        # Repair could not rescue it. Binding inference falls back to the flags, and
-        # validation reports the parse failure itself.
-        return None
-    return frontmatter
+            return parse_yaml_text(text), None
+        _body, frontmatter = parse_frontmatter_text(text, source=source)
+    except PortableInputError as exc:
+        return None, exc
+    return frontmatter, None
 
 
 def _profile_from_args(args: argparse.Namespace) -> SchemaProfile | None:
@@ -504,11 +520,14 @@ def _profile_from_args(args: argparse.Namespace) -> SchemaProfile | None:
 
 
 def _infer_validation_binding(
-    args: argparse.Namespace, document: Any, profile: SchemaProfile
+    args: argparse.Namespace,
+    document: Any,
+    profile: SchemaProfile,
+    parse_error: PortableInputError | None = None,
 ) -> tuple[str, SchemaStatus, str | None]:
     if not isinstance(document, dict):
         if args.contract is None:
-            raise UsageError(_missing_contract_reason(profile))
+            raise UsageError(_missing_contract_reason(profile, parse_error))
         return args.contract, _status_from_args(args, None), args.envelope
 
     metadata = parse_schema_metadata(document.get("softschema"))
@@ -523,7 +542,13 @@ def _infer_validation_binding(
     )
 
 
-def _missing_contract_reason(profile: SchemaProfile) -> str:
+def _missing_contract_reason(
+    profile: SchemaProfile, parse_error: PortableInputError | None = None
+) -> str:
+    # A document whose metadata block would not parse is not a document without one, and
+    # saying so sends an agent looking for a missing block instead of a broken one.
+    if parse_error is not None:
+        return f"missing --contract because the document could not be read: {parse_error}"
     if profile is SchemaProfile.pure_yaml:
         return "missing --contract because the document root is not a YAML mapping"
     return "missing --contract because the document has no YAML frontmatter"

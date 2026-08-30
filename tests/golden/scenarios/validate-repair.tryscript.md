@@ -20,6 +20,7 @@ fixtures:
   - {source: ../fixtures/repair-already-valid.md, dest: check-clean/repair-already-valid.md}
   - {source: ../fixtures/repair.schema.yaml, dest: check-clean/repair.schema.yaml}
   - {source: ../fixtures/repair-pure.yaml, dest: pure/repair-pure.yaml}
+  - {source: ../fixtures/repair-unterminated-fence.md, dest: fence/repair-unterminated-fence.md}
   - {source: ../fixtures/repair.schema.yaml, dest: pure/repair.schema.yaml}
   # Untouched copies, so the journeys that must prove a file was *not* rewritten have the
   # bytes as authored to diff against.
@@ -27,6 +28,7 @@ fixtures:
   - {source: ../fixtures/repair-already-valid.md, dest: original/repair-already-valid.md}
   - {source: ../fixtures/repair-missing-required.md, dest: original/repair-missing-required.md}
   - {source: ../fixtures/repair-unrepairable.md, dest: original/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unterminated-fence.md, dest: original/repair-unterminated-fence.md}
 env:
   NO_COLOR: "1"
 ---
@@ -625,6 +627,43 @@ softschema:
 data:
   name: '1850'
   summary: "Note: actually Q1"
+? 0
+```
+
+# Journey: an unterminated frontmatter fence is unreadable on both paths
+
+A document that opens frontmatter and never closes it is what a truncated agent write
+leaves behind. It is a frontmatter-md document the reader rejects — not a fenceless
+`pure-yaml` artifact whose leading `---` happens to be a YAML document-start marker.
+
+This journey exists because the two readings once diverged: plain `validate` refused the
+file while `--check-repair` detected `pure-yaml`, parsed the whole thing, and reported
+`valid`. The producer was told its artifact was fine while its consumer could not open
+it, which inverts the premise of `--repair`. Both implementations diverged the same way,
+so `cross-impl-diff.sh` stayed clean through it; only a transcript pinning the expected
+verdict catches this class of defect.
+
+The parser's wording is engine-specific, so the stable prefix is asserted and the rest
+elided, as elsewhere in this file.
+
+```console
+$ $SOFTSCHEMA validate fence/repair-unterminated-fence.md 2>&1
+softschema validate: [..]
+? 2
+```
+
+`--check-repair` must refuse it too, and name the same cause. Reporting "the document has
+no YAML frontmatter" would send an agent looking for a block that is plainly there.
+
+```console
+$ $SOFTSCHEMA validate fence/repair-unterminated-fence.md --check-repair 2>&1
+softschema validate: missing --contract because the document could not be read: [..]
+? 2
+```
+
+```console
+$ diff original/repair-unterminated-fence.md fence/repair-unterminated-fence.md && echo "byte-identical"
+byte-identical
 ? 0
 ```
 

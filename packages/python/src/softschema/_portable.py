@@ -195,9 +195,17 @@ class FrontmatterSplit:
 def split_frontmatter(text: str) -> FrontmatterSplit | None:
     """Split a frontmatter-md document without disturbing its body.
 
-    Returns ``None`` when the document has no frontmatter, matching what
-    :func:`read_frontmatter_doc` reports: no leading fence, an unterminated fence, or an
-    empty block whose end fence is the very next line.
+    Returns ``None`` when there is no frontmatter *region to rewrite*: no leading fence,
+    an unterminated fence, or an empty block whose end fence is the very next line.
+
+    That is narrower than it looks, and the difference matters. Of those three,
+    :func:`read_frontmatter_doc` agrees on two — it reports no frontmatter for a
+    document with no leading fence and for an empty block — but an unterminated fence is
+    a *reader error* there, not a fenceless document. So ``None`` from this function
+    must never be read as "this document has no frontmatter fence"; use
+    :func:`opens_frontmatter_fence` for that question. Reading ``None`` as fenceless is
+    what once let profile detection route an unterminated-fence document to pure-yaml
+    and call it valid while the reader refused to open it at all.
 
     The scan is deliberately hand-rolled and byte-oriented rather than delegated to
     ``frontmatter_format``, for two reasons. The fence rules have to stay identical to
@@ -214,7 +222,7 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
     while cursor < len(text):
         line = _line_end(text, cursor)
         if line is None:
-            return None  # unterminated fence: no frontmatter to speak of
+            return None  # unterminated fence: no region to rewrite (still a reader error)
         if text[cursor : line[0]].rstrip() == "---":
             metadata_text = text[metadata_offset:cursor]
             # An empty block (end fence on the very next line) is the portable
@@ -228,6 +236,23 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
             )
         cursor = line[1]
     return None
+
+
+def opens_frontmatter_fence(text: str) -> bool:
+    """Whether the document's first line is a frontmatter opening fence.
+
+    Profile detection needs this and cannot use :func:`split_frontmatter`, which returns
+    ``None`` both for a document that never opened a fence and for one that opened a
+    fence and never closed it. Those two get opposite treatment: the first may be a
+    pure-yaml artifact, while the second is a frontmatter-md document that the reader
+    will reject. Detection has to tell them apart before it can decide a profile, and it
+    has to do so without parsing, because an artifact awaiting repair does not parse.
+
+    Only the opening fence is examined; a document that opens one is frontmatter-md
+    whether or not it closes it, exactly as :func:`read_frontmatter_doc` treats it.
+    """
+    first = _line_end(text, 0)
+    return first is not None and text[: first[0]].rstrip() == "---"
 
 
 def _line_end(text: str, start: int) -> tuple[int, int] | None:

@@ -9,6 +9,7 @@ import pytest
 
 import softschema.cli as cli
 from softschema.cli import main as softschema_main
+from softschema.models import SchemaProfile
 
 # Tests write Markdown docs with indented YAML frontmatter for readability;
 # frontmatter_format accepts uniform leading indent across top-level keys,
@@ -611,3 +612,104 @@ def test_prime_prints_skill_and_docs_index(capsys: pytest.CaptureFixture[str]) -
     assert "softschema" in out  # skill content
     assert "Available softschema docs:" in out  # docs index
     assert "Run `softschema docs <topic>`" in out
+
+
+# --- Profile detection on the repair path -------------------------------------------
+#
+# `--repair` must reach the same read verdict as plain `validate`. It once did not: a
+# document that opened a frontmatter fence and never closed it was detected as pure-yaml,
+# its leading `---` was consumed as a YAML document-start marker, and `--check-repair`
+# reported `valid` for a file plain `validate` could not open at all. See
+# docs/project/reviews/review-2026-08-30-validate-repair-e2e.md, Finding 1.
+
+MINI_SCHEMA = dedent(
+    """
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties:
+      name: {type: string}
+    """
+).lstrip()
+
+_FRONTMATTER_BODY = dedent(
+    """
+    softschema:
+      contract: test.detect:Doc/v1
+      schema: mini.schema.yaml
+      envelope: rec
+      status: enforced
+    rec:
+      name: Acme
+    """
+).strip()
+
+
+def _detect_case(tmp_path: Path, name: str, text: str) -> Path:
+    (tmp_path / "mini.schema.yaml").write_text(MINI_SCHEMA)
+    path = tmp_path / name
+    path.write_text(text)
+    return path
+
+
+def test_detect_profile_keeps_an_unterminated_fence_on_frontmatter_md(tmp_path: Path) -> None:
+    path = _detect_case(tmp_path, "unterminated.md", f"---\n{_FRONTMATTER_BODY}\n")
+    assert cli._detect_profile(path) is SchemaProfile.frontmatter_md
+
+
+def test_unterminated_fence_is_unreadable_on_both_paths(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _detect_case(tmp_path, "unterminated.md", f"---\n{_FRONTMATTER_BODY}\n")
+
+    # Plain validate refuses the document, naming the missing delimiter.
+    assert softschema_main(["validate", str(path)]) == 2
+    plain = capsys.readouterr().err
+    assert "Delimiter `---` for end of frontmatter not found" in plain
+
+    # The repair path must refuse it too, and name the same cause rather than claiming
+    # the document has no frontmatter at all.
+    assert softschema_main(["validate", str(path), "--check-repair"]) == 2
+    repaired = capsys.readouterr().err
+    assert "Delimiter `---` for end of frontmatter not found" in repaired
+    assert "has no YAML frontmatter" not in repaired
+
+
+def test_terminated_fence_still_validates_on_both_paths(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _detect_case(tmp_path, "terminated.md", f"---\n{_FRONTMATTER_BODY}\n---\n# Body\n")
+    assert cli._detect_profile(path) is SchemaProfile.frontmatter_md
+    for argv in (["validate", str(path)], ["validate", str(path), "--check-repair"]):
+        assert softschema_main(argv) == 0
+        assert json.loads(capsys.readouterr().out)["outcome"] == "valid"
+
+
+def test_detect_profile_still_reads_a_fenceless_document_as_pure_yaml(tmp_path: Path) -> None:
+    # The fix narrows what counts as "fenceless"; a document that never opened a fence is
+    # still pure-yaml, which is the rule the narrowing must not break.
+    path = _detect_case(tmp_path, "fenceless.md", f"{_FRONTMATTER_BODY}\n")
+    assert cli._detect_profile(path) is SchemaProfile.pure_yaml
+
+
+def test_detect_profile_keeps_a_yaml_file_with_a_document_start_marker_pure(
+    tmp_path: Path,
+) -> None:
+    # A `*.yaml` file may legitimately open with `---` as a YAML document-start marker.
+    # The suffix rule answers first, so the fence check never sees it.
+    path = _detect_case(tmp_path, "record.yaml", f"---\n{_FRONTMATTER_BODY}\n")
+    assert cli._detect_profile(path) is SchemaProfile.pure_yaml
+
+
+def test_unparsable_frontmatter_names_the_parse_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Repair could not rescue it, and no binding flags were passed. The reason must name
+    # what actually went wrong instead of reporting a frontmatter block that is present.
+    broken = "---\nsoftschema:\n  contract: test.detect:Doc/v1\nrec: [unclosed\n---\n# Body\n"
+    path = _detect_case(tmp_path, "broken.md", broken)
+    assert softschema_main(["validate", str(path), "--check-repair"]) == 2
+    err = capsys.readouterr().err
+    assert "could not be read" in err
+    assert "has no YAML frontmatter" not in err

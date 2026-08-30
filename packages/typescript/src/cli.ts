@@ -27,7 +27,7 @@ import {
   parseSchemaMetadata,
   type SchemaProfile,
 } from "./models.js";
-import { PortableInputError, readUtf8, splitFrontmatter } from "./portable.js";
+import { opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
 import { repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
 import { stableStringify } from "./settings.js";
@@ -524,7 +524,12 @@ function profileFromOpts(opts: { profile?: string }): SchemaProfile | undefined 
   return opts.profile;
 }
 
-function missingContractReason(profile: SchemaProfile): string {
+function missingContractReason(profile: SchemaProfile, parseError: Error | null = null): string {
+  // A document whose metadata block would not parse is not a document without one, and
+  // saying so sends an agent looking for a missing block instead of a broken one.
+  if (parseError !== null) {
+    return `missing --contract because the document could not be read: ${parseError.message}`;
+  }
   return profile === "pure-yaml"
     ? "missing --contract because the document root is not a YAML mapping"
     : "missing --contract because the document has no YAML frontmatter";
@@ -570,9 +575,10 @@ function inferValidationBinding(
   opts: ValidateOptions,
   root: Record<string, unknown> | null,
   profile: SchemaProfile,
+  parseError: Error | null = null,
 ): Contract {
   if (root === null && opts.contract === undefined) {
-    throw new UsageError(missingContractReason(profile));
+    throw new UsageError(missingContractReason(profile, parseError));
   }
   const fm = root ?? {};
   const metadata = parseSchemaMetadata(fm.softschema ?? null);
@@ -650,9 +656,9 @@ async function runRepairValidate(
 ): Promise<number> {
   const profile = profileFromOpts(opts) ?? detectProfile(path);
   const repaired = repairArtifact(path, { profile, write: false });
-  const document = parseAfterRepair(repaired.text, profile);
+  const { document, parseError } = parseAfterRepair(repaired.text, profile, path);
   const root = document?.value ?? null;
-  const contract = inferValidationBinding(opts, isRecord(root) ? root : null, profile);
+  const contract = inferValidationBinding(opts, isRecord(root) ? root : null, profile, parseError);
   const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
   const result = repairAndValidateArtifact(path, contract, { semanticModel, write, repaired });
   writeText(stableStringify(result));
@@ -671,6 +677,13 @@ async function runRepairValidate(
  * filename, then the presence of a frontmatter fence. A fenceless document that will not
  * parse falls back to frontmatter-md and reports `no_frontmatter`, exactly as it does
  * without `--repair`.
+ *
+ * The fence test asks whether the document *opens* a fence, not whether it can be split.
+ * A document that opens a fence and never closes it is frontmatter-md and the reader
+ * rejects it; treating it as fenceless would route it to the pure-yaml rule below, where
+ * its leading `---` reads as a YAML document-start marker and the whole file parses
+ * cleanly. That is how `--repair` once called an artifact valid that plain `validate`
+ * could not read at all.
  */
 function detectProfile(path: string): SchemaProfile {
   if (YAML_SUFFIXES.includes(fileSuffix(path))) return "pure-yaml";
@@ -680,21 +693,36 @@ function detectProfile(path: string): SchemaProfile {
   } catch {
     return "frontmatter-md";
   }
-  if (splitFrontmatter(text.replaceAll("\r\n", "\n")) !== null) return "frontmatter-md";
+  if (opensFrontmatterFence(text.replaceAll("\r\n", "\n"))) return "frontmatter-md";
   const root = yamlRootOrNull(path);
   if (isRecord(root) && "softschema" in root) return "pure-yaml";
   return "frontmatter-md";
 }
 
-/** Parse the repaired text for binding inference, tolerating one that still fails. */
-function parseAfterRepair(text: string | null, profile: SchemaProfile): ParsedDocument | null {
-  if (text === null) return null;
+/**
+ * Parse the repaired text for binding inference, tolerating one that still fails.
+ *
+ * Returns the parsed document and, when repair could not rescue it, the error that
+ * stopped it. Binding inference falls back to the flags either way, but the error has to
+ * travel with the `null`: without it the caller cannot tell a document whose frontmatter
+ * would not parse from one that never had frontmatter, and would report the latter for
+ * both.
+ */
+function parseAfterRepair(
+  text: string | null,
+  profile: SchemaProfile,
+  source = "<text>",
+): { document: ParsedDocument | null; parseError: Error | null } {
+  if (text === null) return { document: null, parseError: null };
   try {
-    return profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text);
-  } catch {
-    // Repair could not rescue it. Binding inference falls back to the flags, and validation
-    // reports the parse failure itself.
-    return null;
+    const document =
+      profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text, source);
+    return { document, parseError: null };
+  } catch (error) {
+    return {
+      document: null,
+      parseError: error instanceof Error ? error : new Error(String(error)),
+    };
   }
 }
 

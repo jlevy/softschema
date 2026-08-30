@@ -9,11 +9,10 @@ author: Claude, with maintainer direction from Joshua Levy
 
 **Author:** Claude, with maintainer direction from Joshua Levy
 
-**Status:** Superseded on the release question by the
-[`--repair` end-to-end review](review-2026-08-30-validate-repair-e2e.md), which found a
-release-blocking defect.
-Not yet released — the version bump, the changelog cut, and the manual e2e phases are
-still open.
+**Status:** The blocker found by the
+[`--repair` end-to-end review](review-2026-08-30-validate-repair-e2e.md) is fixed and
+covered. Not yet released — the version bump, the changelog cut, and the manual e2e
+phases are still open.
 
 ## Decision
 
@@ -25,7 +24,8 @@ Ship the unreleased work as **v0.8.0, a minor**, not a patch.
 > the producer is told `valid` where the consumer cannot read the file at all.
 > That inverts the feature’s premise and is present in both implementations.
 > See [the end-to-end review](review-2026-08-30-validate-repair-e2e.md), Finding 1. Fix
-> before tagging.
+> **Fixed** on this branch, with unit and golden coverage in both implementations and
+> the runbook re-run green against the fixed build.
 
 `publishing.md` draws the line at “patch bumps cover docs-only changes and small
 additive features; reserve minor bumps for changes that meaningfully shift the API or
@@ -116,16 +116,14 @@ No open pull requests and no open issues.
 None of these is a defect in the code; they are the release steps and two small loose
 ends.
 
-0. **Fix the `validate` / `--repair` profile-inference divergence** — Finding 1 of the
-   [end-to-end review](review-2026-08-30-validate-repair-e2e.md).
-   Release-blocking.
+0. ~~**Fix the `validate` / `--repair` profile-inference divergence**~~ — done, with a
+   second related defect (the misleading missing-contract reason) fixed alongside it.
 1. **Bump `packages/typescript/package.json` to `0.8.0`.** It still reads `0.7.0`. The
    Python version derives from the tag, but the npm publish job aborts on a mismatch.
 2. **Cut the changelog.** `## Unreleased` becomes `## v0.8.0—<date>`.
-3. **Record the package description change.** Both `pyproject.toml` and `package.json`
-   now read “Gradual contracts for YAML data, with optional Markdown context”.
-   That is the text on the PyPI and npm listing pages, and it is user-visible but absent
-   from the changelog.
+3. ~~**Record the package description change.**~~ Done — the changelog now lists it.
+   Both `pyproject.toml` and `package.json` read “Gradual contracts for YAML data, with
+   optional Markdown context”, the text on the PyPI and npm listing pages.
 4. **Run e2e phases 2–4.** The checklist requires clean-environment installs of the
    wheel and npm tarball, the quickstart as written, and the skill bootstrap before
    tagging. CI covers Phase 1 and artifact smoke; it does not cover these.

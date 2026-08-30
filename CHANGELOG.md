@@ -31,6 +31,11 @@ null is not stringified, and a parse failure quoting cannot fix — an alias, a 
 an explicit tag — keeps its original error code.
 An artifact needing no repair comes back byte-identical.
 
+A document that opens a frontmatter fence and never closes it — what a truncated write
+leaves behind — is a frontmatter-md read error on every path, `--repair` included.
+It is not a fenceless `pure-yaml` document whose leading `---` happens to be a YAML
+document-start marker, and both paths report the same cause.
+
 ### Added
 
 - `repair_artifact` / `repairArtifact`, `repair_yaml_text` / `repairYamlText`,
@@ -51,6 +56,8 @@ An artifact needing no repair comes back byte-identical.
   now carries a `"repairs": []` key.
   Records use the documented `kind`/`code`/`path` match surface, so a consumer
   identifies a repair the way it identifies an error.
+- Both packages describe themselves as “Gradual contracts for YAML data, with optional
+  Markdown context”. This is the summary line on the PyPI and npm listing pages.
 - TypeScript semantic error records now carry `expected` on the Zod issues that have
   one. It is what identifies a type disagreement; without it an `invalid_type` issue says
   only that something was wrong, not what was wanted.

@@ -100,7 +100,10 @@ library call). Otherwise an implementation must resolve it as:
 1. A `*.yaml` or `*.yml` file name means `pure-yaml`. The name is checked before the
    frontmatter fence, because a YAML document may open with the `---` document-start
    marker that would otherwise scan as the start of a fence.
-2. A document with a frontmatter fence is `frontmatter-md`.
+2. A document that **opens** a frontmatter fence is `frontmatter-md`, whether or not it
+   closes one. An unterminated fence is a read error on a `frontmatter-md` document, not
+   evidence of a fenceless one; resolving it to `pure-yaml` would let its opening `---`
+   be consumed as a document-start marker and make a truncated artifact look complete.
 3. A fenceless document whose whole text parses to a mapping carrying a root
    `softschema:` block is `pure-yaml`.
 4. Anything else is `frontmatter-md`.
@@ -108,6 +111,11 @@ library call). Otherwise an implementation must resolve it as:
 Requiring the metadata block in step 3 is what separates a pure-yaml artifact from prose
 that happens to parse as YAML: a Markdown document without frontmatter stays
 `frontmatter-md` and is rejected for having none.
+
+Resolution must not depend on the document parsing.
+An implementation that repairs before validating resolves the profile of an artifact
+that does not yet parse, and it must reach the same profile the reader would, or the two
+disagree about whether the artifact is readable at all.
 
 ## Portable YAML Values
 

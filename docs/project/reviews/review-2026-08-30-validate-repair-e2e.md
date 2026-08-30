@@ -41,7 +41,18 @@ Harness in `attic/e2e-repair/` (gitignored; needs `GOOGLE_API_KEY`).
 
 ### Finding 1 — `validate` and `--repair` disagree about whether a document is readable
 
-**Release-blocking.** Both implementations, deterministic, no agent needed.
+**Was release-blocking; fixed.** Both implementations, deterministic, no agent needed.
+
+> **Resolved.** `_detect_profile` / `detectProfile` now ask whether the document *opens*
+> a frontmatter fence, via a new `opens_frontmatter_fence` / `opensFrontmatterFence`
+> helper, instead of asking whether `split_frontmatter` can split it.
+> A second defect surfaced during the fix and is fixed with it: with no binding flags
+> the repair path reported “the document has no YAML frontmatter” for a document whose
+> frontmatter was present but unparsable, so the parse error now travels into the
+> missing-contract reason.
+> Covered by 6 Python and 5 TypeScript unit cases (verified to fail against the pre-fix
+> code) and by the golden journey *an unterminated frontmatter fence is unreadable on
+> both paths*, which runs on Python, Node, and Bun.
 
 A document that opens frontmatter with `---` and never closes it — exactly what a
 truncated agent write produces:
@@ -156,10 +167,10 @@ Checked on every artifact in every run:
 
 ## Recommendation
 
-Fix Finding 1 before tagging v0.8.0. The narrow fix is to make profile inference on the
-repair path treat an unterminated frontmatter fence the way the reader does — as an
-error on a document that declared frontmatter intent — rather than as evidence of a
-fenceless `pure-yaml` document.
+~~Fix Finding 1 before tagging v0.8.0.~~ Done; see the note under Finding 1. The narrow
+fix is to make profile inference on the repair path treat an unterminated frontmatter
+fence the way the reader does — as an error on a document that declared frontmatter
+intent — rather than as evidence of a fenceless `pure-yaml` document.
 A golden journey case belongs with it, since parity testing cannot see a divergence both
 implementations share.
 
