@@ -3,14 +3,18 @@ type: is
 id: is-01m19xba51hdfg7gsrqksqy3ft
 title: "Python: unit coverage for the new surface and both leak fixes"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:01:46.400Z
-updated_at: 2026-08-30T18:01:46.400Z
+updated_at: 2026-08-30T18:42:16.842Z
+closed_at: 2026-08-30T18:42:16.842Z
+close_reason: Implemented on claude/senior-engineering-review-h24e5m (cdb5ff6, 9ec17f9). validate/repair split with --dry-run and --check, strictness per command, load_artifact/loadArtifact, enforcement lint, all docs and derived artifacts regenerated, runbook re-run green on all four phases. pytest 243, bun test 240, golden 75/73/75, cross-impl parity OK.
+resolution: null
+duplicate_of: null
 ---
 packages/python/tests/test_cli.py
 

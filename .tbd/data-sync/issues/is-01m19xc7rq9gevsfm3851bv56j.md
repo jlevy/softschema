@@ -3,16 +3,20 @@ type: is
 id: is-01m19xc7rq9gevsfm3851bv56j
 title: "Docs: softschema-spec.md -- the CLI surface, the strict/checking rule, exit classes"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies:
   - type: blocks
     target: is-01m19xcacbe2bz4n54qcjeh34c
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:02:16.727Z
-updated_at: 2026-08-30T18:02:53.114Z
+updated_at: 2026-08-30T18:42:16.862Z
+closed_at: 2026-08-30T18:42:16.862Z
+close_reason: Implemented on claude/senior-engineering-review-h24e5m (cdb5ff6, 9ec17f9). validate/repair split with --dry-run and --check, strictness per command, load_artifact/loadArtifact, enforcement lint, all docs and derived artifacts regenerated, runbook re-run green on all four phases. pytest 243, bun test 240, golden 75/73/75, cross-impl parity OK.
+resolution: null
+duplicate_of: null
 ---
 docs/softschema-spec.md
 

@@ -3,9 +3,9 @@ type: is
 id: is-01m19xahh31yvdk9arvvjt1qyp
 title: "TypeScript: add the repair command, remove --repair/--check-repair from validate"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 labels: []
 dependencies:
   - type: blocks
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m19xcybzz5zcr27y96q1vq5w
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:01:21.187Z
-updated_at: 2026-08-30T18:02:44.159Z
+updated_at: 2026-08-30T18:42:16.828Z
+closed_at: 2026-08-30T18:42:16.828Z
+close_reason: Implemented on claude/senior-engineering-review-h24e5m (cdb5ff6, 9ec17f9). validate/repair split with --dry-run and --check, strictness per command, load_artifact/loadArtifact, enforcement lint, all docs and derived artifacts regenerated, runbook re-run green on all four phases. pytest 243, bun test 240, golden 75/73/75, cross-impl parity OK.
+resolution: null
+duplicate_of: null
 ---
 packages/typescript/src/cli.ts
 

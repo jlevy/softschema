@@ -3,9 +3,9 @@ type: is
 id: is-01m19xaj0ps205t2s00bdnaejc
 title: "Python: make strict-versus-checking a property of the command"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 4
+version: 6
 labels: []
 dependencies:
   - type: blocks
@@ -16,14 +16,20 @@ dependencies:
     target: is-01m19xc7rq9gevsfm3851bv56j
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:01:21.686Z
-updated_at: 2026-08-30T18:02:43.086Z
+updated_at: 2026-08-30T18:42:16.831Z
+closed_at: 2026-08-30T18:42:16.831Z
+close_reason: Implemented on claude/senior-engineering-review-h24e5m (cdb5ff6, 9ec17f9). validate/repair split with --dry-run and --check, strictness per command, load_artifact/loadArtifact, enforcement lint, all docs and derived artifacts regenerated, runbook re-run green on all four phases. pytest 243, bun test 240, golden 75/73/75, cross-impl parity OK.
+resolution: null
+duplicate_of: null
 ---
 packages/python/src/softschema/cli.py
 
-Leak 1 -- validate must be strict about reads regardless of --contract. Today _read_artifact is only reached when binding inference needs the document; pass --contract and an unreadable file falls through to the verdict path and exits 1 with a yaml_parse_error record instead of exiting 2. Perform the strict read unconditionally.
+CORRECTION (2026-08-30): the review originally described two leaks. Verified against origin/main: only one is real.
 
-Leak 2 -- repair must report rather than raise. Today _infer_validation_binding raises UsageError('missing --contract because the document could not be read: ...') when repair could not rescue the document. That advises a flag that would not have helped. Emit the result carrying the read-failure record instead, exit 1. The pipeline already produces exactly that shape when a contract is supplied.
+NOT a leak -- validate was already strict. _read_artifact is called unconditionally in _validate_cmd, so 'validate <unreadable> --contract X' exits 2 on main, same as without the flag. The original table misread the '--check-repair --contract' row as a 'validate --contract' row. Nothing to fix; add a test pinning the strictness, which was never pinned.
 
-_missing_contract_reason loses its parse_error parameter once leak 2 is closed -- that argument exists only to word the message this change removes.
+REAL -- repair must report rather than raise. _infer_validation_binding raises UsageError('missing --contract because the document could not be read: ...') when repair could not rescue the document. That advises a flag that would not have helped. Emit a result carrying the read-failure record instead, exit 1.
+
+Because Contract requires a well-formed ID and an unreadable document declares none, this needs a contract-free failure result: validate.unreadable_artifact_result(). _missing_contract_reason loses its parse_error parameter; _parse_after_repair keeps returning the error, now to name the cause in the record rather than to word a usage message.
 
 Spec D3, D4.
