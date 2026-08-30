@@ -4,7 +4,7 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
-## Unreleased
+## v0.8.0—2026-08-30
 
 ### `softschema repair`
 
