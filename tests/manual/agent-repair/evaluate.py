@@ -37,13 +37,37 @@ def err_rows(res: dict | None) -> list[dict]:
 # would not parse. `_artifact_failure` and `unreadable_artifact_result` both emit this
 # shape; scoring them against the field-repair surface would mark a precise diagnosis
 # ("mapping values are not allowed here, line 22, column 12") as an unclear report.
+#
+# The set has to be complete, and it is not obvious that it is, so here is where each half
+# comes from. The first block is the kinds `_artifact_failure` names literally. The second
+# is every `PortableInputError.code`, which reaches the record unchanged — the same set
+# `repair._NOT_REPAIRABLE` enumerates, plus `yaml_parse_error`.
+#
+# Getting this wrong is not a harmless omission: a kind missing here scores a correct
+# refusal as `reported_unclear`, so a run reads as a repair failure when the CLI did
+# exactly what it should. `yaml_duplicate_key` and `yaml_alias` were missing, and both are
+# well within what a model writes — a repeated field, or a `&anchor` copied out of an
+# example. That is the same trap as the record cap in phase 3: a harness bug that makes
+# the feature look worse than it is.
 DOCUMENT_LEVEL_KINDS = {
+    # Named by `_artifact_failure` / `unreadable_artifact_result`.
     "artifact_unreadable",
     "artifact_invalid_utf8",
-    "yaml_parse_error",
     "no_frontmatter",
     "frontmatter_not_mapping",
     "yaml_not_mapping",
+    # Every `PortableInputError.code`, passed through as the record's kind.
+    "invalid_utf8",
+    "number_negative_zero",
+    "number_out_of_range",
+    "yaml_alias",
+    "yaml_custom_tag",
+    "yaml_duplicate_key",
+    "yaml_limit",
+    "yaml_merge_key",
+    "yaml_non_string_key",
+    "yaml_parse_error",
+    "yaml_unsupported_scalar",
 }
 
 

@@ -21,6 +21,12 @@ live: the first run of it found a defect where `--repair` reported `valid` for a
 document plain `validate` could not open at all
 ([review](project/reviews/review-2026-08-30-validate-repair-e2e.md), Finding 1).
 
+Phase 4 is where the mistakes a model happens not to make get covered, which is why it
+keeps growing. A later pass added a matrix of ordinary authoring mistakes alongside this
+runbook and found a leading byte order mark splitting the two runtimes
+([review](project/reviews/review-2026-08-30-repair-command-e2e.md), Finding 1); it is
+now the third case below.
+
 Run it after changing `repair`, `conform`, `pipeline`, or profile detection, and before
 tagging a release that touches them.
 It is manual by design: it makes live model calls and cannot run in CI.
@@ -261,11 +267,11 @@ A run where Phase 2 reports 850 or 950 errors is normal; a run where Phase 1 lea
 is not.
 
 **`refused_with_cause` in Phase 1 is a pass, not a failure.** The model sometimes writes
-a line that is malformed rather than merely unquoted — a missing `: ` after a key, an
-unterminated fence — and repair declines to guess at it, naming the line and column
-instead. Quoting cannot insert a key separator, and inventing one would be a guess about
-intent. Count those separately from the repairable artifacts before reading Phase 1 as a
-drop.
+a line that is malformed rather than merely unquoted — a missing `: ` after a key, a
+repeated key, an anchor copied out of an example, an unterminated fence — and repair
+declines to guess at it, naming the line and column instead.
+Quoting cannot insert a key separator, and inventing one would be a guess about intent.
+Count those separately from the repairable artifacts before reading Phase 1 as a drop.
 
 Investigate a **drop**, particularly a repair that stops preserving notation, a rename
 appearing in Phase 2, or a Phase 3 score below 12 that is not explained by a record cap.
