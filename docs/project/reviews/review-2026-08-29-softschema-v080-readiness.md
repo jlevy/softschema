@@ -142,6 +142,85 @@ marked “Implemented (phases 1-3); phase 4 and the metaproc coordination deferr
 The deferred phase justifies keeping it out of `done/`, but every other implemented plan
 has moved, so the placement is worth a deliberate call rather than a default.
 
+## Status Addendum — 2026-08-30
+
+The review of PR #52 and a full end-to-end runbook run against the fixed build.
+Both are recorded here rather than in the findings above, which stand as written.
+
+### Review of PR #52
+
+Eight findings
+([comment](https://github.com/jlevy/softschema/pull/52#issuecomment-5467427098)). The
+`--repair` fix itself was confirmed correct: the pre-fix defect reproduces on a worktree
+at `origin/main` (`outcome: valid`, `profile: pure-yaml`, exit 0) for a file plain
+`validate` refuses.
+
+Chasing one finding — whether `opens_frontmatter_fence` really matches the reader
+“exactly”, as its docstring claimed — found a **live second defect** in the sibling
+function. `_line_end` / `lineEnd` returned nothing at EOF, so a final line with no
+trailing newline was not a line to the offset scan, though it is one to both readers.
+`split_frontmatter` therefore reported “no region to rewrite” for a document ending at
+its closing fence, and `--repair` silently skipped an artifact it could fix.
+Two documents differing by one trailing byte got opposite verdicts.
+Fixed, with 3 Python and 3 TypeScript cases each verified to fail against the pre-fix
+code, and a golden journey on all three runtimes.
+
+Also fixed: the Node CLI prefixed a frontmatter read failure with
+`Error parsing YAML metadata:` where Python did not, so the two CLIs worded the same
+failure for the same file differently; and `parseAfterRepair` swallowed every throw,
+reporting an internal fault as “the document could not be read”.
+Deferred, not blocking: the exit-class difference when `--contract` is supplied
+(`ss-qto7`), the missing filename in pure-yaml read errors (`ss-fjow`, pre-existing and
+symmetric across both paths), and a harness classification gap (`ss-p5sh`).
+
+### End-to-end runbook run
+
+`docs/agent-repair.runbook.md` against the fixed build, `gemini-2.5-flash` at
+`thinkingBudget: 0`.
+
+| Phase | Result |
+| --- | --- |
+| 1 — templated | 8/12 invalid on arrival, **8/8 repaired unaided**; every repair a single `scalar_conformed` at `['rubric_version']`; `1.10` preserved as `'1.10'` |
+| 2 — prose | 11/12 invalid with **408 `undeclared_property` / 408 `missing_property`, exactly paired, 0 renames**; the 12th was a truncated write, correctly refused |
+| 3 — feedback | **11/11 to valid in one round**, 816 errors to 0 |
+| 4 — regression | both cases exit as specified on Python, Node, and Bun |
+
+Phases 1 and 2 assert the three conformance guarantees on every artifact:
+`--check-repair` never wrote, repair is idempotent, and a no-op comes back
+byte-identical. All held.
+
+The prose phase produced a truncated agent write on its own — `CROX.md` opened a
+frontmatter fence and never closed it — which is the defect PR #52 exists to fix,
+occurring naturally a second time.
+Against `origin/main` that artifact reports
+`missing --contract because the document has no YAML frontmatter`, sending an agent
+after a block that is plainly there; against this build it names the delimiter.
+Both of that PR’s fixes are confirmed on live model output, not only on fixtures.
+
+### Automated sweep, re-run
+
+| Check | Result | Previous |
+| --- | --- | --- |
+| `pytest` | 234 passed | 231 |
+| `bun test` | 231 pass, 0 fail | 228 |
+| `tsc --noEmit` · `biome ci` · `publint` | clean | clean |
+| Golden corpus | Python 73, Node 71, Bun 73 | 71 / 69 / 71 |
+| `cross-impl-diff.sh` | parity OK | parity OK |
+| `lint.py --check` · `make format-check` | exit 0 | exit 0 |
+
+One ordering note for whoever cuts the release: `make format` reflows the Markdown that
+the TypeScript package bundles as resources, and does **not** refresh those copies.
+`cross-impl-diff.sh` compares `docs spec` output between the two CLIs and fails on the
+stale copy until `bun run --cwd packages/typescript build` runs again.
+Build after formatting, not before.
+
+### Still open before tagging
+
+Unchanged from the list above: bump `packages/typescript/package.json` to `0.8.0`, cut
+the changelog, and run e2e phases 2–4 (clean-environment installs of the wheel and npm
+tarball, the quickstart as written, and the skill bootstrap).
+Tracked as `ss-txij`.
+
 ## Baseline for the Next Release
 
 Counts to compare against, and to investigate on any **drop**:
