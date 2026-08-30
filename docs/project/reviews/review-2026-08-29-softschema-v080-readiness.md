@@ -214,6 +214,32 @@ the TypeScript package bundles as resources, and does **not** refresh those copi
 stale copy until `bun run --cwd packages/typescript build` runs again.
 Build after formatting, not before.
 
+### Status Addendum — 2026-08-30, second entry
+
+The CLI surface changed after the entry above: `validate --repair` and
+`validate --check-repair` became `repair`, `repair --dry-run`, and `repair --check`, and
+strictness became a property of the command.
+See `docs/project/specs/active/plan-2026-08-30-repair-command.md`.
+
+The runbook re-ran against that surface, all four phases:
+
+| Phase | Result |
+| --- | --- |
+| 1 — templated | **11/11 repairable artifacts repaired to valid** unaided; the 12th carried a missing `: ` after a key, which repair correctly refused and named by line and column |
+| 2 — prose | 12/12 invalid, **444 `undeclared_property` / 444 `missing_property`, exactly paired, 0 renames** |
+| 3 — feedback | **12/12 to valid in one round**, 888 errors to 0 |
+| 4 — regression | `validate` exits 2, `repair --check` exits 1 with the same cause as a record, on Python, Node, and Bun |
+
+Conformance guarantees held on every artifact: `repair --check` never wrote, repair is
+idempotent, a no-op came back byte-identical.
+
+The run also found two scoring bugs in the harness itself, both now fixed.
+`summarize.py` crashed formatting a record with no `code`, which every document-level
+failure lacks — there is no path into a document that did not parse.
+`evaluate.py` scored such a record `reported_unclear`, marking a precise diagnosis
+("mapping values are not allowed here, line 22, column 12") as an unclear report; it now
+scores `refused_with_cause`, which is the designed outcome rather than a shortfall.
+
 ### Still open before tagging
 
 Unchanged from the list above: bump `packages/typescript/package.json` to `0.8.0`, cut

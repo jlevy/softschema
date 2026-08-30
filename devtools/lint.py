@@ -90,7 +90,12 @@ review and would send an agent to a flag that no longer parses.
 """
 
 RETIRED_SURFACE_MARKER = "retired-surface-ok"
-"""Opt-out for a line that must name a retired flag: the tests asserting it is gone."""
+"""Opt-out for a line that must name a retired flag: the tests asserting it is gone.
+
+Honored on the offending line or the one above it, because a formatter decides where a
+comment ends up — biome moves a trailing comment onto its own line when the statement is
+near the width limit — and an opt-out that a reformat silently voids is worse than none.
+"""
 
 RETIRED_SURFACE_EXEMPT_DIRS = (Path("docs/project/reviews"), Path("docs/project/specs"))
 """Records of what was true when written. Rewriting them would falsify the history."""
@@ -108,7 +113,8 @@ def check_retired_surface() -> int:
         except (OSError, UnicodeDecodeError):
             continue
         for number, line in enumerate(lines, 1):
-            if RETIRED_SURFACE_MARKER in line:
+            previous = lines[number - 2] if number >= 2 else ""
+            if RETIRED_SURFACE_MARKER in line or RETIRED_SURFACE_MARKER in previous:
                 continue
             if any(name in line for name in RETIRED_SURFACE):
                 hits.append(f"{path}:{number}: {line.strip()[:96]}")

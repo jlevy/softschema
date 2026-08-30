@@ -209,14 +209,22 @@ not. Two recorded runs:
 
 | Phase | Condition | Result |
 | --- | --- | --- |
-| 1 | templated, budget 0 | 9/12 invalid on arrival, **9/9 repaired to valid** unaided, both runs |
-| 2 | prose, budget 0 | 12/12 invalid, 880 and 906 paired records, **0 renames** both runs |
-| 3 | feedback, budget 0 | **12/12 valid in one round**, every error cleared, both runs |
-| 4 | truncated fence | both paths exit 2, same stated cause |
+| 1 | templated, budget 0 | 9-12 of 12 invalid on arrival, **every repairable one repaired to valid** unaided |
+| 2 | prose, budget 0 | 12/12 invalid, 880-906 paired records, **0 renames**, every run |
+| 3 | feedback, budget 0 | **12/12 valid in one round**, every error cleared, every run |
+| 4 | regression cases | `validate` exits 2, `repair --check` exits 1 with the same cause as a record |
 
 Read the bold parts as the assertions and the counts as context.
-A run where Phase 2 reports 850 or 950 errors is normal; a run where Phase 1 leaves an
-artifact unrepaired, Phase 2 performs a rename, or Phase 3 lands below 12 is not.
+A run where Phase 2 reports 850 or 950 errors is normal; a run where Phase 1 leaves a
+*repairable* artifact unrepaired, Phase 2 performs a rename, or Phase 3 lands below 12
+is not.
+
+**`refused_with_cause` in Phase 1 is a pass, not a failure.** The model sometimes writes
+a line that is malformed rather than merely unquoted — a missing `: ` after a key, an
+unterminated fence — and repair declines to guess at it, naming the line and column
+instead. Quoting cannot insert a key separator, and inventing one would be a guess about
+intent. Count those separately from the repairable artifacts before reading Phase 1 as a
+drop.
 
 Investigate a **drop**, particularly a repair that stops preserving notation, a rename
 appearing in Phase 2, or a Phase 3 score below 12 that is not explained by a record cap.

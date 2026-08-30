@@ -22,10 +22,11 @@ def main() -> int:
     print("\n=== errors reported (not repaired) ===")
     for row in rows:
         for err in row["errors"]:
-            print(
-                f"  {row['artifact']:10} {err['code']:22} "
-                f"prop={err['property']!s:18} {err['message']}"
-            )
+            # A document-level failure carries neither `code` nor `property`: there is no
+            # path into a document that would not parse. Fall back to `kind`, which every
+            # record has.
+            label = err["code"] or err.get("kind") or "?"
+            print(f"  {row['artifact']:10} {label:22} prop={err['property']!s:18} {err['message']}")
 
     print("\n=== conformance guarantees ===")
     print("  repair --check never wrote:", all(r["repair_check_left_file_unwritten"] for r in rows))
