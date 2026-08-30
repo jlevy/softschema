@@ -9,7 +9,20 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Implemented (phases 1-3); phase 4 and the metaproc coordination deferred
+**Status:** Implemented (phases 1-3); phase 4 and the metaproc coordination deferred.
+**Superseded in part, 2026-08-30:** the CLI surface described below —
+`validate --repair` and `validate --check-repair` — was replaced before release by the
+`repair` command, with `--dry-run` and `--check`. See
+[plan-2026-08-30-repair-command.md](plan-2026-08-30-repair-command.md).
+Everything else here still holds: the escalating pass, the two corrections in scope, the
+conformance guarantees, and the record surface are unchanged.
+This document is left as written; it records what was true when the feature was
+designed.
+
+**Placement:** kept in `active/` rather than moved to `done/`, which the v0.8.0
+readiness review left as an open call.
+The deferred phase 4 and metaproc coordination are still live work, and the plan is the
+only place they are described.
 
 **Tracking:** `ss-pac1` (epic), with file-level children `ss-uwp6`/`ss-l3dc` (portable
 helpers), `ss-arqr`/`ss-ioej`/`ss-ibay` (repair), `ss-1obx`/`ss-xisi`/`ss-roh1`

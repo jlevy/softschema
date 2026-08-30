@@ -1,0 +1,63 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+title: PrelimScanTerms
+description: >-
+  High-recall customer search queries for one ticker, proposed after a quick check of
+  current brands and products. Loosely borrowed from the GTIA v2 prelim scan form.
+type: object
+additionalProperties: false
+required:
+- ticker
+- company
+- as_of_date
+- recognized
+- search_fit
+- term_budget
+- rubric_version
+- fit_reason
+- panels
+properties:
+  ticker:
+    type: string
+    pattern: ^[A-Z][A-Z0-9.-]*$
+  company:
+    type: string
+    minLength: 1
+  as_of_date:
+    type: string
+    pattern: ^\d{4}-\d{2}-\d{2}$
+  recognized:
+    type: boolean
+  search_fit:
+    type: string
+    enum: [standard, limited]
+  term_budget:
+    type: integer
+    enum: [0, 10, 20]
+  rubric_version:
+    type: string
+  fit_reason:
+    type: string
+    minLength: 1
+  panels:
+    type: object
+    additionalProperties: false
+    required: [identity, products, intent, category]
+    properties:
+      identity: { $ref: '#/$defs/Panel' }
+      products: { $ref: '#/$defs/Panel' }
+      intent:   { $ref: '#/$defs/Panel' }
+      category: { $ref: '#/$defs/Panel' }
+$defs:
+  Panel:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [term, why]
+      properties:
+        term:
+          type: string
+          minLength: 1
+        why:
+          type: string
+          minLength: 1

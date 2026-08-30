@@ -6,19 +6,36 @@ version number.
 
 ## Unreleased
 
-### `softschema validate --repair`
+### `softschema repair`
 
 Validation normally happens after the process that wrote an artifact has exited.
 By then the session that could fix the document is gone, so a large, nearly-correct
 artifact is discarded over one field.
-`--repair` lets the producer run the same check its consumer will run, while it can
-still act on the answer.
+`repair` lets the producer run the same check its consumer will run, while it can still
+act on the answer.
 
 ```bash
-softschema validate <path>                  # unchanged; read-only
-softschema validate <path> --repair         # repair, conform, write, validate
-softschema validate <path> --check-repair   # report what would change; no write
+softschema validate <path>            # unchanged; read-only, never writes
+softschema repair <path>              # repair, conform, write, validate
+softschema repair <path> --dry-run    # report what would change; no write
+softschema repair <path> --check      # exit 1 if anything would change; no write
 ```
+
+The two write-suppressing flags ask different questions, and both are wanted.
+`--dry-run` reports what would change and still passes when the result would be valid,
+which is what an agent asks before committing to a change.
+`--check` fails whenever anything would change at all, the same shape as
+`generate --check`, which is what a gate runs against an artifact under review.
+
+`validate` and `repair` also take deliberately different postures toward an artifact
+that cannot be read.
+`validate` is what a consumer runs, and refuses one outright with a one-line message and
+exit 2: an artifact it cannot open is not a failing artifact.
+`repair` is what a producer runs, and reports the same condition as a record at exit 1,
+under no contract when the document declares none legibly — a truncated write is its
+ordinary input, and the agent that made it needs something to act on.
+Which posture applies follows from the command, never from which other flags were
+passed.
 
 One escalating pass, writing the file once: parse, quote a scalar whose text YAML reads
 as structure, retype a scalar the contract declares `type: string`, then validate.
@@ -31,8 +48,42 @@ null is not stringified, and a parse failure quoting cannot fix — an alias, a 
 an explicit tag — keeps its original error code.
 An artifact needing no repair comes back byte-identical.
 
+A document that opens a frontmatter fence and never closes it — what a truncated write
+leaves behind — is a frontmatter-md read error to both commands.
+It is not a fenceless `pure-yaml` document whose leading `---` happens to be a YAML
+document-start marker, and both name the same cause.
+
+A document whose closing fence is the last byte of the file, with no trailing newline,
+is repaired like any other.
+The offset scan behind the repair region read “no newline left” as “no closing fence”,
+so `--repair` silently skipped an artifact it could fix while the reader read the same
+frontmatter without complaint.
+Both fixes come to the same rule, now stated in the spec: a final line with no trailing
+newline is a line, and the reader and the scanner must agree on where a document’s
+fences are.
+
+A leading UTF-8 byte order mark is dropped on read rather than carried into the document
+as a character. This one split the two runtimes rather than two code paths:
+`TextDecoder`’s default strips the mark and Python’s `bytes.decode` kept it, so
+`npx softschema` read a BOM-prefixed artifact while `uvx softschema` reported that it
+had no YAML frontmatter — a block plainly there, and `--contract` advised as a fix that
+could not have helped.
+Stripping happens in the one function both runtimes route every artifact and schema read
+through, so no fence comparison has to know about it.
+A U+FEFF anywhere but position zero is a real character and survives.
+
+Both CLIs also now emit softschema’s own read diagnostics with identical wording.
+The Node CLI prefixed a frontmatter read failure with `Error parsing YAML metadata:` and
+the Python CLI did not, so the two disagreed about how to word the same failure for the
+same file.
+
 ### Added
 
+- `load_artifact` / `loadArtifact`: the strict consuming call.
+  Returns the payload values and raises `ArtifactInvalidError` on anything short of
+  valid, with the whole result attached.
+  `validate_artifact` returns `values: None` on failure, so consuming code that forgets
+  to check `outcome` fails later, naming neither the artifact nor the reason.
 - `repair_artifact` / `repairArtifact`, `repair_yaml_text` / `repairYamlText`,
   `conform_artifact` / `conformArtifact`, and `repair_and_validate_artifact` /
   `repairAndValidateArtifact` on the public API of both packages, with their result
@@ -51,6 +102,8 @@ An artifact needing no repair comes back byte-identical.
   now carries a `"repairs": []` key.
   Records use the documented `kind`/`code`/`path` match surface, so a consumer
   identifies a repair the way it identifies an error.
+- Both packages describe themselves as “Gradual contracts for YAML data, with optional
+  Markdown context”. This is the summary line on the PyPI and npm listing pages.
 - TypeScript semantic error records now carry `expected` on the Zod issues that have
   one. It is what identifies a type disagreement; without it an `invalid_type` issue says
   only that something was wrong, not what was wanted.

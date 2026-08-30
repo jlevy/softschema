@@ -58,6 +58,7 @@ HARDENING_VECTORS = Path(__file__).resolve().parents[3] / "tests/vectors/hardeni
 
 def test_package_root_exports_only_the_supported_surface() -> None:
     assert set(softschema.__all__) == {
+        "ArtifactInvalidError",
         "ArtifactValidationResult",
         "CompileResult",
         "ConformResult",
@@ -85,6 +86,7 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "compile_model",
         "conform_artifact",
         "infer_envelope_key",
+        "load_artifact",
         "parse_schema_metadata",
         "read_frontmatter_doc",
         "read_yaml_doc",

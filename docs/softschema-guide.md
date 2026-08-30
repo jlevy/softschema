@@ -839,15 +839,25 @@ Use this sequence:
    when producers can supply it and consumers need it.
    Changing the schema does not require changing the Markdown body.
 
-5. **Validate and repair at each handoff.** Run `softschema validate --repair ...`
+5. **Repair at each handoff, validate at each boundary.** Run `softschema repair ...`
    immediately after an agent writes an artifact and return the JSON result to the
-   agent. `--repair` quotes a scalar that made the document unparsable and retypes one
-   the contract wants as a string, writes the file, and then validates — so the
-   producing agent sees the same verdict its consumer will, while it is still in a
-   position to fix what remains.
-   Plain `validate` stays read-only, and `--check-repair` reports what would change
-   without writing, which is what a gate runs against an artifact under review.
-   Structural and semantic failures are separate.
+   agent. `repair` quotes a scalar that made the document unparsable and retypes one the
+   contract wants as a string, writes the file, and then validates — so the producing
+   agent sees the same verdict its consumer will, while it is still in a position to fix
+   what remains.
+
+   The two commands take deliberately different postures toward an artifact that cannot
+   be read. `validate` is what a consumer runs and refuses one outright, because an
+   artifact it cannot open is not a failing artifact.
+   `repair` is what a producer runs and reports one as a record, because a truncated
+   write is its ordinary input and the agent that made it needs something to act on.
+
+   Two ways to suppress the write, asking different questions.
+   `repair --dry-run` reports what would change and still passes when the result would
+   be valid — what an agent asks before committing to a change.
+   `repair --check` fails whenever anything would change at all — what a gate runs
+   against an artifact under review, the same shape as `generate --check`. Structural
+   and semantic failures are separate.
    For a structural repair, match `kind`, `code`, and `path`; records for missing or
    undeclared properties also include `property`. Do not parse `message`; see
    [Matching on structural error records](softschema-spec.md#matching-on-structural-error-records).

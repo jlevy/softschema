@@ -30,6 +30,7 @@ import {
   pyTypeName,
   type SchemaMetadata,
   SchemaMetadataError,
+  type SchemaProfile,
   type SchemaStatus,
   type SchemaWarning,
 } from "./models.js";
@@ -534,6 +535,46 @@ export function validateValues(
   return { structural, semantic };
 }
 
+/**
+ * The verdict for an artifact that cannot be read, under no contract at all.
+ *
+ * `validateArtifact` needs a `Contract`, and a contract needs a well-formed ID. A document
+ * whose frontmatter will not parse declares none, and inventing one would put a contract in
+ * the report that the document never claimed.
+ *
+ * This is what a repair pass emits when it could not rescue the artifact and the caller
+ * named no contract either. The record carries the same `kind`/`message` shape validation
+ * uses for the identical condition, so a consumer matches it the same way. Kept in step
+ * with Python's `unreadable_artifact_result`.
+ */
+export function unreadableArtifactResult(
+  docPath: string,
+  args: { profile: SchemaProfile; kind: string; message: string },
+): ArtifactValidationResult {
+  const structural: StructuralResult = {
+    ok: false,
+    errors: [{ kind: args.kind, message: args.message }],
+    engine: "json_schema",
+    skipped_reason: null,
+  };
+  const result = {
+    contract: null,
+    contract_id: "",
+    document_metadata: null,
+    outcome: "invalid",
+    path: docPath,
+    profile: args.profile,
+    semantic: { ok: false, errors: [], skipped_reason: args.kind },
+    status: "soft",
+    structural,
+    values: null,
+    warnings: [],
+    repairs: [] as RepairRecord[],
+  } as unknown as ArtifactValidationResult;
+  Object.defineProperty(result, "ok", { value: false, enumerable: false });
+  return result;
+}
+
 function buildResult(args: {
   docPath: string;
   contract: Contract;
@@ -806,6 +847,56 @@ function checkMetadata(
  * paths equivalent; a root decoded by a host YAML library directly may validate here and
  * be rejected by another softschema implementation reading the same file.
  */
+/**
+ * An artifact failed its contract where the caller required it to pass.
+ *
+ * Thrown only by `loadArtifact`. Carries the full `ArtifactValidationResult` on `result`,
+ * so a caller that wants the records after all has them without validating twice.
+ */
+export class ArtifactInvalidError extends Error {
+  readonly result: ArtifactValidationResult;
+
+  constructor(result: ArtifactValidationResult) {
+    const detail = result.structural.errors[0]?.message ?? "";
+    super(`${result.path}: ${result.outcome}${detail ? `: ${detail}` : ""}`);
+    this.name = "ArtifactInvalidError";
+    this.result = result;
+  }
+}
+
+/**
+ * Read an artifact that is required to be valid, and return its payload values.
+ *
+ * The strict counterpart to `validateArtifact`. Use it where the artifact has already been
+ * validated once — a consumer reading data a gate has passed — and anything less than
+ * valid is exceptional rather than expected.
+ *
+ * `validateArtifact` is the right call when invalidity is an ordinary outcome you intend to
+ * inspect. It is the wrong call for consumption, because `values` is `null` on failure: a
+ * consumer that forgets to check `outcome` gets `null` where it expected a mapping, and the
+ * failure surfaces later as a type error naming neither the artifact nor the reason. This
+ * throws `ArtifactInvalidError` instead, with the whole result attached.
+ *
+ * Returns the payload mapping — the envelope's contents, or the document root for a
+ * pure-yaml artifact without one — never `null`. Kept in step with Python's
+ * `load_artifact`.
+ */
+export function loadArtifact(
+  docPath: string,
+  contract: Contract,
+  options: {
+    semanticModel?: z.ZodType;
+    metadataMode?: MetadataMode;
+    document?: ParsedDocument;
+  } = {},
+): Record<string, unknown> {
+  const result = validateArtifact(docPath, contract, options);
+  if (result.outcome !== "valid" || result.values === null) {
+    throw new ArtifactInvalidError(result);
+  }
+  return result.values;
+}
+
 export function validateArtifact(
   docPath: string,
   contract: Contract,

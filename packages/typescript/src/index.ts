@@ -45,10 +45,12 @@ export {
   softField,
 } from "./softField.js";
 export {
+  ArtifactInvalidError,
   type ArtifactValidationResult,
   clearValidatorCache,
   EnvelopeAmbiguityError,
   inferEnvelopeKey,
+  loadArtifact,
   type ParsedDocument,
   type RepairRecord,
   readFrontmatterDoc,

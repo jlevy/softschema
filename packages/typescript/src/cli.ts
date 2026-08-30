@@ -27,8 +27,8 @@ import {
   parseSchemaMetadata,
   type SchemaProfile,
 } from "./models.js";
-import { PortableInputError, readUtf8, splitFrontmatter } from "./portable.js";
-import { repairArtifact } from "./repair.js";
+import { opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
+import { type RepairResult, repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
 import { stableStringify } from "./settings.js";
 import {
@@ -39,6 +39,7 @@ import {
   parseYamlText,
   readFrontmatterDoc,
   readYamlDoc,
+  unreadableArtifactResult,
   validateArtifact,
   YamlParseError,
 } from "./validate.js";
@@ -413,8 +414,14 @@ interface ArtifactRead {
 function readArtifact(path: string, profile: SchemaProfile | undefined): ArtifactRead {
   // Reuse the single frontmatter parser from validate.ts so the fence-scanning and
   // empty-frontmatter handling cannot drift between the two entry points. Surface a
-  // malformed-YAML failure as a usage error (exit 2) with the message, mirroring the
-  // Python CLI's FmFormatError handling, rather than letting it escape as a stack trace.
+  // malformed-YAML failure as a usage error (exit 2) carrying the reader's message
+  // verbatim, rather than letting it escape as a stack trace.
+  //
+  // Verbatim is the point. Python's `_run_cmd` prints the `PortableInputError` message
+  // with no wrapper, so any prefix added here makes the two CLIs word softschema's own
+  // diagnostics differently for the same file. The engine-specific YAML text below a
+  // softschema message legitimately differs between runtimes; the softschema message
+  // itself must not, and `cross-impl-diff.sh` compares machine JSON and cannot catch it.
   try {
     if (profile === "pure-yaml") return { profile, document: readYamlDoc(path) };
     if (profile === "frontmatter-md") return { profile, document: readFrontmatterDoc(path) };
@@ -430,7 +437,7 @@ function readArtifact(path: string, profile: SchemaProfile | undefined): Artifac
     return { profile: "frontmatter-md", document: parsed };
   } catch (err) {
     if (err instanceof YamlParseError) {
-      throw new UsageError(`Error parsing YAML metadata: ${err.message}`);
+      throw new UsageError(err.message);
     }
     throw err;
   }
@@ -514,8 +521,11 @@ interface ValidateOptions {
   profile?: string;
   schema?: string;
   status?: string;
-  repair?: boolean;
-  checkRepair?: boolean;
+}
+
+interface RepairOptions extends ValidateOptions {
+  dryRun?: boolean;
+  check?: boolean;
 }
 
 function profileFromOpts(opts: { profile?: string }): SchemaProfile | undefined {
@@ -597,20 +607,69 @@ function inferValidationBinding(
   };
 }
 
+/**
+ * The artifact and contract-binding options shared by `validate` and `repair`.
+ *
+ * Both commands answer a question about one artifact under one contract, and the binding
+ * is resolved the same way for each. Defining the options once is what keeps the two from
+ * drifting into subtly different override precedence.
+ */
+function addBindingOptions(command: Command): Command {
+  return command
+    .argument("<path>")
+    .option("--contract <id>", "override the document contract ID")
+    .option(
+      "--envelope <key>",
+      "override the envelope key (softschema.envelope or single-key inference)",
+    )
+    .option(
+      "--model <spec>",
+      "Zod schema as module:export for semantic validation. Optional. Imports and " +
+        "runs local code; use only with trusted models",
+    )
+    .option(
+      "--schema <path>",
+      "compiled JSON Schema (YAML or JSON). Optional override; without it the " +
+        "document's softschema.schema binding is used when present",
+    )
+    .option("--status <status>", "override the document status")
+    .option(
+      "--profile <profile>",
+      "override the artifact profile. Optional; without it a *.yaml/*.yml file, or a " +
+        "fenceless document whose root carries a softschema: block, is read as " +
+        "pure-yaml and anything else as frontmatter-md",
+    );
+}
+
+/**
+ * Resolve the contract binding for `repair`, which tolerates not finding one.
+ *
+ * An unreadable document is this command's normal input, so a missing binding is not a
+ * usage error here — it is a consequence of the failure validation is about to report. The
+ * caller handles the no-binding case before reaching this, so by here either the document
+ * read or a `--contract` was supplied.
+ */
+function inferRepairBinding(
+  opts: RepairOptions,
+  root: Record<string, unknown> | null,
+  profile: SchemaProfile,
+): Contract {
+  return inferValidationBinding(opts, root, profile);
+}
+
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
-    if (opts.repair === true && opts.checkRepair === true) {
-      throw new UsageError("--repair and --check-repair are mutually exclusive");
-    }
-    if (opts.repair === true || opts.checkRepair === true) {
-      return await runRepairValidate(path, opts, opts.repair === true);
-    }
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
     const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
     // Read the document once here; both binding inference and validateArtifact reuse
     // that parse (passed as `document`), so the file is parsed a single time.
+    //
+    // The read is unconditional, and that is the point rather than an accident of where
+    // the binding comes from. `validate` is the consuming-side gate: an artifact it cannot
+    // open is not a failing artifact, it is not an artifact, and it exits 2 with one line.
+    // Strictness is a property of this command, not of which flags were passed.
     const read = readArtifact(path, profileFromOpts(opts));
     const contract = inferValidationBinding(opts, rootMapping(read), read.profile);
     const result = validateArtifact(path, contract, {
@@ -633,34 +692,89 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
 }
 
 /**
- * The `--repair` / `--check-repair` path.
+ * The `repair` command: repair, conform, validate, and write unless asked not to.
  *
- * Repair runs *before* binding inference, not after. The document this flag exists to
+ * Repair runs *before* binding inference, not after. The document this command exists to
  * rescue is one that does not parse, and the contract, schema, and envelope are all read
  * out of that same unparsable frontmatter — inferring the binding first would fail on
- * exactly the artifacts the flag is for.
+ * exactly the artifacts the command is for.
  *
  * The repair is then handed to the pipeline rather than recomputed, so the file is still
  * read once and written at most once.
+ *
+ * Unlike `validate`, an unreadable document is this command's normal input, not a usage
+ * error. It is reported as a record in the result, whether or not a binding could be
+ * inferred from it. Raising here would hand the one caller who most needs the diagnostic —
+ * the agent that just wrote the file — an exit code and nothing else.
  */
-async function runRepairValidate(
+async function runRepair(path: string, opts: RepairOptions): Promise<number> {
+  try {
+    if (opts.dryRun === true && opts.check === true) {
+      throw new UsageError("--dry-run and --check are mutually exclusive");
+    }
+    const write = !(opts.dryRun === true || opts.check === true);
+    const profile = profileFromOpts(opts) ?? detectProfile(path);
+    const repaired = repairArtifact(path, { profile, write: false });
+    const { document, parseError } = parseAfterRepair(repaired.text, profile, path);
+    const root = document?.value ?? null;
+
+    // Repair could not rescue the document and the caller named no contract, so there is
+    // no binding to validate under. Report the read failure rather than throwing: a
+    // contract ID cannot be invented for a document that declares none, and the agent that
+    // just wrote this file needs the diagnostic, not an exit code.
+    if (!isRecord(root) && opts.contract === undefined) {
+      writeText(
+        stableStringify(
+          unreadableArtifactResult(path, {
+            profile,
+            kind: repairFailureKind(repaired, parseError),
+            message: repairFailureMessage(repaired, parseError, path, profile),
+          }),
+        ),
+      );
+      return 1;
+    }
+
+    const contract = inferRepairBinding(opts, isRecord(root) ? root : null, profile);
+    const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
+    const result = repairAndValidateArtifact(path, contract, { semanticModel, write, repaired });
+    writeText(stableStringify(result));
+    // `--check` answers "would this change?", so a document needing repair fails the check
+    // even when it would validate afterward. Same shape as `generate --check`, and it is
+    // what lets a gate reject an unrepaired artifact. `--dry-run` asks the other question —
+    // "what would this do?" — and keeps the ordinary pass condition.
+    if (opts.check === true && result.repairs.length > 0) return 1;
+    return result.outcome === "valid" ? 0 : 1;
+  } catch (err) {
+    return reportUserError("repair", err);
+  }
+}
+
+/**
+ * The record kind for a document repair could not make readable.
+ *
+ * Repair's own error code wins when it has one — an alias or a merge key is a precise
+ * diagnosis, and quoting could never have fixed it. Otherwise the reader's code names the
+ * failure, which is the ordinary case: repair reports success for a document with no
+ * frontmatter region to rewrite, leaving the reader to say why it cannot be opened.
+ */
+function repairFailureKind(repaired: RepairResult, parseError: Error | null): string {
+  if (repaired.errorCode) return repaired.errorCode;
+  if (parseError instanceof PortableInputError) return parseError.code;
+  return "yaml_parse_error";
+}
+
+function repairFailureMessage(
+  repaired: RepairResult,
+  parseError: Error | null,
   path: string,
-  opts: ValidateOptions,
-  write: boolean,
-): Promise<number> {
-  const profile = profileFromOpts(opts) ?? detectProfile(path);
-  const repaired = repairArtifact(path, { profile, write: false });
-  const document = parseAfterRepair(repaired.text, profile);
-  const root = document?.value ?? null;
-  const contract = inferValidationBinding(opts, isRecord(root) ? root : null, profile);
-  const semanticModel = opts.model !== undefined ? await loadZodModel(opts.model) : undefined;
-  const result = repairAndValidateArtifact(path, contract, { semanticModel, write, repaired });
-  writeText(stableStringify(result));
-  // `--check-repair` answers "would this change?", so a document needing repair fails the
-  // check even when it would validate afterward. Same shape as `generate --check`, and it
-  // is what lets a gate reject an unrepaired artifact.
-  if (!write && result.repairs.length > 0) return 1;
-  return result.outcome === "valid" ? 0 : 1;
+  profile: SchemaProfile,
+): string {
+  if (repaired.errorMessage) return repaired.errorMessage;
+  if (parseError !== null) return parseError.message;
+  return profile === "pure-yaml"
+    ? `the document root is not a YAML mapping: \`${path}\``
+    : `the document has no YAML frontmatter: \`${path}\``;
 }
 
 /**
@@ -671,6 +785,13 @@ async function runRepairValidate(
  * filename, then the presence of a frontmatter fence. A fenceless document that will not
  * parse falls back to frontmatter-md and reports `no_frontmatter`, exactly as it does
  * without `--repair`.
+ *
+ * The fence test asks whether the document *opens* a fence, not whether it can be split.
+ * A document that opens a fence and never closes it is frontmatter-md and the reader
+ * rejects it; treating it as fenceless would route it to the pure-yaml rule below, where
+ * its leading `---` reads as a YAML document-start marker and the whole file parses
+ * cleanly. That is how `--repair` once called an artifact valid that plain `validate`
+ * could not read at all.
  */
 function detectProfile(path: string): SchemaProfile {
   if (YAML_SUFFIXES.includes(fileSuffix(path))) return "pure-yaml";
@@ -680,21 +801,42 @@ function detectProfile(path: string): SchemaProfile {
   } catch {
     return "frontmatter-md";
   }
-  if (splitFrontmatter(text.replaceAll("\r\n", "\n")) !== null) return "frontmatter-md";
+  if (opensFrontmatterFence(text.replaceAll("\r\n", "\n"))) return "frontmatter-md";
   const root = yamlRootOrNull(path);
   if (isRecord(root) && "softschema" in root) return "pure-yaml";
   return "frontmatter-md";
 }
 
-/** Parse the repaired text for binding inference, tolerating one that still fails. */
-function parseAfterRepair(text: string | null, profile: SchemaProfile): ParsedDocument | null {
-  if (text === null) return null;
+/**
+ * Parse the repaired text for binding inference, tolerating one that still fails.
+ *
+ * Returns the parsed document and, when repair could not rescue it, the error that
+ * stopped it. Binding inference falls back to the flags either way, but the error has to
+ * travel with the `null`: without it the caller cannot tell a document whose frontmatter
+ * would not parse from one that never had frontmatter, and would report the latter for
+ * both.
+ */
+function parseAfterRepair(
+  text: string | null,
+  profile: SchemaProfile,
+  source = "<text>",
+): { document: ParsedDocument | null; parseError: Error | null } {
+  if (text === null) return { document: null, parseError: null };
   try {
-    return profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text);
-  } catch {
-    // Repair could not rescue it. Binding inference falls back to the flags, and validation
-    // reports the parse failure itself.
-    return null;
+    const document =
+      profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text, source);
+    return { document, parseError: null };
+  } catch (error) {
+    // Only the failures the readers themselves throw mean "still unreadable after
+    // repair". Anything else is a programming error and must crash rather than be
+    // quietly reclassified — mirroring Python's `except PortableInputError`, and the
+    // same narrowing `reparse` in repairValidate.ts makes. A catch-all here is worse
+    // than a silent `null`: the message now reaches the user as "the document could not
+    // be read: ...", presenting an internal fault as a defect in their file.
+    if (error instanceof PortableInputError || error instanceof YamlParseError) {
+      return { document: null, parseError: error };
+    }
+    throw error;
   }
 }
 
@@ -877,46 +1019,37 @@ export async function main(argv: string[] = process.argv): Promise<number> {
       },
     );
 
-  program
-    .command("validate")
-    .description(
-      "Validate an artifact. A self-describing artifact (softschema.contract, " +
-        "schema, envelope) needs no flags; flags override the document",
-    )
-    .argument("<path>")
-    .option("--contract <id>", "override the document contract ID")
+  addBindingOptions(
+    program
+      .command("validate")
+      .description(
+        "Validate an artifact, read-only. A self-describing artifact " +
+          "(softschema.contract, schema, envelope) needs no flags; flags override the " +
+          "document. Never writes; to fix an artifact, use `repair`",
+      ),
+  ).action(async (path: string, opts: ValidateOptions) => {
+    exitCode = await runValidate(path, opts);
+  });
+
+  // `--dry-run` and `--check` both suppress the write and differ in what they assert, the
+  // same way they differ elsewhere in this CLI: `skill --install --dry-run` previews and
+  // exits 0, `generate --check` previews and exits 1 on drift. A caller asking "what would
+  // this do?" wants the first; a gate asserting "nothing needs doing" wants the second.
+  addBindingOptions(
+    program
+      .command("repair")
+      .description(
+        "Repair unparsable YAML and conform scalars to the declared types, write the " +
+          "file, then validate. Reports every change under `repairs`",
+      ),
+  )
     .option(
-      "--envelope <key>",
-      "override the envelope key (softschema.envelope or single-key inference)",
+      "--dry-run",
+      "do not write; report what would change. Exit 1 only if the result is invalid",
     )
-    .option(
-      "--model <spec>",
-      "Zod schema as module:export for semantic validation. Optional. Imports and " +
-        "runs local code; use only with trusted models",
-    )
-    .option(
-      "--schema <path>",
-      "compiled JSON Schema (YAML or JSON). Optional override; without it the " +
-        "document's softschema.schema binding is used when present",
-    )
-    .option("--status <status>", "override the document status")
-    .option(
-      "--profile <profile>",
-      "override the artifact profile. Optional; without it a *.yaml/*.yml file, or a " +
-        "fenceless document whose root carries a softschema: block, is read as " +
-        "pure-yaml and anything else as frontmatter-md",
-    )
-    .option(
-      "--repair",
-      "repair unparsable YAML and conform scalars to the declared types, write the " +
-        "file, then validate. Reports every change under `repairs`",
-    )
-    .option(
-      "--check-repair",
-      "report what --repair would change without writing; exit 1 if anything would",
-    )
-    .action(async (path: string, opts: ValidateOptions) => {
-      exitCode = await runValidate(path, opts);
+    .option("--check", "do not write; exit 1 if anything would change")
+    .action(async (path: string, opts: RepairOptions) => {
+      exitCode = await runRepair(path, opts);
     });
 
   program
@@ -1008,9 +1141,12 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     await program.parseAsync(argv);
   } catch (err) {
     if (err instanceof CommanderError) {
-      // --help and --version throw when exitOverride is active; honour the exit code
-      // Commander intended (0 for help/version, non-zero for usage errors).
-      return err.exitCode;
+      // --help and --version throw when exitOverride is active and mean success. Every
+      // other CommanderError is a usage mistake — an unknown option, a missing argument —
+      // and this CLI's documented class for that is 2, the same code argparse gives the
+      // Python CLI. Commander's own default is 1, which is this CLI's "validation failed"
+      // class and would tell a caller an artifact was judged when none was read.
+      return err.exitCode === 0 ? 0 : 2;
     }
     // Surface programmer bugs as a crash instead of masking them as a clean exit 2 (a
     // backstop; each command's catch already rethrows these via reportUserError).

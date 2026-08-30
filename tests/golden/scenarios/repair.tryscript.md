@@ -15,11 +15,21 @@ fixtures:
   - {source: ../fixtures/repair-missing-required.md, dest: missing/repair-missing-required.md}
   - {source: ../fixtures/repair.schema.yaml, dest: missing/repair.schema.yaml}
   - {source: ../fixtures/repair-unrepairable.md, dest: floor/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: dry/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: dry/repair.schema.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: check/repair-unquoted-colon.md}
   - {source: ../fixtures/repair.schema.yaml, dest: check/repair.schema.yaml}
   - {source: ../fixtures/repair-already-valid.md, dest: check-clean/repair-already-valid.md}
   - {source: ../fixtures/repair.schema.yaml, dest: check-clean/repair.schema.yaml}
   - {source: ../fixtures/repair-pure.yaml, dest: pure/repair-pure.yaml}
+  - {source: ../fixtures/repair-unterminated-fence.md, dest: fence/repair-unterminated-fence.md}
+  - {source: ../fixtures/repair-ends-at-fence.md, dest: fence/repair-ends-at-fence.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: fence/repair.schema.yaml}
+  # The BOM journey needs both twins side by side: the whole assertion is that they
+  # converge, so the plain one has to be repaired in the same directory to diff against.
+  - {source: ../fixtures/repair-bom.md, dest: bom/repair-bom.md}
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: bom/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: bom/repair.schema.yaml}
   - {source: ../fixtures/repair.schema.yaml, dest: pure/repair.schema.yaml}
   # Untouched copies, so the journeys that must prove a file was *not* rewritten have the
   # bytes as authored to diff against.
@@ -27,11 +37,12 @@ fixtures:
   - {source: ../fixtures/repair-already-valid.md, dest: original/repair-already-valid.md}
   - {source: ../fixtures/repair-missing-required.md, dest: original/repair-missing-required.md}
   - {source: ../fixtures/repair-unrepairable.md, dest: original/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unterminated-fence.md, dest: original/repair-unterminated-fence.md}
 env:
   NO_COLOR: "1"
 ---
 
-# Journey: `validate --repair` rescues a document nothing could read
+# Journey: `repair` rescues a document nothing could read
 
 `--repair` **rewrites the artifact it is given**, which makes this file different from
 every other one in the corpus in three ways, all downstream of that write:
@@ -66,7 +77,7 @@ The `repairs` array is what distinguishes "was already valid" from "was repaired
 validity" — an exit code cannot say which happened.
 
 ```console
-$ $SOFTSCHEMA validate rescue/repair-unquoted-colon.md --repair
+$ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
 {
   "contract": {
     "envelope_key": "data",
@@ -142,7 +153,7 @@ type marker and no serializer was in the path to quote it. `--repair` writes the
 the missing serializer would have; the scalar's own source text is the replacement.
 
 ```console
-$ $SOFTSCHEMA validate drift/repair-scalar-drift.md --repair
+$ $SOFTSCHEMA repair drift/repair-scalar-drift.md
 {
   "contract": {
     "envelope_key": "data",
@@ -214,7 +225,7 @@ Idempotence, visible rather than asserted: the second run's complete result show
 empty `repairs` array, and the bytes on disk are unchanged.
 
 ```console
-$ $SOFTSCHEMA validate twice/repair-unquoted-colon.md --repair > /dev/null && cp twice/repair-unquoted-colon.md twice/once.md && $SOFTSCHEMA validate twice/repair-unquoted-colon.md --repair
+$ $SOFTSCHEMA repair twice/repair-unquoted-colon.md > /dev/null && cp twice/repair-unquoted-colon.md twice/once.md && $SOFTSCHEMA repair twice/repair-unquoted-colon.md
 {
   "contract": {
     "envelope_key": "data",
@@ -268,7 +279,7 @@ The no-widening invariant. `--repair` on a document that needs nothing must not 
 it, requote it, or touch its line endings.
 
 ```console
-$ $SOFTSCHEMA validate valid/repair-already-valid.md --repair
+$ $SOFTSCHEMA repair valid/repair-already-valid.md
 {
   "contract": {
     "envelope_key": "data",
@@ -323,7 +334,7 @@ Inferring the rename would be guessing intent, so the document is left exactly a
 authored, the `repairs` array stays empty, and the verdict stays honest.
 
 ```console
-$ $SOFTSCHEMA validate missing/repair-missing-required.md --repair
+$ $SOFTSCHEMA repair missing/repair-missing-required.md
 {
   "contract": {
     "envelope_key": "data",
@@ -398,7 +409,7 @@ cannot be read. The parse-failure `message` is engine wording, so that one line 
 elided; every other field is pinned.
 
 ```console
-$ $SOFTSCHEMA validate floor/repair-unrepairable.md --repair --contract test.repair:Doc/v1 --envelope data
+$ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 --envelope data
 {
   "contract": {
     "envelope_key": "data",
@@ -443,13 +454,13 @@ byte-identical
 ? 0
 ```
 
-# Journey: `--check-repair` reports without writing
+# Journey: `repair --check` reports without writing
 
 What a gate runs when it wants to know whether an artifact *would* be repaired, without
 mutating one under review. Exit `1` means something would change; the file does not.
 
 ```console
-$ $SOFTSCHEMA validate check/repair-unquoted-colon.md --check-repair
+$ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
 {
   "contract": {
     "envelope_key": "data",
@@ -509,7 +520,7 @@ not written
 On a document that needs nothing, it exits `0`.
 
 ```console
-$ $SOFTSCHEMA validate check-clean/repair-already-valid.md --check-repair
+$ $SOFTSCHEMA repair check-clean/repair-already-valid.md --check
 {
   "contract": {
     "envelope_key": "data",
@@ -557,7 +568,7 @@ The profile with no fence at all, and its payload keys at column 0 — the case 
 upstream repair matcher could not reach, because it required leading indentation.
 
 ```console
-$ $SOFTSCHEMA validate pure/repair-pure.yaml --repair
+$ $SOFTSCHEMA repair pure/repair-pure.yaml
 {
   "contract": {
     "envelope_key": "data",
@@ -628,10 +639,354 @@ data:
 ? 0
 ```
 
-# Journey: the two flags are mutually exclusive
+# Journey: an unterminated fence is refused by both commands, in each one's own voice
+
+A document that opens frontmatter and never closes it is what a truncated agent write
+leaves behind. It is a frontmatter-md document the reader rejects — not a fenceless
+`pure-yaml` artifact whose leading `---` happens to be a YAML document-start marker.
+
+This journey exists because the two readings once diverged: `validate` refused the file
+while the repair path detected `pure-yaml`, parsed the whole thing, and reported `valid`.
+The producer was told its artifact was fine while its consumer could not open it, which
+inverts the premise of repair. Both implementations diverged the same way, so
+`cross-impl-diff.sh` stayed clean through it; only a transcript pinning the expected
+verdict catches this class of defect.
+
+The two commands still answer differently, and that is the design rather than a
+leftover. `validate` is the consuming-side gate: an artifact it cannot open is not a
+failing artifact, it is not an artifact, and it says so in one line and exits 2.
+
+This message is softschema's own, not the YAML engine's, so it is asserted in full rather
+than elided. Elsewhere in this file `[..]` hides an engine-specific tail because PyYAML
+and the `yaml` npm package word a malformed document differently; there is no such excuse
+here, and eliding it would leave the journey matching any usage error at all — including
+the wrong one this journey exists to catch.
 
 ```console
-$ $SOFTSCHEMA validate original/repair-already-valid.md --repair --check-repair
-softschema validate: --repair and --check-repair are mutually exclusive
+$ $SOFTSCHEMA validate fence/repair-unterminated-fence.md 2>&1
+softschema validate: Delimiter `---` for end of frontmatter not found: `fence/repair-unterminated-fence.md`
+? 2
+```
+
+`repair` refuses it too, and names the same cause — but as a record, at exit 1. An
+unreadable document is this command's normal input, and the agent that just wrote the file
+needs the diagnosis in a form it can act on. Note `contract_id`: the document declares no
+contract legibly, and none is invented for it.
+
+```console
+$ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "repair-unterminated-fence.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "yaml_parse_error"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "yaml_parse_error",
+        "message": "Delimiter `---` for end of frontmatter not found: `repair-unterminated-fence.md`"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+Reporting "the document has no YAML frontmatter" would send an agent looking for a block
+that is plainly there, and naming `--contract` would advise a flag that cannot help. The
+record does neither.
+
+```console
+$ diff original/repair-unterminated-fence.md fence/repair-unterminated-fence.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+# Journey: a document ending at its closing fence is still repaired
+
+A file whose last byte is the closing `---`, with no trailing newline, is an ordinary
+shape for agent-written text. It differs from a well-formed artifact by one byte, and
+the repair verdict must not.
+
+It once did. The offset scan behind `split_frontmatter` treated "no newline left" as
+"no closing fence", so it reported no region to rewrite and `--repair` skipped an
+artifact it could fix — while the reader, which splits into lines and keeps a final
+unterminated one, read the same frontmatter without complaint. That is the same
+detector-versus-reader disagreement as the journey above, one function over.
+
+```console
+$ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "repair-ends-at-fence.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 1
+```
+
+Writing it quotes the scalar and leaves the fence exactly as authored. The last four
+bytes are still a newline and the closing `---`, with nothing after it: repair rewrote
+the metadata region and did not normalize the file's ending.
+
+```console
+$ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md > /dev/null && tail -c 4 repair-ends-at-fence.md | od -c | head -1
+0000000  \n   -   -   -
+? 0
+```
+
+# Journey: a leading byte order mark is stripped, not read as a fenceless document
+
+`bom/repair-bom.md` is `bom/repair-unquoted-colon.md` with three bytes in front of it:
+`EF BB BF`, a UTF-8 byte order mark. It is invisible, it is legal, and ordinary editors
+and shell redirections write it, so it arrives on real agent output. The two files must
+get the same verdict, and after repair they must be the same file.
+
+They once were not, and the split ran between the two runtimes rather than between two
+code paths. TypeScript decodes with `TextDecoder("utf-8")`, whose default
+`ignoreBOM: false` means "strip it"; Python's `bytes.decode` kept the mark as a U+FEFF
+character. Every fence check in the codebase — `opens_frontmatter_fence`,
+`split_frontmatter`, and both readers — asks whether a first line equals `---`, and
+`"\ufeff---"` does not. So `npx softschema` read this artifact and `uvx softschema`
+called it fenceless, then reported *"missing `--contract` because the document has no
+YAML frontmatter"*: a block that is plainly there, and a flag that could not have helped.
+
+That is the same wrong answer as the unterminated-fence journey above, arrived at from
+the other side, and it is why the fix belongs in `read_utf8` / `readUtf8` — the one
+function both runtimes route every artifact and schema read through — rather than in each
+fence comparison.
+
+Unlike that journey, this divergence was one runtime against the other, so
+`cross-impl-diff.sh` can see it. It could not before, because nothing in the corpus
+carried a BOM. This fixture is what gives it something to compare.
+
+```console
+$ cd bom && $SOFTSCHEMA repair repair-bom.md --check
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "repair-bom.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 1
+```
+
+`validate` reaches the same read verdict, which is the property the repair path exists to
+share with it. It still refuses this document — the unquoted `: ` is a real parse failure
+until repair puts the quotes back — but it refuses it *for that reason*. The regression is
+the other message, so that is what the assertion names; the parse failure's own wording is
+engine-specific and is not pinned here.
+
+```console
+$ cd bom && $SOFTSCHEMA validate repair-bom.md 2>&1 | grep -q "has no YAML frontmatter" && echo "WRONG: called fenceless" || echo "not called fenceless"
+not called fenceless
+? 0
+```
+
+Repairing both twins lands them on identical bytes: the write emits the decoded text, so
+the mark does not survive a rewrite in either runtime. A document needing no repair is
+never written at all, so a clean BOM artifact keeps its mark — stripping happens on read,
+not as a normalization pass over the tree.
+
+```console
+$ cd bom && $SOFTSCHEMA repair repair-bom.md > /dev/null && $SOFTSCHEMA repair repair-unquoted-colon.md > /dev/null && diff repair-bom.md repair-unquoted-colon.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+With the mark gone and the scalar quoted, the consuming-side gate opens on the artifact
+that arrived with three extra bytes.
+
+```console
+$ cd bom && $SOFTSCHEMA validate repair-bom.md | grep -E '"(outcome|contract_id)"'
+  "contract_id": "test.repair:Doc/v1",
+  "outcome": "valid",
+? 0
+```
+
+```console
+$ cd bom && head -c 3 repair-bom.md | od -c | head -1
+0000000   -   -   -
+? 0
+```
+
+# Journey: `--dry-run` reports the same change and passes on the verdict
+
+`--dry-run` and `--check` suppress the same write and assert different things.
+`--check` fails a document that needed repairing, which is what a gate wants; `--dry-run`
+keeps the ordinary pass condition, which is what an agent asking "what would this do?"
+wants. The journey above shows this artifact failing `--check` at exit 1; here the same
+artifact, unchanged on disk, passes `--dry-run` at exit 0 while reporting the identical
+repair.
+
+Shipping only `--check` would leave a caller reaching for it expecting these semantics and
+getting a baffling exit 1 on a document that repairs fine.
+
+```console
+$ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "repair-unquoted-colon.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 0
+```
+
+It reported the repair without performing it:
+
+```console
+$ diff original/repair-unquoted-colon.md dry/repair-unquoted-colon.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+# Journey: the two write-suppressing flags are mutually exclusive
+
+They suppress the same write and assert different things, so passing both asks two
+questions at once. The message is softschema's own and identical in both implementations,
+so it is asserted in full: the exclusion is checked by hand rather than with argparse's
+mutually exclusive group, whose wording Commander cannot reproduce.
+
+```console
+$ $SOFTSCHEMA repair original/repair-already-valid.md --dry-run --check
+softschema repair: --dry-run and --check are mutually exclusive
 ? 2
 ```

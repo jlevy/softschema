@@ -74,7 +74,8 @@ describe("library entrypoint (issue #16)", () => {
         `process.stdout.write(JSON.stringify(Object.keys(api).sort()));\n`,
     );
     expect(JSON.parse(r.stdout)).toEqual([
-      "CONFORM_KIND",
+      "ArtifactInvalidError",
+    "CONFORM_KIND",
       "Contracts",
       "EnvelopeAmbiguityError",
       "REPAIR_KIND",
@@ -83,7 +84,8 @@ describe("library entrypoint (issue #16)", () => {
       "compileSchema",
       "conformArtifact",
       "inferEnvelopeKey",
-      "parseSchemaMetadata",
+      "loadArtifact",
+    "parseSchemaMetadata",
       "readFrontmatterDoc",
       "readYamlDoc",
       "regenerate",

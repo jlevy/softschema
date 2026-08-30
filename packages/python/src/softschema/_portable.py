@@ -68,12 +68,33 @@ class PortableInputError(ValueError):
         super().__init__(message)
 
 
+BOM = "\ufeff"
+"""A leading byte order mark, which decoding removes rather than keeps as a character."""
+
+
 def read_utf8(path: Path) -> str:
-    """Read one UTF-8 artifact."""
+    """Read one UTF-8 artifact, dropping a leading byte order mark.
+
+    The BOM has to go, and it has to go here, because this is the one function both
+    runtimes route every artifact and schema read through. TypeScript decodes with
+    ``TextDecoder("utf-8")``, whose default ``ignoreBOM: false`` means "strip it"; Python's
+    ``bytes.decode`` keeps it as a U+FEFF character. Left alone, that one invisible byte
+    made the two implementations reach opposite verdicts on identical files: the fence
+    scan and the reader both compare a first line against ``---``, and ``"\ufeff---"`` is
+    not ``"---"``, so Python called a BOM-prefixed artifact fenceless while TypeScript read
+    it without complaint.
+
+    Reporting that document as having no frontmatter is the diagnostic this codebase
+    exists to avoid — the block is plainly there, and an agent sent looking for it finds
+    nothing to fix. Stripping is also what the encoding standard asks for: the mark
+    announces the encoding, it is not content. Only position zero is examined; a U+FEFF
+    anywhere else is a real character and survives.
+    """
     try:
-        return path.read_bytes().decode("utf-8", errors="strict")
+        text = path.read_bytes().decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise PortableInputError("invalid_utf8", "input is not valid UTF-8") from exc
+    return text[1:] if text.startswith(BOM) else text
 
 
 def parse_yaml(text: str) -> Any:
@@ -195,9 +216,17 @@ class FrontmatterSplit:
 def split_frontmatter(text: str) -> FrontmatterSplit | None:
     """Split a frontmatter-md document without disturbing its body.
 
-    Returns ``None`` when the document has no frontmatter, matching what
-    :func:`read_frontmatter_doc` reports: no leading fence, an unterminated fence, or an
-    empty block whose end fence is the very next line.
+    Returns ``None`` when there is no frontmatter *region to rewrite*: no leading fence,
+    an unterminated fence, or an empty block whose end fence is the very next line.
+
+    That is narrower than it looks, and the difference matters. Of those three,
+    :func:`read_frontmatter_doc` agrees on two — it reports no frontmatter for a
+    document with no leading fence and for an empty block — but an unterminated fence is
+    a *reader error* there, not a fenceless document. So ``None`` from this function
+    must never be read as "this document has no frontmatter fence"; use
+    :func:`opens_frontmatter_fence` for that question. Reading ``None`` as fenceless is
+    what once let profile detection route an unterminated-fence document to pure-yaml
+    and call it valid while the reader refused to open it at all.
 
     The scan is deliberately hand-rolled and byte-oriented rather than delegated to
     ``frontmatter_format``, for two reasons. The fence rules have to stay identical to
@@ -214,7 +243,7 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
     while cursor < len(text):
         line = _line_end(text, cursor)
         if line is None:
-            return None  # unterminated fence: no frontmatter to speak of
+            break  # unreachable: the loop guard guarantees a line remains
         if text[cursor : line[0]].rstrip() == "---":
             metadata_text = text[metadata_offset:cursor]
             # An empty block (end fence on the very next line) is the portable
@@ -227,14 +256,48 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
                 body_offset=line[1],
             )
         cursor = line[1]
-    return None
+    return None  # unterminated fence: no region to rewrite (still a reader error)
+
+
+def opens_frontmatter_fence(text: str) -> bool:
+    """Whether the document's first line is a frontmatter opening fence.
+
+    Profile detection needs this and cannot use :func:`split_frontmatter`, which returns
+    ``None`` both for a document that never opened a fence and for one that opened a
+    fence and never closed it. Those two get opposite treatment: the first may be a
+    pure-yaml artifact, while the second is a frontmatter-md document that the reader
+    will reject. Detection has to tell them apart before it can decide a profile, and it
+    has to do so without parsing, because an artifact awaiting repair does not parse.
+
+    Only the opening fence is examined; a document that opens one is frontmatter-md
+    whether or not it closes it, exactly as :func:`read_frontmatter_doc` treats it.
+    """
+    first = _line_end(text, 0)
+    return first is not None and text[: first[0]].rstrip() == "---"
 
 
 def _line_end(text: str, start: int) -> tuple[int, int] | None:
-    """The content end (before the line break) and the start of the next line."""
+    """The content end (before the line break) and the start of the next line.
+
+    A final line with no trailing newline is a line. Its content ends at EOF, and the
+    "next line" starts there too, so a caller that keeps scanning stops on the next
+    iteration.
+
+    That has to be so, because :func:`read_frontmatter_doc` splits with ``splitlines()``
+    and ``readFrontmatterDoc`` with ``split(/\r?\n/)``, and both keep such a line. A scan
+    that dropped it would disagree with the reader about where a document's fences are,
+    which is the disagreement this module exists to prevent. Concretely, it made
+    :func:`split_frontmatter` report "no region to rewrite" for a document ending exactly
+    at its closing fence, so ``--repair`` silently skipped an artifact it could fix, and
+    it made :func:`opens_frontmatter_fence` call a lone ``---`` fenceless.
+
+    Returns ``None`` only when ``start`` is at or past the end, where no line remains.
+    """
+    if start >= len(text):
+        return None
     index = text.find("\n", start)
     if index == -1:
-        return None
+        return len(text), len(text)
     return index, index + 1
 
 

@@ -31,15 +31,38 @@ export class PortableInputError extends Error {
   }
 }
 
+/** A leading byte order mark, which decoding removes rather than keeps as a character. */
+const BOM = "\uFEFF";
+
+/**
+ * Read one UTF-8 artifact, dropping a leading byte order mark.
+ *
+ * The BOM has to go, and it has to go here, because this is the one function both runtimes
+ * route every artifact and schema read through. `TextDecoder`'s default `ignoreBOM: false`
+ * already strips it, so the explicit check below is a no-op today; it is written out
+ * anyway, the same way Python's `read_utf8` writes it out, because that default is the
+ * only thing holding the two runtimes together and it is invisible at the call site.
+ * Swapping in `readFileSync(path, "utf8")` — which keeps the mark — would silently
+ * reintroduce the divergence this replaced.
+ *
+ * That divergence was real: the fence scan and the reader both compare a first line
+ * against `---`, and `"\uFEFF---"` is not `"---"`, so Python called a BOM-prefixed
+ * artifact fenceless while TypeScript read it without complaint. Reporting that document
+ * as having no frontmatter is the diagnostic this codebase exists to avoid — the block is
+ * plainly there. Only position zero is examined; a U+FEFF anywhere else is a real
+ * character and survives.
+ */
 export function readUtf8(path: string): string {
+  let text: string;
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
+    text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
   } catch (error) {
     if (error instanceof TypeError) {
       throw new PortableInputError("invalid_utf8", "input is not valid UTF-8");
     }
     throw error;
   }
+  return text.startsWith(BOM) ? text.slice(1) : text;
 }
 
 export function parsePortableYaml(text: string): unknown {
@@ -191,9 +214,16 @@ export interface FrontmatterSplit {
 /**
  * Split a frontmatter-md document without disturbing its body.
  *
- * Returns `null` when the document has no frontmatter, matching what
- * `readFrontmatterDoc` reports: no leading fence, an unterminated fence, or an empty
- * block whose end fence is the very next line.
+ * Returns `null` when there is no frontmatter *region to rewrite*: no leading fence, an
+ * unterminated fence, or an empty block whose end fence is the very next line.
+ *
+ * That is narrower than it looks. Of those three, `readFrontmatterDoc` agrees on two —
+ * no leading fence and an empty block — but an unterminated fence is a *reader error*
+ * there, not a fenceless document. So `null` from this function must never be read as
+ * "this document has no frontmatter fence"; use `opensFrontmatterFence` for that.
+ * Reading `null` as fenceless is what once let profile detection route an
+ * unterminated-fence document to pure-yaml and call it valid while the reader refused to
+ * open it at all.
  *
  * This is the same hand-rolled scan as Python's `split_frontmatter`, line for line, and
  * deliberately so. The fence rules have to stay identical to the reader's — if the two
@@ -210,7 +240,7 @@ export function splitFrontmatter(text: string): FrontmatterSplit | null {
   let cursor = metadataOffset;
   while (cursor < text.length) {
     const line = lineEnd(text, cursor);
-    if (line === null) return null; // unterminated fence: no frontmatter to speak of
+    if (line === null) break; // unreachable: the loop guard guarantees a line remains
     if (text.slice(cursor, line.contentEnd).trimEnd() === "---") {
       const metadataText = text.slice(metadataOffset, cursor);
       // An empty block (end fence on the very next line) is the portable
@@ -220,13 +250,48 @@ export function splitFrontmatter(text: string): FrontmatterSplit | null {
     }
     cursor = line.next;
   }
-  return null;
+  return null; // unterminated fence: no region to rewrite (still a reader error)
 }
 
-/** The content end (before the line break) and the start of the next line. */
+/**
+ * Whether the document's first line is a frontmatter opening fence.
+ *
+ * Profile detection needs this and cannot use `splitFrontmatter`, which returns `null`
+ * both for a document that never opened a fence and for one that opened a fence and
+ * never closed it. Those two get opposite treatment: the first may be a pure-yaml
+ * artifact, while the second is a frontmatter-md document the reader will reject.
+ * Detection has to tell them apart before it can decide a profile, and without parsing,
+ * because an artifact awaiting repair does not parse.
+ *
+ * Only the opening fence is examined; a document that opens one is frontmatter-md
+ * whether or not it closes it, exactly as `readFrontmatterDoc` treats it.
+ */
+export function opensFrontmatterFence(text: string): boolean {
+  const first = lineEnd(text, 0);
+  return first !== null && text.slice(0, first.contentEnd).trimEnd() === "---";
+}
+
+/**
+ * The content end (before the line break) and the start of the next line.
+ *
+ * A final line with no trailing newline is a line. Its content ends at EOF, and the
+ * "next line" starts there too, so a caller that keeps scanning stops on the next
+ * iteration.
+ *
+ * That has to be so, because `readFrontmatterDoc` splits with `split(/\r?\n/)` and
+ * Python's `read_frontmatter_doc` with `splitlines()`, and both keep such a line. A scan
+ * that dropped it would disagree with the reader about where a document's fences are,
+ * which is the disagreement this module exists to prevent. Concretely, it made
+ * `splitFrontmatter` report "no region to rewrite" for a document ending exactly at its
+ * closing fence, so `--repair` silently skipped an artifact it could fix, and it made
+ * `opensFrontmatterFence` call a lone `---` fenceless.
+ *
+ * Returns `null` only when `from` is at or past the end, where no line remains.
+ */
 function lineEnd(text: string, from: number): { contentEnd: number; next: number } | null {
+  if (from >= text.length) return null;
   const index = text.indexOf("\n", from);
-  if (index === -1) return null;
+  if (index === -1) return { contentEnd: text.length, next: text.length };
   return { contentEnd: index, next: index + 1 };
 }
 

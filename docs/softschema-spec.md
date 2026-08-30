@@ -100,7 +100,10 @@ library call). Otherwise an implementation must resolve it as:
 1. A `*.yaml` or `*.yml` file name means `pure-yaml`. The name is checked before the
    frontmatter fence, because a YAML document may open with the `---` document-start
    marker that would otherwise scan as the start of a fence.
-2. A document with a frontmatter fence is `frontmatter-md`.
+2. A document that **opens** a frontmatter fence is `frontmatter-md`, whether or not it
+   closes one. An unterminated fence is a read error on a `frontmatter-md` document, not
+   evidence of a fenceless one; resolving it to `pure-yaml` would let its opening `---`
+   be consumed as a document-start marker and make a truncated artifact look complete.
 3. A fenceless document whose whole text parses to a mapping carrying a root
    `softschema:` block is `pure-yaml`.
 4. Anything else is `frontmatter-md`.
@@ -108,6 +111,25 @@ library call). Otherwise an implementation must resolve it as:
 Requiring the metadata block in step 3 is what separates a pure-yaml artifact from prose
 that happens to parse as YAML: a Markdown document without frontmatter stays
 `frontmatter-md` and is rejected for having none.
+
+Resolution must not depend on the document parsing.
+An implementation that repairs before validating resolves the profile of an artifact
+that does not yet parse, and it must reach the same profile the reader would, or the two
+disagree about whether the artifact is readable at all.
+
+A final line with no trailing newline is a line.
+A document whose entire text is `---` opens a fence, and a closing `---` that is the
+last byte of the file closes one.
+Reading a document by lines and scanning it by byte offset must agree on this, or the
+implementation that scans will place a document’s fences somewhere the implementation
+that reads does not.
+
+Artifacts are UTF-8. A leading byte order mark is removed on decoding and is not part of
+the document; a U+FEFF at any other position is ordinary content.
+Removing it is what lets the rules above be stated in terms of a first line that is
+`---`, since an artifact carrying the mark has one and an implementation that keeps it
+does not. The mark announces an encoding, so it is dropped where the bytes become text,
+not by each rule that inspects them.
 
 ## Portable YAML Values
 
@@ -729,6 +751,42 @@ than discovering the verdict after it has exited.
 Repair is one escalating pass: parse, repair the document if it does not parse, conform
 its scalars to the types the contract declares, write once if anything changed, then
 validate.
+
+#### Reading and checking are separate postures
+
+An implementation exposing both must keep them distinct, because they take opposite
+positions on the same artifact and serve different callers.
+
+**Reading** is what a consumer does with an artifact it expects to be valid.
+An artifact it cannot read is not a failing artifact; it is not an artifact.
+The implementation refuses it as an input error, and no verdict document is produced.
+
+**Checking** is what a producer does with an artifact it expects may be invalid.
+An artifact that cannot be read is that caller’s ordinary input — it is what a truncated
+write leaves behind — and the failure is reported as a record, under the same
+`kind`/`message` surface as any other, so the producer can act on it.
+An implementation must not report this as a usage error, and must not require a contract
+to report it: a document whose metadata will not parse declares no contract, and none
+may be invented for it.
+
+Which posture applies must follow from the operation the caller invoked, not from which
+other options they happened to pass.
+An artifact’s readability does not depend on whether a contract was named on the command
+line, and neither may the verdict.
+
+A reference CLI expresses this as two commands — `validate` reads, `repair` checks — and
+distinguishes suppressing the write from asserting nothing needed changing:
+
+| Invocation | Writes | Exit 0 when |
+| --- | --- | --- |
+| `validate <path>` | never | the artifact is valid |
+| `repair <path>` | yes | the artifact is valid after repair |
+| `repair <path> --dry-run` | no | the artifact is valid after repair |
+| `repair <path> --check` | no | nothing needed changing |
+
+Exit classes: `0` valid, `1` invalid (or, under `--check`, something would change), `2`
+the command could not run — bad options, a path that does not exist, or an artifact the
+reading posture refused.
 
 Exactly two corrections are in scope, and both restore what a serializer would have
 done:

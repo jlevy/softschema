@@ -25,6 +25,7 @@ from softschema.soft_field import (
     SoftTier,
 )
 from softschema.validate import (
+    ArtifactInvalidError,
     ArtifactValidationResult,
     EnvelopeAmbiguityError,
     SemanticResult,
@@ -32,6 +33,7 @@ from softschema.validate import (
     ValidationResult,
     clear_validator_cache,
     infer_envelope_key,
+    load_artifact,
     read_frontmatter_doc,
     read_yaml_doc,
     resolve_bound_schema,
@@ -42,6 +44,7 @@ from softschema.validate import (
 )
 
 __all__ = [
+    "ArtifactInvalidError",
     "ArtifactValidationResult",
     "CompileResult",
     "ConformResult",
@@ -69,6 +72,7 @@ __all__ = [
     "compile_model",
     "conform_artifact",
     "infer_envelope_key",
+    "load_artifact",
     "parse_schema_metadata",
     "read_frontmatter_doc",
     "read_yaml_doc",
