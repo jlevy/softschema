@@ -117,6 +117,13 @@ An implementation that repairs before validating resolves the profile of an arti
 that does not yet parse, and it must reach the same profile the reader would, or the two
 disagree about whether the artifact is readable at all.
 
+A final line with no trailing newline is a line.
+A document whose entire text is `---` opens a fence, and a closing `---` that is the
+last byte of the file closes one.
+Reading a document by lines and scanning it by byte offset must agree on this, or the
+implementation that scans will place a document’s fences somewhere the implementation
+that reads does not.
+
 ## Portable YAML Values
 
 YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite

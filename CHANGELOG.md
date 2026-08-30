@@ -36,6 +36,20 @@ leaves behind — is a frontmatter-md read error on every path, `--repair` inclu
 It is not a fenceless `pure-yaml` document whose leading `---` happens to be a YAML
 document-start marker, and both paths report the same cause.
 
+A document whose closing fence is the last byte of the file, with no trailing newline,
+is repaired like any other.
+The offset scan behind the repair region read “no newline left” as “no closing fence”,
+so `--repair` silently skipped an artifact it could fix while the reader read the same
+frontmatter without complaint.
+Both fixes come to the same rule, now stated in the spec: a final line with no trailing
+newline is a line, and the reader and the scanner must agree on where a document’s
+fences are.
+
+Both CLIs also now emit softschema’s own read diagnostics with identical wording.
+The Node CLI prefixed a frontmatter read failure with `Error parsing YAML metadata:` and
+the Python CLI did not, so the two disagreed about how to word the same failure for the
+same file.
+
 ### Added
 
 - `repair_artifact` / `repairArtifact`, `repair_yaml_text` / `repairYamlText`,

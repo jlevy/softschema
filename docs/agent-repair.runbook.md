@@ -150,14 +150,22 @@ No model needed, and it is the reason this runbook exists.
 A document that opens frontmatter and never closes it — what a truncated agent write
 leaves behind — must be refused by **both** paths:
 
+Run it against **the build under test**, not whatever `softschema` resolves to on `PATH`
+— a globally installed copy would quietly test the wrong code, which is the one outcome
+a regression check must not have.
+`SS` below is the same invocation the harness scripts use.
+
 ```bash
+SS="uv run --frozen --no-config --project $PWD/../../.. softschema"   # or: node packages/typescript/dist/cli.js
 cd "$(mktemp -d)"
-cp "$OLDPWD/prelim-scan-terms.schema.yaml" .
 printf -- '---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  name: Acme\n' > truncated.md
 
-softschema validate truncated.md                  # exit 2, delimiter not found
-softschema validate truncated.md --check-repair    # exit 2, names the same cause
+$SS validate truncated.md                  # exit 2, delimiter not found
+$SS validate truncated.md --check-repair    # exit 2, names the same cause
 ```
+
+The artifact binds no schema, so nothing needs copying into the temp directory: the
+document never gets far enough to resolve one.
 
 **Expect both to exit 2**, and the second to name the read failure rather than reporting
 that the document has no frontmatter — the block is plainly there, and saying otherwise
@@ -168,6 +176,27 @@ The golden corpus pins this as
 `Journey: an unterminated frontmatter fence is unreadable on both paths`; run it against
 all three runtimes with
 `SOFTSCHEMA_IMPL=py|ts|ts-bun ./tests/golden/run_golden_tests.py`.
+
+### The second case: a file ending at its closing fence
+
+The same detector-versus-reader gap produced a second defect one function over, so check
+both. A file whose last byte is the closing `---` — no trailing newline, an ordinary
+shape for agent-written text — must repair exactly like the same document with a
+newline. It once did not: the offset scan read “no newline left” as “no closing fence”,
+found no region to rewrite, and `--repair` silently skipped an artifact it could fix.
+
+```bash
+printf -- '---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  summary: Note: actually Q1\n---' > ends-at-fence.md
+
+$SS validate ends-at-fence.md --check-repair    # outcome valid, one yaml_quoted_scalar repair
+```
+
+**Expect** `"outcome": "valid"` with a `yaml_quoted_scalar` record.
+A read failure, or an empty `repairs` list, is the defect: the document is one byte from
+one that repairs cleanly.
+
+The golden corpus pins this as
+`Journey: a document ending at its closing fence is still repaired`.
 
 ## Expected Results
 
@@ -201,9 +230,9 @@ them; the templated condition produced zero field-name errors at budget 0. Do no
 high Phase 2 error count as a model-quality problem.
 
 **A thinking model nests its fences.** At a non-zero budget the reply often opens
-`markdown` and then `yaml`immediately after, so a regex that stops at the first closing
-fence captures an empty span.`run_agents.py`anchors on the artifact’s own leading`---`
-instead.
+`markdown` and then `yaml` immediately after, so a regex that stops at the first closing
+fence captures an empty span.
+`run_agents.py` anchors on the artifact’s own leading `---` instead.
 
 **Thought parts are not answer parts.** With a thinking budget the response `parts`
 array can lead with a thought summary; reading `parts[0].text` returns thinking, or
