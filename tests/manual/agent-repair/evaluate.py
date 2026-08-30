@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run each agent artifact through validate / --check-repair / --repair and classify.
+"""Run each agent artifact through validate / repair --check / repair and classify.
 
 Also checks the three conformance guarantees the spec states for repair:
 byte-identical when nothing is needed, idempotent, and never writes a value its own
@@ -50,12 +50,12 @@ def evaluate(src: Path, work: Path) -> dict:
     original = target.read_bytes()
 
     rc0, before, raw0 = run(["validate", rel])
-    rc_chk, _chk, _ = run(["validate", rel, "--check-repair"])
+    rc_chk, _chk, _ = run(["repair", rel, "--check"])
     unwritten = target.read_bytes() == original
 
-    rc1, after, raw1 = run(["validate", rel, "--repair"])
+    rc1, after, raw1 = run(["repair", rel])
     once = target.read_bytes()
-    _rc2, _after2, _ = run(["validate", rel, "--repair"])
+    _rc2, _after2, _ = run(["repair", rel])
     idempotent = target.read_bytes() == once
 
     repairs = (after or {}).get("repairs", []) or []
@@ -87,8 +87,8 @@ def evaluate(src: Path, work: Path) -> dict:
             }
             for e in errs
         ],
-        "check_repair_exit": rc_chk,
-        "check_repair_left_file_unwritten": unwritten,
+        "repair_check_exit": rc_chk,
+        "repair_check_left_file_unwritten": unwritten,
         "idempotent": idempotent,
         "byte_identical_when_noop": (original == once) if not repairs else None,
     }

@@ -53,7 +53,7 @@ The neutral journeys are:
 | File | Responsibility |
 | --- | --- |
 | `validate.tryscript.md` | structural success/failure, envelope failure, metadata-only validation |
-| `validate-repair.tryscript.md` | `--repair` / `--check-repair`: what is fixed, what is refused, and the resulting file |
+| `repair.tryscript.md` | `repair`, `--dry-run`, `--check`: what is fixed, what is refused, and the resulting file |
 | `metadata-binding.tryscript.md` | document schema/envelope bindings, precedence, and bounded paths |
 | `enforced-status.tryscript.md` | permissive and enforced extra-field behavior |
 | `cli-errors.tryscript.md` | usage/input failures, diagnostics, and exit `2` |

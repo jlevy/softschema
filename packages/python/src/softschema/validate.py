@@ -943,6 +943,85 @@ def _artifact_failure(
     )
 
 
+class ArtifactInvalidError(ValueError):
+    """An artifact failed its contract where the caller required it to pass.
+
+    Raised only by :func:`load_artifact`. Carries the full
+    :class:`ArtifactValidationResult` on ``result``, so a caller that wants the records
+    after all has them without validating twice.
+    """
+
+    def __init__(self, result: ArtifactValidationResult) -> None:
+        self.result = result
+        first = result.structural.errors[0] if result.structural.errors else None
+        detail = first.get("message", "") if first else ""
+        super().__init__(f"{result.path}: {result.outcome}{f': {detail}' if detail else ''}")
+
+
+def load_artifact(
+    doc_path: Path,
+    *,
+    contract: Contract | None = None,
+    contract_id: str | None = None,
+    registry: Contracts | None = None,
+    metadata_mode: Literal["enforced", "advisory"] = "enforced",
+    document: Any = _UNREAD,
+) -> dict[str, Any]:
+    """Read an artifact that is required to be valid, and return its payload values.
+
+    The strict counterpart to :func:`validate_artifact`. Use it where the artifact has
+    already been validated once — a consumer reading data a gate has passed — and anything
+    less than valid is exceptional rather than expected.
+
+    :func:`validate_artifact` is the right call when invalidity is an ordinary outcome you
+    intend to inspect. It is the wrong call for consumption, because ``values`` is ``None``
+    on failure: a consumer that forgets to check ``outcome`` gets ``None`` where it
+    expected a mapping, and the failure surfaces later as a ``TypeError`` naming neither
+    the artifact nor the reason. This raises :class:`ArtifactInvalidError` instead, with
+    the whole result attached.
+
+    Returns the payload mapping — the envelope's contents, or the document root for a
+    pure-yaml artifact without one — never ``None``.
+    """
+    result = validate_artifact(
+        doc_path,
+        contract=contract,
+        contract_id=contract_id,
+        registry=registry,
+        metadata_mode=metadata_mode,
+        document=document,
+    )
+    if result.outcome != "valid" or result.values is None:
+        raise ArtifactInvalidError(result)
+    return result.values
+
+
+def unreadable_artifact_result(
+    doc_path: Path, *, profile: SchemaProfile, kind: str, message: str
+) -> ArtifactValidationResult:
+    """The verdict for an artifact that cannot be read, under no contract at all.
+
+    :func:`validate_artifact` needs a :class:`~softschema.models.Contract`, and a contract
+    needs a well-formed ID. A document whose frontmatter will not parse declares none, and
+    inventing one would put a contract in the report that the document never claimed.
+
+    This is what a repair pass emits when it could not rescue the artifact and the caller
+    named no contract either. The record carries the same ``kind``/``message`` shape
+    validation uses for the identical condition, so a consumer matches it the same way.
+    """
+    return ArtifactValidationResult(
+        path=doc_path,
+        contract_id="",
+        status=SchemaStatus.soft,
+        profile=profile,
+        contract=None,
+        document_metadata=None,
+        warnings=[],
+        structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
+        semantic=SemanticResult(ok=False, skipped_reason=kind),
+    )
+
+
 def read_frontmatter_doc(path: Path) -> tuple[str, Any | None]:
     """Read a frontmatter-md artifact into its body text and parsed frontmatter mapping.
 

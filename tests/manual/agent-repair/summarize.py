@@ -28,7 +28,7 @@ def main() -> int:
             )
 
     print("\n=== conformance guarantees ===")
-    print("  --check-repair never wrote:", all(r["check_repair_left_file_unwritten"] for r in rows))
+    print("  repair --check never wrote:", all(r["repair_check_left_file_unwritten"] for r in rows))
     print("  repair idempotent:", all(r["idempotent"] for r in rows))
     noop = [r for r in rows if r["byte_identical_when_noop"] is not None]
     print(

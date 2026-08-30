@@ -618,7 +618,7 @@ def test_prime_prints_skill_and_docs_index(capsys: pytest.CaptureFixture[str]) -
 #
 # `--repair` must reach the same read verdict as plain `validate`. It once did not: a
 # document that opened a frontmatter fence and never closed it was detected as pure-yaml,
-# its leading `---` was consumed as a YAML document-start marker, and `--check-repair`
+# its leading `---` was consumed as a YAML document-start marker, and the repair path
 # reported `valid` for a file plain `validate` could not open at all. See
 # docs/project/reviews/review-2026-08-30-validate-repair-e2e.md, Finding 1.
 
@@ -668,12 +668,14 @@ def test_unterminated_fence_is_unreadable_on_both_paths(
     plain = capsys.readouterr().err
     assert "Delimiter `---` for end of frontmatter not found" in plain
 
-    # The repair path must refuse it too, and name the same cause rather than claiming
-    # the document has no frontmatter at all.
-    assert softschema_main(["validate", str(path), "--check-repair"]) == 2
-    repaired = capsys.readouterr().err
-    assert "Delimiter `---` for end of frontmatter not found" in repaired
-    assert "has no YAML frontmatter" not in repaired
+    # `repair` must refuse it too, and name the same cause. It reports rather than
+    # raises: an unreadable document is this command's normal input, so the diagnostic
+    # goes in a record where the agent that wrote the file can act on it.
+    assert softschema_main(["repair", str(path), "--check"]) == 1
+    record = json.loads(capsys.readouterr().out)["structural"]["errors"][0]
+    assert record["kind"] == "yaml_parse_error"
+    assert "Delimiter `---` for end of frontmatter not found" in record["message"]
+    assert "has no YAML frontmatter" not in record["message"]
 
 
 def test_terminated_fence_still_validates_on_both_paths(
@@ -681,7 +683,7 @@ def test_terminated_fence_still_validates_on_both_paths(
 ) -> None:
     path = _detect_case(tmp_path, "terminated.md", f"---\n{_FRONTMATTER_BODY}\n---\n# Body\n")
     assert cli._detect_profile(path) is SchemaProfile.frontmatter_md
-    for argv in (["validate", str(path)], ["validate", str(path), "--check-repair"]):
+    for argv in (["validate", str(path)], ["repair", str(path), "--check"]):
         assert softschema_main(argv) == 0
         assert json.loads(capsys.readouterr().out)["outcome"] == "valid"
 
@@ -749,7 +751,7 @@ def test_repair_fixes_a_document_that_ends_at_its_closing_fence(
     )
     for name, text in (("with-nl.md", body + "\n"), ("no-nl.md", body)):
         path = _detect_case(tmp_path, name, text)
-        assert softschema_main(["validate", str(path), "--check-repair"]) == 1
+        assert softschema_main(["repair", str(path), "--check"]) == 1
         result = json.loads(capsys.readouterr().out)
         assert result["outcome"] == "valid", name
         assert [r["code"] for r in result["repairs"]] == ["yaml_quoted_scalar"], name
@@ -758,11 +760,172 @@ def test_repair_fixes_a_document_that_ends_at_its_closing_fence(
 def test_unparsable_frontmatter_names_the_parse_failure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # Repair could not rescue it, and no binding flags were passed. The reason must name
+    # Repair could not rescue it, and no binding flags were passed. The record must name
     # what actually went wrong instead of reporting a frontmatter block that is present.
     broken = "---\nsoftschema:\n  contract: test.detect:Doc/v1\nrec: [unclosed\n---\n# Body\n"
     path = _detect_case(tmp_path, "broken.md", broken)
-    assert softschema_main(["validate", str(path), "--check-repair"]) == 2
-    err = capsys.readouterr().err
-    assert "could not be read" in err
-    assert "has no YAML frontmatter" not in err
+    assert softschema_main(["repair", str(path), "--check"]) == 1
+    record = json.loads(capsys.readouterr().out)["structural"]["errors"][0]
+    assert "has no YAML frontmatter" not in record["message"]
+    # The reader's own diagnosis, not a restatement that something went wrong.
+    assert "flow sequence" in record["message"] or "expected" in record["message"]
+
+
+# --- The `repair` command --------------------------------------------------------------
+#
+# `repair` is its own command because it answers a different question from `validate` and
+# has the opposite posture toward an unreadable document. `validate` is the consuming-side
+# gate and refuses one; `repair` is the producing-side loop and reports one. See
+# docs/project/specs/active/plan-2026-08-30-repair-command.md.
+
+_NEEDS_REPAIR = dedent(
+    """
+    ---
+    softschema:
+      contract: test.detect:Doc/v1
+      schema: mini.schema.yaml
+      envelope: rec
+    rec:
+      name: Note: actually Q1
+    ---
+    # Body
+    """
+).lstrip()
+
+_UNREADABLE = "---\nsoftschema:\n  contract: test.detect:Doc/v1\n  envelope: rec\nrec:\n  name: A\n"
+
+
+def test_repair_writes_but_dry_run_and_check_do_not(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name, extra, expected_exit in (
+        ("written.md", [], 0),
+        ("dry.md", ["--dry-run"], 0),
+        ("checked.md", ["--check"], 1),
+    ):
+        path = _detect_case(tmp_path, name, _NEEDS_REPAIR)
+        before = path.read_bytes()
+        assert softschema_main(["repair", str(path), *extra]) == expected_exit, name
+        result = json.loads(capsys.readouterr().out)
+        # Every mode reaches the same verdict and reports the same change; they differ
+        # only in whether the file moves and what the exit code asserts.
+        assert result["outcome"] == "valid", name
+        assert [r["code"] for r in result["repairs"]] == ["yaml_quoted_scalar"], name
+        assert (path.read_bytes() != before) is (extra == []), name
+
+
+def test_repair_check_and_dry_run_differ_only_on_an_already_clean_document(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The whole reason both flags exist: --check asserts "nothing needed doing" and fails
+    # a document that repairs cleanly, while --dry-run keeps the ordinary pass condition.
+    clean = _NEEDS_REPAIR.replace("name: Note: actually Q1", 'name: "Note: actually Q1"')
+    for name, text, dry_exit, check_exit in (
+        ("dirty.md", _NEEDS_REPAIR, 0, 1),
+        ("clean.md", clean, 0, 0),
+    ):
+        path = _detect_case(tmp_path, name, text)
+        assert softschema_main(["repair", str(path), "--dry-run"]) == dry_exit, name
+        capsys.readouterr()
+        assert softschema_main(["repair", str(path), "--check"]) == check_exit, name
+        capsys.readouterr()
+
+
+def test_repair_dry_run_and_check_are_mutually_exclusive(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Checked by hand rather than with argparse's mutually exclusive group, so both CLIs
+    # word softschema's own diagnostic identically. The group's message is argparse's and
+    # Commander cannot reproduce it; the golden corpus asserts this line in full.
+    path = _detect_case(tmp_path, "doc.md", _NEEDS_REPAIR)
+    assert softschema_main(["repair", str(path), "--dry-run", "--check"]) == 2
+    assert "--dry-run and --check are mutually exclusive" in capsys.readouterr().err
+
+
+def test_validate_no_longer_accepts_the_retired_repair_flags(tmp_path: Path) -> None:
+    path = _detect_case(tmp_path, "doc.md", _NEEDS_REPAIR)
+    for flag in ("--repair", "--check-repair"):  # retired-surface-ok
+        with pytest.raises(SystemExit) as excinfo:
+            softschema_main(["validate", str(path), flag])
+        assert excinfo.value.code == 2, flag
+
+
+def test_validate_never_writes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _detect_case(tmp_path, "doc.md", _NEEDS_REPAIR)
+    before = path.read_bytes()
+    softschema_main(["validate", str(path)])
+    capsys.readouterr()
+    assert path.read_bytes() == before
+
+
+# --- Strictness is a property of the command, not of which flags were passed ------------
+
+
+def test_validate_refuses_an_unreadable_artifact_with_or_without_a_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The leak this closes: `validate` read the document only when binding inference
+    # needed it, so passing --contract removed the read and the same unreadable file
+    # exited 1 with a record instead of 2 with a message. The verdict must not depend on
+    # a flag that has nothing to do with whether the file can be opened.
+    path = _detect_case(tmp_path, "unreadable.md", _UNREADABLE)
+    for argv in (
+        ["validate", str(path)],
+        ["validate", str(path), "--contract", "test.detect:Doc/v1"],
+    ):
+        assert softschema_main(argv) == 2, argv
+        captured = capsys.readouterr()
+        assert captured.out == "", argv  # exit 2 is a message, never a result document
+        assert "Delimiter `---` for end of frontmatter not found" in captured.err, argv
+
+
+def test_repair_reports_an_unreadable_artifact_with_or_without_a_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The mirror-image leak: `repair` is the checking posture by definition, but raised a
+    # usage error about --contract when it could not infer a binding — advising a flag
+    # that would not have helped, to the one caller who most needs the diagnostic.
+    path = _detect_case(tmp_path, "unreadable.md", _UNREADABLE)
+    for argv in (
+        ["repair", str(path), "--check"],
+        ["repair", str(path), "--check", "--contract", "test.detect:Doc/v1"],
+    ):
+        assert softschema_main(argv) == 1, argv
+        captured = capsys.readouterr()
+        assert captured.err == "", argv
+        record = json.loads(captured.out)["structural"]["errors"][0]
+        assert record["kind"] == "yaml_parse_error", argv
+        assert "Delimiter `---` for end of frontmatter not found" in record["message"], argv
+        assert "--contract" not in record["message"], argv
+
+
+def test_repair_leaves_an_unreadable_artifact_untouched(tmp_path: Path) -> None:
+    path = _detect_case(tmp_path, "unreadable.md", _UNREADABLE)
+    before = path.read_bytes()
+    assert softschema_main(["repair", str(path)]) == 1
+    assert path.read_bytes() == before
+
+
+# --- load_artifact: the strict consuming API -------------------------------------------
+
+
+def test_load_artifact_returns_values_and_raises_on_anything_less(tmp_path: Path) -> None:
+    from softschema import ArtifactInvalidError, Contract, SchemaProfile, load_artifact
+
+    contract = Contract(
+        id="test.detect:Doc/v1",
+        profile=SchemaProfile.frontmatter_md,
+        envelope_key="rec",
+        schema_path=tmp_path / "mini.schema.yaml",
+    )
+    valid = _detect_case(tmp_path, "valid.md", f"---\n{_FRONTMATTER_BODY}\n---\n# Body\n")
+    assert load_artifact(valid, contract=contract) == {"name": "Acme"}
+
+    # The trap this closes: validate_artifact returns values=None here, so a consumer
+    # that forgets to check `outcome` gets a TypeError naming neither the artifact nor
+    # the reason.
+    unreadable = _detect_case(tmp_path, "unreadable.md", _UNREADABLE)
+    with pytest.raises(ArtifactInvalidError) as excinfo:
+        load_artifact(unreadable, contract=contract)
+    assert excinfo.value.result.outcome in {"invalid", "input_error"}
+    assert "unreadable.md" in str(excinfo.value)

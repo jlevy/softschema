@@ -82,7 +82,7 @@ def main():
 
     todo = []
     for p in sorted(work.glob("*.md")):
-        res = sh(["validate", p.name, "--check-repair"], work)
+        res = sh(["repair", p.name, "--check"], work)
         if res and res.get("outcome") != "valid":
             todo.append((p, res["structural"]["errors"]))
 
@@ -96,12 +96,12 @@ def main():
         except Exception as e:
             return f"{p.name}: CALL FAILED {e}"
         (out / p.name).write_text(new)
-        after = sh(["validate", p.name, "--repair"], out)
+        after = sh(["repair", p.name], out)
         oc = (after or {}).get("outcome", "PARSE_FAIL")
         n = len((after or {}).get("structural", {}).get("errors", []))
         return f"  {p.name:10} round2 -> {oc:9} (errors {len(errs)} -> {n})"
 
-    print(f"{len(todo)} artifacts still invalid after --repair; sending reports back\n")
+    print(f"{len(todo)} artifacts still invalid after repair; sending reports back\n")
     with ThreadPoolExecutor(max_workers=6) as pool:
         for line in pool.map(fix, todo):
             print(line)

@@ -24,7 +24,7 @@ from softschema.errors import canonical_number
 from softschema.generate import regenerate
 from softschema.models import Contract, SchemaProfile, SchemaStatus, parse_schema_metadata
 from softschema.pipeline import repair_and_validate_artifact
-from softschema.repair import repair_artifact
+from softschema.repair import RepairResult, repair_artifact
 from softschema.validate import (
     EnvelopeAmbiguityError,
     infer_envelope_key,
@@ -32,6 +32,7 @@ from softschema.validate import (
     parse_yaml_text,
     read_frontmatter_doc,
     read_yaml_doc,
+    unreadable_artifact_result,
     validate_artifact,
 )
 
@@ -183,59 +184,44 @@ def main(argv: list[str] | None = None) -> int:
     validate_parser = subparsers.add_parser(
         "validate",
         help=(
-            "Validate an artifact. A self-describing artifact (softschema.contract, "
-            "schema, envelope) needs no flags; flags override the document."
+            "Validate an artifact, read-only. A self-describing artifact "
+            "(softschema.contract, schema, envelope) needs no flags; flags override the "
+            "document. Never writes; to fix an artifact, use `repair`."
         ),
     )
-    validate_parser.add_argument("path", type=Path)
-    validate_parser.add_argument("--contract", help="Override the document contract ID.")
-    validate_parser.add_argument(
-        "--envelope",
-        help="Override the envelope key (softschema.envelope or single-key inference).",
-    )
-    validate_parser.add_argument(
-        "--model",
-        help=(
-            "Pydantic model as module:Class for semantic validation. Optional. "
-            "Imports and runs local code; use only with trusted models."
-        ),
-    )
-    validate_parser.add_argument(
-        "--schema",
-        type=Path,
-        help=(
-            "Compiled JSON Schema (YAML or JSON). Optional override; without it the "
-            "document's softschema.schema binding is used when present."
-        ),
-    )
-    validate_parser.add_argument(
-        "--status",
-        choices=[status.value for status in SchemaStatus],
-        help="Override the document status.",
-    )
-    validate_parser.add_argument(
-        "--profile",
-        choices=[profile.value for profile in SchemaProfile],
-        help=(
-            "Override the artifact profile. Optional; without it a *.yaml/*.yml file, "
-            "or a fenceless document whose root carries a softschema: block, is read "
-            "as pure-yaml and anything else as frontmatter-md."
-        ),
-    )
-    validate_parser.add_argument(
-        "--repair",
-        action="store_true",
+    _add_binding_args(validate_parser)
+    validate_parser.set_defaults(func=_validate_cmd)
+
+    repair_parser = subparsers.add_parser(
+        "repair",
         help=(
             "Repair unparsable YAML and conform scalars to the declared types, write the "
             "file, then validate. Reports every change under `repairs`."
         ),
     )
-    validate_parser.add_argument(
-        "--check-repair",
+    _add_binding_args(repair_parser)
+    # `--dry-run` and `--check` both suppress the write and differ in what they assert, the
+    # same way they differ elsewhere in this CLI: `skill --install --dry-run` previews and
+    # exits 0, `generate --check` previews and exits 1 on drift. A caller asking "what
+    # would this do?" wants the first; a gate asserting "nothing needs doing" wants the
+    # second.
+    #
+    # Their exclusion is checked in `_repair_cmd`, not with argparse's mutually exclusive
+    # group. The group's message is argparse's own — a usage block plus "argument --check:
+    # not allowed with argument --dry-run" — which Commander cannot reproduce, and the two
+    # CLIs must word softschema's own diagnostics identically. The golden corpus asserts
+    # this line exactly for that reason.
+    repair_parser.add_argument(
+        "--dry-run",
         action="store_true",
-        help="Report what --repair would change without writing; exit 1 if anything would.",
+        help="Do not write; report what would change. Exit 1 only if the result is invalid.",
     )
-    validate_parser.set_defaults(func=_validate_cmd)
+    repair_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Do not write; exit 1 if anything would change.",
+    )
+    repair_parser.set_defaults(func=_repair_cmd)
 
     compile_parser = subparsers.add_parser("compile", help="Compile a Pydantic model.")
     compile_parser.add_argument("model", help="Pydantic model as module:Class.")
@@ -392,19 +378,63 @@ def _yaml_root_or_none(path: Path) -> Any:
         return None
 
 
+def _add_binding_args(parser: argparse.ArgumentParser) -> None:
+    """The artifact and contract-binding flags shared by `validate` and `repair`.
+
+    Both commands answer a question about one artifact under one contract, and the
+    binding is resolved the same way for each. Defining the flags once is what keeps the
+    two from drifting into subtly different override precedence.
+    """
+    parser.add_argument("path", type=Path)
+    parser.add_argument("--contract", help="Override the document contract ID.")
+    parser.add_argument(
+        "--envelope",
+        help="Override the envelope key (softschema.envelope or single-key inference).",
+    )
+    parser.add_argument(
+        "--model",
+        help=(
+            "Pydantic model as module:Class for semantic validation. Optional. "
+            "Imports and runs local code; use only with trusted models."
+        ),
+    )
+    parser.add_argument(
+        "--schema",
+        type=Path,
+        help=(
+            "Compiled JSON Schema (YAML or JSON). Optional override; without it the "
+            "document's softschema.schema binding is used when present."
+        ),
+    )
+    parser.add_argument(
+        "--status",
+        choices=[status.value for status in SchemaStatus],
+        help="Override the document status.",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=[profile.value for profile in SchemaProfile],
+        help=(
+            "Override the artifact profile. Optional; without it a *.yaml/*.yml file, "
+            "or a fenceless document whose root carries a softschema: block, is read "
+            "as pure-yaml and anything else as frontmatter-md."
+        ),
+    )
+
+
 def _validate_cmd(args: argparse.Namespace) -> int:
     # Without --model/--schema this is a metadata-only check: the document parses,
     # the softschema: block is well-formed, and the envelope resolves; structural
     # and semantic layers are reported as skipped. Useful from the `soft` stage on.
     # Read the document once here; both binding inference and validate_artifact
     # reuse that parse, so the file is parsed a single time.
-    repair, check_repair = args.repair, args.check_repair
-    if repair and check_repair:
-        raise UsageError("--repair and --check-repair are mutually exclusive")
-
-    if repair or check_repair:
-        return _repair_validate_cmd(args, write=repair)
-
+    #
+    # The read is unconditional, and that is the point rather than an accident of where
+    # the binding comes from. `validate` is the consuming-side gate: an artifact it
+    # cannot open is not a failing artifact, it is not an artifact, and it exits 2 with
+    # one line. Reading only when binding inference needed the document made that verdict
+    # depend on whether `--contract` was passed — the same unreadable file exited 2
+    # without the flag and 1 with it. Strictness is a property of this command.
     read = _read_artifact(args.path, _profile_from_args(args))
     contract_id, status, envelope_key = _infer_validation_binding(args, read.document, read.profile)
     model = _load_model(args.model) if args.model else None
@@ -425,23 +455,44 @@ def _validate_cmd(args: argparse.Namespace) -> int:
     return 1
 
 
-def _repair_validate_cmd(args: argparse.Namespace, *, write: bool) -> int:
-    """The `--repair` / `--check-repair` path.
+def _repair_cmd(args: argparse.Namespace) -> int:
+    """The `repair` command: repair, conform, validate, and write unless asked not to.
 
-    Repair runs *before* binding inference, not after. The document this flag exists to
+    Repair runs *before* binding inference, not after. The document this command exists to
     rescue is one that does not parse, and the contract, schema, and envelope are all read
     out of that same unparsable frontmatter — inferring the binding first would fail on
-    exactly the artifacts the flag is for.
+    exactly the artifacts the command is for.
 
     The repair is then handed to the pipeline rather than recomputed, so the file is still
     read once and written at most once.
+
+    Unlike `validate`, an unreadable document is this command's normal input, not a usage
+    error. It is reported as a record in the result, whether or not a binding could be
+    inferred from it. Raising here would hand the one caller who most needs the diagnostic
+    — the agent that just wrote the file — an exit code and nothing else.
     """
+    if args.dry_run and args.check:
+        raise UsageError("--dry-run and --check are mutually exclusive")
+    write = not (args.dry_run or args.check)
     profile = _profile_from_args(args) or _detect_profile(args.path)
     repaired = repair_artifact(args.path, profile=profile, write=False)
     document, parse_error = _parse_after_repair(repaired.text, profile, str(args.path))
-    contract_id, status, envelope_key = _infer_validation_binding(
-        args, document, profile, parse_error
-    )
+
+    # Repair could not rescue the document and the caller named no contract, so there is
+    # no binding to validate under. Report the read failure rather than raising: a
+    # contract ID cannot be invented for a document that declares none, and the agent that
+    # just wrote this file needs the diagnostic, not an exit code.
+    if not isinstance(document, dict) and args.contract is None:
+        result = unreadable_artifact_result(
+            args.path,
+            profile=profile,
+            kind=_repair_failure_kind(repaired, parse_error),
+            message=_repair_failure_message(repaired, parse_error, args.path, profile),
+        )
+        print(_json(result))
+        return 1
+
+    contract_id, status, envelope_key = _infer_repair_binding(args, document, profile)
     contract = Contract(
         id=contract_id,
         model=_load_model(args.model) if args.model else None,
@@ -454,12 +505,41 @@ def _repair_validate_cmd(args: argparse.Namespace, *, write: bool) -> int:
         args.path, contract=contract, write=write, repaired=repaired
     )
     print(_json(result))
-    # `--check-repair` answers "would this change?", so a document needing repair fails the
-    # check even when it would validate afterward. Same shape as `generate --check`, and it
-    # is what lets a gate reject an unrepaired artifact.
-    if not write and result.repairs:
+    # `--check` answers "would this change?", so a document needing repair fails the check
+    # even when it would validate afterward. Same shape as `generate --check`, and it is
+    # what lets a gate reject an unrepaired artifact. `--dry-run` asks the other question —
+    # "what would this do?" — and keeps the ordinary pass condition.
+    if args.check and result.repairs:
         return 1
     return 0 if result.outcome == "valid" else 1
+
+
+def _repair_failure_kind(repaired: RepairResult, parse_error: PortableInputError | None) -> str:
+    """The record kind for a document repair could not make readable.
+
+    Repair's own error code wins when it has one — an alias or a merge key is a precise
+    diagnosis, and quoting could never have fixed it. Otherwise the reader's code names
+    the failure, which is the ordinary case: repair reports success for a document with no
+    frontmatter region to rewrite, leaving the reader to say why it cannot be opened.
+    """
+    if repaired.error_code:
+        return repaired.error_code
+    return parse_error.code if parse_error is not None else "yaml_parse_error"
+
+
+def _repair_failure_message(
+    repaired: RepairResult,
+    parse_error: PortableInputError | None,
+    path: Path,
+    profile: SchemaProfile,
+) -> str:
+    if repaired.error_message:
+        return repaired.error_message
+    if parse_error is not None:
+        return str(parse_error)
+    if profile is SchemaProfile.pure_yaml:
+        return f"the document root is not a YAML mapping: `{path}`"
+    return f"the document has no YAML frontmatter: `{path}`"
 
 
 def _detect_profile(path: Path) -> SchemaProfile:
@@ -498,10 +578,13 @@ def _parse_after_repair(
     """Parse the repaired text for binding inference, tolerating one that still fails.
 
     Returns the parsed document and, when repair could not rescue it, the error that
-    stopped it. Binding inference falls back to the flags either way, but the error has
-    to travel with the ``None``: without it the caller cannot tell a document whose
-    frontmatter would not parse from one that never had frontmatter, and would report
-    the latter for both.
+    stopped it. The error has to travel with the ``None``, because it is what names the
+    cause in the record `repair` reports — "the document could not be read" is not a
+    diagnostic, and repair itself does not produce one here: an unterminated fence leaves
+    no frontmatter region to rewrite, which `repair_artifact` correctly treats as
+    validation's verdict rather than a repair failure.
+
+    ``source`` only names the document in that message.
     """
     if text is None:
         return None, None
@@ -523,11 +606,16 @@ def _infer_validation_binding(
     args: argparse.Namespace,
     document: Any,
     profile: SchemaProfile,
-    parse_error: PortableInputError | None = None,
 ) -> tuple[str, SchemaStatus, str | None]:
+    """Resolve the contract binding for `validate`, which requires one.
+
+    Reached only for a document that read cleanly — `validate` refuses an unreadable one
+    before this — so a missing binding here really is a missing binding, and naming it as
+    a usage error is honest.
+    """
     if not isinstance(document, dict):
         if args.contract is None:
-            raise UsageError(_missing_contract_reason(profile, parse_error))
+            raise UsageError(_missing_contract_reason(profile))
         return args.contract, _status_from_args(args, None), args.envelope
 
     metadata = parse_schema_metadata(document.get("softschema"))
@@ -542,13 +630,25 @@ def _infer_validation_binding(
     )
 
 
-def _missing_contract_reason(
-    profile: SchemaProfile, parse_error: PortableInputError | None = None
-) -> str:
-    # A document whose metadata block would not parse is not a document without one, and
-    # saying so sends an agent looking for a missing block instead of a broken one.
-    if parse_error is not None:
-        return f"missing --contract because the document could not be read: {parse_error}"
+def _infer_repair_binding(
+    args: argparse.Namespace, document: Any, profile: SchemaProfile
+) -> tuple[str, SchemaStatus, str | None]:
+    """Resolve the contract binding for `repair`, which tolerates not finding one.
+
+    An unreadable document is this command's normal input, so a missing binding is not a
+    usage error here — it is a consequence of the failure validation is about to report.
+    The contract ID goes out empty in that case, which is what the artifact actually
+    declares: nothing legible.
+
+    Raising instead is how this path once told an agent to pass `--contract` for a
+    document that could not be opened, advising a flag that would not have helped.
+    """
+    if not isinstance(document, dict):
+        return args.contract or "", _status_from_args(args, None), args.envelope
+    return _infer_validation_binding(args, document, profile)
+
+
+def _missing_contract_reason(profile: SchemaProfile) -> str:
     if profile is SchemaProfile.pure_yaml:
         return "missing --contract because the document root is not a YAML mapping"
     return "missing --contract because the document has no YAML frontmatter"

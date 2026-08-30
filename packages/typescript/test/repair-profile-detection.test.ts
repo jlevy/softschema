@@ -4,7 +4,7 @@
  *
  * It once did not: a document that opened a frontmatter fence and never closed it was
  * detected as pure-yaml, its leading `---` was consumed as a YAML document-start marker,
- * and `--check-repair` reported `valid` for a file plain `validate` could not open at
+ * and the repair path reported `valid` for a file plain `validate` could not open at
  * all. Both runtimes diverged in the same direction, so cross-implementation parity
  * stayed clean while both were wrong — which is why this is pinned per-implementation.
  *
@@ -77,15 +77,20 @@ describe("repair-path profile detection", () => {
     expect(await main(argv("validate", path))).toBe(2);
     expect(stderr).toContain("Delimiter `---` for end of frontmatter not found");
 
-    stderr = "";
-    expect(await main(argv("validate", path, "--check-repair"))).toBe(2);
-    expect(stderr).toContain("Delimiter `---` for end of frontmatter not found");
-    expect(stderr).not.toContain("has no YAML frontmatter");
+    // `repair` must refuse it too, and name the same cause. It reports rather than
+    // throws: an unreadable document is that command's normal input, so the diagnostic
+    // goes in a record where the agent that wrote the file can act on it.
+    stdout = "";
+    expect(await main(argv("repair", path, "--check"))).toBe(1);
+    const record = JSON.parse(stdout).structural.errors[0];
+    expect(record.kind).toBe("yaml_parse_error");
+    expect(record.message).toContain("Delimiter `---` for end of frontmatter not found");
+    expect(record.message).not.toContain("has no YAML frontmatter");
   });
 
   test("a terminated fence still validates on both paths", async () => {
     const path = write("terminated.md", `---\n${FRONTMATTER_BODY}\n---\n# Body\n`);
-    for (const args of [["validate", path], ["validate", path, "--check-repair"]]) {
+    for (const args of [["validate", path], ["repair", path, "--check"]]) {
       stdout = "";
       expect(await main(argv(...args))).toBe(0);
       expect(JSON.parse(stdout).outcome).toBe("valid");
@@ -96,7 +101,7 @@ describe("repair-path profile detection", () => {
     // The fix narrows what counts as "fenceless"; a document that never opened a fence
     // is still pure-yaml, which is the rule the narrowing must not break.
     const path = write("fenceless.md", `${FRONTMATTER_BODY}\n`);
-    expect(await main(argv("validate", path, "--check-repair"))).toBe(0);
+    expect(await main(argv("repair", path, "--check"))).toBe(0);
     expect(JSON.parse(stdout).profile).toBe("pure-yaml");
   });
 
@@ -104,7 +109,7 @@ describe("repair-path profile detection", () => {
     // A `*.yaml` file may legitimately open with `---`. The suffix rule answers first,
     // so the fence check never sees it.
     const path = write("record.yaml", `---\n${FRONTMATTER_BODY}\n`);
-    expect(await main(argv("validate", path, "--check-repair"))).toBe(0);
+    expect(await main(argv("repair", path, "--check"))).toBe(0);
     expect(JSON.parse(stdout).profile).toBe("pure-yaml");
   });
 
@@ -152,7 +157,7 @@ describe("repair-path profile detection", () => {
     ] as const) {
       stdout = "";
       const path = write(name, text);
-      expect(await main(argv("validate", path, "--check-repair"))).toBe(1);
+      expect(await main(argv("repair", path, "--check"))).toBe(1);
       const result = JSON.parse(stdout);
       expect(result.outcome).toBe("valid");
       expect(result.repairs.map((r: { code: string }) => r.code)).toEqual(["yaml_quoted_scalar"]);
@@ -164,8 +169,11 @@ describe("repair-path profile detection", () => {
       "broken.md",
       "---\nsoftschema:\n  contract: test.detect:Doc/v1\nrec: [unclosed\n---\n# Body\n",
     );
-    expect(await main(argv("validate", path, "--check-repair"))).toBe(2);
-    expect(stderr).toContain("could not be read");
-    expect(stderr).not.toContain("has no YAML frontmatter");
+    stdout = "";
+    expect(await main(argv("repair", path, "--check"))).toBe(1);
+    const record = JSON.parse(stdout).structural.errors[0];
+    expect(record.message).not.toContain("has no YAML frontmatter");
+    // The reader's own diagnosis, not a restatement that something went wrong.
+    expect(record.message.length).toBeGreaterThan(20);
   });
 });

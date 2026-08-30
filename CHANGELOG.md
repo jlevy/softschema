@@ -6,19 +6,36 @@ version number.
 
 ## Unreleased
 
-### `softschema validate --repair`
+### `softschema repair`
 
 Validation normally happens after the process that wrote an artifact has exited.
 By then the session that could fix the document is gone, so a large, nearly-correct
 artifact is discarded over one field.
-`--repair` lets the producer run the same check its consumer will run, while it can
-still act on the answer.
+`repair` lets the producer run the same check its consumer will run, while it can still
+act on the answer.
 
 ```bash
-softschema validate <path>                  # unchanged; read-only
-softschema validate <path> --repair         # repair, conform, write, validate
-softschema validate <path> --check-repair   # report what would change; no write
+softschema validate <path>            # unchanged; read-only, never writes
+softschema repair <path>              # repair, conform, write, validate
+softschema repair <path> --dry-run    # report what would change; no write
+softschema repair <path> --check      # exit 1 if anything would change; no write
 ```
+
+The two write-suppressing flags ask different questions, and both are wanted.
+`--dry-run` reports what would change and still passes when the result would be valid,
+which is what an agent asks before committing to a change.
+`--check` fails whenever anything would change at all, the same shape as
+`generate --check`, which is what a gate runs against an artifact under review.
+
+`validate` and `repair` also take deliberately different postures toward an artifact
+that cannot be read.
+`validate` is what a consumer runs, and refuses one outright with a one-line message and
+exit 2: an artifact it cannot open is not a failing artifact.
+`repair` is what a producer runs, and reports the same condition as a record at exit 1,
+under no contract when the document declares none legibly — a truncated write is its
+ordinary input, and the agent that made it needs something to act on.
+Which posture applies follows from the command, never from which other flags were
+passed.
 
 One escalating pass, writing the file once: parse, quote a scalar whose text YAML reads
 as structure, retype a scalar the contract declares `type: string`, then validate.
@@ -32,9 +49,9 @@ an explicit tag — keeps its original error code.
 An artifact needing no repair comes back byte-identical.
 
 A document that opens a frontmatter fence and never closes it — what a truncated write
-leaves behind — is a frontmatter-md read error on every path, `--repair` included.
+leaves behind — is a frontmatter-md read error to both commands.
 It is not a fenceless `pure-yaml` document whose leading `---` happens to be a YAML
-document-start marker, and both paths report the same cause.
+document-start marker, and both name the same cause.
 
 A document whose closing fence is the last byte of the file, with no trailing newline,
 is repaired like any other.
@@ -52,6 +69,11 @@ same file.
 
 ### Added
 
+- `load_artifact` / `loadArtifact`: the strict consuming call.
+  Returns the payload values and raises `ArtifactInvalidError` on anything short of
+  valid, with the whole result attached.
+  `validate_artifact` returns `values: None` on failure, so consuming code that forgets
+  to check `outcome` fails later, naming neither the artifact nor the reason.
 - `repair_artifact` / `repairArtifact`, `repair_yaml_text` / `repairYamlText`,
   `conform_artifact` / `conformArtifact`, and `repair_and_validate_artifact` /
   `repairAndValidateArtifact` on the public API of both packages, with their result

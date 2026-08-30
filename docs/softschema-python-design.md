@@ -217,6 +217,12 @@ compiled schemas in place; ordinary callers never need it.
 There are two public entry points: `validate_artifact` (above) for Markdown/YAML
 documents, and `validate_values` for an already-extracted mapping (a body-form runtime,
 a structured-output adapter, a fixture).
+`load_artifact` wraps the first for consuming code: it returns the payload values and
+raises `ArtifactInvalidError` on anything short of valid, with the whole result
+attached. Use it where the artifact has already been validated once and invalidity is
+exceptional. `validate_artifact` returns `values=None` on failure, so a consumer that
+forgets to check `outcome` gets `None` where it expected a mapping and fails later,
+naming neither the artifact nor the reason.
 The envelope is resolved directly from the document: an explicit `envelope_key`, or the
 single non-`softschema` top-level key when none is given (zero or several candidates are
 rejected as `envelope_missing` / `envelope_ambiguous`, per the spec).
@@ -282,16 +288,26 @@ category.
 
 `ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
 `invalid`, or `input_error`. Library callers always receive this structured result.
-The CLI reads once to infer document binding: readable results map to exits `0` or `1`,
-while access and parse failures use its one-line stderr and exit-`2` input boundary.
+Which failures reach a caller as a result and which as an error follows from the command
+invoked, not from which options it was given.
+`validate` reads: it refuses an artifact it cannot open with a one-line stderr message
+and exit `2`, whether or not a contract was named.
+`repair` checks: an unreadable artifact is its ordinary input, so the failure comes back
+as a record in the result at exit `1`, under no contract when the document declares none
+legibly. Readable results map to exits `0` or `1` on both.
 
 ### Alignment with `python-cli-patterns`
 
 The CLI follows the house Python-CLI conventions: exit codes `0` success / `1`
 validation failure or drift / `2` usage error; structured data to stdout and diagnostics
 to stderr; the package version comes from `importlib.metadata` via
-`uv-dynamic-versioning`. The package installs two console scripts, `softschema` and
-`softschema-py` (the latter pairs with `softschema-ts` in the shared golden corpus).
+`uv-dynamic-versioning`. Exit `2` also covers an artifact `validate` cannot read, which
+is a usage error by that command’s posture: it is the consuming-side gate, and an
+artifact it cannot open is not a failing artifact.
+`repair` takes the other posture and reports the same condition as a record at exit `1`.
+Which one applies follows from the command, never from which other options were passed.
+The package installs two console scripts, `softschema` and `softschema-py` (the latter
+pairs with `softschema-ts` in the shared golden corpus).
 
 ### Skill Resource and Mirrors
 
@@ -493,6 +509,8 @@ structural layer. Keying on either alone is a silent no-op for the other’s cal
 
 `softschema.pipeline.repair_and_validate_artifact()` runs the two and validates the
 result, writing once.
+It backs the `repair` command; `--dry-run` and `--check` both pass `write=False` and
+differ only in the exit code the CLI derives.
 `validate_artifact()` stays read-only: a function of that name must not rewrite the file
 its caller passed.
 

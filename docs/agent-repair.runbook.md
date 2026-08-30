@@ -1,7 +1,7 @@
 ---
 name: agent-repair
 description: >-
-  The manual end-to-end check for `softschema validate --repair`: drive a real
+  The manual end-to-end check for `softschema repair`: drive a real
   low-thinking model at a form contract it has never seen the schema for, and
   watch both halves of the feature work — the drift repair fixes silently, and
   the drift it refuses to guess at and reports instead. Use after changing
@@ -10,8 +10,8 @@ description: >-
 ---
 # Agent Repair Runbook
 
-`--repair` exists so the agent that writes an artifact can run the same check its
-consumer will run, while it can still act on the answer.
+`repair` exists so the agent that writes an artifact can run the same check its consumer
+will run, while it can still act on the answer.
 That claim is only testable against artifacts a real agent really wrote, so this runbook
 drives one and reads the results.
 
@@ -97,7 +97,7 @@ grep -h rubric_version work/templated/*.md | sort | uniq -c    # after: '1.10', 
 string.
 
 `evaluate.py` also asserts the three conformance guarantees on every artifact —
-`--check-repair` never writes, repair is idempotent, and an artifact needing no repair
+`repair --check` never writes, repair is idempotent, and an artifact needing no repair
 comes back byte-identical.
 `python3 summarize.py templated` prints them.
 
@@ -160,16 +160,18 @@ SS="uv run --frozen --no-config --project $PWD/../../.. softschema"   # or: node
 cd "$(mktemp -d)"
 printf -- '---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  name: Acme\n' > truncated.md
 
-$SS validate truncated.md                  # exit 2, delimiter not found
-$SS validate truncated.md --check-repair    # exit 2, names the same cause
+$SS validate truncated.md              # exit 2, delimiter not found, no result document
+$SS repair truncated.md --check        # exit 1, the same cause as a record
 ```
 
 The artifact binds no schema, so nothing needs copying into the temp directory: the
 document never gets far enough to resolve one.
 
-**Expect both to exit 2**, and the second to name the read failure rather than reporting
-that the document has no frontmatter — the block is plainly there, and saying otherwise
-sends an agent looking for the wrong problem.
+**Expect both to refuse it**, in each command’s own voice: `validate` reads, so it says
+so in one line and exits 2; `repair` checks, so the same cause comes back as a
+`yaml_parse_error` record at exit 1, where the agent that wrote the file can act on it.
+Neither may report that the document has no frontmatter — the block is plainly there —
+and `repair` must not ask for `--contract`, which would not have helped.
 
 A `valid` from the second command is the original defect.
 The golden corpus pins this as
@@ -188,7 +190,7 @@ found no region to rewrite, and `--repair` silently skipped an artifact it could
 ```bash
 printf -- '---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  summary: Note: actually Q1\n---' > ends-at-fence.md
 
-$SS validate ends-at-fence.md --check-repair    # outcome valid, one yaml_quoted_scalar repair
+$SS repair ends-at-fence.md --check    # outcome valid, one yaml_quoted_scalar repair
 ```
 
 **Expect** `"outcome": "valid"` with a `yaml_quoted_scalar` record.

@@ -745,6 +745,42 @@ Repair is one escalating pass: parse, repair the document if it does not parse, 
 its scalars to the types the contract declares, write once if anything changed, then
 validate.
 
+#### Reading and checking are separate postures
+
+An implementation exposing both must keep them distinct, because they take opposite
+positions on the same artifact and serve different callers.
+
+**Reading** is what a consumer does with an artifact it expects to be valid.
+An artifact it cannot read is not a failing artifact; it is not an artifact.
+The implementation refuses it as an input error, and no verdict document is produced.
+
+**Checking** is what a producer does with an artifact it expects may be invalid.
+An artifact that cannot be read is that caller’s ordinary input — it is what a truncated
+write leaves behind — and the failure is reported as a record, under the same
+`kind`/`message` surface as any other, so the producer can act on it.
+An implementation must not report this as a usage error, and must not require a contract
+to report it: a document whose metadata will not parse declares no contract, and none
+may be invented for it.
+
+Which posture applies must follow from the operation the caller invoked, not from which
+other options they happened to pass.
+An artifact’s readability does not depend on whether a contract was named on the command
+line, and neither may the verdict.
+
+A reference CLI expresses this as two commands — `validate` reads, `repair` checks — and
+distinguishes suppressing the write from asserting nothing needed changing:
+
+| Invocation | Writes | Exit 0 when |
+| --- | --- | --- |
+| `validate <path>` | never | the artifact is valid |
+| `repair <path>` | yes | the artifact is valid after repair |
+| `repair <path> --dry-run` | no | the artifact is valid after repair |
+| `repair <path> --check` | no | nothing needed changing |
+
+Exit classes: `0` valid, `1` invalid (or, under `--check`, something would change), `2`
+the command could not run — bad options, a path that does not exist, or an artifact the
+reading posture refused.
+
 Exactly two corrections are in scope, and both restore what a serializer would have
 done:
 

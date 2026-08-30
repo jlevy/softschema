@@ -229,7 +229,7 @@ def repair_artifact(
     region.
 
     ``write=False`` reports what would change without touching the file, which is what
-    ``--check-repair`` runs on.
+    ``repair --dry-run`` and ``repair --check`` run on.
 
     ``text`` on the result is the full document, repaired or not, so a caller that is
     about to conform and validate does not read the file a second time.

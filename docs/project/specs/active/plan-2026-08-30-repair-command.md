@@ -30,13 +30,17 @@ conditions. `--check-repair` exits 1 when repairs *would* be made even if the do
 would validate afterward; `--repair` exits 0 when the result is valid.
 Those answer different questions, and fusing them is what forced the compound name.
 
-**Strictness is decided by accident.** The CLI picks strict or lenient behavior by where
-a failure lands, not by intent.
-`validate` reads eagerly for binding inference, so a read failure escapes as an
-exception (exit 2); pass `--contract` and the eager read is no longer needed, the same
-failure lands in the verdict path, and the same file now exits 1 with a record.
-`--check-repair` has the mirror-image leak: it is the checking mode by definition, but
-raises a usage error about `--contract` when it cannot infer a binding.
+**Strictness is nowhere stated.** `validate` refuses an unreadable artifact with exit 2
+and `--check-repair` reports one with exit 1 — two postures toward the same file,
+reached by two code paths, with nothing naming the rule that separates them.
+Both are defensible on their own; neither is written down, and one is wrong about a
+neighbouring case. `--check-repair` is the checking posture by definition, yet raises a
+*usage error* about `--contract` when it cannot infer a binding from an unreadable
+document — advising a flag that would not have helped, to the one caller who most needs
+the diagnostic.
+
+Splitting the commands makes the rule explicit rather than emergent, and closes that one
+genuine defect along the way.
 
 The library already draws the line correctly — `read_frontmatter_doc` raises,
 `validate_artifact` records — and separates the operations into `validate.py` and
@@ -111,8 +115,10 @@ and getting a baffling exit 1 on a document that repaired fine.
 | `validate` | exit 2, one-line stderr, no JSON, **regardless of `--contract`** | the consuming-side gate; an unopenable file is not a failing artifact, it is not an artifact |
 | `repair` | record in the result, exit 1, **regardless of whether a binding could be inferred** | the producing-side loop; an unreadable document is the normal case it exists for |
 
-This closes both leaks.
-`repair` never raises a usage error about `--contract`: the message
+`validate` already behaved this way — its read has always been unconditional — so this
+states an existing property rather than changing one, and pins it with a test that did
+not exist. The change is on the `repair` side: it never raises a usage error about
+`--contract`, and the message
 `missing --contract because the document could not be read` disappears, because it
 advises a flag that would not have helped.
 
@@ -176,10 +182,11 @@ status note, not a rewrite.
 
 1. **CLI surface.** New `repair` command with `--dry-run` and `--check`; remove both
    flags from `validate`. Both languages, identical surface.
-2. **Strict and checking reads.** Close both leaks per D3.
+2. **Strict and checking reads.** Apply D3: pin `validate`’s existing strictness with a
+   test, and stop `repair` raising a usage error for an unreadable document.
 3. **`load_artifact` / `loadArtifact`.** Additive; separable if the release needs
    cutting.
-4. **Tests.** Unit coverage in both languages for the new surface and both leak fixes;
+4. **Tests.** Unit coverage in both languages for the new surface and both postures;
    golden scenario renamed and rewritten; `inspect-and-docs` refreshed.
 5. **Docs.** All canonical docs, then derived artifacts regenerated in order.
 6. **Manual harness.** Update the three scripts; re-run the runbook end to end.

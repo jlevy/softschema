@@ -24,14 +24,14 @@ test; see the parity development process in [development.md](development.md).
 | `enforcement` | Checked enforced-profile analysis and offline schema-resource graph preparation |
 | `compile` | `compileSchema`: Zod → canonical JSON Schema YAML file and `schema_sha256` |
 | `errors` | Engine-neutral structural error records and ajv normalization |
-| `validate` | `validateArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, `clearValidatorCache`, the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root, and `resolveBoundSchema` |
+| `validate` | `validateArtifact`, `loadArtifact`, `validateValues`, `validateStructural`, `validateSemantic`, `clearValidatorCache`, the `readFrontmatterDoc`/`readYamlDoc` decoders that produce a `document` root, and `resolveBoundSchema` |
 | `schemaView` | `SchemaView`/`FieldInfo`: read-only navigation over a compiled schema |
 | `softField` | `softField()`: per-field `x-softschema` annotations via Zod `.meta()` |
 | `repair` | `repairArtifact`/`repairYamlText`: schema-free quoting of scalars YAML reads as structure |
 | `conform` | `conformArtifact`: retype a scalar to the string its contract declares, reading both validation layers |
 | `repairValidate` | `repairAndValidateArtifact`: the escalating pass, writing once |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
-| `cli` | `commander` program: `validate` (with `--repair`/`--check-repair`), `compile`, `inspect`, `docs`, `generate`, `skill` |
+| `cli` | `commander` program: `validate`, `repair` (with `--dry-run`/`--check`), `compile`, `inspect`, `docs`, `generate`, `skill` |
 
 ## Idiomatic Zod Choices
 
@@ -136,6 +136,7 @@ explicitly in the shared vectors.
 | Python | TypeScript | Notes |
 | --- | --- | --- |
 | `validate_artifact` | `validateArtifact` | same result fields, `outcome`, error kinds, and warnings |
+| `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached |
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status` and offline `resources` |
 | `validate_structural` | `validateStructural` | jsonschema ↔ Ajv; shared record shape and meaning, with pinned native-engine deviations |
 | `clear_validator_cache` | `clearValidatorCache` | drop memoized compiled validators; both cache on schema content, keyed with the enforced overlay, and skip the cache when `resources` are supplied |
@@ -163,9 +164,14 @@ explicitly in the shared vectors.
 `{ kind, code, path, property?, validator, validator_value, value, message }`, sorted by
 `(path, validator, property)`. `property` is present for missing and undeclared-field
 records, with one record per affected field.
-Library results use `valid` / `invalid` / `input_error`. The CLI reads once to infer
-document binding: readable results map to exits `0` or `1`, while access and parse
-failures use its one-line stderr and exit-`2` input boundary.
+Library results use `valid` / `invalid` / `input_error`. Which failures reach a caller
+as a result and which as an error follows from the command invoked, not from which
+options it was given.
+`validate` reads: it refuses an artifact it cannot open with a one-line stderr message
+and exit `2`, whether or not a contract was named.
+`repair` checks: an unreadable artifact is its ordinary input, so the failure comes back
+as a record in the result at exit `1`, under no contract when the document declares none
+legibly. Readable results map to exits `0` or `1` on both.
 Cross-runtime tests compare JSON structurally; deterministic pretty printing is local
 presentation, not a byte-level wire contract.
 

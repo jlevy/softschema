@@ -59,6 +59,7 @@ def main() -> int:
         errcount += run(["ruff", "format", *SRC_PATHS])
     errcount += run(["basedpyright", *SRC_PATHS])
     errcount += check_doc_footers()
+    errcount += check_retired_surface()
 
     if errcount:
         rprint(f"[bold red]Lint failed with {errcount} failing command(s).[/bold red]")
@@ -76,6 +77,62 @@ def check_doc_footers() -> int:
             rprint(f"[bold red]Missing doc footer:[/bold red] {path}")
         return 1
     return 0
+
+
+RETIRED_SURFACE = ("--check-repair", "checkRepair", "check_repair")  # retired-surface-ok
+"""The retired repair flags, replaced by the `repair` command in the v0.8.0 line.
+Never released under those names.
+
+Grepped for rather than trusted to be gone, because the surface reached 20-odd files
+across source, tests, docs, the agent skill, its two generated mirrors, and the bundled
+TypeScript resource copies. A stale mention in any generated artifact is invisible to
+review and would send an agent to a flag that no longer parses.
+"""
+
+RETIRED_SURFACE_MARKER = "retired-surface-ok"
+"""Opt-out for a line that must name a retired flag: the tests asserting it is gone."""
+
+RETIRED_SURFACE_EXEMPT_DIRS = (Path("docs/project/reviews"), Path("docs/project/specs"))
+"""Records of what was true when written. Rewriting them would falsify the history."""
+
+
+def check_retired_surface() -> int:
+    rprint()
+    rprint("[bold green]>> check retired CLI surface[/bold green]")
+    hits: list[str] = []
+    for path in _iter_tracked_text_files():
+        if any(path.is_relative_to(exempt) for exempt in RETIRED_SURFACE_EXEMPT_DIRS):
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(lines, 1):
+            if RETIRED_SURFACE_MARKER in line:
+                continue
+            if any(name in line for name in RETIRED_SURFACE):
+                hits.append(f"{path}:{number}: {line.strip()[:96]}")
+    if hits:
+        rprint("[bold red]Retired CLI surface still referenced:[/bold red]")
+        for hit in hits:
+            rprint(f"  {hit}")
+        rprint(
+            "Use `repair`, `repair --dry-run`, or `repair --check`. A line that must name "
+            f"the old flag (a test asserting its removal) carries `{RETIRED_SURFACE_MARKER}`."
+        )
+        return 1
+    return 0
+
+
+def _iter_tracked_text_files() -> list[Path]:
+    """Every git-tracked file, so generated mirrors and resource copies are covered too."""
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "-z"], text=True, capture_output=True, check=True
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    return [Path(name) for name in listed.split("\0") if name]
 
 
 def has_doc_footer(path: Path) -> bool:
