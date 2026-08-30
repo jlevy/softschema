@@ -124,6 +124,13 @@ Reading a document by lines and scanning it by byte offset must agree on this, o
 implementation that scans will place a document’s fences somewhere the implementation
 that reads does not.
 
+Artifacts are UTF-8. A leading byte order mark is removed on decoding and is not part of
+the document; a U+FEFF at any other position is ordinary content.
+Removing it is what lets the rules above be stated in terms of a first line that is
+`---`, since an artifact carrying the mark has one and an implementation that keeps it
+does not. The mark announces an encoding, so it is dropped where the bytes become text,
+not by each rule that inspects them.
+
 ## Portable YAML Values
 
 YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite

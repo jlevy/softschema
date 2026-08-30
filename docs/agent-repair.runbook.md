@@ -109,6 +109,10 @@ python3 evaluate.py prose
 python3 summarize.py prose
 ```
 
+`prose` twice is not a typo: the arguments are `<model> <budget> <variant> [mode]`, and
+here the output directory and the prompt style happen to share a name.
+Phase 1 passes three because `templated` is the default mode.
+
 **Expect** every artifact to stay invalid, with a large, *paired* error count.
 
 The recorded runs: 880 and 906 structural errors across 12 artifacts, essentially all
@@ -144,7 +148,7 @@ error — 880 to 0, and 906 to 0.
 > exactly. `feedback.py` sets `RECORD_CAP = 500` for this reason.
 > A low cap makes the feature look worse than it is and hides the real result.
 
-## Phase 4 — The Regression Case
+## Phase 4 — The Regression Cases
 
 No model needed, and it is the reason this runbook exists.
 A document that opens frontmatter and never closes it — what a truncated agent write
@@ -155,8 +159,14 @@ Run it against **the build under test**, not whatever `softschema` resolves to o
 a regression check must not have.
 `SS` below is the same invocation the harness scripts use.
 
+Both forms below resolve the repo through `$PWD`, which the shell expands **before** the
+`cd` on the next line.
+A relative path would not survive it — the commands run in a temporary directory, not in
+the repo.
+
 ```bash
-SS="uv run --frozen --no-config --project $PWD/../../.. softschema"   # or: node packages/typescript/dist/cli.js
+SS="uv run --frozen --no-config --project $PWD/../../.. softschema"
+# or, for the TypeScript build:  SS="node $PWD/../../../packages/typescript/dist/cli.js"
 cd "$(mktemp -d)"
 printf -- '---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  name: Acme\n' > truncated.md
 
@@ -190,15 +200,46 @@ found no region to rewrite, and `--repair` silently skipped an artifact it could
 ```bash
 printf -- '---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  summary: Note: actually Q1\n---' > ends-at-fence.md
 
-$SS repair ends-at-fence.md --check    # outcome valid, one yaml_quoted_scalar repair
+$SS repair ends-at-fence.md --check    # exit 1, outcome valid, one yaml_quoted_scalar repair
 ```
 
 **Expect** `"outcome": "valid"` with a `yaml_quoted_scalar` record.
 A read failure, or an empty `repairs` list, is the defect: the document is one byte from
 one that repairs cleanly.
 
+The exit code here is **1, and that is the pass**: `--check` asserts that nothing needed
+changing, and something did.
+The verdict to read is `outcome`, not `$?`. Run the same command with `--dry-run` for
+exit 0 on the same document — that is the whole difference between the two flags.
+
 The golden corpus pins this as
 `Journey: a document ending at its closing fence is still repaired`.
+
+### The third case: a leading byte order mark
+
+Same shape again, and this one split the two *runtimes* rather than two code paths, so
+run it under both if you have them.
+A UTF-8 BOM is invisible, legal, and written by ordinary editors and shell redirections,
+so it reaches softschema on real agent output.
+Every fence check asks whether a first line equals `---`, and `\ufeff---` does not.
+
+```bash
+printf -- '\xef\xbb\xbf---\nsoftschema:\n  contract: t:M/v1\n  envelope: rec\n  status: soft\nrec:\n  name: Acme\n---\n' > bom.md
+
+$SS validate bom.md                    # exit 0, outcome valid
+```
+
+**Expect** the mark to be gone before either command asks what the first line is, on
+every runtime. `TextDecoder`’s default strips it and Python’s `bytes.decode` did not, so
+`npx softschema` read this artifact while `uvx softschema` answered
+`missing --contract because the document has no YAML frontmatter` — a block that is
+plainly there, and a flag that could not have helped, which is the same wrong answer the
+first case exists to prevent.
+
+The golden corpus pins this as
+`Journey: a leading byte order mark is stripped, not read as a fenceless document`, and
+because the divergence runs between the runtimes rather than through both,
+`cross-impl-diff.sh` can see this one too.
 
 ## Expected Results
 
@@ -212,7 +253,7 @@ not. Two recorded runs:
 | 1 | templated, budget 0 | 9-12 of 12 invalid on arrival, **every repairable one repaired to valid** unaided |
 | 2 | prose, budget 0 | 12/12 invalid, 880-906 paired records, **0 renames**, every run |
 | 3 | feedback, budget 0 | **12/12 valid in one round**, every error cleared, every run |
-| 4 | regression cases | `validate` exits 2, `repair --check` exits 1 with the same cause as a record |
+| 4 | regression cases | `validate` exits 2, `repair --check` exits 1 with the same cause as a record; the newline-less and BOM-prefixed twins get the same verdict as the files they differ from by bytes nobody can see |
 
 Read the bold parts as the assertions and the counts as context.
 A run where Phase 2 reports 850 or 950 errors is normal; a run where Phase 1 leaves a

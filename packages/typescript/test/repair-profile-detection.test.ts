@@ -11,11 +11,11 @@
  * See docs/project/reviews/review-2026-08-30-validate-repair-e2e.md, Finding 1.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "../src/cli.js";
-import { opensFrontmatterFence, splitFrontmatter } from "../src/portable.js";
+import { opensFrontmatterFence, readUtf8, splitFrontmatter } from "../src/portable.js";
 
 const argv = (...args: string[]) => ["node", "cli.js", ...args];
 
@@ -161,6 +161,71 @@ describe("repair-path profile detection", () => {
       const result = JSON.parse(stdout);
       expect(result.outcome).toBe("valid");
       expect(result.repairs.map((r: { code: string }) => r.code)).toEqual(["yaml_quoted_scalar"]);
+    }
+  });
+
+  // A leading byte order mark is invisible, legal, and written by ordinary tools, so it
+  // reaches softschema on real agent output. It once split the two runtimes: TextDecoder's
+  // default strips it, Python's `bytes.decode` kept it, and every fence comparison in the
+  // codebase asks whether a first line equals `---`. `"\uFEFF---"` does not, so Python
+  // called the document fenceless and TypeScript read it — opposite verdicts on identical
+  // bytes. Pinned per-implementation because parity is the thing under test.
+
+  test("readUtf8 drops a leading BOM and keeps every other", () => {
+    expect(readUtf8(write("bom.md", "\uFEFF---\nname: Acme\n---\n"))).toBe(
+      "---\nname: Acme\n---\n",
+    );
+    // Only position zero. A U+FEFF anywhere else is a real character in a real value.
+    expect(readUtf8(write("inner.md", "---\nname: A\uFEFFcme\n---\n"))).toBe(
+      "---\nname: A\uFEFFcme\n---\n",
+    );
+    expect(readUtf8(write("none.md", "name: Acme\n"))).toBe("name: Acme\n");
+  });
+
+  test("a BOM-prefixed artifact is read, not called fenceless", async () => {
+    // The frontmatter is plainly there; reporting "no YAML frontmatter" would send an
+    // agent after a block it can see, and asking for `--contract` would advise a flag
+    // that cannot help.
+    const path = write("bom-artifact.md", `\uFEFF---\n${FRONTMATTER_BODY}\n---\n# Acme\n`);
+
+    stdout = "";
+    expect(await main(argv("validate", path))).toBe(0);
+    expect(JSON.parse(stdout).values).toEqual({ name: "Acme" });
+
+    stdout = "";
+    expect(await main(argv("repair", path, "--check"))).toBe(0);
+    expect(JSON.parse(stdout).outcome).toBe("valid");
+  });
+
+  test("a BOM-prefixed artifact repairs like the same file without one", async () => {
+    // Two documents differing only by the mark must get the same verdict and the same
+    // repair, the way the trailing-newline pair above must.
+    const body = [
+      "---",
+      "softschema:",
+      "  contract: test.detect:Doc/v1",
+      "  schema: mini.schema.yaml",
+      "  envelope: rec",
+      "rec:",
+      "  name: Note: actually Q1",
+      "---",
+      "",
+    ].join("\n");
+    for (const [name, text] of [
+      ["plain.md", body],
+      ["bom.md", `\uFEFF${body}`],
+    ] as const) {
+      stdout = "";
+      const path = write(name, text);
+      expect(await main(argv("repair", path))).toBe(0);
+      const result = JSON.parse(stdout);
+      expect(result.outcome).toBe("valid");
+      expect(result.repairs.map((r: { code: string }) => r.code)).toEqual(["yaml_quoted_scalar"]);
+      // Rewriting drops the mark, so both files land on identical bytes. Repair only
+      // writes when it has a change to make, so a clean BOM document keeps its mark.
+      expect(readFileSync(path, "utf8")).toBe(
+        body.replace("  name: Note: actually Q1", '  name: "Note: actually Q1"'),
+      );
     }
   });
 

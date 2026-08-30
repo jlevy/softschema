@@ -62,6 +62,16 @@ Both fixes come to the same rule, now stated in the spec: a final line with no t
 newline is a line, and the reader and the scanner must agree on where a document’s
 fences are.
 
+A leading UTF-8 byte order mark is dropped on read rather than carried into the document
+as a character. This one split the two runtimes rather than two code paths:
+`TextDecoder`’s default strips the mark and Python’s `bytes.decode` kept it, so
+`npx softschema` read a BOM-prefixed artifact while `uvx softschema` reported that it
+had no YAML frontmatter — a block plainly there, and `--contract` advised as a fix that
+could not have helped.
+Stripping happens in the one function both runtimes route every artifact and schema read
+through, so no fence comparison has to know about it.
+A U+FEFF anywhere but position zero is a real character and survives.
+
 Both CLIs also now emit softschema’s own read diagnostics with identical wording.
 The Node CLI prefixed a frontmatter read failure with `Error parsing YAML metadata:` and
 the Python CLI did not, so the two disagreed about how to word the same failure for the

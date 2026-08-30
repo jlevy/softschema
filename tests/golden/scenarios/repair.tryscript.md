@@ -25,6 +25,11 @@ fixtures:
   - {source: ../fixtures/repair-unterminated-fence.md, dest: fence/repair-unterminated-fence.md}
   - {source: ../fixtures/repair-ends-at-fence.md, dest: fence/repair-ends-at-fence.md}
   - {source: ../fixtures/repair.schema.yaml, dest: fence/repair.schema.yaml}
+  # The BOM journey needs both twins side by side: the whole assertion is that they
+  # converge, so the plain one has to be repaired in the same directory to diff against.
+  - {source: ../fixtures/repair-bom.md, dest: bom/repair-bom.md}
+  - {source: ../fixtures/repair-unquoted-colon.md, dest: bom/repair-unquoted-colon.md}
+  - {source: ../fixtures/repair.schema.yaml, dest: bom/repair.schema.yaml}
   - {source: ../fixtures/repair.schema.yaml, dest: pure/repair.schema.yaml}
   # Untouched copies, so the journeys that must prove a file was *not* rewritten have the
   # bytes as authored to diff against.
@@ -782,6 +787,122 @@ the metadata region and did not normalize the file's ending.
 ```console
 $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md > /dev/null && tail -c 4 repair-ends-at-fence.md | od -c | head -1
 0000000  \n   -   -   -
+? 0
+```
+
+# Journey: a leading byte order mark is stripped, not read as a fenceless document
+
+`bom/repair-bom.md` is `bom/repair-unquoted-colon.md` with three bytes in front of it:
+`EF BB BF`, a UTF-8 byte order mark. It is invisible, it is legal, and ordinary editors
+and shell redirections write it, so it arrives on real agent output. The two files must
+get the same verdict, and after repair they must be the same file.
+
+They once were not, and the split ran between the two runtimes rather than between two
+code paths. TypeScript decodes with `TextDecoder("utf-8")`, whose default
+`ignoreBOM: false` means "strip it"; Python's `bytes.decode` kept the mark as a U+FEFF
+character. Every fence check in the codebase — `opens_frontmatter_fence`,
+`split_frontmatter`, and both readers — asks whether a first line equals `---`, and
+`"\ufeff---"` does not. So `npx softschema` read this artifact and `uvx softschema`
+called it fenceless, then reported *"missing `--contract` because the document has no
+YAML frontmatter"*: a block that is plainly there, and a flag that could not have helped.
+
+That is the same wrong answer as the unterminated-fence journey above, arrived at from
+the other side, and it is why the fix belongs in `read_utf8` / `readUtf8` — the one
+function both runtimes route every artifact and schema read through — rather than in each
+fence comparison.
+
+Unlike that journey, this divergence was one runtime against the other, so
+`cross-impl-diff.sh` can see it. It could not before, because nothing in the corpus
+carried a BOM. This fixture is what gives it something to compare.
+
+```console
+$ cd bom && $SOFTSCHEMA repair repair-bom.md --check
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": {
+    "contract": "test.repair:Doc/v1",
+    "envelope": "data",
+    "schema": "repair.schema.yaml",
+    "status": null
+  },
+  "outcome": "valid",
+  "path": "repair-bom.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_quoted_scalar",
+      "kind": "repair_applied",
+      "message": "quoted the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "Acme",
+    "summary": "Note: actually Q1"
+  },
+  "warnings": []
+}
+? 1
+```
+
+`validate` reaches the same read verdict, which is the property the repair path exists to
+share with it. It still refuses this document — the unquoted `: ` is a real parse failure
+until repair puts the quotes back — but it refuses it *for that reason*. The regression is
+the other message, so that is what the assertion names; the parse failure's own wording is
+engine-specific and is not pinned here.
+
+```console
+$ cd bom && $SOFTSCHEMA validate repair-bom.md 2>&1 | grep -q "has no YAML frontmatter" && echo "WRONG: called fenceless" || echo "not called fenceless"
+not called fenceless
+? 0
+```
+
+Repairing both twins lands them on identical bytes: the write emits the decoded text, so
+the mark does not survive a rewrite in either runtime. A document needing no repair is
+never written at all, so a clean BOM artifact keeps its mark — stripping happens on read,
+not as a normalization pass over the tree.
+
+```console
+$ cd bom && $SOFTSCHEMA repair repair-bom.md > /dev/null && $SOFTSCHEMA repair repair-unquoted-colon.md > /dev/null && diff repair-bom.md repair-unquoted-colon.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+With the mark gone and the scalar quoted, the consuming-side gate opens on the artifact
+that arrived with three extra bytes.
+
+```console
+$ cd bom && $SOFTSCHEMA validate repair-bom.md | grep -E '"(outcome|contract_id)"'
+  "contract_id": "test.repair:Doc/v1",
+  "outcome": "valid",
+? 0
+```
+
+```console
+$ cd bom && head -c 3 repair-bom.md | od -c | head -1
+0000000   -   -   -
 ? 0
 ```
 

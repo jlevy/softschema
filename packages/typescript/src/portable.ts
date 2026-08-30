@@ -31,15 +31,38 @@ export class PortableInputError extends Error {
   }
 }
 
+/** A leading byte order mark, which decoding removes rather than keeps as a character. */
+const BOM = "\uFEFF";
+
+/**
+ * Read one UTF-8 artifact, dropping a leading byte order mark.
+ *
+ * The BOM has to go, and it has to go here, because this is the one function both runtimes
+ * route every artifact and schema read through. `TextDecoder`'s default `ignoreBOM: false`
+ * already strips it, so the explicit check below is a no-op today; it is written out
+ * anyway, the same way Python's `read_utf8` writes it out, because that default is the
+ * only thing holding the two runtimes together and it is invisible at the call site.
+ * Swapping in `readFileSync(path, "utf8")` — which keeps the mark — would silently
+ * reintroduce the divergence this replaced.
+ *
+ * That divergence was real: the fence scan and the reader both compare a first line
+ * against `---`, and `"\uFEFF---"` is not `"---"`, so Python called a BOM-prefixed
+ * artifact fenceless while TypeScript read it without complaint. Reporting that document
+ * as having no frontmatter is the diagnostic this codebase exists to avoid — the block is
+ * plainly there. Only position zero is examined; a U+FEFF anywhere else is a real
+ * character and survives.
+ */
 export function readUtf8(path: string): string {
+  let text: string;
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
+    text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
   } catch (error) {
     if (error instanceof TypeError) {
       throw new PortableInputError("invalid_utf8", "input is not valid UTF-8");
     }
     throw error;
   }
+  return text.startsWith(BOM) ? text.slice(1) : text;
 }
 
 export function parsePortableYaml(text: string): unknown {

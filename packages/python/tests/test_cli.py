@@ -757,6 +757,73 @@ def test_repair_fixes_a_document_that_ends_at_its_closing_fence(
         assert [r["code"] for r in result["repairs"]] == ["yaml_quoted_scalar"], name
 
 
+# --- A leading byte order mark -------------------------------------------------------
+#
+# The BOM is invisible, legal, and written by ordinary tools, so it reaches softschema
+# on real agent output. It once split the two runtimes: `TextDecoder`'s default strips
+# it, `bytes.decode` kept it, and every fence comparison in the codebase asks whether a
+# first line equals `---`. `"\ufeff---"` does not, so Python called the document
+# fenceless and TypeScript read it — opposite verdicts on identical bytes.
+
+
+def test_read_utf8_drops_a_leading_bom_and_keeps_every_other(tmp_path: Path) -> None:
+    from softschema._portable import read_utf8
+
+    path = tmp_path / "bom.md"
+    path.write_bytes("\ufeff---\nname: Acme\n---\n".encode())
+    assert read_utf8(path) == "---\nname: Acme\n---\n"
+
+    # Only position zero. A U+FEFF anywhere else is a real character in a real value.
+    path.write_bytes("---\nname: A\ufeffcme\n---\n".encode())
+    assert read_utf8(path) == "---\nname: A\ufeffcme\n---\n"
+
+    # A document with no mark is returned unchanged, not merely equal.
+    path.write_bytes(b"name: Acme\n")
+    assert read_utf8(path) == "name: Acme\n"
+
+
+def test_a_bom_prefixed_artifact_is_read_not_called_fenceless(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The frontmatter is plainly there; reporting "no YAML frontmatter" would send an
+    # agent after a block it can see, and asking for `--contract` would advise a flag
+    # that cannot help.
+    (tmp_path / "mini.schema.yaml").write_text(MINI_SCHEMA)
+    path = tmp_path / "bom.md"
+    path.write_bytes(f"\ufeff---\n{_FRONTMATTER_BODY}\n---\n# Acme\n".encode())
+
+    assert softschema_main(["validate", str(path)]) == 0
+    assert json.loads(capsys.readouterr().out)["values"] == {"name": "Acme"}
+
+    assert softschema_main(["repair", str(path), "--check"]) == 0
+    assert json.loads(capsys.readouterr().out)["outcome"] == "valid"
+
+
+def test_a_bom_prefixed_artifact_repairs_like_the_same_file_without_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Two documents differing only by the mark must get the same verdict and the same
+    # repair, the way the trailing-newline pair above must.
+    body = (
+        "---\nsoftschema:\n  contract: test.detect:Doc/v1\n  schema: mini.schema.yaml\n"
+        "  envelope: rec\nrec:\n  name: Note: actually Q1\n---\n"
+    )
+    (tmp_path / "mini.schema.yaml").write_text(MINI_SCHEMA)
+    for name, text in (("plain.md", body), ("bom.md", "\ufeff" + body)):
+        path = tmp_path / name
+        path.write_bytes(text.encode())
+        assert softschema_main(["repair", str(path)]) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["outcome"] == "valid", name
+        assert [r["code"] for r in result["repairs"]] == ["yaml_quoted_scalar"], name
+        # Rewriting drops the mark, so both files land on identical bytes. Repair only
+        # writes when it has a change to make, so a clean BOM document keeps its mark.
+        assert path.read_bytes() == (
+            b"---\nsoftschema:\n  contract: test.detect:Doc/v1\n  schema: mini.schema.yaml\n"
+            b'  envelope: rec\nrec:\n  name: "Note: actually Q1"\n---\n'
+        ), name
+
+
 def test_unparsable_frontmatter_names_the_parse_failure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

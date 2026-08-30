@@ -68,12 +68,33 @@ class PortableInputError(ValueError):
         super().__init__(message)
 
 
+BOM = "\ufeff"
+"""A leading byte order mark, which decoding removes rather than keeps as a character."""
+
+
 def read_utf8(path: Path) -> str:
-    """Read one UTF-8 artifact."""
+    """Read one UTF-8 artifact, dropping a leading byte order mark.
+
+    The BOM has to go, and it has to go here, because this is the one function both
+    runtimes route every artifact and schema read through. TypeScript decodes with
+    ``TextDecoder("utf-8")``, whose default ``ignoreBOM: false`` means "strip it"; Python's
+    ``bytes.decode`` keeps it as a U+FEFF character. Left alone, that one invisible byte
+    made the two implementations reach opposite verdicts on identical files: the fence
+    scan and the reader both compare a first line against ``---``, and ``"\ufeff---"`` is
+    not ``"---"``, so Python called a BOM-prefixed artifact fenceless while TypeScript read
+    it without complaint.
+
+    Reporting that document as having no frontmatter is the diagnostic this codebase
+    exists to avoid — the block is plainly there, and an agent sent looking for it finds
+    nothing to fix. Stripping is also what the encoding standard asks for: the mark
+    announces the encoding, it is not content. Only position zero is examined; a U+FEFF
+    anywhere else is a real character and survives.
+    """
     try:
-        return path.read_bytes().decode("utf-8", errors="strict")
+        text = path.read_bytes().decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise PortableInputError("invalid_utf8", "input is not valid UTF-8") from exc
+    return text[1:] if text.startswith(BOM) else text
 
 
 def parse_yaml(text: str) -> Any:
