@@ -4,6 +4,45 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## v0.8.1—2026-09-11
+
+A patch release. Python semantic validation returned a result that could not be
+serialized, and the one error it crashed on was the cross-field rule a semantic model
+exists to express. `--version` now also names which implementation answered.
+
+### Fixed
+
+- **A `model_validator` failure is reported as plain data.** `validate_semantic`
+  returned `dict(error)` verbatim for each pydantic error, and pydantic puts the raised
+  exception object in `ctx["error"]` when a `model_validator` fails.
+  The result therefore carried a live `ValueError`, and any caller that serialized it
+  died with `TypeError: Object of type ValueError is not JSON serializable`.
+
+  The gap landed exactly where it hurt.
+  A missing property or a wrong type produces a plain error that serializes fine, so
+  `validate --model` and `repair --model` reported ordinary structural problems and then
+  crashed on the invariants the model was written to enforce.
+  Exceptions in `ctx` are now rendered as their message — what a reader needs, and what
+  the CLI was already trying to print.
+
+### Changed
+
+- **`--version` names the implementation**: `softschema 0.8.1 (Python)` and
+  `softschema 0.8.1 (TypeScript)`. The two packages share a name, a version, and a CLI,
+  so the version line alone could not tell you which runtime answered — the first thing
+  worth knowing when the runtimes are suspected of disagreeing.
+  Anything matching the old output exactly needs its pattern widened; the name and
+  version still lead the line.
+
+### Security
+
+- **The `fast-uri` override is raised to 3.1.6.** It closes four high-severity
+  advisories against `>=3.1.3 <3.1.6` — host confusion through skipped IDN
+  canonicalization, SSRF through malformed IPv6 normalization, SSRF through repeated
+  hostname percent-decoding, and host confusion through percent-encoded scheme
+  normalization. The package is a transitive dependency of the TypeScript
+  implementation’s schema validator.
+
 ## v0.8.0—2026-08-30
 
 ### `softschema repair`
