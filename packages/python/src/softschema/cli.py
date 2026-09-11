@@ -177,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s {_installed_version()}",
+        version=f"%(prog)s {_installed_version()} (Python)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

@@ -230,12 +230,14 @@ def test_help_points_agents_to_skill_install(capsys: pytest.CaptureFixture[str])
     assert "npx -y softschema@latest" in output
 
 
-def test_version_prints_installed_version(capsys: pytest.CaptureFixture[str]) -> None:
+def test_version_prints_installed_version_and_implementation(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     with pytest.raises(SystemExit) as exc:
         softschema_main(["--version"])
 
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == f"softschema {cli._installed_version()}"
+    assert capsys.readouterr().out.strip() == f"softschema {cli._installed_version()} (Python)"
 
 
 def test_doctor_reports_available_runners_as_json(

@@ -997,7 +997,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   program
     .name("softschema")
     .description("Validate and explain soft schema Markdown/YAML artifacts.")
-    .version(`softschema ${packageVersion()}`, "--version")
+    .version(`softschema ${packageVersion()} (TypeScript)`, "--version")
     .addHelpText("afterAll", `\n${AGENT_HELP_EPILOG}`)
     .exitOverride();
   let exitCode = 0;
