@@ -429,12 +429,35 @@ def _schema_invalid(reason: str, message: str) -> StructuralResult:
 
 
 def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult:
-    """Validate values by calling ``model_cls.model_validate``."""
+    """Validate values by calling ``model_cls.model_validate``.
+
+    Errors are reported as JSON-serializable records. Pydantic puts the original
+    exception object in ``ctx["error"]`` when a ``model_validator`` raises, so a
+    verbatim ``dict(error)`` carries a live ``ValueError`` into a result that callers
+    serialize. That fails on exactly the cross-field rules a model exists to express,
+    while a plain missing-field error serializes fine, so the crash lands only on the
+    checks worth running.
+    """
     try:
         model_cls.model_validate(values)
     except ValidationError as exc:
-        return SemanticResult(ok=False, errors=[dict(error) for error in exc.errors()])
+        return SemanticResult(
+            ok=False,
+            errors=[_serializable_error(error) for error in exc.errors()],
+        )
     return SemanticResult(ok=True)
+
+
+def _serializable_error(error: Mapping[str, Any]) -> dict[str, Any]:
+    """One pydantic error as plain data, with any exception rendered as its message."""
+    record = dict(error)
+    ctx = record.get("ctx")
+    if isinstance(ctx, Mapping):
+        record["ctx"] = {
+            key: str(value) if isinstance(value, BaseException) else value
+            for key, value in ctx.items()
+        }
+    return record
 
 
 def validate_values(
