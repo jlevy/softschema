@@ -4,6 +4,39 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## v0.8.1—2026-09-11
+
+Fixes a crash that landed on exactly the check a semantic model exists to express.
+`validate_semantic` returned pydantic’s error records verbatim, and pydantic puts the
+raised exception object in `ctx["error"]` when a `model_validator` fails, so any caller
+that serialized the result died with
+`TypeError: Object of type ValueError is not JSON serializable`.
+
+### Fixed
+
+- **A `model_validator` failure is reported as plain data**
+  ([#55](https://github.com/jlevy/softschema/pull/55)). `validate_semantic` now renders
+  an exception carried in a pydantic error’s `ctx` as its message, so the record
+  serializes like every other error.
+  A missing field or a wrong type produced a plain error that serialized fine, so the
+  crash appeared only on cross-field rules, which is the one thing a JSON Schema cannot
+  state and the reason a semantic model is written at all.
+  From a caller’s side, `validate --model` and `repair --model` reported structural
+  problems happily and died on the rules the model was written to enforce.
+  The rest of the error record is untouched: `ctx` carries
+  `{"error": "end 2024-01-01 precedes start 2024-06-01"}` where it previously carried
+  the live exception.
+
+### Dependencies
+
+- **`fast-uri` override raised to 3.1.6.** The pin constrains Ajv’s transitive
+  dependency past four high-severity advisories against `>=3.1.3 <3.1.6`: host confusion
+  via skipped IDN canonicalization, SSRF via malformed IPv6 normalization, SSRF via
+  repeated hostname percent-decoding, and host confusion via percent-encoded scheme
+  normalization. The exact pin carries the same one-package release-age exception as the
+  3.1.5 pin it replaces, because the patched release is the only way to clear the
+  advisories. No softschema API or artifact behavior changes.
+
 ## v0.8.0—2026-08-30
 
 ### `softschema repair`
