@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import date, datetime
 from pathlib import Path
@@ -183,6 +184,14 @@ def test_validate_semantic_runs_cross_field_invariant() -> None:
 
     assert not result.ok
     assert any("direction=up" in str(error.get("msg", "")) for error in result.errors)
+
+
+def test_validate_semantic_reports_a_model_validator_failure_as_plain_data() -> None:
+    # Pydantic puts the raised exception object in ctx["error"], so the one error a caller
+    # cannot serialize is the cross-field rule a semantic model exists to express.
+    result = validate_semantic({"name": "hello", "direction": "up", "delta": -1.0}, SampleModel)
+
+    assert "direction=up but delta=-1.0" in json.dumps(result.errors)
 
 
 def test_validate_values_requires_a_model_or_schema() -> None:
