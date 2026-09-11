@@ -86,6 +86,15 @@ class ArtifactValidationResult:
     document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
     warnings: list[SchemaWarning] = field(default_factory=list)
+    enforcement_applied: Literal["schema", "model", "none"] = "none"
+    """Which mechanism actually decided this document's structure.
+
+    ``status`` states intended maturity and binds nothing, so it cannot answer "was this
+    checked". ``schema`` means a compiled schema was authoritative and the guarantee is
+    cross-language; ``model`` means a source model decided it in its own language and
+    said nothing to any other; ``none`` means only the artifact format and metadata were
+    checked. A reader needs this beside ``outcome`` to know what a verdict is worth.
+    """
     repairs: list[dict[str, Any]] = field(default_factory=list)
     """What a repair pass changed on the way to this verdict, empty for a plain validate.
 
@@ -499,6 +508,50 @@ def validate_values(
 _UNREAD: Any = object()
 
 
+
+def _applied_enforcement(structural: StructuralResult) -> str:
+    """Which mechanism actually decided this document's structure.
+
+    ``status`` states intent and binds nothing. What was applied depends on what the
+    host supplied, so a reader needs both to know what a verdict is worth.
+    """
+    if structural.skipped_reason == "no_schema":
+        return "none"
+    if structural.skipped_reason == "inferred_via_model":
+        return "model"
+    return "schema"
+
+
+def _enforcement_shortfall(status: SchemaStatus, applied: str) -> SchemaWarning | None:
+    """Warn when a document claims more enforcement than it received.
+
+    An artifact declaring ``enforced`` and validated with nothing bound comes back
+    ``valid`` with an empty error list, because there was nothing to disagree with. The
+    verdict is honest about the check it ran and silent about the check it did not, and
+    those read identically to anything consuming ``outcome``.
+
+    A model closes the object in its own language and says nothing to any other, so it
+    is reported as its own level rather than folded into either neighbour.
+    """
+    if status is not SchemaStatus.enforced or applied == "schema":
+        return None
+    if applied == "model":
+        return SchemaWarning(
+            code="enforcement_via_model_only",
+            message=(
+                "status is 'enforced' but no compiled schema is bound; the source model "
+                "decided this verdict, which gives no cross-language structural guarantee"
+            ),
+        )
+    return SchemaWarning(
+        code="enforcement_not_applied",
+        message=(
+            "status is 'enforced' but neither a compiled schema nor a model is bound; "
+            "only the artifact format and metadata were checked"
+        ),
+    )
+
+
 def validate_artifact(
     doc_path: Path,
     *,
@@ -856,6 +909,9 @@ def _validate_extracted_values(
     else:
         structural = StructuralResult(ok=True, skipped_reason="no_schema")
 
+    applied = _applied_enforcement(structural)
+    enforcement_warning = _enforcement_shortfall(contract.status, applied)
+
     semantic = (
         validate_semantic(values, contract.model)
         if contract.model is not None
@@ -869,9 +925,10 @@ def _validate_extracted_values(
         contract=contract,
         document_metadata=metadata,
         values=values,
-        warnings=warnings,
+        warnings=[*warnings, enforcement_warning] if enforcement_warning else warnings,
         structural=structural,
         semantic=semantic,
+        enforcement_applied=applied,
     )
 
 

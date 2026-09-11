@@ -4,6 +4,32 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+**A verdict now says which mechanism decided it.** `status` states intended maturity and
+binds nothing, so a document declaring `enforced` and validated with nothing bound came
+back `valid` with an empty error list, exit 0, and no warning. That verdict was honest
+about the check it ran and silent about the check it did not, and the two were
+indistinguishable to anything reading `outcome`. The only trace was
+`structural.skipped_reason`, nested a level down and easy to miss.
+
+`ArtifactValidationResult.enforcement_applied` now reports `schema`, `model` or `none` on
+every result: whether a compiled schema was authoritative and the guarantee is
+cross-language, whether a source model decided it in its own language and said nothing to
+any other, or whether only the artifact format and metadata were checked.
+
+Two warnings fire when a document claims more than it received:
+`enforcement_not_applied` when `enforced` is declared with neither a schema nor a model
+bound, and `enforcement_via_model_only` when a model decided a verdict the document said
+a schema would. A `soft` or `permissive` document warns about nothing, since neither
+claims what it did not get.
+
+Additive: no existing field changes, and no document that validated before fails now.
+
+**Not yet mirrored in TypeScript.** The parity suite compares compiled schemas rather
+than result shapes, so it does not flag this; the TS implementation needs the same field
+and warnings before these release together.
+
 ## v0.8.1—2026-09-11
 
 A patch release. Python semantic validation returned a result that could not be
