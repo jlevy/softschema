@@ -152,3 +152,34 @@ def test_field_recovery_uses_required_data_and_pins_unevaluated_message_shape(
         ("undeclared_property", "left(paren"),
         ("undeclared_property", "right)paren"),
     ]
+
+def test_a_model_validator_failure_is_reported_as_plain_data() -> None:
+    """A cross-field rule must survive serialization, since that is why a model is used.
+
+    Pydantic puts the original exception object in `ctx["error"]` when a
+    `model_validator` raises. Carried through verbatim it reaches callers as a live
+    `ValueError`, and any caller that serializes the result fails on exactly the rules a
+    model exists to express, while a plain missing-field error passes.
+    """
+    import json
+
+    from pydantic import BaseModel, model_validator
+
+    from softschema.validate import validate_semantic
+
+    class DateRange(BaseModel):
+        start: str = "2024-01-01"
+        end: str = "2024-12-31"
+
+        @model_validator(mode="after")
+        def end_follows_start(self) -> "DateRange":
+            if self.end < self.start:
+                msg = f"end {self.end} precedes start {self.start}"
+                raise ValueError(msg)
+            return self
+
+    result = validate_semantic({"start": "2024-06-01", "end": "2024-01-01"}, DateRange)
+
+    assert not result.ok
+    rendered = json.dumps(result.errors)
+    assert "end 2024-01-01 precedes start 2024-06-01" in rendered
