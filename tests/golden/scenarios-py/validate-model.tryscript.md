@@ -4,10 +4,11 @@ env:
   NO_COLOR: "1"
 ---
 
-# Test: validate --model runs the Pydantic semantic layer (model-only, structural skipped)
+# Test: validate --model runs the Pydantic semantic layer
 
 Exercises the `--model` loading path: the CLI imports the model and runs semantic
-validation (no `--schema`, so structural is skipped as `inferred_via_model`). The model
+validation on top of the schema the document binds itself, so `enforcement_applied` is
+`schema` and only the semantic layer is language-specific here. The model
 spec is language-specific; the rest of the output has the same portable meaning as the
 other implementation (semantic logic itself is per-language by design and is not asserted
 beyond pass/empty-errors here).
@@ -30,6 +31,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",

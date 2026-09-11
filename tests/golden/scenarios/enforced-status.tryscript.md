@@ -28,6 +28,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
     "schema": null,
     "status": "permissive"
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
@@ -53,6 +54,67 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
     "name": "Acme"
   },
   "warnings": []
+}
+? 0
+```
+
+# Test: enforced with nothing bound reports that nothing was applied
+
+The same document with no `--schema` and no model. `enforced` states intent and binds
+nothing, so there is no check to disagree with the undeclared `confidence` and
+`meta.fetched_by`, and the verdict is `valid` at exit 0. `enforcement_applied` and the
+warning are what distinguish that from a document a schema actually passed.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md
+{
+  "contract": {
+    "envelope_key": "record",
+    "id": "test.enforced:Record/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "test.enforced:Record/v1",
+  "document_metadata": {
+    "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "enforcement_applied": "none",
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/extra-field-enforced.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "ok": true,
+    "skipped_reason": "no_schema"
+  },
+  "values": {
+    "confidence": "high",
+    "meta": {
+      "fetched_by": "agent",
+      "source": "web"
+    },
+    "name": "Acme"
+  },
+  "warnings": [
+    {
+      "code": "document-enforcement-not-applied",
+      "message": "status is 'enforced' but neither a compiled schema nor a model was applied; only the artifact format and metadata were checked",
+      "severity": "warning"
+    }
+  ]
 }
 ? 0
 ```
@@ -83,6 +145,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
     "schema": null,
     "status": "permissive"
   },
+  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
@@ -174,6 +237,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --schema te
     "schema": null,
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-enforced.md",
   "profile": "frontmatter-md",
@@ -261,6 +325,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-ok.md --schema tests/go
     "schema": null,
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "tests/golden/fixtures/conditional-ok.md",
   "profile": "frontmatter-md",
@@ -309,6 +374,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-violation.md --schema t
     "schema": null,
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/conditional-violation.md",
   "profile": "frontmatter-md",
@@ -372,6 +438,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-undeclared.md --schema 
     "schema": null,
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/conditional-undeclared.md",
   "profile": "frontmatter-md",
@@ -435,6 +502,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-ok.md --schema tests/
     "schema": null,
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "tests/golden/fixtures/composed-open-ok.md",
   "profile": "frontmatter-md",
@@ -484,6 +552,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-undeclared.md --schem
     "schema": null,
     "status": "enforced"
   },
+  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/composed-open-undeclared.md",
   "profile": "frontmatter-md",

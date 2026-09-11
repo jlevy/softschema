@@ -18,6 +18,7 @@ export {
 } from "./generate.js";
 export {
   type Contract,
+  type EnforcementApplied,
   parseSchemaMetadata,
   type SchemaMetadata,
   type SchemaProfile,

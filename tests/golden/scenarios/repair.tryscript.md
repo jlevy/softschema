@@ -94,6 +94,7 @@ $ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "rescue/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
@@ -170,6 +171,7 @@ $ $SOFTSCHEMA repair drift/repair-scalar-drift.md
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "drift/repair-scalar-drift.md",
   "profile": "frontmatter-md",
@@ -242,6 +244,7 @@ $ $SOFTSCHEMA repair twice/repair-unquoted-colon.md > /dev/null && cp twice/repa
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "twice/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
@@ -296,6 +299,7 @@ $ $SOFTSCHEMA repair valid/repair-already-valid.md
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "valid/repair-already-valid.md",
   "profile": "frontmatter-md",
@@ -351,6 +355,7 @@ $ $SOFTSCHEMA repair missing/repair-missing-required.md
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "missing/repair-missing-required.md",
   "profile": "frontmatter-md",
@@ -421,6 +426,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
   },
   "contract_id": "test.repair:Doc/v1",
   "document_metadata": null,
+  "enforcement_applied": "none",
   "outcome": "invalid",
   "path": "floor/repair-unrepairable.md",
   "profile": "frontmatter-md",
@@ -477,6 +483,7 @@ $ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "check/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
@@ -537,6 +544,7 @@ $ $SOFTSCHEMA repair check-clean/repair-already-valid.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "check-clean/repair-already-valid.md",
   "profile": "frontmatter-md",
@@ -585,6 +593,7 @@ $ $SOFTSCHEMA repair pure/repair-pure.yaml
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "pure/repair-pure.yaml",
   "profile": "pure-yaml",
@@ -679,6 +688,7 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
   "contract": null,
   "contract_id": "",
   "document_metadata": null,
+  "enforcement_applied": "none",
   "outcome": "invalid",
   "path": "repair-unterminated-fence.md",
   "profile": "frontmatter-md",
@@ -746,6 +756,7 @@ $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "repair-ends-at-fence.md",
   "profile": "frontmatter-md",
@@ -833,6 +844,7 @@ $ cd bom && $SOFTSCHEMA repair repair-bom.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "repair-bom.md",
   "profile": "frontmatter-md",
@@ -936,6 +948,7 @@ $ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
     "schema": "repair.schema.yaml",
     "status": null
   },
+  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "repair-unquoted-colon.md",
   "profile": "frontmatter-md",

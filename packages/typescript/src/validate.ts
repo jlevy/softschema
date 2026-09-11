@@ -25,6 +25,7 @@ import {
   type Contract,
   checkContractId,
   contractToOutput,
+  type EnforcementApplied,
   metadataToOutput,
   parseSchemaMetadata,
   pyTypeName,
@@ -70,6 +71,16 @@ export interface ArtifactValidationResult {
   contract: Record<string, unknown>;
   contract_id: string;
   document_metadata: Record<string, unknown> | null;
+  /**
+   * Which mechanism was authoritative for this payload's structure.
+   *
+   * `status` states the strictness a project intends and binds nothing, so it cannot
+   * answer "was this checked". This can, and sits beside `outcome` because that is where
+   * a reader looks to learn what a verdict is worth: a clean verdict from
+   * `enforcement_applied: "none"` and a clean verdict from `"schema"` are different
+   * claims. See `EnforcementApplied` for the three values.
+   */
+  enforcement_applied: EnforcementApplied;
   outcome: "valid" | "invalid" | "input_error";
   path: string;
   profile: string;
@@ -561,6 +572,8 @@ export function unreadableArtifactResult(
     contract: null,
     contract_id: "",
     document_metadata: null,
+    // Validation never reached a payload, so no mechanism was authoritative over one.
+    enforcement_applied: "none" as EnforcementApplied,
     outcome: "invalid",
     path: docPath,
     profile: args.profile,
@@ -583,6 +596,7 @@ function buildResult(args: {
   structural: StructuralResult;
   semantic: SemanticResult;
   warnings: SchemaWarning[];
+  enforcementApplied?: EnforcementApplied;
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
@@ -592,6 +606,10 @@ function buildResult(args: {
     contract: contractToOutput(contract),
     contract_id: contract.id,
     document_metadata: metadataToOutput(args.metadata),
+    // Always present, like `repairs` below: Python's dataclass default writes it on every
+    // result, and a caller asking what a verdict is worth must not have to tell an absent
+    // key from a reported one. `none` is what a failure short of the payload applied.
+    enforcement_applied: args.enforcementApplied ?? "none",
     outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
     path: args.docPath,
     profile: contract.profile,
@@ -702,51 +720,118 @@ function resolveMetadataSchema(
   return { path: resolved, error: null };
 }
 
+/**
+ * The structural verdict and the mechanism that produced it.
+ *
+ * Both come from the same branch because they answer the same question, and deriving the
+ * mechanism afterwards from `skipped_reason` gets it wrong: a bound schema that cannot be
+ * read skips nothing and validates nothing, so reading back "a schema was applied" from
+ * the absent skip reason would restate the very false assurance `enforcement_applied`
+ * exists to remove.
+ */
 function structuralForValues(
   contract: Contract,
   values: unknown,
   docPath: string,
   metadata: SchemaMetadata | null,
-): StructuralResult {
+): { structural: StructuralResult; applied: EnforcementApplied } {
   // Schema precedence (host over document): a caller/registry schemaPath, then
   // the document's own softschema.schema binding, then none.
+  const strictExtras = contract.status === "enforced";
   if (contract.schemaPath !== null) {
     const resolved = resolveSchemaPath(contract.schemaPath, docPath);
     if (resolved === null) {
       return {
-        ok: false,
-        errors: [
-          structuralError("schema_missing", `compiled schema not found: ${contract.schemaPath}`, {
-            path: contract.schemaPath,
-          }),
-        ],
-        engine: "json_schema",
-        skipped_reason: null,
+        structural: {
+          ok: false,
+          errors: [
+            structuralError("schema_missing", `compiled schema not found: ${contract.schemaPath}`, {
+              path: contract.schemaPath,
+            }),
+          ],
+          engine: "json_schema",
+          skipped_reason: null,
+        },
+        applied: "none",
       };
     }
-    return structuralAgainstSchemaFile(resolved, values, contract.status === "enforced");
+    return {
+      structural: structuralAgainstSchemaFile(resolved, values, strictExtras),
+      applied: "schema",
+    };
   }
   const metadataSchema = metadata?.schema ?? null;
   if (metadataSchema !== null) {
     const bound = resolveMetadataSchema(metadataSchema, docPath);
     if (bound.path === null) {
       return {
-        ok: false,
-        errors: [
-          structuralError("schema_missing", bound.error ?? "", {
-            path: metadataSchema,
-          }),
-        ],
-        engine: "json_schema",
-        skipped_reason: null,
+        structural: {
+          ok: false,
+          errors: [
+            structuralError("schema_missing", bound.error ?? "", {
+              path: metadataSchema,
+            }),
+          ],
+          engine: "json_schema",
+          skipped_reason: null,
+        },
+        applied: "none",
       };
     }
-    return structuralAgainstSchemaFile(bound.path, values, contract.status === "enforced");
+    return {
+      structural: structuralAgainstSchemaFile(bound.path, values, strictExtras),
+      applied: "schema",
+    };
   }
   if (contract.model !== null) {
-    return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
+    return {
+      structural: {
+        ok: true,
+        errors: [],
+        engine: "json_schema",
+        skipped_reason: "inferred_via_model",
+      },
+      applied: "model",
+    };
   }
-  return { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
+  return {
+    structural: { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" },
+    applied: "none",
+  };
+}
+
+/**
+ * Warn when a document claims more enforcement than the run delivered.
+ *
+ * An artifact declaring `enforced` and validated with nothing bound comes back `valid`
+ * with an empty error list, because there was nothing to disagree with. That verdict is
+ * honest about the check it ran and silent about the check it did not, and those read
+ * identically to anything consuming `outcome`.
+ *
+ * A model closes the object in its own language and says nothing to any other, so it is
+ * reported as its own level rather than folded into either neighbour.
+ *
+ * Keyed on the status in force rather than on the document's declaration: the contract is
+ * what governs validation, and a document that declares something else already gets
+ * `document-status-mismatch`.
+ */
+function enforcementShortfall(
+  status: SchemaStatus,
+  applied: EnforcementApplied,
+): SchemaWarning | null {
+  if (status !== "enforced" || applied === "schema") return null;
+  if (applied === "model") {
+    return warning(
+      "document-enforcement-via-model-only",
+      "status is 'enforced' but no compiled schema was applied; the source model decided " +
+        "this verdict, which gives no cross-language structural guarantee",
+    );
+  }
+  return warning(
+    "document-enforcement-not-applied",
+    "status is 'enforced' but neither a compiled schema nor a model was applied; only the " +
+      "artifact format and metadata were checked",
+  );
 }
 
 function validateExtracted(
@@ -757,12 +842,22 @@ function validateExtracted(
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
 ): ArtifactValidationResult {
-  const structural = structuralForValues(contract, values, docPath, metadata);
+  const { structural, applied } = structuralForValues(contract, values, docPath, metadata);
+  const shortfall = enforcementShortfall(contract.status, applied);
   const semantic: SemanticResult =
     semanticModel !== undefined
       ? validateSemantic(values, semanticModel)
       : { ok: true, errors: [], skipped_reason: "no_semantic_model" };
-  return buildResult({ docPath, contract, metadata, values, structural, semantic, warnings });
+  return buildResult({
+    docPath,
+    contract,
+    metadata,
+    values,
+    structural,
+    semantic,
+    warnings: shortfall === null ? warnings : [...warnings, shortfall],
+    enforcementApplied: applied,
+  });
 }
 
 /** Multiple top-level payload candidates; the envelope must be designated. */

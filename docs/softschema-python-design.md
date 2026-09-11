@@ -296,6 +296,16 @@ and exit `2`, whether or not a contract was named.
 as a record in the result at exit `1`, under no contract when the document declares none
 legibly. Readable results map to exits `0` or `1` on both.
 
+`ArtifactValidationResult.enforcement_applied` sits beside it and answers the other
+question a verdict raises: `schema`, `model`, or `none`, per the spec’s
+[validation expectations](softschema-spec.md#validation-expectations).
+`outcome` says whether the document satisfied what was checked; this says what was
+checked, and a clean verdict means different things under each value.
+It is recorded where the check runs, not derived afterwards from
+`structural.skipped_reason`: a bound schema that cannot be read skips nothing and
+validates nothing, so a derived value would report `schema` for a run that applied none.
+The typed alias is exported as `EnforcementApplied`.
+
 ### Alignment with `python-cli-patterns`
 
 The CLI follows the house Python-CLI conventions: exit codes `0` success / `1`
@@ -350,6 +360,8 @@ if any(w.code.startswith("document-") for w in result.warnings):
 | --- | --- |
 | `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
 | `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the `enforced` strict-extras overlay). |
+| `document-enforcement-not-applied` | The status in force is `enforced` and `enforcement_applied` is `none`: neither a compiled schema nor a model was applied, so only the artifact format and metadata were checked. |
+| `document-enforcement-via-model-only` | The status in force is `enforced` and `enforcement_applied` is `model`: a source model decided the verdict in one language, which is a real check and not the cross-language structural guarantee `enforced` names. |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.

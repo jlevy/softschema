@@ -135,7 +135,7 @@ explicitly in the shared vectors.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
-| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, error kinds, and warnings |
+| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, `enforcement_applied`, error kinds, and warnings |
 | `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached |
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status` and offline `resources` |
 | `validate_structural` | `validateStructural` | jsonschema ↔ Ajv; shared record shape and meaning, with pinned native-engine deviations |
@@ -155,12 +155,19 @@ explicitly in the shared vectors.
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
+| `EnforcementApplied` | `EnforcementApplied` | same three values on every result |
 
 ## Result Shape and CLI Output
 
 `validateArtifact` returns the portable fields `contract`, `contract_id`,
-`document_metadata`, `outcome`, `path`, `profile`, `semantic`, `status`, `structural`,
-`values`, and `warnings`. Structural errors use engine-neutral records
+`document_metadata`, `enforcement_applied`, `outcome`, `path`, `profile`, `repairs`,
+`semantic`, `status`, `structural`, `values`, and `warnings`. `enforcement_applied` is
+`schema`, `model`, or `none`, per the spec’s
+[validation expectations](softschema-spec.md#reporting-the-mechanism-applied); the
+interface carries it in snake_case like every other multi-word field, so
+`stableStringify` serializes it without a converter, and both result assemblers write it
+because TypeScript has no dataclass default to make it unconditional.
+Structural errors use engine-neutral records
 `{ kind, code, path, property?, validator, validator_value, value, message }`, sorted by
 `(path, validator, property)`. `property` is present for missing and undeclared-field
 records, with one record per affected field.

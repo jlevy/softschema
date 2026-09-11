@@ -357,6 +357,9 @@ It is not required to be an import path or a class name.
   the artifact format and metadata.
   These two paths preserve language-specific or metadata-only workflows; they do not
   provide the cross-language structural guarantee described above.
+  Because the same `status` can be validated through any of the three, a result must
+  name which one applied: see
+  [Reporting the Mechanism Applied](#reporting-the-mechanism-applied).
 
 ### Rejecting undeclared properties under `enforced`
 
@@ -600,7 +603,11 @@ Stable reasons include `dialect`, `pattern`, `reference`, `resource_identity`, a
 `shared_subschema`.
 
 The effective status is resolved by the caller (for example a registry contract or a
-`--status` flag), falling back to the document’s declared `softschema.status`.
+`--status` flag), falling back to the document’s declared `softschema.status`, and to
+`soft` when neither supplies one.
+A result reports the effective status and the document’s declaration separately, so a
+default is never reported as something the author wrote: the declaration is absent for a
+document that made none.
 
 ## Source of Truth
 
@@ -741,6 +748,36 @@ Validation verdict parity is required for every shared vector.
 Error-record-set parity is required except for cases explicitly listed in the shared
 `engine_deviations` vectors; each runtime pins its own complete record set for those
 cases so unlisted drift fails.
+
+### Reporting the Mechanism Applied
+
+`status` states the strictness a project intends.
+What a run delivered depends on what the caller bound, so a verdict alone cannot say
+whether a document was checked: a clean verdict from a compiled schema and a clean
+verdict from nothing at all are the same answer to a consumer reading the outcome.
+
+A conforming validator reports `enforcement_applied` on every validation result, with
+one of three values:
+
+| Value | Meaning |
+| --- | --- |
+| `schema` | A compiled schema was applied, so any implementation can reproduce the verdict from a committed file. |
+| `model` | No compiled schema was applied, and a source model validated the payload in one implementation’s language. |
+| `none` | Neither was applied, so only the artifact format and metadata were checked. |
+
+A schema that is bound but cannot be read reports `none`: it named a mechanism and
+applied none, and the missing file is reported as `schema_missing` in its own right.
+
+When the effective status is `enforced` and `enforcement_applied` is not `schema`, a
+validator must also report the shortfall in the non-fatal `document-*` advisory family:
+`document-enforcement-not-applied` for `none`, and `document-enforcement-via-model-only`
+for `model`. `soft` and `permissive` claim nothing a run can fall short of, so neither
+warns. Validation that fails before a payload is extracted reports `none` and no
+shortfall warning; there is no verdict on a payload for the warning to qualify.
+
+A shortfall does not change the outcome or the exit class.
+The document satisfied what was checked, and it is the binding that fell short of the
+claim, so a caller that wants that fatal decides from the reported value.
 
 ### Repair
 

@@ -7,6 +7,7 @@ from softschema.conform import ConformResult, conform_artifact
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
 from softschema.models import (
     Contract,
+    EnforcementApplied,
     SchemaMetadata,
     SchemaProfile,
     SchemaStatus,
@@ -50,6 +51,7 @@ __all__ = [
     "ConformResult",
     "Contract",
     "Contracts",
+    "EnforcementApplied",
     "EnvelopeAmbiguityError",
     "FieldInfo",
     "GeneratedSection",

@@ -8,27 +8,43 @@ version number.
 
 **A verdict now says which mechanism decided it.** `status` states intended maturity and
 binds nothing, so a document declaring `enforced` and validated with nothing bound came
-back `valid` with an empty error list, exit 0, and no warning. That verdict was honest
-about the check it ran and silent about the check it did not, and the two were
-indistinguishable to anything reading `outcome`. The only trace was
+back `valid` with an empty error list, exit 0, and no warning.
+That verdict was honest about the check it ran and silent about the check it did not,
+and the two were indistinguishable to anything reading `outcome`. The only trace was
 `structural.skipped_reason`, nested a level down and easy to miss.
 
-`ArtifactValidationResult.enforcement_applied` now reports `schema`, `model` or `none` on
-every result: whether a compiled schema was authoritative and the guarantee is
-cross-language, whether a source model decided it in its own language and said nothing to
-any other, or whether only the artifact format and metadata were checked.
+### Added
 
-Two warnings fire when a document claims more than it received:
-`enforcement_not_applied` when `enforced` is declared with neither a schema nor a model
-bound, and `enforcement_via_model_only` when a model decided a verdict the document said
-a schema would. A `soft` or `permissive` document warns about nothing, since neither
-claims what it did not get.
+- **`enforcement_applied` on every validation result**, in both implementations and in
+  the CLI’s JSON, reporting `schema`, `model`, or `none`. The three values name who was
+  authoritative and therefore who else can reproduce the verdict: a compiled schema that
+  any implementation can rerun from a committed file, a source model that decided it in
+  one language and said nothing to any other, or neither, where only the artifact format
+  and metadata were checked.
+  A schema that is bound but cannot be read reports `none`; it named a mechanism and
+  applied none.
+- **Two warnings for a claim the run fell short of**, in the existing `document-*`
+  advisory family: `document-enforcement-not-applied` when the effective status is
+  `enforced` and nothing was applied, and `document-enforcement-via-model-only` when a
+  model decided a verdict the word `enforced` promises a schema would.
+  `soft` and `permissive` claim nothing a run can fall short of, so neither warns.
+- `EnforcementApplied` as a public type in both packages.
 
-Additive: no existing field changes, and no document that validated before fails now.
+### Changed
 
-**Not yet mirrored in TypeScript.** The parity suite compares compiled schemas rather
-than result shapes, so it does not flag this; the TS implementation needs the same field
-and warnings before these release together.
+- The spec now requires `enforcement_applied` of a conforming validator and fixes the
+  two shortfall warning codes, so the field is portable rather than one implementation’s
+  extra. It also states the effective status’s fallback to `soft` when neither a caller
+  nor a document supplies one, which was true in code and unwritten.
+
+### Compatibility
+
+Additive. No existing field changes, no document that validated before fails now, and a
+shortfall changes neither `outcome` nor the exit class: the document satisfied what was
+checked, and it is the binding that fell short of the claim, so a caller that wants that
+fatal decides from the reported value.
+Every `validate` JSON result now carries an `enforcement_applied` key, which is a new
+key in output a consumer may be diffing.
 
 ## v0.8.1—2026-09-11
 

@@ -37,6 +37,7 @@ from softschema.enforcement import (
 from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
+    EnforcementApplied,
     SchemaMetadata,
     SchemaProfile,
     SchemaStatus,
@@ -86,14 +87,14 @@ class ArtifactValidationResult:
     document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
     warnings: list[SchemaWarning] = field(default_factory=list)
-    enforcement_applied: Literal["schema", "model", "none"] = "none"
-    """Which mechanism actually decided this document's structure.
+    enforcement_applied: EnforcementApplied = "none"
+    """Which mechanism was authoritative for this payload's structure.
 
-    ``status`` states intended maturity and binds nothing, so it cannot answer "was this
-    checked". ``schema`` means a compiled schema was authoritative and the guarantee is
-    cross-language; ``model`` means a source model decided it in its own language and
-    said nothing to any other; ``none`` means only the artifact format and metadata were
-    checked. A reader needs this beside ``outcome`` to know what a verdict is worth.
+    ``status`` states the strictness a project intends and binds nothing, so it cannot
+    answer "was this checked". This can, and sits beside ``outcome`` because that is
+    where a reader looks to learn what a verdict is worth: a clean verdict from
+    ``enforcement_applied: none`` and a clean verdict from ``schema`` are different
+    claims. See :data:`softschema.models.EnforcementApplied` for the three values.
     """
     repairs: list[dict[str, Any]] = field(default_factory=list)
     """What a repair pass changed on the way to this verdict, empty for a plain validate.
@@ -508,22 +509,10 @@ def validate_values(
 _UNREAD: Any = object()
 
 
-
-def _applied_enforcement(structural: StructuralResult) -> str:
-    """Which mechanism actually decided this document's structure.
-
-    ``status`` states intent and binds nothing. What was applied depends on what the
-    host supplied, so a reader needs both to know what a verdict is worth.
-    """
-    if structural.skipped_reason == "no_schema":
-        return "none"
-    if structural.skipped_reason == "inferred_via_model":
-        return "model"
-    return "schema"
-
-
-def _enforcement_shortfall(status: SchemaStatus, applied: str) -> SchemaWarning | None:
-    """Warn when a document claims more enforcement than it received.
+def _enforcement_shortfall(
+    status: SchemaStatus, applied: EnforcementApplied
+) -> SchemaWarning | None:
+    """Warn when a document claims more enforcement than the run delivered.
 
     An artifact declaring ``enforced`` and validated with nothing bound comes back
     ``valid`` with an empty error list, because there was nothing to disagree with. The
@@ -532,21 +521,25 @@ def _enforcement_shortfall(status: SchemaStatus, applied: str) -> SchemaWarning 
 
     A model closes the object in its own language and says nothing to any other, so it
     is reported as its own level rather than folded into either neighbour.
+
+    Keyed on the status in force rather than on the document's declaration: the contract
+    is what governs validation, and a document that declares something else already gets
+    ``document-status-mismatch``.
     """
     if status is not SchemaStatus.enforced or applied == "schema":
         return None
     if applied == "model":
         return SchemaWarning(
-            code="enforcement_via_model_only",
+            code=WarningCode.DOCUMENT_ENFORCEMENT_VIA_MODEL_ONLY,
             message=(
-                "status is 'enforced' but no compiled schema is bound; the source model "
+                "status is 'enforced' but no compiled schema was applied; the source model "
                 "decided this verdict, which gives no cross-language structural guarantee"
             ),
         )
     return SchemaWarning(
-        code="enforcement_not_applied",
+        code=WarningCode.DOCUMENT_ENFORCEMENT_NOT_APPLIED,
         message=(
-            "status is 'enforced' but neither a compiled schema nor a model is bound; "
+            "status is 'enforced' but neither a compiled schema nor a model was applied; "
             "only the artifact format and metadata were checked"
         ),
     )
@@ -861,6 +854,56 @@ def _metadata_from_frontmatter(
     return metadata
 
 
+def _structural_verdict(
+    doc_path: Path,
+    contract: Contract,
+    values: dict[str, Any],
+    metadata_schema: str | None,
+) -> tuple[StructuralResult, EnforcementApplied]:
+    """The structural verdict and the mechanism that produced it.
+
+    Both come from the same branch because they answer the same question, and deriving
+    the mechanism afterwards from ``skipped_reason`` gets it wrong: a bound schema that
+    cannot be read skips nothing and validates nothing, so reading back "a schema was
+    applied" from the absent skip reason would restate the very false assurance
+    ``enforcement_applied`` exists to remove.
+    """
+    # Schema precedence (host over document): a caller/registry schema_path,
+    # then the document's own softschema.schema binding, then none.
+    strict_extras = contract.status == SchemaStatus.enforced
+    if contract.schema_path is not None:
+        schema_path = _resolve_schema_path(contract.schema_path, doc_path)
+        if schema_path is None:
+            return (
+                StructuralResult(
+                    ok=False,
+                    errors=[
+                        _error(
+                            "schema_missing",
+                            f"compiled schema not found: {contract.schema_path}",
+                            path=str(contract.schema_path),
+                        )
+                    ],
+                ),
+                "none",
+            )
+        return validate_structural(values, schema_path, strict_extras=strict_extras), "schema"
+    if metadata_schema is not None:
+        bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
+        if bound_path is None:
+            return (
+                StructuralResult(
+                    ok=False,
+                    errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
+                ),
+                "none",
+            )
+        return validate_structural(values, bound_path, strict_extras=strict_extras), "schema"
+    if contract.model is not None:
+        return StructuralResult(ok=True, skipped_reason="inferred_via_model"), "model"
+    return StructuralResult(ok=True, skipped_reason="no_schema"), "none"
+
+
 def _validate_extracted_values(
     doc_path: Path,
     contract: Contract,
@@ -869,47 +912,8 @@ def _validate_extracted_values(
     metadata: SchemaMetadata | None,
     warnings: list[SchemaWarning],
 ) -> ArtifactValidationResult:
-    # Schema precedence (host over document): a caller/registry schema_path,
-    # then the document's own softschema.schema binding, then none.
     metadata_schema = metadata.schema_ref if metadata is not None else None
-    if contract.schema_path is not None:
-        schema_path = _resolve_schema_path(contract.schema_path, doc_path)
-        if schema_path is None:
-            structural = StructuralResult(
-                ok=False,
-                errors=[
-                    _error(
-                        "schema_missing",
-                        f"compiled schema not found: {contract.schema_path}",
-                        path=str(contract.schema_path),
-                    )
-                ],
-            )
-        else:
-            structural = validate_structural(
-                values,
-                schema_path,
-                strict_extras=contract.status == SchemaStatus.enforced,
-            )
-    elif metadata_schema is not None:
-        bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
-        if bound_path is None:
-            structural = StructuralResult(
-                ok=False,
-                errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
-            )
-        else:
-            structural = validate_structural(
-                values,
-                bound_path,
-                strict_extras=contract.status == SchemaStatus.enforced,
-            )
-    elif contract.model is not None:
-        structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
-    else:
-        structural = StructuralResult(ok=True, skipped_reason="no_schema")
-
-    applied = _applied_enforcement(structural)
+    structural, applied = _structural_verdict(doc_path, contract, values, metadata_schema)
     enforcement_warning = _enforcement_shortfall(contract.status, applied)
 
     semantic = (

@@ -47,6 +47,20 @@ class SchemaProfile(StrEnum):
     pure_yaml = "pure-yaml"
 
 
+EnforcementApplied = Literal["schema", "model", "none"]
+"""Which mechanism was authoritative for a payload's structure.
+
+``SchemaStatus`` states the strictness a project intends; this states the strictness a
+particular validation run delivered. The two are independent, so a result reports both.
+
+The three values name who is authoritative, and therefore who else can reproduce the
+verdict: ``schema`` means a compiled JSON Schema was applied, which any implementation
+can rerun from a committed file; ``model`` means a source model validated the payload in
+one implementation's language and said nothing to any other; ``none`` means neither, so
+only the artifact format and metadata were checked.
+"""
+
+
 class SchemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata.
 
@@ -103,6 +117,8 @@ class WarningCode(StrEnum):
 
     DOCUMENT_CONTRACT_MISMATCH = "document-contract-mismatch"
     DOCUMENT_STATUS_MISMATCH = "document-status-mismatch"
+    DOCUMENT_ENFORCEMENT_NOT_APPLIED = "document-enforcement-not-applied"
+    DOCUMENT_ENFORCEMENT_VIA_MODEL_ONLY = "document-enforcement-via-model-only"
 
 
 class SchemaWarning(BaseModel):

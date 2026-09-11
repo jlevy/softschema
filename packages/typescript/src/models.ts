@@ -30,8 +30,26 @@ export interface SchemaMetadata {
   status: SchemaStatus | null;
 }
 
+/**
+ * Which mechanism was authoritative for a payload's structure.
+ *
+ * `SchemaStatus` states the strictness a project intends; this states the strictness a
+ * particular validation run delivered. The two are independent, so a result reports both.
+ *
+ * The three values name who is authoritative, and therefore who else can reproduce the
+ * verdict: `schema` means a compiled JSON Schema was applied, which any implementation
+ * can rerun from a committed file; `model` means a source model validated the payload in
+ * one implementation's language and said nothing to any other; `none` means neither, so
+ * only the artifact format and metadata were checked.
+ */
+export type EnforcementApplied = "schema" | "model" | "none";
+
 /** Public warning codes (the `document-*` family). */
-export type WarningCode = "document-contract-mismatch" | "document-status-mismatch";
+export type WarningCode =
+  | "document-contract-mismatch"
+  | "document-status-mismatch"
+  | "document-enforcement-not-applied"
+  | "document-enforcement-via-model-only";
 
 export interface SchemaWarning {
   code: WarningCode;
