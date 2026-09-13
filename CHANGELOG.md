@@ -6,45 +6,42 @@ version number.
 
 ## Unreleased
 
-**A verdict now says which mechanism decided it.** `status` states intended maturity and
-binds nothing, so a document declaring `enforced` and validated with nothing bound came
-back `valid` with an empty error list, exit 0, and no warning.
-That verdict was honest about the check it ran and silent about the check it did not,
-and the two were indistinguishable to anything reading `outcome`. The only trace was
-`structural.skipped_reason`, nested a level down and easy to miss.
+Validation results now record actual execution independently for structural and semantic
+checks. Declared `status` still selects validation mode; it does not prove a check ran.
 
 ### Added
 
-- **`enforcement_applied` on every validation result**, in both implementations and in
-  the CLI’s JSON, reporting `schema`, `model`, or `none`. The three values name who was
-  authoritative and therefore who else can reproduce the verdict: a compiled schema that
-  any implementation can rerun from a committed file, a source model that decided it in
-  one language and said nothing to any other, or neither, where only the artifact format
-  and metadata were checked.
-  A schema that is bound but cannot be read reports `none`; it named a mechanism and
-  applied none.
-- **Two warnings for a claim the run fell short of**, in the existing `document-*`
-  advisory family: `document-enforcement-not-applied` when the effective status is
-  `enforced` and nothing was applied, and `document-enforcement-via-model-only` when a
-  model decided a verdict the word `enforced` promises a schema would.
-  `soft` and `permissive` claim nothing a run can fall short of, so neither warns.
-- `EnforcementApplied` as a public type in both packages.
+- `structural.execution` and `semantic.execution` on all returned validation records,
+  including CLI JSON and repair results.
+  The public `ValidationExecution` type is `not_run`, `completed`, or `errored`. A
+  completed check may accept or reject; read `ok` and errors for its verdict.
+  Missing or malformed schemas report preparation failure without claiming payload
+  evaluation. Both checks remain visible when a schema accepts and a model rejects.
+- Two advisory warnings when effective mode is `enforced` and structural validation did
+  not complete: `document-enforcement-via-model-only` if semantic validation completed,
+  or `document-enforcement-not-applied` otherwise.
+  Failures before payload extraction do not emit a payload-check shortfall warning.
 
 ### Changed
 
-- The spec now requires `enforcement_applied` of a conforming validator and fixes the
-  two shortfall warning codes, so the field is portable rather than one implementation’s
-  extra. It also states the effective status’s fallback to `soft` when neither a caller
-  nor a document supplies one, which was true in code and unwritten.
+- Replace the unreleased `enforcement_applied` hierarchy with per-layer execution.
+  TypeScript now reports actual model invocation independently of its optional label.
+- The spec defines execution boundaries, including engine-specific preparation versus
+  evaluation failures, and the effective status fallback to `soft`.
 
 ### Compatibility
 
-Additive. No existing field changes, no document that validated before fails now, and a
-shortfall changes neither `outcome` nor the exit class: the document satisfied what was
-checked, and it is the binding that fell short of the claim, so a caller that wants that
-fatal decides from the reported value.
-Every `validate` JSON result now carries an `enforcement_applied` key, which is a new
-key in output a consumer may be diffing.
+Target the next coordinated minor release, **0.9.0**. Python layer-result constructors
+require an explicit keyword-only `execution`; TypeScript layer interfaces require the
+same field. Ordinary validation call signatures, `ok`, outcomes, errors, skip reasons,
+CLI exit classes, artifact metadata, and compiled schema files are unchanged.
+Strict serialized-result consumers must accept the new layer fields and remove the
+unreleased aggregate field.
+Old reports without execution fields have **unknown** execution; preserve absence or
+revalidate rather than fabricating evidence.
+See the
+[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
+for downstream adoption and release sequencing.
 
 ## v0.8.1—2026-09-11
 

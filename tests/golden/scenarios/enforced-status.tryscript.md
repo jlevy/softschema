@@ -28,13 +28,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
     "schema": null,
     "status": "permissive"
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -42,6 +42,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -62,7 +63,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
 
 The same document with no `--schema` and no model. `enforced` states intent and binds
 nothing, so there is no check to disagree with the undeclared `confidence` and
-`meta.fetched_by`, and the verdict is `valid` at exit 0. `enforcement_applied` and the
+`meta.fetched_by`, and the verdict is `valid` at exit 0. The layer `execution` fields and the
 warning are what distinguish that from a document a schema actually passed.
 
 ```console
@@ -83,13 +84,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "none",
   "outcome": "valid",
   "path": "tests/golden/fixtures/extra-field-enforced.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -97,6 +98,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_schema"
   },
@@ -111,7 +113,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md
   "warnings": [
     {
       "code": "document-enforcement-not-applied",
-      "message": "status is 'enforced' but neither a compiled schema nor a model was applied; only the artifact format and metadata were checked",
+      "message": "status is 'enforced' but neither structural nor semantic validation completed; the result does not establish payload validity",
       "severity": "warning"
     }
   ]
@@ -145,13 +147,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
     "schema": null,
     "status": "permissive"
   },
-  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-permissive.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -192,6 +194,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -237,13 +240,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --schema te
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/extra-field-enforced.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -284,6 +287,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --schema te
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -325,13 +329,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-ok.md --schema tests/go
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "tests/golden/fixtures/conditional-ok.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -339,6 +343,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-ok.md --schema tests/go
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -374,13 +379,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-violation.md --schema t
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/conditional-violation.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -403,6 +408,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-violation.md --schema t
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -438,13 +444,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-undeclared.md --schema 
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/conditional-undeclared.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -466,6 +472,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-undeclared.md --schema 
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -502,13 +509,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-ok.md --schema tests/
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "tests/golden/fixtures/composed-open-ok.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -516,6 +523,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-ok.md --schema tests/
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -552,13 +560,13 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-undeclared.md --schem
     "schema": null,
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "tests/golden/fixtures/composed-open-undeclared.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -597,6 +605,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-undeclared.md --schem
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },

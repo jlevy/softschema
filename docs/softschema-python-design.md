@@ -287,7 +287,8 @@ and `value` name engine mechanisms and diagnostic context rather than the stable
 category.
 
 `ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
-`invalid`, or `input_error`. Library callers always receive this structured result.
+`invalid`, or `input_error`. Ordinary validation failures return this structured result;
+unexpected model callback exceptions propagate.
 Which failures reach a caller as a result and which as an error follows from the command
 invoked, not from which options it was given.
 `validate` reads: it refuses an artifact it cannot open with a one-line stderr message
@@ -296,15 +297,21 @@ and exit `2`, whether or not a contract was named.
 as a record in the result at exit `1`, under no contract when the document declares none
 legibly. Readable results map to exits `0` or `1` on both.
 
-`ArtifactValidationResult.enforcement_applied` sits beside it and answers the other
-question a verdict raises: `schema`, `model`, or `none`, per the spec’s
-[validation expectations](softschema-spec.md#validation-expectations).
-`outcome` says whether the document satisfied what was checked; this says what was
-checked, and a clean verdict means different things under each value.
-It is recorded where the check runs, not derived afterwards from
-`structural.skipped_reason`: a bound schema that cannot be read skips nothing and
-validates nothing, so a derived value would report `schema` for a run that applied none.
-The typed alias is exported as `EnforcementApplied`.
+`StructuralResult.execution` and `SemanticResult.execution` independently report
+`not_run`, `completed`, or `errored`, per the spec’s
+[execution contract](softschema-spec.md#reporting-validation-execution).
+The exported `ValidationExecution` alias uses plain strings.
+Both frozen dataclasses require `execution` as a keyword-only constructor argument,
+including hand-built fixtures.
+No default may invent historical evidence.
+
+`completed` means the layer returned a verdict; `ok` distinguishes pass from rejection.
+A schema preparation failure is `not_run`. An error raised during `iter_errors`, such as
+a lazily resolved missing reference, is `errored` with the existing structural error.
+Unexpected semantic callback exceptions propagate, so there is no returned result to
+mark completed. `validate_values`, artifact validation, and repair share these records.
+Older serialized records without this field have unknown execution and must not be
+backfilled from skip reasons or a successful outcome.
 
 ### Alignment with `python-cli-patterns`
 
@@ -360,8 +367,8 @@ if any(w.code.startswith("document-") for w in result.warnings):
 | --- | --- |
 | `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
 | `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the `enforced` strict-extras overlay). |
-| `document-enforcement-not-applied` | The status in force is `enforced` and `enforcement_applied` is `none`: neither a compiled schema nor a model was applied, so only the artifact format and metadata were checked. |
-| `document-enforcement-via-model-only` | The status in force is `enforced` and `enforcement_applied` is `model`: a source model decided the verdict in one language, which is a real check and not the cross-language structural guarantee `enforced` names. |
+| `document-enforcement-not-applied` | The effective mode is `enforced`, payload extraction succeeded, and neither structural nor semantic validation completed. |
+| `document-enforcement-via-model-only` | The effective mode is `enforced`, structural validation did not complete, and semantic validation completed. This includes a model run after schema preparation failed. |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.

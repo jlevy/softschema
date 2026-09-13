@@ -1,128 +1,180 @@
-/**
- * A verdict must say which mechanism decided it, not only whether it passed.
- *
- * `status` states intended maturity and binds nothing. So a document declaring `enforced`
- * and validated with nothing bound comes back `valid` with an empty error list, because
- * there was nothing to disagree with. That verdict is honest about the check it ran and
- * silent about the check it did not, and the two are indistinguishable to anything
- * reading `outcome`.
- *
- * Mirrors packages/python/tests/test_enforcement_clarity.py case for case.
- */
-
+/** Shared actual-execution cases and TypeScript's separate model-label binding. */
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse, stringify } from "yaml";
 import { z } from "zod";
-import { compileSchema } from "./compile.js";
-import type { Contract } from "./models.js";
-import { validateArtifact } from "./validate.js";
+import type { Contract, SchemaStatus, ValidationExecution, WarningCode } from "./models.js";
+import { repairAndValidateArtifact } from "./repairValidate.js";
+import { validateArtifact, validateStructural, validateValues } from "./validate.js";
 
-const Sample = z.strictObject({ name: z.string() });
+const Sample = z.strictObject({ name: z.string() }).refine((value) => value.name !== "rejected", {
+  message: "name is unavailable",
+});
+const schema = { type: "object", properties: { name: { type: "string" } }, required: ["name"] };
 
 function tmpDir(): string {
-  return mkdtempSync(join(tmpdir(), "softschema-enf-"));
+  return mkdtempSync(join(tmpdir(), "softschema-execution-"));
 }
-
-function writeDoc(dir: string, status = "enforced"): string {
-  const path = join(dir, "doc.md");
-  writeFileSync(
-    path,
-    "---\nsoftschema:\n  contract: example:Sample/v1\n  envelope: sample\n" +
-      `  status: ${status}\nsample:\n  name: hello\n---\n# body\n`,
-  );
-  return path;
-}
-
-function mkContract(overrides: Partial<Contract> = {}): Contract {
+function contract(overrides: Partial<Contract> = {}): Contract {
   return {
     id: "example:Sample/v1",
     model: null,
-    envelopeKey: "sample",
+    envelopeKey: null,
     status: "enforced",
-    profile: "frontmatter-md",
+    profile: "pure-yaml",
     schemaPath: null,
     ...overrides,
   };
 }
-
-function codes(warnings: { code: string }[]): string[] {
-  return warnings.map((w) => w.code);
+function document(directory: string, values: unknown = { name: "hello" }): string {
+  const path = join(directory, "sample.yaml");
+  writeFileSync(path, stringify(values));
+  return path;
 }
+interface LayerExpectation {
+  execution: ValidationExecution | { python: ValidationExecution; typescript: ValidationExecution };
+  ok: boolean;
+  skipped_reason: string | null;
+}
+interface ExecutionCase {
+  name: string;
+  values: unknown;
+  status?: SchemaStatus;
+  model?: boolean;
+  schema?: Record<string, unknown>;
+  schema_text?: string;
+  missing_schema?: boolean;
+  structural: LayerExpectation;
+  semantic: LayerExpectation;
+  warning?: WarningCode;
+  error_kind?: string;
+}
+const vectors = parse(
+  readFileSync(
+    new URL("../../../tests/vectors/validation-execution.yaml", import.meta.url),
+    "utf8",
+  ),
+) as { cases: ExecutionCase[] };
 
-describe("enforcement_applied", () => {
-  test("enforced with nothing bound is reported, not silently passed", () => {
-    const result = validateArtifact(writeDoc(tmpDir()), mkContract());
+describe("actual validation execution", () => {
+  for (const vector of vectors.cases) {
+    test(vector.name, () => {
+      const directory = tmpDir();
+      const path = document(directory, vector.values);
+      const schemaPath =
+        vector.schema || vector.schema_text || vector.missing_schema
+          ? join(directory, "sample.schema.yaml")
+          : null;
+      if (schemaPath && vector.schema_text) writeFileSync(schemaPath, vector.schema_text);
+      else if (schemaPath && vector.schema) writeFileSync(schemaPath, stringify(vector.schema));
+      const result = validateArtifact(
+        path,
+        contract({
+          schemaPath,
+          status: vector.status ?? "enforced",
+          model: vector.model ? "inline:Sample" : null,
+        }),
+        { semanticModel: vector.model ? Sample : undefined },
+      );
+      for (const layer of ["structural", "semantic"] as const) {
+        const expected = vector[layer];
+        expect({
+          execution: result[layer].execution,
+          ok: result[layer].ok,
+          skipped_reason: result[layer].skipped_reason,
+        }).toEqual({
+          ...expected,
+          execution:
+            typeof expected.execution === "string"
+              ? expected.execution
+              : expected.execution.typescript,
+        });
+      }
+      const expectedOk = vector.structural.ok && vector.semantic.ok;
+      expect(result.ok).toBe(expectedOk);
+      expect(result.outcome).toBe(expectedOk ? "valid" : "invalid");
+      expect(result.warnings.map((warning) => warning.code)).toEqual(
+        vector.warning ? [vector.warning] : [],
+      );
+      if (vector.error_kind) expect(result.structural.errors[0]?.kind).toBe(vector.error_kind);
+      expect(result).not.toHaveProperty("enforcement_applied");
+    });
+  }
 
-    expect(result.enforcement_applied).toBe("none");
-    expect(codes(result.warnings)).toContain("document-enforcement-not-applied");
+  test("a model label without a validator supplies no execution evidence", () => {
+    const result = validateArtifact(document(tmpDir()), contract({ model: "inline:Sample" }));
+    expect(result.semantic.execution).toBe("not_run");
+    expect(result.structural.execution).toBe("not_run");
+    // Released skip text is retained; execution is the evidence consumers must inspect.
+    expect(result.structural.skipped_reason).toBe("inferred_via_model");
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      "document-enforcement-not-applied",
+    ]);
   });
 
-  test("enforced via a model only says so", () => {
-    // A model closes the object in its own language and says nothing to any other. That
-    // is a real check and a weaker promise than the word `enforced` names, so it is
-    // reported as its own level rather than folded into either neighbour.
-    const result = validateArtifact(writeDoc(tmpDir()), mkContract({ model: "inline:Sample" }), {
+  test("a real validator with no model label supplies its completed rejection", () => {
+    const result = validateArtifact(document(tmpDir(), { name: "rejected" }), contract(), {
       semanticModel: Sample,
     });
-
-    expect(result.enforcement_applied).toBe("model");
-    expect(codes(result.warnings)).toContain("document-enforcement-via-model-only");
+    expect(result.semantic.execution).toBe("completed");
+    expect(result.semantic.ok).toBe(false);
+    expect(result.structural.execution).toBe("not_run");
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      "document-enforcement-via-model-only",
+    ]);
   });
 
-  test("enforced with a bound schema is silent", () => {
-    const dir = tmpDir();
-    const schemaPath = join(dir, "sample.schema.yaml");
-    compileSchema(z.strictObject({ name: z.string() }), schemaPath, {
-      contractId: "example:Sample/v1",
+  test("values and repair preserve independent completed checks", () => {
+    const result = validateValues({ name: "rejected" }, { model: Sample, schema });
+    expect(result.structural.execution).toBe("completed");
+    expect(result.semantic.execution).toBe("completed");
+    expect(result.structural.ok).toBe(true);
+    expect(result.semantic.ok).toBe(false);
+    const modelOnly = validateValues({ name: "hello" }, { model: Sample });
+    expect(modelOnly.structural.execution).toBe("not_run");
+    expect(modelOnly.structural.skipped_reason).toBeNull();
+    const directory = tmpDir();
+    const schemaPath = join(directory, "sample.schema.yaml");
+    writeFileSync(schemaPath, stringify(schema));
+    const repaired = repairAndValidateArtifact(document(directory), contract({ schemaPath }), {
+      semanticModel: Sample,
+      write: false,
     });
+    expect(repaired.structural.execution).toBe("completed");
+    expect(repaired.semantic.execution).toBe("completed");
+  });
 
-    const result = validateArtifact(writeDoc(dir), mkContract({ schemaPath }));
-
-    expect(result.ok).toBe(true);
-    expect(result.enforcement_applied).toBe("schema");
+  test("pre-payload failure invokes neither check", () => {
+    const result = validateArtifact(join(tmpDir(), "absent.yaml"), contract(), {
+      semanticModel: Sample,
+    });
+    expect(result.structural.execution).toBe("not_run");
+    expect(result.semantic.execution).toBe("not_run");
+    expect(result.ok).toBe(false);
     expect(result.warnings).toEqual([]);
   });
 
-  test("a bound schema that cannot be read applied nothing", () => {
-    // Deriving the mechanism from `structural.skipped_reason` reports `schema` here,
-    // because a failure to load the schema skips nothing and validates nothing. That is
-    // the same false assurance in a new field, so the mechanism is recorded where the
-    // check would have run.
-    const dir = tmpDir();
-    const result = validateArtifact(
-      writeDoc(dir),
-      mkContract({ schemaPath: join(dir, "absent.schema.yaml") }),
+  test("an exception during actual structural evaluation is errored", () => {
+    const values = Object.defineProperty({}, "name", {
+      enumerable: true,
+      get() {
+        throw new Error("payload access failed");
+      },
+    });
+    const result = validateStructural(values, schema);
+    expect(result.execution).toBe("errored");
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]?.kind).toBe("schema_invalid");
+  });
+
+  test("semantic programmer errors propagate without a fabricated verdict", () => {
+    const broken = z.object({ name: z.string() }).refine(() => {
+      throw new TypeError("model implementation failed");
+    });
+    expect(() => validateValues({ name: "hello" }, { model: broken })).toThrow(
+      "model implementation failed",
     );
-
-    expect(result.outcome).toBe("invalid");
-    expect(result.enforcement_applied).toBe("none");
-    expect(codes(result.warnings)).toContain("document-enforcement-not-applied");
-  });
-
-  test("a soft document is not warned about", () => {
-    // Only a shortfall against a claim is a finding. `soft` claims nothing.
-    const result = validateArtifact(writeDoc(tmpDir(), "soft"), mkContract({ status: "soft" }));
-
-    expect(result.enforcement_applied).toBe("none");
-    expect(result.warnings).toEqual([]);
-  });
-
-  test("it is reported for every verdict, not only on a shortfall", () => {
-    const result = validateArtifact(
-      writeDoc(tmpDir(), "permissive"),
-      mkContract({ status: "permissive", model: "inline:Sample" }),
-      { semanticModel: Sample },
-    );
-
-    expect(result.enforcement_applied).toBe("model");
-    expect(result.warnings).toEqual([]);
-  });
-
-  test("an unreadable artifact reports none", () => {
-    const result = validateArtifact(join(tmpDir(), "absent.md"), mkContract());
-
-    expect(result.enforcement_applied).toBe("none");
   });
 });

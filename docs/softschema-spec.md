@@ -357,9 +357,9 @@ It is not required to be an import path or a class name.
   the artifact format and metadata.
   These two paths preserve language-specific or metadata-only workflows; they do not
   provide the cross-language structural guarantee described above.
-  Because the same `status` can be validated through any of the three, a result must
-  name which one applied: see
-  [Reporting the Mechanism Applied](#reporting-the-mechanism-applied).
+  Because the same `status` can accompany different checks, a result must report each
+  check’s actual execution: see
+  [Reporting Validation Execution](#reporting-validation-execution).
 
 ### Rejecting undeclared properties under `enforced`
 
@@ -749,35 +749,63 @@ Error-record-set parity is required except for cases explicitly listed in the sh
 `engine_deviations` vectors; each runtime pins its own complete record set for those
 cases so unlisted drift fails.
 
-### Reporting the Mechanism Applied
+### Reporting Validation Execution
 
-`status` states the strictness a project intends.
-What a run delivered depends on what the caller bound, so a verdict alone cannot say
-whether a document was checked: a clean verdict from a compiled schema and a clean
-verdict from nothing at all are the same answer to a consumer reading the outcome.
+The artifact’s `softschema.status` declares maturity or mode.
+The result’s `status` reports the effective mode after caller and registry precedence.
+Neither is evidence that a payload check ran.
+A host that requires a particular check supplies a trusted binding and verifies that
+check’s execution and verdict.
+Metadata alone cannot satisfy that requirement.
 
-A conforming validator reports `enforcement_applied` on every validation result, with
-one of three values:
+A conforming validator reports an `execution` field on each existing `structural` and
+`semantic` result record, for artifact validation, values validation, and repair:
 
 | Value | Meaning |
 | --- | --- |
-| `schema` | A compiled schema was applied, so any implementation can reproduce the verdict from a committed file. |
-| `model` | No compiled schema was applied, and a source model validated the payload in one implementation’s language. |
-| `none` | Neither was applied, so only the artifact format and metadata were checked. |
+| `not_run` | No payload validator was invoked. This includes absent bindings, failures before payload extraction, and failed schema preparation. Existing errors and skip reasons explain the cause. |
+| `completed` | The validator completed its verdict. `ok: true` is acceptance; `ok: false` with errors is rejection. Both are evidence that the check ran. |
+| `errored` | Payload evaluation began but did not produce a completed verdict. Existing error records describe the failure where the API returns a result. |
 
-A schema that is bound but cannot be read reports `none`: it named a mechanism and
-applied none, and the missing file is reported as `schema_missing` in its own right.
+Record execution at the invocation and completion boundaries.
+A schema path, model label, `engine` field, absent skip reason, or successful aggregate
+`outcome` is not execution evidence.
+Structural and semantic checks are independent; both may complete, and a model may
+reject a payload whose schema accepts it.
+A completed structural check establishes only its own verdict’s portability, not the
+reproducibility of additional semantic rules.
 
-When the effective status is `enforced` and `enforcement_applied` is not `schema`, a
-validator must also report the shortfall in the non-fatal `document-*` advisory family:
-`document-enforcement-not-applied` for `none`, and `document-enforcement-via-model-only`
-for `model`. `soft` and `permissive` claim nothing a run can fall short of, so neither
-warns. Validation that fails before a payload is extracted reports `none` and no
-shortfall warning; there is no verdict on a payload for the warning to qualify.
+A missing or malformed schema that fails preparation reports structural `not_run` and
+its existing schema error.
+An actual semantic validator still runs when supplied.
+Failures before payload extraction report both checks as `not_run`. A skipped layer may
+retain `ok: true` for compatibility; it never establishes payload acceptance.
 
-A shortfall does not change the outcome or the exit class.
-The document satisfied what was checked, and it is the binding that fell short of the
-claim, so a caller that wants that fatal decides from the reported value.
+Engine preparation boundaries can differ.
+For a raw-mode unresolved local reference, Python’s jsonschema may begin evaluation
+before resolution fails (`errored`), while Ajv rejects the reference during compilation
+(`not_run`). The common definitions apply to both runtimes; shared vectors pin these
+explicit differences.
+Normal completed passes and rejections retain the common execution meaning.
+
+Unexpected semantic callback exceptions propagate under the existing API exception
+policy. A thrown call has no returned validation report; implementations must not catch
+programmer errors merely to manufacture a completed rejection or acceptance.
+
+When effective mode is `enforced` and structural validation did not complete, emit the
+advisory `document-enforcement-via-model-only` if semantic validation completed, or
+`document-enforcement-not-applied` otherwise.
+This rule applies after both checks and also covers schema preparation failures followed
+by model validation.
+`soft` and `permissive` do not emit these warnings.
+Failures before payload extraction emit no shortfall warning because there is no payload
+verdict to qualify.
+
+The warning does not change `ok`, `outcome`, or CLI exit classes.
+Hosts that require a completed structural check must inspect execution as well as the
+verdict. Historical reports without execution fields have unknown execution; consumers
+preserve absence or revalidate.
+This output change introduces no artifact metadata or schema-file format change.
 
 ### Repair
 

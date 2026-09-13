@@ -65,7 +65,7 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "ConformResult",
         "Contract",
         "Contracts",
-        "EnforcementApplied",
+        "ValidationExecution",
         "EnvelopeAmbiguityError",
         "FieldInfo",
         "GeneratedSection",

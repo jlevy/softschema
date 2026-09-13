@@ -6,12 +6,9 @@ env:
 
 # Test: validate --model runs the Pydantic semantic layer
 
-Exercises the `--model` loading path: the CLI imports the model and runs semantic
-validation on top of the schema the document binds itself, so `enforcement_applied` is
-`schema` and only the semantic layer is language-specific here. The model
-spec is language-specific; the rest of the output has the same portable meaning as the
-other implementation (semantic logic itself is per-language by design and is not asserted
-beyond pass/empty-errors here).
+Exercises the `--model` loading path with a bound structural schema. Both layer records
+show completed execution. A later semantic rejection proves that the schema's acceptance
+does not determine the complete verdict. Semantic error details remain language-specific.
 
 ```console
 $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.movie_page.model:MoviePage --envelope movie
@@ -31,13 +28,13 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.mov
     "schema": "movie-page.schema.yaml",
     "status": "enforced"
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "examples/movie_page/spirited-away.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -45,6 +42,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.mov
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -91,4 +89,64 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --model examples.mov
   "warnings": []
 }
 ? 0
+```
+
+The schema accepts the payload's types while a model invariant rejects its name. The
+complete result must retain both verdicts and serialize the semantic error as plain data.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/execution-rejected.md --model packages.python.tests.fixtures.execution_model:Sample
+{
+  "contract": {
+    "envelope_key": "sample",
+    "id": "example:Sample/v1",
+    "model": "packages.python.tests.fixtures.execution_model:Sample",
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "example:Sample/v1",
+  "document_metadata": {
+    "contract": "example:Sample/v1",
+    "envelope": "sample",
+    "schema": "execution.schema.yaml",
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/execution-rejected.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [
+      {
+        "ctx": {
+          "error": "name is unavailable"
+        },
+        "input": {
+          "name": "rejected"
+        },
+        "loc": [],
+        "msg": "Value error, name is unavailable",
+        "type": "value_error",
+        "url": "https://errors.pydantic.dev/2.13/v/value_error"
+      }
+    ],
+    "execution": "completed",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "execution": "completed",
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "rejected"
+  },
+  "warnings": []
+}
+? 1
 ```

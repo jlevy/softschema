@@ -1,153 +1,116 @@
-"""A verdict must say which mechanism decided it, not only whether it passed.
-
-`status` states intended maturity and binds nothing. So a document declaring `enforced`
-and validated with nothing bound comes back `valid` with an empty error list, because
-there was nothing to disagree with. That verdict is honest about the check it ran and
-silent about the check it did not, and the two are indistinguishable to anything reading
-`outcome`.
-"""
+"""Execution evidence must describe actual independent payload checks."""
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+import pytest
+from pydantic import BaseModel, ConfigDict, model_validator
+from ruamel.yaml import YAML
 
 from softschema.compile import compile_model
-from softschema.models import Contract, SchemaStatus, WarningCode
+from softschema.models import Contract, SchemaProfile, SchemaStatus
 from softschema.pipeline import repair_and_validate_artifact
-from softschema.validate import validate_artifact
+from softschema.validate import validate_artifact, validate_values
+
+VECTORS = Path(__file__).parents[3] / "tests/vectors/validation-execution.yaml"
 
 
 class Sample(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     name: str
 
+    @model_validator(mode="after")
+    def accept_name(self) -> Sample:
+        if self.name == "rejected":
+            raise ValueError("name is unavailable")
+        return self
 
-def write_doc(path: Path, payload: str, status: str = "enforced") -> None:
-    path.write_text(
-        "---\n"
-        "softschema:\n"
-        "  contract: example:Sample/v1\n"
-        "  envelope: sample\n"
-        f"  status: {status}\n"
-        f"{payload}"
-        "---\n"
-        "# body\n"
+
+def test_shared_validation_execution_vectors(tmp_path: Path) -> None:
+    yaml = YAML(typ="safe")
+    for case in yaml.load(VECTORS.read_text())["cases"]:
+        directory = tmp_path / case["name"]
+        directory.mkdir()
+        doc = directory / "sample.yaml"
+        with doc.open("w") as output:
+            yaml.dump(case["values"], output)
+        schema_path = None
+        if "schema" in case or "schema_text" in case or case.get("missing_schema"):
+            schema_path = directory / "sample.schema.yaml"
+            if "schema_text" in case:
+                schema_path.write_text(case["schema_text"])
+            elif "schema" in case:
+                with schema_path.open("w") as output:
+                    yaml.dump(case["schema"], output)
+        result = validate_artifact(
+            doc,
+            contract=Contract(
+                id="example:Sample/v1",
+                model=Sample if case.get("model") else None,
+                schema_path=schema_path,
+                status=SchemaStatus(case.get("status", "enforced")),
+                profile=SchemaProfile.pure_yaml,
+            ),
+        )
+        for layer in ("structural", "semantic"):
+            expected = dict(case[layer])
+            if isinstance(expected["execution"], dict):
+                expected["execution"] = expected["execution"]["python"]
+            actual = asdict(getattr(result, layer))
+            assert {key: actual.get(key) for key in expected} == expected, case["name"]
+        expected_ok = case["structural"]["ok"] and case["semantic"]["ok"]
+        assert result.ok == expected_ok, case["name"]
+        assert result.outcome == ("valid" if expected_ok else "invalid"), case["name"]
+        assert result.warning_codes == ([case["warning"]] if "warning" in case else [])
+        if "error_kind" in case:
+            assert result.structural.errors[0]["kind"] == case["error_kind"], case["name"]
+        assert "enforcement_applied" not in asdict(result)
+
+
+def test_values_and_repair_preserve_independent_execution(tmp_path: Path) -> None:
+    schema = tmp_path / "sample.schema.yaml"
+    compile_model(Sample, schema, contract_id="example:Sample/v1")
+    result = validate_values({"name": "rejected"}, schema=schema, model=Sample)
+    assert result.structural.execution == result.semantic.execution == "completed"
+    assert result.structural.ok
+    assert not result.semantic.ok
+    model_only = validate_values({"name": "hello"}, model=Sample)
+    assert model_only.structural.execution == "not_run"
+    assert model_only.structural.skipped_reason is None
+    doc = tmp_path / "sample.yaml"
+    doc.write_text("name: hello\n")
+    repaired = repair_and_validate_artifact(
+        doc,
+        contract=Contract(
+            id="example:Sample/v1",
+            model=Sample,
+            schema_path=schema,
+            profile=SchemaProfile.pure_yaml,
+        ),
+        write=False,
     )
+    assert repaired.structural.execution == repaired.semantic.execution == "completed"
 
 
-def test_enforced_with_nothing_bound_is_reported_not_silently_passed(tmp_path: Path) -> None:
-    """The failure this exists to prevent: a claim of strictness that checked nothing."""
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-    contract = Contract(id="example:Sample/v1", status=SchemaStatus.enforced)
-
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.enforcement_applied == "none"
-    codes = [warning.code for warning in result.warnings]
-    assert WarningCode.DOCUMENT_ENFORCEMENT_NOT_APPLIED.value in codes
-
-
-def test_enforced_via_model_only_says_so(tmp_path: Path) -> None:
-    """A model closes the object in its own language and says nothing to any other.
-
-    That is a real check and a weaker promise than the word `enforced` names, so it is
-    reported as its own level rather than folded into either neighbour.
-    """
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-    contract = Contract(id="example:Sample/v1", model=Sample, status=SchemaStatus.enforced)
-
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.enforcement_applied == "model"
-    codes = [warning.code for warning in result.warnings]
-    assert WarningCode.DOCUMENT_ENFORCEMENT_VIA_MODEL_ONLY.value in codes
-
-
-def test_enforced_with_a_bound_schema_is_silent(tmp_path: Path) -> None:
-    """The healthy case warns about nothing, or the warning means nothing."""
-    schema_path = tmp_path / "sample.schema.yaml"
-    compile_model(Sample, schema_path, contract_id="example:Sample/v1")
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-    contract = Contract(
-        id="example:Sample/v1",
-        model=Sample,
-        schema_path=schema_path,
-        status=SchemaStatus.enforced,
+def test_pre_payload_failure_runs_neither_check(tmp_path: Path) -> None:
+    result = validate_artifact(
+        tmp_path / "absent.md",
+        contract=Contract(id="example:Sample/v1", model=Sample, status=SchemaStatus.enforced),
     )
-
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.ok
-    assert result.enforcement_applied == "schema"
-    assert [warning.code for warning in result.warnings] == []
+    assert result.structural.execution == result.semantic.execution == "not_run"
+    assert not result.ok
+    assert not result.warnings
 
 
-def test_a_bound_schema_that_cannot_be_read_applied_nothing(tmp_path: Path) -> None:
-    """A named schema is not an applied one.
+def test_semantic_programmer_exception_does_not_become_a_verdict() -> None:
+    class BrokenModel(BaseModel):
+        name: str
 
-    Deriving the mechanism from `structural.skipped_reason` reports `schema` here,
-    because a failure to load the schema skips nothing and validates nothing. That is
-    the same false assurance in a new field, so the mechanism is recorded where the
-    check would have run.
-    """
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-    contract = Contract(
-        id="example:Sample/v1",
-        schema_path=tmp_path / "absent.schema.yaml",
-        status=SchemaStatus.enforced,
-    )
+        @model_validator(mode="after")
+        def fail(self) -> BrokenModel:
+            raise TypeError("model implementation failed")
 
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.outcome == "invalid"
-    assert result.enforcement_applied == "none"
-    codes = [warning.code for warning in result.warnings]
-    assert WarningCode.DOCUMENT_ENFORCEMENT_NOT_APPLIED.value in codes
-
-
-def test_a_soft_document_is_not_warned_about(tmp_path: Path) -> None:
-    """Only a shortfall against a claim is a finding. `soft` claims nothing."""
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n", status="soft")
-    contract = Contract(id="example:Sample/v1", status=SchemaStatus.soft)
-
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.enforcement_applied == "none"
-    assert [warning.code for warning in result.warnings] == []
-
-
-def test_enforcement_applied_is_reported_for_every_verdict(tmp_path: Path) -> None:
-    """A reader needs it beside `outcome` on every result, not only on a shortfall."""
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n", status="permissive")
-    contract = Contract(id="example:Sample/v1", model=Sample, status=SchemaStatus.permissive)
-
-    result = validate_artifact(doc, contract=contract)
-
-    assert result.enforcement_applied == "model"
-    assert [warning.code for warning in result.warnings] == []
-
-
-def test_a_repaired_result_keeps_the_mechanism_it_was_judged_by(tmp_path: Path) -> None:
-    """The repair pass copies the result; a field it drops is a field consumers lose."""
-    schema_path = tmp_path / "sample.schema.yaml"
-    compile_model(Sample, schema_path, contract_id="example:Sample/v1")
-    doc = tmp_path / "doc.md"
-    write_doc(doc, "sample:\n  name: hello\n")
-    contract = Contract(
-        id="example:Sample/v1",
-        schema_path=schema_path,
-        status=SchemaStatus.enforced,
-    )
-
-    result = repair_and_validate_artifact(doc, contract=contract, write=False)
-
-    assert result.enforcement_applied == "schema"
+    with pytest.raises(TypeError, match="model implementation failed"):
+        validate_values({"name": "hello"}, model=BrokenModel)

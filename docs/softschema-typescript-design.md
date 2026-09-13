@@ -135,7 +135,7 @@ explicitly in the shared vectors.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
-| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, `enforcement_applied`, error kinds, and warnings |
+| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, per-layer `execution`, error kinds, and warnings |
 | `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached |
 | `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status` and offline `resources` |
 | `validate_structural` | `validateStructural` | jsonschema ↔ Ajv; shared record shape and meaning, with pinned native-engine deviations |
@@ -155,18 +155,29 @@ explicitly in the shared vectors.
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
-| `EnforcementApplied` | `EnforcementApplied` | same three values on every result |
+| `ValidationExecution` | `ValidationExecution` | same three execution-state definitions on each layer |
 
 ## Result Shape and CLI Output
 
 `validateArtifact` returns the portable fields `contract`, `contract_id`,
-`document_metadata`, `enforcement_applied`, `outcome`, `path`, `profile`, `repairs`,
-`semantic`, `status`, `structural`, `values`, and `warnings`. `enforcement_applied` is
-`schema`, `model`, or `none`, per the spec’s
-[validation expectations](softschema-spec.md#reporting-the-mechanism-applied); the
-interface carries it in snake_case like every other multi-word field, so
-`stableStringify` serializes it without a converter, and both result assemblers write it
-because TypeScript has no dataclass default to make it unconditional.
+`document_metadata`, `outcome`, `path`, `profile`, `repairs`, `semantic`, `status`,
+`structural`, `values`, and `warnings`. Each structural and semantic record requires
+`execution`: `not_run`, `completed`, or `errored`, per the
+[execution contract](softschema-spec.md#reporting-validation-execution).
+`status` is the effective mode; each layer’s `ok` and errors describe its own verdict.
+The JSON shape retains both checks when a schema accepts and a model rejects.
+
+`Contract.model` is a descriptive label.
+Only the actual `semanticModel` passed to `validateArtifact` invokes Zod: a label
+without a validator reports semantic `not_run`, and a validator without a label records
+its completed verdict.
+Existing skip-reason strings remain for compatibility and must not be interpreted as
+execution evidence.
+Ajv compilation errors are `not_run`; exceptions after invocation are
+`errored` under the existing structural error contract.
+Unexpected semantic callback errors propagate.
+Old serialized layer records without execution fields have unknown execution.
+
 Structural errors use engine-neutral records
 `{ kind, code, path, property?, validator, validator_value, value, message }`, sorted by
 `(path, validator, property)`. `property` is present for missing and undeclared-field

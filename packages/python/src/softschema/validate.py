@@ -37,11 +37,11 @@ from softschema.enforcement import (
 from softschema.errors import structural_error_record
 from softschema.models import (
     Contract,
-    EnforcementApplied,
     SchemaMetadata,
     SchemaProfile,
     SchemaStatus,
     SchemaWarning,
+    ValidationExecution,
     WarningCode,
     parse_schema_metadata,
 )
@@ -51,6 +51,7 @@ from softschema.registry import Contracts
 @dataclass(frozen=True)
 class StructuralResult:
     ok: bool
+    execution: ValidationExecution = field(kw_only=True)
     errors: list[dict[str, Any]] = field(default_factory=list)
     engine: str = "json_schema"
     skipped_reason: str | None = None
@@ -59,6 +60,7 @@ class StructuralResult:
 @dataclass(frozen=True)
 class SemanticResult:
     ok: bool
+    execution: ValidationExecution = field(kw_only=True)
     errors: list[dict[str, Any]] = field(default_factory=list)
     skipped_reason: str | None = None
 
@@ -87,15 +89,6 @@ class ArtifactValidationResult:
     document_metadata: SchemaMetadata | None = None
     values: dict[str, Any] | None = None
     warnings: list[SchemaWarning] = field(default_factory=list)
-    enforcement_applied: EnforcementApplied = "none"
-    """Which mechanism was authoritative for this payload's structure.
-
-    ``status`` states the strictness a project intends and binds nothing, so it cannot
-    answer "was this checked". This can, and sits beside ``outcome`` because that is
-    where a reader looks to learn what a verdict is worth: a clean verdict from
-    ``enforcement_applied: none`` and a clean verdict from ``schema`` are different
-    claims. See :data:`softschema.models.EnforcementApplied` for the three values.
-    """
     repairs: list[dict[str, Any]] = field(default_factory=list)
     """What a repair pass changed on the way to this verdict, empty for a plain validate.
 
@@ -229,22 +222,25 @@ def validate_structural(
     checked enforced profile before compilation; unsupported composition fails with a
     stable ``enforcement_unsupported`` record.
     """
+    execution: ValidationExecution = "not_run"
     try:
         validator = _validator_for(schema_yaml_path, strict_extras, resources)
+        execution = "errored"
         errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
-        return _schema_invalid("syntax", "compiled schema root must be a mapping")
+        return _schema_invalid("syntax", "compiled schema root must be a mapping", execution)
     except PortableInputError as exc:
-        return _schema_invalid("syntax", str(exc))
+        return _schema_invalid("syntax", str(exc), execution)
     except SchemaError as exc:
-        return _schema_invalid("dialect", exc.message)
+        return _schema_invalid("dialect", exc.message, execution)
     except Unresolvable as exc:
-        return _schema_invalid("reference", str(exc))
+        return _schema_invalid("reference", str(exc), execution)
     except re.error as exc:
-        return _schema_invalid("pattern", str(exc))
+        return _schema_invalid("pattern", str(exc), execution)
     except EnforcementUnsupportedError as exc:
         return StructuralResult(
             ok=False,
+            execution=execution,
             errors=[
                 {
                     "kind": "enforcement_unsupported",
@@ -255,9 +251,9 @@ def validate_structural(
             ],
         )
     except SchemaGraphError as exc:
-        return _schema_invalid(exc.reason, str(exc))
+        return _schema_invalid(exc.reason, str(exc), execution)
     except Exception as exc:
-        return _schema_invalid(_schema_failure_reason(exc), str(exc))
+        return _schema_invalid(_schema_failure_reason(exc), str(exc), execution)
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(
@@ -267,7 +263,7 @@ def validate_structural(
             record.get("property", ""),
         )
     )
-    return StructuralResult(ok=not errors, errors=errors)
+    return StructuralResult(ok=not errors, errors=errors, execution="completed")
 
 
 def _structural_error_records(errors: Iterator[Any]) -> Iterator[dict[str, Any]]:
@@ -431,9 +427,10 @@ def _schema_failure_reason(error: Exception) -> str:
     return "compilation"
 
 
-def _schema_invalid(reason: str, message: str) -> StructuralResult:
+def _schema_invalid(reason: str, message: str, execution: ValidationExecution) -> StructuralResult:
     return StructuralResult(
         ok=False,
+        execution=execution,
         errors=[{"kind": "schema_invalid", "reason": reason, "message": message}],
     )
 
@@ -453,9 +450,10 @@ def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult
     except ValidationError as exc:
         return SemanticResult(
             ok=False,
+            execution="completed",
             errors=[_serializable_error(error) for error in exc.errors()],
         )
-    return SemanticResult(ok=True)
+    return SemanticResult(ok=True, execution="completed")
 
 
 def _serializable_error(error: Mapping[str, Any]) -> dict[str, Any]:
@@ -501,8 +499,10 @@ def validate_values(
     else:
         # The semantic model is the requested validator; the structural slot remains an
         # unrequested successful pass so callers can read both result fields uniformly.
-        structural = StructuralResult(ok=True)
-    semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
+        structural = StructuralResult(ok=True, execution="not_run")
+    semantic = (
+        validate_semantic(values, model) if model else SemanticResult(ok=True, execution="not_run")
+    )
     return ValidationResult(structural=structural, semantic=semantic)
 
 
@@ -510,37 +510,25 @@ _UNREAD: Any = object()
 
 
 def _enforcement_shortfall(
-    status: SchemaStatus, applied: EnforcementApplied
+    status: SchemaStatus, structural: StructuralResult, semantic: SemanticResult
 ) -> SchemaWarning | None:
-    """Warn when a document claims more enforcement than the run delivered.
-
-    An artifact declaring ``enforced`` and validated with nothing bound comes back
-    ``valid`` with an empty error list, because there was nothing to disagree with. The
-    verdict is honest about the check it ran and silent about the check it did not, and
-    those read identically to anything consuming ``outcome``.
-
-    A model closes the object in its own language and says nothing to any other, so it
-    is reported as its own level rather than folded into either neighbour.
-
-    Keyed on the status in force rather than on the document's declaration: the contract
-    is what governs validation, and a document that declares something else already gets
-    ``document-status-mismatch``.
-    """
-    if status is not SchemaStatus.enforced or applied == "schema":
+    """Qualify an enforced-mode verdict when no structural check completed."""
+    if status is not SchemaStatus.enforced or structural.execution == "completed":
         return None
-    if applied == "model":
+    if semantic.execution == "completed":
         return SchemaWarning(
             code=WarningCode.DOCUMENT_ENFORCEMENT_VIA_MODEL_ONLY,
             message=(
-                "status is 'enforced' but no compiled schema was applied; the source model "
-                "decided this verdict, which gives no cross-language structural guarantee"
+                "status is 'enforced' but structural validation did not complete; "
+                "semantic validation completed with a source model, which does not provide "
+                "a cross-language structural guarantee"
             ),
         )
     return SchemaWarning(
         code=WarningCode.DOCUMENT_ENFORCEMENT_NOT_APPLIED,
         message=(
-            "status is 'enforced' but neither a compiled schema nor a model was applied; "
-            "only the artifact format and metadata were checked"
+            "status is 'enforced' but neither structural nor semantic validation completed; "
+            "the result does not establish payload validity"
         ),
     )
 
@@ -585,6 +573,7 @@ def validate_artifact(
             contract=None,
             structural=StructuralResult(
                 ok=False,
+                execution="not_run",
                 errors=[
                     _error(
                         "contract_unknown",
@@ -593,7 +582,9 @@ def validate_artifact(
                     )
                 ],
             ),
-            semantic=SemanticResult(ok=False, skipped_reason="contract_unknown"),
+            semantic=SemanticResult(
+                ok=False, execution="not_run", skipped_reason="contract_unknown"
+            ),
         )
 
     warnings: list[SchemaWarning] = []
@@ -707,6 +698,7 @@ def _envelope_mismatch_result(
         warnings=warnings,
         structural=StructuralResult(
             ok=False,
+            execution="not_run",
             errors=[
                 _error(
                     "envelope_mismatch",
@@ -716,7 +708,7 @@ def _envelope_mismatch_result(
                 )
             ],
         ),
-        semantic=SemanticResult(ok=False, skipped_reason="envelope_mismatch"),
+        semantic=SemanticResult(ok=False, execution="not_run", skipped_reason="envelope_mismatch"),
     )
 
 
@@ -859,49 +851,38 @@ def _structural_verdict(
     contract: Contract,
     values: dict[str, Any],
     metadata_schema: str | None,
-) -> tuple[StructuralResult, EnforcementApplied]:
-    """The structural verdict and the mechanism that produced it.
-
-    Both come from the same branch because they answer the same question, and deriving
-    the mechanism afterwards from ``skipped_reason`` gets it wrong: a bound schema that
-    cannot be read skips nothing and validates nothing, so reading back "a schema was
-    applied" from the absent skip reason would restate the very false assurance
-    ``enforcement_applied`` exists to remove.
-    """
+) -> StructuralResult:
+    """Resolve the bound schema and retain the structural engine's actual progress."""
     # Schema precedence (host over document): a caller/registry schema_path,
     # then the document's own softschema.schema binding, then none.
     strict_extras = contract.status == SchemaStatus.enforced
     if contract.schema_path is not None:
         schema_path = _resolve_schema_path(contract.schema_path, doc_path)
         if schema_path is None:
-            return (
-                StructuralResult(
-                    ok=False,
-                    errors=[
-                        _error(
-                            "schema_missing",
-                            f"compiled schema not found: {contract.schema_path}",
-                            path=str(contract.schema_path),
-                        )
-                    ],
-                ),
-                "none",
+            return StructuralResult(
+                ok=False,
+                execution="not_run",
+                errors=[
+                    _error(
+                        "schema_missing",
+                        f"compiled schema not found: {contract.schema_path}",
+                        path=str(contract.schema_path),
+                    )
+                ],
             )
-        return validate_structural(values, schema_path, strict_extras=strict_extras), "schema"
+        return validate_structural(values, schema_path, strict_extras=strict_extras)
     if metadata_schema is not None:
         bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
         if bound_path is None:
-            return (
-                StructuralResult(
-                    ok=False,
-                    errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
-                ),
-                "none",
+            return StructuralResult(
+                ok=False,
+                execution="not_run",
+                errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
             )
-        return validate_structural(values, bound_path, strict_extras=strict_extras), "schema"
+        return validate_structural(values, bound_path, strict_extras=strict_extras)
     if contract.model is not None:
-        return StructuralResult(ok=True, skipped_reason="inferred_via_model"), "model"
-    return StructuralResult(ok=True, skipped_reason="no_schema"), "none"
+        return StructuralResult(ok=True, execution="not_run", skipped_reason="inferred_via_model")
+    return StructuralResult(ok=True, execution="not_run", skipped_reason="no_schema")
 
 
 def _validate_extracted_values(
@@ -913,14 +894,14 @@ def _validate_extracted_values(
     warnings: list[SchemaWarning],
 ) -> ArtifactValidationResult:
     metadata_schema = metadata.schema_ref if metadata is not None else None
-    structural, applied = _structural_verdict(doc_path, contract, values, metadata_schema)
-    enforcement_warning = _enforcement_shortfall(contract.status, applied)
+    structural = _structural_verdict(doc_path, contract, values, metadata_schema)
 
     semantic = (
         validate_semantic(values, contract.model)
         if contract.model is not None
-        else SemanticResult(ok=True, skipped_reason="no_semantic_model")
+        else SemanticResult(ok=True, execution="not_run", skipped_reason="no_semantic_model")
     )
+    enforcement_warning = _enforcement_shortfall(contract.status, structural, semantic)
     return ArtifactValidationResult(
         path=doc_path,
         contract_id=contract.id,
@@ -932,7 +913,6 @@ def _validate_extracted_values(
         warnings=[*warnings, enforcement_warning] if enforcement_warning else warnings,
         structural=structural,
         semantic=semantic,
-        enforcement_applied=applied,
     )
 
 
@@ -1022,8 +1002,8 @@ def _artifact_failure(
         contract=contract,
         document_metadata=metadata,
         warnings=warnings or [],
-        structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
-        semantic=SemanticResult(ok=False, skipped_reason=kind),
+        structural=StructuralResult(ok=False, execution="not_run", errors=[_error(kind, message)]),
+        semantic=SemanticResult(ok=False, execution="not_run", skipped_reason=kind),
     )
 
 
@@ -1101,8 +1081,8 @@ def unreadable_artifact_result(
         contract=None,
         document_metadata=None,
         warnings=[],
-        structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
-        semantic=SemanticResult(ok=False, skipped_reason=kind),
+        structural=StructuralResult(ok=False, execution="not_run", errors=[_error(kind, message)]),
+        semantic=SemanticResult(ok=False, execution="not_run", skipped_reason=kind),
     )
 
 

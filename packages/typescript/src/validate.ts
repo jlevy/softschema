@@ -25,7 +25,6 @@ import {
   type Contract,
   checkContractId,
   contractToOutput,
-  type EnforcementApplied,
   metadataToOutput,
   parseSchemaMetadata,
   pyTypeName,
@@ -34,11 +33,13 @@ import {
   type SchemaProfile,
   type SchemaStatus,
   type SchemaWarning,
+  type ValidationExecution,
 } from "./models.js";
 import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
 
 export interface StructuralResult {
   ok: boolean;
+  execution: ValidationExecution;
   errors: (StructuralErrorRecord | Record<string, unknown>)[];
   engine: string;
   skipped_reason: string | null;
@@ -46,6 +47,7 @@ export interface StructuralResult {
 
 export interface SemanticResult {
   ok: boolean;
+  execution: ValidationExecution;
   errors: Record<string, unknown>[];
   skipped_reason: string | null;
 }
@@ -71,16 +73,6 @@ export interface ArtifactValidationResult {
   contract: Record<string, unknown>;
   contract_id: string;
   document_metadata: Record<string, unknown> | null;
-  /**
-   * Which mechanism was authoritative for this payload's structure.
-   *
-   * `status` states the strictness a project intends and binds nothing, so it cannot
-   * answer "was this checked". This can, and sits beside `outcome` because that is where
-   * a reader looks to learn what a verdict is worth: a clean verdict from
-   * `enforcement_applied: "none"` and a clean verdict from `"schema"` are different
-   * claims. See `EnforcementApplied` for the three values.
-   */
-  enforcement_applied: EnforcementApplied;
   outcome: "valid" | "invalid" | "input_error";
   path: string;
   profile: string;
@@ -345,12 +337,14 @@ export function validateStructural(
   schemaObject: Record<string, unknown>,
   options: { strictExtras?: boolean; resources?: Record<string, Record<string, unknown>> } = {},
 ): StructuralResult {
+  let execution: ValidationExecution = "not_run";
   try {
     const validateFn = cachedValidator(
       schemaObject,
       options.strictExtras ?? false,
       options.resources ?? {},
     );
+    execution = "errored";
     const ok = validateFn(values);
     const errors: StructuralErrorRecord[] = ok
       ? []
@@ -360,12 +354,19 @@ export function validateStructural(
           ),
         );
     errors.sort(compareStructuralRecords);
-    return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
+    return {
+      ok: errors.length === 0,
+      execution: "completed",
+      errors,
+      engine: "json_schema",
+      skipped_reason: null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof EnforcementUnsupportedError) {
       return {
         ok: false,
+        execution,
         errors: [
           {
             kind: "enforcement_unsupported",
@@ -378,8 +379,8 @@ export function validateStructural(
         skipped_reason: null,
       };
     }
-    if (error instanceof SchemaGraphError) return schemaInvalid(error.reason, message);
-    return schemaInvalid(schemaFailureReason(message), message);
+    if (error instanceof SchemaGraphError) return schemaInvalid(error.reason, message, execution);
+    return schemaInvalid(schemaFailureReason(message), message, execution);
   }
 }
 
@@ -480,9 +481,14 @@ function schemaFailureReason(message: string): string {
   return "compilation";
 }
 
-function schemaInvalid(reason: string, message: string): StructuralResult {
+function schemaInvalid(
+  reason: string,
+  message: string,
+  execution: ValidationExecution,
+): StructuralResult {
   return {
     ok: false,
+    execution,
     errors: [{ kind: "schema_invalid", reason, message }],
     engine: "json_schema",
     skipped_reason: null,
@@ -496,7 +502,7 @@ function schemaInvalid(reason: string, message: string): StructuralResult {
  */
 export function validateSemantic(values: unknown, model: z.ZodType): SemanticResult {
   const result = model.safeParse(values);
-  if (result.success) return { ok: true, errors: [], skipped_reason: null };
+  if (result.success) return { ok: true, execution: "completed", errors: [], skipped_reason: null };
   const errors = result.error.issues.map((issue) => {
     // `expected` is what identifies a type disagreement — without it an `invalid_type`
     // issue says only that something was wrong, not what was wanted, and the conform pass
@@ -510,7 +516,7 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
       ...(expected === undefined ? {} : { expected }),
     };
   });
-  return { ok: false, errors, skipped_reason: null };
+  return { ok: false, execution: "completed", errors, skipped_reason: null };
 }
 
 /**
@@ -538,11 +544,17 @@ export function validateValues(
   } else {
     // The semantic model is the requested validator; the structural slot remains an
     // unrequested successful pass so callers can read both result fields uniformly.
-    structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
+    structural = {
+      ok: true,
+      execution: "not_run",
+      errors: [],
+      engine: "json_schema",
+      skipped_reason: null,
+    };
   }
-  const semantic = options.model
+  const semantic: SemanticResult = options.model
     ? validateSemantic(values, options.model)
-    : { ok: true, errors: [], skipped_reason: null };
+    : { ok: true, execution: "not_run", errors: [], skipped_reason: null };
   return { structural, semantic };
 }
 
@@ -564,6 +576,7 @@ export function unreadableArtifactResult(
 ): ArtifactValidationResult {
   const structural: StructuralResult = {
     ok: false,
+    execution: "not_run",
     errors: [{ kind: args.kind, message: args.message }],
     engine: "json_schema",
     skipped_reason: null,
@@ -572,12 +585,10 @@ export function unreadableArtifactResult(
     contract: null,
     contract_id: "",
     document_metadata: null,
-    // Validation never reached a payload, so no mechanism was authoritative over one.
-    enforcement_applied: "none" as EnforcementApplied,
     outcome: "invalid",
     path: docPath,
     profile: args.profile,
-    semantic: { ok: false, errors: [], skipped_reason: args.kind },
+    semantic: { ok: false, execution: "not_run", errors: [], skipped_reason: args.kind },
     status: "soft",
     structural,
     values: null,
@@ -596,7 +607,6 @@ function buildResult(args: {
   structural: StructuralResult;
   semantic: SemanticResult;
   warnings: SchemaWarning[];
-  enforcementApplied?: EnforcementApplied;
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
@@ -606,10 +616,6 @@ function buildResult(args: {
     contract: contractToOutput(contract),
     contract_id: contract.id,
     document_metadata: metadataToOutput(args.metadata),
-    // Always present, like `repairs` below: Python's dataclass default writes it on every
-    // result, and a caller asking what a verdict is worth must not have to tell an absent
-    // key from a reported one. `none` is what a failure short of the payload applied.
-    enforcement_applied: args.enforcementApplied ?? "none",
     outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
     path: args.docPath,
     profile: contract.profile,
@@ -644,11 +650,12 @@ function failure(
     values: null,
     structural: {
       ok: false,
+      execution: "not_run",
       errors: [structuralError(kind, message, extra)],
       engine: "json_schema",
       skipped_reason: null,
     },
-    semantic: { ok: false, errors: [], skipped_reason: kind },
+    semantic: { ok: false, execution: "not_run", errors: [], skipped_reason: kind },
     warnings,
   });
 }
@@ -664,12 +671,12 @@ function structuralAgainstSchemaFile(
     compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
     if (err instanceof PortableInputError) {
-      return schemaInvalid("syntax", err.message);
+      return schemaInvalid("syntax", err.message, "not_run");
     }
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    return schemaInvalid("syntax", "compiled schema root must be a mapping");
+    return schemaInvalid("syntax", "compiled schema root must be a mapping", "not_run");
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }
@@ -720,117 +727,75 @@ function resolveMetadataSchema(
   return { path: resolved, error: null };
 }
 
-/**
- * The structural verdict and the mechanism that produced it.
- *
- * Both come from the same branch because they answer the same question, and deriving the
- * mechanism afterwards from `skipped_reason` gets it wrong: a bound schema that cannot be
- * read skips nothing and validates nothing, so reading back "a schema was applied" from
- * the absent skip reason would restate the very false assurance `enforcement_applied`
- * exists to remove.
- */
+/** Resolve the bound schema and retain the structural engine's actual progress. */
 function structuralForValues(
   contract: Contract,
   values: unknown,
   docPath: string,
   metadata: SchemaMetadata | null,
-): { structural: StructuralResult; applied: EnforcementApplied } {
-  // Schema precedence (host over document): a caller/registry schemaPath, then
-  // the document's own softschema.schema binding, then none.
+): StructuralResult {
+  // Host schema binding takes precedence over the document's relative schema binding.
   const strictExtras = contract.status === "enforced";
   if (contract.schemaPath !== null) {
     const resolved = resolveSchemaPath(contract.schemaPath, docPath);
     if (resolved === null) {
       return {
-        structural: {
-          ok: false,
-          errors: [
-            structuralError("schema_missing", `compiled schema not found: ${contract.schemaPath}`, {
-              path: contract.schemaPath,
-            }),
-          ],
-          engine: "json_schema",
-          skipped_reason: null,
-        },
-        applied: "none",
+        ok: false,
+        execution: "not_run",
+        errors: [
+          structuralError("schema_missing", `compiled schema not found: ${contract.schemaPath}`, {
+            path: contract.schemaPath,
+          }),
+        ],
+        engine: "json_schema",
+        skipped_reason: null,
       };
     }
-    return {
-      structural: structuralAgainstSchemaFile(resolved, values, strictExtras),
-      applied: "schema",
-    };
+    return structuralAgainstSchemaFile(resolved, values, strictExtras);
   }
   const metadataSchema = metadata?.schema ?? null;
   if (metadataSchema !== null) {
     const bound = resolveMetadataSchema(metadataSchema, docPath);
     if (bound.path === null) {
       return {
-        structural: {
-          ok: false,
-          errors: [
-            structuralError("schema_missing", bound.error ?? "", {
-              path: metadataSchema,
-            }),
-          ],
-          engine: "json_schema",
-          skipped_reason: null,
-        },
-        applied: "none",
+        ok: false,
+        execution: "not_run",
+        errors: [structuralError("schema_missing", bound.error ?? "", { path: metadataSchema })],
+        engine: "json_schema",
+        skipped_reason: null,
       };
     }
-    return {
-      structural: structuralAgainstSchemaFile(bound.path, values, strictExtras),
-      applied: "schema",
-    };
-  }
-  if (contract.model !== null) {
-    return {
-      structural: {
-        ok: true,
-        errors: [],
-        engine: "json_schema",
-        skipped_reason: "inferred_via_model",
-      },
-      applied: "model",
-    };
+    return structuralAgainstSchemaFile(bound.path, values, strictExtras);
   }
   return {
-    structural: { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" },
-    applied: "none",
+    ok: true,
+    execution: "not_run",
+    errors: [],
+    engine: "json_schema",
+    // Preserve the released skip reason; this label is not evidence of model execution.
+    skipped_reason: contract.model !== null ? "inferred_via_model" : "no_schema",
   };
 }
 
-/**
- * Warn when a document claims more enforcement than the run delivered.
- *
- * An artifact declaring `enforced` and validated with nothing bound comes back `valid`
- * with an empty error list, because there was nothing to disagree with. That verdict is
- * honest about the check it ran and silent about the check it did not, and those read
- * identically to anything consuming `outcome`.
- *
- * A model closes the object in its own language and says nothing to any other, so it is
- * reported as its own level rather than folded into either neighbour.
- *
- * Keyed on the status in force rather than on the document's declaration: the contract is
- * what governs validation, and a document that declares something else already gets
- * `document-status-mismatch`.
- */
+/** Warn about an effective enforced mode without a completed structural check. */
 function enforcementShortfall(
   status: SchemaStatus,
-  applied: EnforcementApplied,
+  structural: StructuralResult,
+  semantic: SemanticResult,
 ): SchemaWarning | null {
-  if (status !== "enforced" || applied === "schema") return null;
-  if (applied === "model") {
+  if (status !== "enforced" || structural.execution === "completed") return null;
+  if (semantic.execution === "completed") {
     return warning(
       "document-enforcement-via-model-only",
-      "status is 'enforced' but no compiled schema was applied; the source model decided " +
-        "this verdict, which gives no cross-language structural guarantee",
+      "status is 'enforced' but structural validation did not complete; " +
+        "semantic validation completed with a source model, which does not provide " +
+        "a cross-language structural guarantee",
     );
   }
   return warning(
     "document-enforcement-not-applied",
-    "status is 'enforced' but neither a compiled schema nor a model was applied; only the " +
-      "artifact format and metadata were checked",
+    "status is 'enforced' but neither structural nor semantic validation completed; " +
+      "the result does not establish payload validity",
   );
 }
 
@@ -842,12 +807,12 @@ function validateExtracted(
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
 ): ArtifactValidationResult {
-  const { structural, applied } = structuralForValues(contract, values, docPath, metadata);
-  const shortfall = enforcementShortfall(contract.status, applied);
+  const structural = structuralForValues(contract, values, docPath, metadata);
   const semantic: SemanticResult =
     semanticModel !== undefined
       ? validateSemantic(values, semanticModel)
-      : { ok: true, errors: [], skipped_reason: "no_semantic_model" };
+      : { ok: true, execution: "not_run", errors: [], skipped_reason: "no_semantic_model" };
+  const shortfall = enforcementShortfall(contract.status, structural, semantic);
   return buildResult({
     docPath,
     contract,
@@ -856,7 +821,6 @@ function validateExtracted(
     structural,
     semantic,
     warnings: shortfall === null ? warnings : [...warnings, shortfall],
-    enforcementApplied: applied,
   });
 }
 

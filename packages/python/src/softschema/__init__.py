@@ -7,11 +7,11 @@ from softschema.conform import ConformResult, conform_artifact
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
 from softschema.models import (
     Contract,
-    EnforcementApplied,
     SchemaMetadata,
     SchemaProfile,
     SchemaStatus,
     SchemaWarning,
+    ValidationExecution,
     WarningCode,
     parse_schema_metadata,
 )
@@ -51,7 +51,6 @@ __all__ = [
     "ConformResult",
     "Contract",
     "Contracts",
-    "EnforcementApplied",
     "EnvelopeAmbiguityError",
     "FieldInfo",
     "GeneratedSection",
@@ -68,6 +67,7 @@ __all__ = [
     "SoftOwner",
     "SoftTier",
     "StructuralResult",
+    "ValidationExecution",
     "ValidationResult",
     "WarningCode",
     "clear_validator_cache",

@@ -31,18 +31,11 @@ export interface SchemaMetadata {
 }
 
 /**
- * Which mechanism was authoritative for a payload's structure.
- *
- * `SchemaStatus` states the strictness a project intends; this states the strictness a
- * particular validation run delivered. The two are independent, so a result reports both.
- *
- * The three values name who is authoritative, and therefore who else can reproduce the
- * verdict: `schema` means a compiled JSON Schema was applied, which any implementation
- * can rerun from a committed file; `model` means a source model validated the payload in
- * one implementation's language and said nothing to any other; `none` means neither, so
- * only the artifact format and metadata were checked.
+ * Actual progress of one payload check, independent of its verdict and declared mode.
+ * Preparation failures are `not_run`; an invoked check that cannot return a verdict is
+ * `errored`. A returned pass or rejection is `completed`.
  */
-export type EnforcementApplied = "schema" | "model" | "none";
+export type ValidationExecution = "not_run" | "completed" | "errored";
 
 /** Public warning codes (the `document-*` family). */
 export type WarningCode =

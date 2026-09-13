@@ -18,12 +18,12 @@ export {
 } from "./generate.js";
 export {
   type Contract,
-  type EnforcementApplied,
   parseSchemaMetadata,
   type SchemaMetadata,
   type SchemaProfile,
   type SchemaStatus,
   type SchemaWarning,
+  type ValidationExecution,
   type WarningCode,
 } from "./models.js";
 export { Contracts } from "./registry.js";

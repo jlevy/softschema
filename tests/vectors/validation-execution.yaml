@@ -1,0 +1,97 @@
+# Actual payload-check progress, independent of declared mode and overall outcome.
+cases:
+  - name: metadata-only-enforced
+    values: {name: hello}
+    structural: {execution: not_run, ok: true, skipped_reason: no_schema}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    warning: document-enforcement-not-applied
+  - name: metadata-only-soft
+    values: {name: hello}
+    status: soft
+    structural: {execution: not_run, ok: true, skipped_reason: no_schema}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: model-only-accepts
+    values: {name: hello}
+    model: true
+    structural: {execution: not_run, ok: true, skipped_reason: inferred_via_model}
+    semantic: {execution: completed, ok: true, skipped_reason: null}
+    warning: document-enforcement-via-model-only
+  - name: model-only-rejects
+    values: {name: rejected}
+    model: true
+    structural: {execution: not_run, ok: true, skipped_reason: inferred_via_model}
+    semantic: {execution: completed, ok: false, skipped_reason: null}
+    warning: document-enforcement-via-model-only
+  - name: schema-only-accepts
+    values: {name: hello}
+    schema: &sample_schema
+      type: object
+      properties:
+        name: {type: string}
+      required: [name]
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: schema-only-rejects
+    values: {name: 42}
+    schema: *sample_schema
+    structural: {execution: completed, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: both-accept
+    values: {name: hello}
+    schema: *sample_schema
+    model: true
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: completed, ok: true, skipped_reason: null}
+  - name: semantic-rejects-after-schema-accepts
+    values: {name: rejected}
+    schema: *sample_schema
+    model: true
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: completed, ok: false, skipped_reason: null}
+  - name: both-reject
+    values: {name: 42}
+    schema: *sample_schema
+    model: true
+    structural: {execution: completed, ok: false, skipped_reason: null}
+    semantic: {execution: completed, ok: false, skipped_reason: null}
+  - name: missing-schema-model-accepts
+    values: {name: hello}
+    missing_schema: true
+    model: true
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: completed, ok: true, skipped_reason: null}
+    error_kind: schema_missing
+    warning: document-enforcement-via-model-only
+  - name: malformed-schema-model-rejects
+    values: {name: rejected}
+    schema_text: "["
+    model: true
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: completed, ok: false, skipped_reason: null}
+    error_kind: schema_invalid
+    warning: document-enforcement-via-model-only
+  - name: invalid-schema-dialect
+    values: {name: hello}
+    schema: {type: unknown}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    warning: document-enforcement-not-applied
+  - name: unsupported-enforced-schema
+    values: {name: hello}
+    schema: {$dynamicRef: "#dynamic"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: enforcement_unsupported
+    warning: document-enforcement-not-applied
+  - name: unresolved-reference
+    values: {name: hello}
+    status: soft
+    schema: {$ref: "#/$defs/Missing"}
+    # jsonschema resolves during evaluation; Ajv resolves during compilation.
+    structural:
+      execution: {python: errored, typescript: not_run}
+      ok: false
+      skipped_reason: null
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid

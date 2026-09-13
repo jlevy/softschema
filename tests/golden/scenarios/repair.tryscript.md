@@ -94,7 +94,6 @@ $ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "rescue/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
@@ -110,6 +109,7 @@ $ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -117,6 +117,7 @@ $ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -171,7 +172,6 @@ $ $SOFTSCHEMA repair drift/repair-scalar-drift.md
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "drift/repair-scalar-drift.md",
   "profile": "frontmatter-md",
@@ -187,6 +187,7 @@ $ $SOFTSCHEMA repair drift/repair-scalar-drift.md
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -194,6 +195,7 @@ $ $SOFTSCHEMA repair drift/repair-scalar-drift.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -244,13 +246,13 @@ $ $SOFTSCHEMA repair twice/repair-unquoted-colon.md > /dev/null && cp twice/repa
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "twice/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -258,6 +260,7 @@ $ $SOFTSCHEMA repair twice/repair-unquoted-colon.md > /dev/null && cp twice/repa
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -299,13 +302,13 @@ $ $SOFTSCHEMA repair valid/repair-already-valid.md
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "valid/repair-already-valid.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -313,6 +316,7 @@ $ $SOFTSCHEMA repair valid/repair-already-valid.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -355,13 +359,13 @@ $ $SOFTSCHEMA repair missing/repair-missing-required.md
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "invalid",
   "path": "missing/repair-missing-required.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -386,6 +390,7 @@ $ $SOFTSCHEMA repair missing/repair-missing-required.md
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -426,13 +431,13 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
   },
   "contract_id": "test.repair:Doc/v1",
   "document_metadata": null,
-  "enforcement_applied": "none",
   "outcome": "invalid",
   "path": "floor/repair-unrepairable.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "yaml_parse_error"
   },
@@ -445,6 +450,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
         "message": [..]
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -483,7 +489,6 @@ $ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "check/repair-unquoted-colon.md",
   "profile": "frontmatter-md",
@@ -499,6 +504,7 @@ $ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -506,6 +512,7 @@ $ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -544,13 +551,13 @@ $ $SOFTSCHEMA repair check-clean/repair-already-valid.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "check-clean/repair-already-valid.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -558,6 +565,7 @@ $ $SOFTSCHEMA repair check-clean/repair-already-valid.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -593,7 +601,6 @@ $ $SOFTSCHEMA repair pure/repair-pure.yaml
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "pure/repair-pure.yaml",
   "profile": "pure-yaml",
@@ -617,6 +624,7 @@ $ $SOFTSCHEMA repair pure/repair-pure.yaml
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -624,6 +632,7 @@ $ $SOFTSCHEMA repair pure/repair-pure.yaml
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -688,13 +697,13 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
   "contract": null,
   "contract_id": "",
   "document_metadata": null,
-  "enforcement_applied": "none",
   "outcome": "invalid",
   "path": "repair-unterminated-fence.md",
   "profile": "frontmatter-md",
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "yaml_parse_error"
   },
@@ -707,6 +716,7 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
         "message": "Delimiter `---` for end of frontmatter not found: `repair-unterminated-fence.md`"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -756,7 +766,6 @@ $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "repair-ends-at-fence.md",
   "profile": "frontmatter-md",
@@ -772,6 +781,7 @@ $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -779,6 +789,7 @@ $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -796,8 +807,8 @@ bytes are still a newline and the closing `---`, with nothing after it: repair r
 the metadata region and did not normalize the file's ending.
 
 ```console
-$ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md > /dev/null && tail -c 4 repair-ends-at-fence.md | od -c | head -1
-0000000  \n   -   -   -
+$ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md > /dev/null && tail -c 4 repair-ends-at-fence.md | od -An -tx1 | xargs
+0a 2d 2d 2d
 ? 0
 ```
 
@@ -844,7 +855,6 @@ $ cd bom && $SOFTSCHEMA repair repair-bom.md --check
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "repair-bom.md",
   "profile": "frontmatter-md",
@@ -860,6 +870,7 @@ $ cd bom && $SOFTSCHEMA repair repair-bom.md --check
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -867,6 +878,7 @@ $ cd bom && $SOFTSCHEMA repair repair-bom.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -913,8 +925,8 @@ $ cd bom && $SOFTSCHEMA validate repair-bom.md | grep -E '"(outcome|contract_id)
 ```
 
 ```console
-$ cd bom && head -c 3 repair-bom.md | od -c | head -1
-0000000   -   -   -
+$ cd bom && head -c 3 repair-bom.md | od -An -tx1 | xargs
+2d 2d 2d
 ? 0
 ```
 
@@ -948,7 +960,6 @@ $ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
     "schema": "repair.schema.yaml",
     "status": null
   },
-  "enforcement_applied": "schema",
   "outcome": "valid",
   "path": "repair-unquoted-colon.md",
   "profile": "frontmatter-md",
@@ -964,6 +975,7 @@ $ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -971,6 +983,7 @@ $ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },

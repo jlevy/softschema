@@ -47,17 +47,13 @@ class SchemaProfile(StrEnum):
     pure_yaml = "pure-yaml"
 
 
-EnforcementApplied = Literal["schema", "model", "none"]
-"""Which mechanism was authoritative for a payload's structure.
+ValidationExecution = Literal["not_run", "completed", "errored"]
+"""Actual progress of one payload validator, independent of its verdict.
 
-``SchemaStatus`` states the strictness a project intends; this states the strictness a
-particular validation run delivered. The two are independent, so a result reports both.
-
-The three values name who is authoritative, and therefore who else can reproduce the
-verdict: ``schema`` means a compiled JSON Schema was applied, which any implementation
-can rerun from a committed file; ``model`` means a source model validated the payload in
-one implementation's language and said nothing to any other; ``none`` means neither, so
-only the artifact format and metadata were checked.
+``not_run`` means no payload evaluation started, including failed preparation.
+``completed`` means evaluation returned a verdict; the check's ``ok`` says whether it
+accepted the payload. ``errored`` means evaluation started but produced no verdict.
+An exception that propagates instead of returning a result carries no execution claim.
 """
 
 
