@@ -4,21 +4,19 @@ description: Replace the unreleased mechanism hierarchy with execution evidence 
 date: 2026-09-12
 status: Implemented and source-integrated; coordinated release pending
 upstream_pr: https://github.com/jlevy/softschema/pull/59
-baseline: 0dfbe95f4083678d61a379f26822c05ce32eb508
-downstream_integration_pr: https://github.com/finterm-ai/trading/pull/525
-tracking: [trading-jrva, trading-pkyo, trading-2rc2, trading-y277, trading-44ot]
+baseline: main at bb8617aa7249096eec39e1f45d0b245289ede651
 ---
 # Actual Validation Execution and Result Migration
 
 ## Problem and Decision
 
 A result must distinguish a check that accepted a payload from one that never ran.
-At the review baseline, PR 59 reported a single `enforcement_applied` value: `schema`,
-`model`, or `none`. Both validators can run, however, and a model can reject a payload
-its schema accepts. Reporting `schema` cannot establish that the overall verdict is
-reproducible from the compiled schema.
-TypeScript also mistook a model label for an invoked model, and both runtimes reported
-schema preparation failures as an applied schema.
+PR 59 at review revision `0dfbe95` reported a single `enforcement_applied` value:
+`schema`, `model`, or `none`. Both validators can run, however, and a model can reject a
+payload its schema accepts.
+Reporting `schema` cannot establish that the overall verdict is reproducible from the
+compiled schema. TypeScript also mistook a model label for an invoked model, and both
+runtimes reported schema preparation failures as an applied schema.
 The implementation below resolves these defects.
 
 Use the existing independent `structural` and `semantic` result records.
@@ -26,12 +24,8 @@ Add an `execution` field to each and remove the unreleased `enforcement_applied`
 and type. The spec remains the authority for the public definitions.
 This plan records the migration and verification decisions.
 
-PR 525 advanced from that baseline to the reviewed SoftSchema `b494f729` and Metaproc
-`54f38d8` sources. Its head `ed8043f24` migrates the manual result consumers and bounds
-the scalar timeout retries activated by the Metaproc update; all fifteen hosted checks
-passed. PR 524 incorporates that adoption in `269bdc0f3` alongside the broader V3 fixes.
-These exact source pins establish downstream integration, while the coordinated package
-release remains pending.
+A downstream consumer verified source integration against `b494f72`; the coordinated
+package release remains open.
 
 ## Public Contract
 
@@ -134,29 +128,25 @@ without fabricating evidence for an older version.
 Consumers must tolerate historical reports without execution fields and must require new
 evidence only for newly run checks under an upgraded validator.
 
-Trading’s V3 bindings and loaders currently supply models and compiled schemas and
-consume `ok`, values, and layer errors.
-Keep that behavior while advancing exact source pins and verifying the serializer and
-consumers. No artifact-format migration is needed for PR 525’s existing files.
+Consumers whose bindings and loaders supply models and compiled schemas and consume
+`ok`, values, and layer errors keep that behavior.
+Their existing artifact files need no format migration.
 
 ## Implementation and Verification
 
-- [x] Add failing shared execution vectors and runtime-specific model/exception cases
-  (`trading-jrva`, `trading-pkyo`, `trading-2rc2`).
+- [x] Add failing shared execution vectors and runtime-specific model/exception cases.
 - [x] Implement explicit layer execution in Python and TypeScript, including lower-level
-  validation, values, artifacts, pre-payload failures, and repair (`trading-jrva`,
-  `trading-pkyo`, `trading-2rc2`).
+  validation, values, artifacts, pre-payload failures, and repair.
 - [x] Replace the unreleased hierarchy and update public exports and explicit
-  constructor call sites (`trading-2rc2`).
+  constructor call sites.
 - [x] Revise the spec, guides, design references, changelog, source skill and generated
-  mirrors, and broad CLI journeys (`trading-2rc2`).
+  mirrors, and broad CLI journeys.
 - [x] Verify frozen Python tests and lint; TypeScript lint, types, coverage, build, and
-  package checks; every golden runtime and cross-implementation output comparison
-  (`trading-jrva`, `trading-pkyo`, `trading-2rc2`).
-- [x] Integrate the exact commit into Metaproc and Trading consumer verification
-  (`trading-y277`).
-- [ ] Publish coordinated 0.9.0 releases and migrate released consumer dependency ranges
-  (`trading-44ot`); this remains separate from source implementation completion.
+  package checks; every golden runtime and cross-implementation output comparison.
+- [x] Verify source integration of the exact commit in Metaproc and a downstream
+  consumer.
+- [ ] Publish coordinated 0.9.0 releases and migrate released consumer dependency
+  ranges; this remains separate from source implementation completion.
 
 Shared vectors own portable evidence cases; adapter tests own model identity, callback
 exceptions, and engine-specific progress.
@@ -166,29 +156,24 @@ runner, review the changes, and retain the existing golden fixture ownership rul
 
 ## Verification Record
 
-Trading’s structured projection-failure record exposed a compatibility defect in the
-checked overlay: a nullable model containing another nullable, explicitly closed model
-was refused because the compiler added redundant closure to the inner nullable wrapper.
+Downstream integration exposed a compatibility defect in the checked overlay: a nullable
+model containing another nullable, explicitly closed model was refused because the
+compiler added redundant closure to the inner nullable wrapper.
 The compiler now recognizes a pure reference plus a null-only branch in `anyOf` or
 `oneOf`, with annotation-only siblings.
 It preserves the referenced object’s explicit closure or opt-out and retains the
 existing analysis for other composition.
 Five shared vectors cover nested models, null, unknown-property rejection, explicit open
-policy, and validation siblings (`trading-xcv9`). Existing files require no rewrite.
+policy, and validation siblings.
+Existing files require no rewrite.
 
-Source implementation `aadb398` and Metaproc serializer `6d0cc9f` first passed Trading’s
-596-test V3 and model suite, with two retained-data skips and an unchanged lockfile.
-The expanded integration passed 719 V3/model checks with the same two skips, 704 EIA
-checks with two skips, and 253 affected V2 checks.
-That broader verification found manual constructors outside V3 that needed the required
-field: follow-on parsing/binding errors now explicitly record both layers as `not_run`,
-and registry metadata errors preserve the actual native check record through
-`dataclasses.replace`. PR 525 includes these migrations and their regressions
-(`trading-y277`). This verifies source integration; the coordinated release and released
-dependency ranges remain open.
+Downstream verification also found manual layer-result constructors that need the
+required field. A parsing or binding error raised before either check runs records both
+layers as `not_run` explicitly, and code that rewrites a native result preserves its
+actual check records, for example through `dataclasses.replace`.
 
-The final source passes 251 Python tests and the complete Python lint suite (Ruff,
-BasedPyright, codespell, documentation footers, and retired-surface checks).
+The source at `b494f72` passes 251 Python tests and the complete Python lint suite
+(Ruff, BasedPyright, codespell, documentation footers, and retired-surface checks).
 TypeScript passes lint, types, 263 tests, build, and package publication lint;
 `validate.ts` has 100% line coverage.
 Fourteen shared vectors cover independent execution, with adapter cases for actual model
@@ -205,10 +190,8 @@ skill output.
 
 Metaproc’s serializer integration passed 96 tests against this source through native
 dataclass forwarding.
-The final source revision `b494f729` passed all eighteen hosted checks, including both
-language suites, shared journeys and package smoke tests across operating systems.
-Downstream source adoption and consumer verification close `trading-y277`; publication
-remains `trading-44ot`.
+Revision `b494f72` passed all eighteen hosted checks, including both language suites,
+shared journeys and package smoke tests across operating systems.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
