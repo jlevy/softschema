@@ -112,7 +112,7 @@ completed checks rather than a winning mechanism.
 | Old serialized validation results | Absence of `execution` means historical execution is unknown. Preserve absence or rerun validation; never infer an execution state from `ok`, `engine`, or skip reasons. No result-deserialization migration framework is added. |
 | Public Python result constructors | Require `execution` explicitly as a keyword-only argument. Update manual constructors and fixtures rather than silently inventing a default. |
 | Public TypeScript interfaces | Require the same field on manually constructed layer records. |
-| Validation function callers | Keep callable arguments, verdict rules, error shapes, and skip reasons. |
+| Validation function callers | Existing arguments and default verdict rules remain supported. The optional `require` argument rejects checks that did not complete. TypeScript structural skip reasons now follow the supplied semantic validator, not its label. |
 
 The new field is under Unreleased and has no containing release tag at the baseline.
 Do not keep a compatibility alias for it.
@@ -133,6 +133,14 @@ evidence only for newly run checks under an upgraded validator.
 Consumers whose bindings and loaders supply models and compiled schemas and consume
 `ok`, values, and layer errors keep that behavior.
 Their existing artifact files need no format migration.
+
+Metaproc’s built-in model-only bindings keep their existing validation behavior and
+`document-enforcement-via-model-only` advisory.
+Their structural check is `not_run` with `inferred_via_model`; the supplied model’s
+acceptance or rejection is a `completed` semantic check.
+The structural `engine` label still names the configured engine and does not establish
+execution. Adding compiled schemas or requiring a structural check would change those
+bindings’ contract and is a separate migration.
 
 ## Implementation and Verification
 
@@ -196,6 +204,16 @@ Metaproc’s serializer integration passed 96 tests against this source through 
 dataclass forwarding.
 Revision `b494f72` passed all eighteen hosted checks, including both language suites,
 shared journeys and package smoke tests across operating systems.
+
+Follow-up verification of host-required checks at `445ec92`, with isolated skill-install
+test fixtures, passes 257 Python tests and 297 TypeScript tests, lint, types, and
+coverage. All 85 Python, 83 Node, and 85 Bun golden commands and 27 direct
+cross-implementation comparisons pass.
+Local wheel, source-distribution, and npm-tarball installations pass the quickstart,
+both artifact profiles, required structural validation, bundled-resource access, and
+skill bootstrap checks.
+This local verification does not replace the hosted operating-system matrix or the
+coordinated release gate.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

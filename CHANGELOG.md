@@ -25,8 +25,10 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   `load_artifact`, and `validate_values`, a `require` option on their TypeScript
   counterparts, and a repeatable `validate --require structural|semantic` in both CLIs.
   A required layer that did not complete is not ok and gains a `check_not_completed`
-  error carrying `layer` and `execution`, so the outcome is `invalid`, strict reads
-  raise or throw, and the CLI exits 1. Without a requirement, results are unchanged.
+  error carrying `layer` and `execution`. An otherwise valid result becomes `invalid`,
+  strict reads raise or throw, and `validate` exits 1 for readable invalid artifacts.
+  An unreadable artifact retains the library’s `input_error` outcome and the `validate`
+  command’s exit 2. Without a requirement, results are unchanged.
 
 ### Changed
 
