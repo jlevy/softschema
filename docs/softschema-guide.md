@@ -57,6 +57,16 @@ The status records intended maturity; it does not bind a validator by itself.
 A bound model or schema supplies the rules.
 `soft` and `permissive` apply those authored rules as-is; `enforced` adds checked object
 closure when a structural schema is bound.
+Every result reports `structural.execution` and `semantic.execution` independently:
+`not_run`, `completed`, or `errored`. A completed check can accept or reject; read its
+`ok` and errors for the verdict.
+A model label or schema path alone proves no execution.
+An effective `enforced` mode without a completed structural check emits a warning.
+A valid metadata-only result establishes format and metadata validity, so hosts that
+require payload checks must supply trusted bindings and verify their completed results.
+`validate --require structural` (repeatable, also `semantic`) makes a required check
+that did not complete fail validation.
+See [validation execution](softschema-spec.md#reporting-validation-execution).
 
 The schema itself can evolve throughout this progression.
 A project may add optional fields, types, enums, nested records, and cross-field

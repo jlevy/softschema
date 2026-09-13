@@ -30,8 +30,19 @@ export interface SchemaMetadata {
   status: SchemaStatus | null;
 }
 
+/**
+ * Actual progress of one payload check, independent of its verdict and declared mode.
+ * Preparation failures are `not_run`; an invoked check that cannot return a verdict is
+ * `errored`. A returned pass or rejection is `completed`.
+ */
+export type ValidationExecution = "not_run" | "completed" | "errored";
+
 /** Public warning codes (the `document-*` family). */
-export type WarningCode = "document-contract-mismatch" | "document-status-mismatch";
+export type WarningCode =
+  | "document-contract-mismatch"
+  | "document-status-mismatch"
+  | "document-enforcement-not-applied"
+  | "document-enforcement-via-model-only";
 
 export interface SchemaWarning {
   code: WarningCode;

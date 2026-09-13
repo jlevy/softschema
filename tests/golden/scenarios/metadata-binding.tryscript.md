@@ -35,6 +35,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-ok.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -42,6 +43,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-ok.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -84,6 +86,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -91,6 +94,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -169,6 +173,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-ok.md --schema tests/golden/f
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -194,6 +199,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-ok.md --schema tests/golden/f
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -232,6 +238,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-missing-schema.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -245,6 +252,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-missing-schema.md
         "path": "no-such.schema.yaml"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -286,6 +294,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-absolute-schema.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -299,6 +308,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-absolute-schema.md
         "path": "/etc/error-norm.schema.yaml"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -341,6 +351,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-escaping-schema.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -354,6 +365,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-escaping-schema.md
         "path": "../../../../../../../../etc/error-norm.schema.yaml"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -404,6 +416,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-envelope-absent.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "envelope_mismatch"
   },
@@ -420,6 +433,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bound-envelope-absent.md
         "message": "contract 'test.bind:Doc/v1' expects 'data'"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -462,6 +476,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -469,6 +484,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_schema"
   },
@@ -513,6 +529,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-enforced.yaml
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -532,6 +549,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-enforced.yaml
         "value": 42
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -572,6 +590,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-envelope.yaml
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -579,6 +598,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-envelope.yaml
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -616,6 +636,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml --profile fro
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "no_frontmatter"
   },
@@ -628,6 +649,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml --profile fro
         "message": "no frontmatter in tests/golden/fixtures/pure-yaml-report.yaml"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -669,6 +691,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-unnamed.data
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -676,6 +699,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-unnamed.data
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },

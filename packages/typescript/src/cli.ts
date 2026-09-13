@@ -15,7 +15,7 @@ import {
 import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
@@ -514,7 +514,7 @@ function inferEnvelope(
   }
 }
 
-interface ValidateOptions {
+interface BindingOptions {
   contract?: string;
   envelope?: string;
   model?: string;
@@ -523,7 +523,11 @@ interface ValidateOptions {
   status?: string;
 }
 
-interface RepairOptions extends ValidateOptions {
+interface ValidateOptions extends BindingOptions {
+  require?: ("structural" | "semantic")[];
+}
+
+interface RepairOptions extends BindingOptions {
   dryRun?: boolean;
   check?: boolean;
 }
@@ -538,6 +542,17 @@ function missingContractReason(profile: SchemaProfile): string {
   return profile === "pure-yaml"
     ? "missing --contract because the document root is not a YAML mapping"
     : "missing --contract because the document has no YAML frontmatter";
+}
+
+/** Accumulate repeated `--require` values, accepting only the two layer names. */
+function collectRequiredCheck(
+  value: string,
+  previous: ("structural" | "semantic")[] | undefined,
+): ("structural" | "semantic")[] {
+  if (value !== "structural" && value !== "semantic") {
+    throw new InvalidArgumentError("expected structural or semantic.");
+  }
+  return [...(previous ?? []), value];
 }
 
 /** Import `path:export` and confirm the export is a Zod schema before use. */
@@ -577,7 +592,7 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
  * mode and not the other.
  */
 function inferValidationBinding(
-  opts: ValidateOptions,
+  opts: BindingOptions,
   root: Record<string, unknown> | null,
   profile: SchemaProfile,
 ): Contract {
@@ -675,6 +690,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     const result = validateArtifact(path, contract, {
       semanticModel,
       document: read.document,
+      require: opts.require,
     });
     if (result.outcome === "input_error") {
       throw new Error("pre-parsed CLI validation returned an input error");
@@ -1027,9 +1043,16 @@ export async function main(argv: string[] = process.argv): Promise<number> {
           "(softschema.contract, schema, envelope) needs no flags; flags override the " +
           "document. Never writes; to fix an artifact, use `repair`",
       ),
-  ).action(async (path: string, opts: ValidateOptions) => {
-    exitCode = await runValidate(path, opts);
-  });
+  )
+    .option(
+      "--require <check>",
+      "fail unless this check completed: structural or semantic; repeat for both. Without " +
+        "it a skipped check can still yield a valid result",
+      collectRequiredCheck,
+    )
+    .action(async (path: string, opts: ValidateOptions) => {
+      exitCode = await runValidate(path, opts);
+    });
 
   // `--dry-run` and `--check` both suppress the write and differ in what they assert, the
   // same way they differ elsewhere in this CLI: `skill --install --dry-run` previews and

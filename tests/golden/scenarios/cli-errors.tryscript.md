@@ -70,6 +70,17 @@ softschema validate: [..]
 ? 2
 ```
 
+# Test: validate --require with an unknown layer is a usage error (exit 2)
+
+`--require` accepts only `structural` and `semantic`. The diagnostic wording is each
+argument parser's own, so only the exit class and a non-empty diagnostic are asserted.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --require payload 2>&1
+...
+? 2
+```
+
 # Test: inspect on a missing file is a clean usage error (exit 2)
 
 ```console

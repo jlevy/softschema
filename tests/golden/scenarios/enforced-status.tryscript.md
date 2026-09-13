@@ -34,6 +34,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -41,6 +42,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -55,6 +57,136 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
   "warnings": []
 }
 ? 0
+```
+
+# Test: enforced with nothing bound reports that nothing was applied
+
+The same document with no `--schema` and no model. `enforced` states intent and binds
+nothing, so there is no check to disagree with the undeclared `confidence` and
+`meta.fetched_by`, and the verdict is `valid` at exit 0. The layer `execution` fields and the
+warning are what distinguish that from a document a schema actually passed.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md
+{
+  "contract": {
+    "envelope_key": "record",
+    "id": "test.enforced:Record/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "test.enforced:Record/v1",
+  "document_metadata": {
+    "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/extra-field-enforced.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "execution": "not_run",
+    "ok": true,
+    "skipped_reason": "no_schema"
+  },
+  "values": {
+    "confidence": "high",
+    "meta": {
+      "fetched_by": "agent",
+      "source": "web"
+    },
+    "name": "Acme"
+  },
+  "warnings": [
+    {
+      "code": "document-enforcement-not-applied",
+      "message": "status is 'enforced' but neither structural nor semantic validation completed; the result does not establish payload validity",
+      "severity": "warning"
+    }
+  ]
+}
+? 0
+```
+
+# Test: --require structural refuses a result no structural check completed
+
+A gate that needs a completed structural check says so with `--require`. The same
+metadata-only document now fails: the structural record is not ok and names the layer
+and its actual execution, so the outcome is `invalid` at exit 1.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --require structural
+{
+  "contract": {
+    "envelope_key": "record",
+    "id": "test.enforced:Record/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "test.enforced:Record/v1",
+  "document_metadata": {
+    "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/extra-field-enforced.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "execution": "not_run",
+        "kind": "check_not_completed",
+        "layer": "structural",
+        "message": "required structural check did not complete (execution: not_run)"
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "no_schema"
+  },
+  "values": {
+    "confidence": "high",
+    "meta": {
+      "fetched_by": "agent",
+      "source": "web"
+    },
+    "name": "Acme"
+  },
+  "warnings": [
+    {
+      "code": "document-enforcement-not-applied",
+      "message": "status is 'enforced' but neither structural nor semantic validation completed; the result does not establish payload validity",
+      "severity": "warning"
+    }
+  ]
+}
+? 1
 ```
 
 # Test: --status enforced applies the strict-extras overlay
@@ -89,6 +221,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -129,6 +262,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md --schema 
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -180,6 +314,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --schema te
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -220,6 +355,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --schema te
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -267,6 +403,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-ok.md --schema tests/go
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -274,6 +411,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-ok.md --schema tests/go
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -315,6 +453,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-violation.md --schema t
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -337,6 +476,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-violation.md --schema t
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -378,6 +518,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-undeclared.md --schema 
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -399,6 +540,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/conditional-undeclared.md --schema 
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -441,6 +583,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-ok.md --schema tests/
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -448,6 +591,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-ok.md --schema tests/
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -490,6 +634,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-undeclared.md --schem
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -528,6 +673,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/composed-open-undeclared.md --schem
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },

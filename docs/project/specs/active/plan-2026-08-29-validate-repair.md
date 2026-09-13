@@ -128,9 +128,9 @@ A conform pass keyed on `string_type` **cannot fire for
 The mirror of that is just as sharp.
 metaproc registers every built-in contract with a model and **no `schema_path`**
 (`plugins/registry.py`), and softschema answers a missing schema with
-`StructuralResult(ok=True, skipped_reason="no_schema")`. So a conform keyed only on the
-structural layer would be a silent no-op for the very consumer this migration is for — a
-regression from the code being moved.
+`StructuralResult(ok=True, execution="not_run", skipped_reason="inferred_via_model")`.
+So a conform keyed only on the structural layer would be a silent no-op for the very
+consumer this migration is for — a regression from the code being moved.
 
 softschema already runs
 [two independent layers](../../../softschema-spec.md#validation-expectations) and

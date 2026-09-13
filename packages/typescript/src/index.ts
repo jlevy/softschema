@@ -23,6 +23,7 @@ export {
   type SchemaProfile,
   type SchemaStatus,
   type SchemaWarning,
+  type ValidationExecution,
   type WarningCode,
 } from "./models.js";
 export { Contracts } from "./registry.js";

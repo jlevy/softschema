@@ -4,6 +4,74 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+Validation results now record actual execution independently for structural and semantic
+checks. Declared `status` still selects validation mode; it does not prove a check ran.
+
+### Added
+
+- `structural.execution` and `semantic.execution` on all returned validation records,
+  including CLI JSON and repair results.
+  The public `ValidationExecution` type is `not_run`, `completed`, or `errored`. A
+  completed check may accept or reject; read `ok` and errors for its verdict.
+  Missing or malformed schemas report preparation failure without claiming payload
+  evaluation. Both checks remain visible when a schema accepts and a model rejects.
+- Two advisory warnings when effective mode is `enforced` and structural validation did
+  not complete: `document-enforcement-via-model-only` if semantic validation completed,
+  or `document-enforcement-not-applied` otherwise.
+  Failures before payload extraction do not emit a payload-check shortfall warning.
+- An opt-in requirement for completed checks: `require=` on Python `validate_artifact`,
+  `load_artifact`, and `validate_values`, a `require` option on their TypeScript
+  counterparts, and a repeatable `validate --require structural|semantic` in both CLIs.
+  A required layer that did not complete is not ok and gains a `check_not_completed`
+  error carrying `layer` and `execution`. An otherwise valid result becomes `invalid`,
+  strict reads raise or throw, and `validate` exits 1 for readable invalid artifacts.
+  An unreadable artifact retains the library’s `input_error` outcome and the `validate`
+  command’s exit 2. Without a requirement, results are unchanged.
+
+### Changed
+
+- Replace the unreleased `enforcement_applied` hierarchy with per-layer execution.
+  TypeScript now reports actual model invocation independently of its optional label.
+- The spec defines execution boundaries, including engine-specific preparation versus
+  evaluation failures, and the effective status fallback to `soft`.
+- Checked enforcement accepts nested nullable references to explicitly closed models
+  without adding redundant object closure to their nullable wrappers.
+  Explicit open object policy and rejection of unknown fields remain owned by the
+  referenced model.
+
+### Fixed
+
+- Python `repair_and_validate_artifact(..., model=...)` uses the supplied model for both
+  conformance and the final verdict.
+  A model rejection now returns `invalid` after repair rather than validating against
+  the caller’s model-free contract.
+  The caller’s contract is unchanged.
+- TypeScript repair results for a missing or invalid-UTF-8 artifact without an inferred
+  contract report `input_error`, matching Python and other library reads.
+  Parse failures remain `invalid`.
+- TypeScript `validateArtifact` without a bound schema reports structural
+  `skipped_reason: inferred_via_model` only when the call supplies a `semanticModel`, as
+  Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
+  without a label reports `inferred_via_model`. The CLI output is unchanged because
+  `--model` sets both.
+
+### Compatibility
+
+Target the next coordinated minor release, **0.9.0**. Python layer-result constructors
+require an explicit keyword-only `execution`; TypeScript layer interfaces require the
+same field. Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit
+classes, artifact metadata, and compiled schema files are unchanged except for the
+corrected repair-result verdicts above; skip reasons change only for the TypeScript
+library fix above. Strict serialized-result consumers must accept the new layer fields
+and remove the unreleased aggregate field.
+Old reports without execution fields have **unknown** execution; preserve absence or
+revalidate rather than fabricating evidence.
+See the
+[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
+for downstream adoption and release sequencing.
+
 ## v0.8.1—2026-09-11
 
 A patch release. Python semantic validation returned a result that could not be

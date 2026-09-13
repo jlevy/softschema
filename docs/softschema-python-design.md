@@ -287,7 +287,8 @@ and `value` name engine mechanisms and diagnostic context rather than the stable
 category.
 
 `ArtifactValidationResult.outcome` is the stable boundary discriminator: `valid`,
-`invalid`, or `input_error`. Library callers always receive this structured result.
+`invalid`, or `input_error`. Ordinary validation failures return this structured result;
+unexpected model callback exceptions propagate.
 Which failures reach a caller as a result and which as an error follows from the command
 invoked, not from which options it was given.
 `validate` reads: it refuses an artifact it cannot open with a one-line stderr message
@@ -295,6 +296,33 @@ and exit `2`, whether or not a contract was named.
 `repair` checks: an unreadable artifact is its ordinary input, so the failure comes back
 as a record in the result at exit `1`, under no contract when the document declares none
 legibly. Readable results map to exits `0` or `1` on both.
+
+`StructuralResult.execution` and `SemanticResult.execution` independently report
+`not_run`, `completed`, or `errored`, per the spec’s
+[execution contract](softschema-spec.md#reporting-validation-execution).
+The exported `ValidationExecution` alias uses plain strings.
+Both frozen dataclasses require `execution` as a keyword-only constructor argument,
+including hand-built fixtures.
+No default may invent historical evidence.
+
+`completed` means the layer returned a verdict; `ok` distinguishes pass from rejection.
+A schema preparation failure is `not_run`. An error raised during `iter_errors`, such as
+a lazily resolved missing reference, is `errored` with the existing structural error.
+Unexpected semantic callback exceptions propagate, so there is no returned result to
+mark completed. `validate_values`, artifact validation, and repair share these records.
+Older serialized records without this field have unknown execution and must not be
+backfilled from skip reasons or a successful outcome.
+
+`validate_artifact`, `load_artifact`, and `validate_values` accept
+`require: Collection[Literal["structural", "semantic"]] = ()`, per the spec’s
+[required checks](softschema-spec.md#required-checks).
+Each required layer whose `execution` is not `completed` is rebuilt with
+`dataclasses.replace` as `ok=False` with a `check_not_completed` error appended, and the
+artifact result recomputes `outcome` from the new records, so `load_artifact` raises
+`ArtifactInvalidError`. The empty default returns the original result object.
+An unknown layer name raises `ValueError` before validation starts.
+The CLI exposes the requirement as a repeatable
+`validate --require structural|semantic`.
 
 ### Alignment with `python-cli-patterns`
 
@@ -350,6 +378,8 @@ if any(w.code.startswith("document-") for w in result.warnings):
 | --- | --- |
 | `document-contract-mismatch` | Document declares a `softschema.contract` that doesn’t match the registered contract’s `id`, and the validator is running in advisory metadata mode. In enforced mode (the default) this is a structural error instead, with kind `document_contract_mismatch`. |
 | `document-status-mismatch` | Document declares a `softschema.status` that doesn’t match the contract’s status. Always advisory: the contract’s resolved status, not the document’s claim, governs validation (including the `enforced` strict-extras overlay). |
+| `document-enforcement-not-applied` | The effective mode is `enforced`, payload extraction succeeded, and neither structural nor semantic validation completed. |
+| `document-enforcement-via-model-only` | The effective mode is `enforced`, structural validation did not complete, and semantic validation completed. This includes a model run after schema preparation failed. |
 
 A regression test (`tests/test_warning_codes.py`) holds the table to the enum: any new
 emitted code that isn’t a `WarningCode` member fails CI.
@@ -379,6 +409,7 @@ The current first-release kinds:
 | `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
 | `enforcement_unsupported` | The schema is valid Draft 2020-12, but its topology is outside the checked enforced profile; `reason` and `schema_path` identify the boundary. |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
+| `check_not_completed` | A layer named in `require` did not complete. It carries `layer` and `execution` and is appended after existing errors; a required semantic layer receives the same record in `SemanticResult.errors`. |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them
 as the documented surface and open an issue if a consumer needs a typed constant.

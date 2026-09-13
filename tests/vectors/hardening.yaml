@@ -431,6 +431,136 @@ enforcement_semantics:
     value: { company_facts: { brands: [{ name: Acme }] } }
     raw: valid
     enforced: valid
+  - id: nested_nullable_references_to_closed_generated_models
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+          default: null
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+              default: null
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original } } }
+    raw: valid
+    enforced: valid
+  - id: nested_nullable_closed_models_accept_null
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: null } }
+    raw: valid
+    enforced: valid
+  - id: nested_nullable_closed_models_reject_unknown_properties
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original, extra: 1 } } }
+    raw: invalid
+    enforced: invalid
+  - id: nested_nullable_oneof_preserves_explicit_open_policy
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              oneOf:
+                - { type: "null", description: No failure }
+                - { $ref: "#/$defs/Failure", title: Failure }
+              default: null
+        Failure:
+          type: object
+          additionalProperties: true
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original, extra: 1 } } }
+    raw: valid
+    enforced: valid
+  - id: nullable_wrapper_validation_siblings_still_require_safety_analysis
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+              properties: { message: { type: string } }
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original } } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
   - id: pattern_only_object
     schema:
       type: object

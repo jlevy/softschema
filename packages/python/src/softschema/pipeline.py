@@ -63,6 +63,9 @@ def repair_and_validate_artifact(
     not touched. That is what a gate runs when it wants to know whether an artifact *would*
     be repaired without mutating one under review.
 
+    ``model`` overrides the contract's model for both conformance and final validation.
+    The caller's contract is unchanged; the result names the effective binding used.
+
     The returned result carries a ``repairs`` list describing every change. It is the field
     that distinguishes "was already valid" from "was repaired into validity"; an exit code
     cannot say which happened.
@@ -71,6 +74,8 @@ def repair_and_validate_artifact(
     repair is independently correct — an unparsable file left on disk to preserve a
     failing verdict helps nobody — and the verdict is reported honestly either way.
     """
+    if model is not None:
+        contract = contract.model_copy(update={"model": model})
     profile = contract.profile
     # A caller that already ran repair — the CLI does, because binding inference needs the
     # repaired text — hands the result in rather than making the file be repaired twice.
@@ -86,7 +91,7 @@ def repair_and_validate_artifact(
     conformed = conform_artifact(
         doc_path,
         schema_path=resolve_bound_schema(contract, doc_path, _document_metadata(text)),
-        model=model if model is not None else contract.model,
+        model=contract.model,
         envelope_key=contract.envelope_key,
         profile=profile,
         write=False,

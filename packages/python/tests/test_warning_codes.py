@@ -120,9 +120,33 @@ def test_no_undocumented_codes_emitted_in_smoke_run(tmp_path: Path) -> None:
         registry=_make_registry("example.movies:MoviePage/v1", SchemaStatus.permissive),
     )
 
-    emitted = {w.code for w in advisory_result.warnings} | {
-        w.code for w in enforced_result.warnings
-    }
+    # An enforced contract with nothing bound is its own warning-emitting path, and the
+    # two artifacts above cannot reach it: both resolve to a contract whose status is not
+    # `enforced`, so a new code emitted only on an enforcement shortfall stays invisible.
+    shortfall_artifact = _make_artifact(
+        tmp_path,
+        "softschema:\n  contract: example.movies:MoviePage/v1\n  status: enforced\n"
+        "movie:\n  title: x",
+    )
+    shortfall_registry = Contracts()
+    shortfall_registry.register(
+        Contract(
+            id="example.movies:MoviePage/v1",
+            envelope_key="movie",
+            status=SchemaStatus.enforced,
+        )
+    )
+    shortfall_result = validate_artifact(
+        shortfall_artifact,
+        contract_id="example.movies:MoviePage/v1",
+        registry=shortfall_registry,
+    )
+
+    emitted = (
+        {w.code for w in advisory_result.warnings}
+        | {w.code for w in enforced_result.warnings}
+        | {w.code for w in shortfall_result.warnings}
+    )
     unexpected = emitted - known
     assert not unexpected, (
         f"Validation emitted codes {sorted(unexpected)} not in WarningCode. "

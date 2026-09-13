@@ -61,7 +61,8 @@ That progression supports:
   payload. Consumers still read YAML only.
 - **Interoperability with strict systems.** A contract can converge on the fields and
   constraints required by a database, API, or other import boundary.
-  Enforced validation rejects incompatible records before the handoff.
+  A completed structural check under `enforced` rejects incompatible records before the
+  handoff.
 - **Derived views and durable memory.** Code can regenerate indexes, ledgers, and
   summaries from validated payloads, while optional prose preserves the reasoning that
   future humans or agents need.
@@ -245,6 +246,21 @@ When a structural schema is bound, `status: enforced` rejects any property the s
 does not declare. With only a host-supplied Pydantic or Zod model, validation delegates
 to that model and does not invent a structural schema; with neither, validation checks
 metadata only.
+
+`status: enforced` selects how a bound schema is checked; it is not proof that a check
+ran. For example, `softschema validate artifact.yaml` can report `valid` with
+`structural.execution: not_run` when the artifact has no schema binding.
+A handoff that requires structural validation can use:
+
+```bash
+softschema validate artifact.yaml --schema payload.schema.yaml --status enforced --require structural
+```
+
+The result reports `structural.execution: completed` whether the schema accepts or
+rejects the payload; `structural.ok` gives that verdict.
+Without a usable schema, `--require structural` returns an invalid result with
+`check_not_completed`. Semantic model checks have their own `semantic.execution` and
+`semantic.ok` fields.
 
 For an ordinary schema—one that declares its fields in one place per object—that is the
 whole rule, and the paragraph below is safe to skip.

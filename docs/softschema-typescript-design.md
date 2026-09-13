@@ -93,12 +93,13 @@ as YAML.
 
 When `status` is `enforced` and a structural schema is bound, Ajv applies the checked
 undeclared-property policy described below.
-Without a structural schema, `validateArtifact` preserves the semantic-only Zod path and
-reports structural validation as skipped with `inferred_via_model`; `validateValues`
-also runs the supplied Zod schema and leaves its unrequested structural result
-successful. If neither schema nor model is bound, artifact validation is metadata-only
-and reports `no_schema`. `status` does not synthesize JSON Schema or change whether a
-Zod object strips, passes through, or rejects unknown keys.
+Without a structural schema, `validateArtifact` runs Zod only when the call supplies a
+`semanticModel`, and then reports structural validation as skipped with
+`inferred_via_model`. A `Contract.model` label alone supplies no validator.
+`validateValues` runs a supplied Zod schema and leaves its unrequested structural result
+successful. If the call supplies neither a schema nor a semantic model, artifact
+validation is metadata-only and reports `no_schema`. `status` does not synthesize JSON
+Schema or change whether a Zod object strips, passes through, or rejects unknown keys.
 
 Before Ajv compilation, `prepareSchemaGraph` checks the root and every supplied resource
 as one offline graph.
@@ -135,9 +136,9 @@ explicitly in the shared vectors.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
-| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, error kinds, and warnings |
-| `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached |
-| `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status` and offline `resources` |
+| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, per-layer `execution`, error kinds, and warnings; `require=` ↔ `require` option |
+| `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached; accepts the same `require` |
+| `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status`, offline `resources`, and `require` |
 | `validate_structural` | `validateStructural` | jsonschema ↔ Ajv; shared record shape and meaning, with pinned native-engine deviations |
 | `clear_validator_cache` | `clearValidatorCache` | drop memoized compiled validators; both cache on schema content, keyed with the enforced overlay, and skip the cache when `resources` are supplied |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
@@ -155,12 +156,41 @@ explicitly in the shared vectors.
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
+| `ValidationExecution` | `ValidationExecution` | same three execution-state definitions on each layer |
 
 ## Result Shape and CLI Output
 
 `validateArtifact` returns the portable fields `contract`, `contract_id`,
-`document_metadata`, `outcome`, `path`, `profile`, `semantic`, `status`, `structural`,
-`values`, and `warnings`. Structural errors use engine-neutral records
+`document_metadata`, `outcome`, `path`, `profile`, `repairs`, `semantic`, `status`,
+`structural`, `values`, and `warnings`. Each structural and semantic record requires
+`execution`: `not_run`, `completed`, or `errored`, per the
+[execution contract](softschema-spec.md#reporting-validation-execution).
+`status` is the effective mode; each layer’s `ok` and errors describe its own verdict.
+The JSON shape retains both checks when a schema accepts and a model rejects.
+
+`Contract.model` is a descriptive label.
+Only the actual `semanticModel` passed to `validateArtifact` invokes Zod: a label
+without a validator reports semantic `not_run`, and a validator without a label records
+its completed verdict.
+Existing skip-reason strings remain for compatibility and must not be interpreted as
+execution evidence.
+Ajv compilation errors are `not_run`; exceptions after invocation are
+`errored` under the existing structural error contract.
+Unexpected semantic callback errors propagate.
+Old serialized layer records without execution fields have unknown execution.
+
+The `require` option of `validateArtifact`, `loadArtifact`, and `validateValues` takes
+`"structural"` and `"semantic"`, per the spec’s
+[required checks](softschema-spec.md#required-checks).
+Each required layer whose `execution` is not `completed` becomes `ok: false` with a
+`check_not_completed` error appended, and the artifact result recomputes `outcome` and
+its non-enumerable `ok`, so `loadArtifact` throws `ArtifactInvalidError`. An omitted or
+empty requirement returns the original result object.
+An unknown layer name throws before validation starts.
+The CLI exposes the requirement as a repeatable `validate --require structural|semantic`
+and reports an unknown value as a usage error (exit `2`).
+
+Structural errors use engine-neutral records
 `{ kind, code, path, property?, validator, validator_value, value, message }`, sorted by
 `(path, validator, property)`. `property` is present for missing and undeclared-field
 records, with one record per affected field.

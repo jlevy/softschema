@@ -357,6 +357,9 @@ It is not required to be an import path or a class name.
   the artifact format and metadata.
   These two paths preserve language-specific or metadata-only workflows; they do not
   provide the cross-language structural guarantee described above.
+  Because the same `status` can accompany different checks, a result must report each
+  check’s actual execution: see
+  [Reporting Validation Execution](#reporting-validation-execution).
 
 ### Rejecting undeclared properties under `enforced`
 
@@ -568,7 +571,7 @@ ones it refuses.
 | `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site, while fields declared only in `then` or `else` are admitted only when that branch applies and succeeds |
 | `dependentSchemas` branch declarations | Admit fields only when the trigger is present and the dependent schema succeeds |
 | `not` | Preserve the prohibition; declarations below it do not cause closure |
-| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
+| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword, including an `anyOf` or `oneOf` wrapper containing only that reference and a null-only branch; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
 | Plain structured `items` | Close each element schema independently when no `contains` schema co-describes its elements |
 | `prefixItems` with `items` | Close their structured value schemas independently; they apply to disjoint index ranges |
 | `contains` | Preserve the matcher without inferred closure so enforcement cannot change which elements match; an unclosed structured child below the matcher is unsupported |
@@ -600,7 +603,11 @@ Stable reasons include `dialect`, `pattern`, `reference`, `resource_identity`, a
 `shared_subschema`.
 
 The effective status is resolved by the caller (for example a registry contract or a
-`--status` flag), falling back to the document’s declared `softschema.status`.
+`--status` flag), falling back to the document’s declared `softschema.status`, and to
+`soft` when neither supplies one.
+A result reports the effective status and the document’s declaration separately, so a
+default is never reported as something the author wrote: the declaration is absent for a
+document that made none.
 
 ## Source of Truth
 
@@ -731,6 +738,8 @@ A validator must reject:
 - a model validation failure
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
   Values)
+- a layer the caller requires that did not complete (`check_not_completed`; see
+  [Required checks](#required-checks))
 
 Validation output is deterministic within each implementation.
 Across implementations, structural error records have the same engine-neutral fields and
@@ -741,6 +750,101 @@ Validation verdict parity is required for every shared vector.
 Error-record-set parity is required except for cases explicitly listed in the shared
 `engine_deviations` vectors; each runtime pins its own complete record set for those
 cases so unlisted drift fails.
+
+### Reporting Validation Execution
+
+The artifact’s `softschema.status` declares maturity or mode.
+The result’s `status` reports the effective mode after caller and registry precedence.
+Neither is evidence that a payload check ran.
+A host that requires a particular check supplies a trusted binding and verifies that
+check’s execution and verdict, either by reading the result or by passing the
+requirement to the validator as described in [Required checks](#required-checks).
+Metadata alone cannot satisfy that requirement.
+
+A conforming validator reports an `execution` field on each existing `structural` and
+`semantic` result record, for artifact validation, values validation, and repair:
+
+| Value | Meaning |
+| --- | --- |
+| `not_run` | No payload validator was invoked. This includes absent bindings, failures before payload extraction, and failed schema preparation. Existing errors and skip reasons explain the cause. |
+| `completed` | The validator completed its verdict. `ok: true` is acceptance; `ok: false` with errors is rejection. Both are evidence that the check ran. |
+| `errored` | Payload evaluation began but did not produce a completed verdict. Existing error records describe the failure where the API returns a result. |
+| Key absent | The serialized record predates the `execution` field, so execution is unknown. Readers must not default it to any value or infer it from `ok`, errors, or skip reasons. |
+
+Record execution at the invocation and completion boundaries.
+A schema path, model label, `engine` field, absent skip reason, or successful aggregate
+`outcome` is not execution evidence.
+Structural and semantic checks are independent; both may complete, and a model may
+reject a payload whose schema accepts it.
+A completed structural check establishes only its own verdict’s portability, not the
+reproducibility of additional semantic rules.
+
+A missing or malformed schema that fails preparation reports structural `not_run` and
+its existing schema error.
+An actual semantic validator still runs when supplied.
+Failures before payload extraction report both checks as `not_run`. A skipped layer may
+retain `ok: true` for compatibility; it never establishes payload acceptance.
+
+Engine preparation boundaries can differ.
+For a raw-mode unresolved local reference, Python’s jsonschema may begin evaluation
+before resolution fails (`errored`), while Ajv rejects the reference during compilation
+(`not_run`). The common definitions apply to both runtimes; shared vectors pin these
+explicit differences.
+Normal completed passes and rejections retain the common execution meaning.
+
+Unexpected semantic callback exceptions propagate under the existing API exception
+policy. A thrown call has no returned validation report; implementations must not catch
+programmer errors merely to manufacture a completed rejection or acceptance.
+
+When effective mode is `enforced` and structural validation did not complete, emit the
+advisory `document-enforcement-via-model-only` if semantic validation completed, or
+`document-enforcement-not-applied` otherwise.
+This rule applies after both checks and also covers schema preparation failures followed
+by model validation.
+`soft` and `permissive` do not emit these warnings.
+Failures before payload extraction emit no shortfall warning because there is no payload
+verdict to qualify.
+
+The warning does not change `ok`, `outcome`, or CLI exit classes.
+Hosts that require a completed structural check must inspect execution as well as the
+verdict, or require the check.
+Consumers of historical reports without execution fields preserve absence or revalidate.
+This output change introduces no artifact metadata or schema-file format change.
+
+#### Required checks
+
+A caller may name layers that must complete: `structural`, `semantic`, or both.
+The requirement comes from the caller for one validation, never from artifact metadata.
+Reference implementations accept it on artifact validation, strict reads, and values
+validation, and the `validate` command accepts a repeatable
+`--require structural|semantic`.
+
+After both checks run, each required layer is judged by its `execution`:
+
+| Required layer execution | Effect |
+| --- | --- |
+| `completed` | None. The layer keeps its own verdict; a completed rejection is already not ok and gains no further error. |
+| `not_run` or `errored` | The layer’s `ok` becomes `false`, and one error is appended after its existing errors. |
+
+The appended error record has these fields:
+
+| Field | Value |
+| --- | --- |
+| `kind` | `check_not_completed` |
+| `layer` | `structural` or `semantic` |
+| `execution` | The layer’s actual `execution` value |
+| `message` | `required <layer> check did not complete (execution: <execution>)` |
+
+`execution`, `skipped_reason`, warnings, and existing errors keep their values and
+order, so a schema preparation error remains the first structural error.
+`outcome` is recomputed by the usual rule: a result that was `valid` becomes `invalid`,
+and an `input_error` stays one.
+A strict read refuses the artifact, and the `validate` command exits `1`. An unknown
+layer name is a caller error, not a validation result.
+
+Without a requirement, results are identical to those of a validator that does not
+support the option. A metadata-only artifact in effective `enforced` mode therefore
+remains `valid`, while the same run with `--require structural` is `invalid`.
 
 ### Repair
 
