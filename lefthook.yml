@@ -1,6 +1,6 @@
 # Git hooks managed by lefthook (https://lefthook.dev).
 # Install once: `make hooks-install` (or `npx lefthook install`).
-# Bypass for an emergency commit: `git commit --no-verify` (avoid in PRs).
+# Keep the committed dependency resolution during every hook.
 
 pre-commit:
   parallel: true
@@ -25,12 +25,12 @@ pre-commit:
 
     ruff-format:
       glob: "*.py"
-      run: uv run ruff format {staged_files}
+      run: uv run --frozen --no-config ruff format {staged_files}
       stage_fixed: true
 
     ruff-check:
       glob: "*.py"
-      run: uv run ruff check --fix {staged_files}
+      run: uv run --frozen --no-config ruff check --fix {staged_files}
       stage_fixed: true
 
     # biome owns the TypeScript package; run it in that root so it finds biome.json.
