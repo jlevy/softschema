@@ -727,12 +727,18 @@ function resolveMetadataSchema(
   return { path: resolved, error: null };
 }
 
-/** Resolve the bound schema and retain the structural engine's actual progress. */
+/**
+ * Resolve the bound schema and retain the structural engine's actual progress.
+ *
+ * Without a bound schema, the skip reason follows whether a semantic validator was
+ * supplied to this call. `contract.model` is only a label and never selects it.
+ */
 function structuralForValues(
   contract: Contract,
   values: unknown,
   docPath: string,
   metadata: SchemaMetadata | null,
+  hasSemanticModel: boolean,
 ): StructuralResult {
   // Host schema binding takes precedence over the document's relative schema binding.
   const strictExtras = contract.status === "enforced";
@@ -772,8 +778,7 @@ function structuralForValues(
     execution: "not_run",
     errors: [],
     engine: "json_schema",
-    // Preserve the released skip reason; this label is not evidence of model execution.
-    skipped_reason: contract.model !== null ? "inferred_via_model" : "no_schema",
+    skipped_reason: hasSemanticModel ? "inferred_via_model" : "no_schema",
   };
 }
 
@@ -807,7 +812,13 @@ function validateExtracted(
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
 ): ArtifactValidationResult {
-  const structural = structuralForValues(contract, values, docPath, metadata);
+  const structural = structuralForValues(
+    contract,
+    values,
+    docPath,
+    metadata,
+    semanticModel !== undefined,
+  );
   const semantic: SemanticResult =
     semanticModel !== undefined
       ? validateSemantic(values, semanticModel)

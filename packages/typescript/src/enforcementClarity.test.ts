@@ -59,8 +59,16 @@ const vectors = parse(
 ) as { cases: ExecutionCase[] };
 
 describe("actual validation execution", () => {
+  // A model label is metadata only, so each vector must hold with and without one.
+  const labels = [null, "inline:Sample"] as const;
   for (const vector of vectors.cases) {
-    test(vector.name, () => {
+    for (const label of labels) {
+      runVector(vector, label);
+    }
+  }
+
+  function runVector(vector: ExecutionCase, label: string | null): void {
+    test(label === null ? vector.name : `${vector.name} (model label ${label})`, () => {
       const directory = tmpDir();
       const path = document(directory, vector.values);
       const schemaPath =
@@ -71,11 +79,7 @@ describe("actual validation execution", () => {
       else if (schemaPath && vector.schema) writeFileSync(schemaPath, stringify(vector.schema));
       const result = validateArtifact(
         path,
-        contract({
-          schemaPath,
-          status: vector.status ?? "enforced",
-          model: vector.model ? "inline:Sample" : null,
-        }),
+        contract({ schemaPath, status: vector.status ?? "enforced", model: label }),
         { semanticModel: vector.model ? Sample : undefined },
       );
       for (const layer of ["structural", "semantic"] as const) {
@@ -106,9 +110,10 @@ describe("actual validation execution", () => {
   test("a model label without a validator supplies no execution evidence", () => {
     const result = validateArtifact(document(tmpDir()), contract({ model: "inline:Sample" }));
     expect(result.semantic.execution).toBe("not_run");
+    expect(result.semantic.skipped_reason).toBe("no_semantic_model");
     expect(result.structural.execution).toBe("not_run");
-    // Released skip text is retained; execution is the evidence consumers must inspect.
-    expect(result.structural.skipped_reason).toBe("inferred_via_model");
+    // The skip reason follows the supplied validator, as in Python; a label is not a model.
+    expect(result.structural.skipped_reason).toBe("no_schema");
     expect(result.warnings.map((warning) => warning.code)).toEqual([
       "document-enforcement-not-applied",
     ]);
@@ -121,6 +126,7 @@ describe("actual validation execution", () => {
     expect(result.semantic.execution).toBe("completed");
     expect(result.semantic.ok).toBe(false);
     expect(result.structural.execution).toBe("not_run");
+    expect(result.structural.skipped_reason).toBe("inferred_via_model");
     expect(result.warnings.map((warning) => warning.code)).toEqual([
       "document-enforcement-via-model-only",
     ]);

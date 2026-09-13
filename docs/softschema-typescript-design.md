@@ -93,12 +93,13 @@ as YAML.
 
 When `status` is `enforced` and a structural schema is bound, Ajv applies the checked
 undeclared-property policy described below.
-Without a structural schema, `validateArtifact` preserves the semantic-only Zod path and
-reports structural validation as skipped with `inferred_via_model`; `validateValues`
-also runs the supplied Zod schema and leaves its unrequested structural result
-successful. If neither schema nor model is bound, artifact validation is metadata-only
-and reports `no_schema`. `status` does not synthesize JSON Schema or change whether a
-Zod object strips, passes through, or rejects unknown keys.
+Without a structural schema, `validateArtifact` runs Zod only when the call supplies a
+`semanticModel`, and then reports structural validation as skipped with
+`inferred_via_model`. A `Contract.model` label alone supplies no validator.
+`validateValues` runs a supplied Zod schema and leaves its unrequested structural result
+successful. If the call supplies neither a schema nor a semantic model, artifact
+validation is metadata-only and reports `no_schema`. `status` does not synthesize JSON
+Schema or change whether a Zod object strips, passes through, or rejects unknown keys.
 
 Before Ajv compilation, `prepareSchemaGraph` checks the root and every supplied resource
 as one offline graph.

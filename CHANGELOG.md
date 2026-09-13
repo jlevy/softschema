@@ -33,12 +33,21 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   Explicit open object policy and rejection of unknown fields remain owned by the
   referenced model.
 
+### Fixed
+
+- TypeScript `validateArtifact` without a bound schema reports structural
+  `skipped_reason: inferred_via_model` only when the call supplies a `semanticModel`, as
+  Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
+  without a label reports `inferred_via_model`. The CLI output is unchanged because
+  `--model` sets both.
+
 ### Compatibility
 
 Target the next coordinated minor release, **0.9.0**. Python layer-result constructors
 require an explicit keyword-only `execution`; TypeScript layer interfaces require the
-same field. Ordinary validation call signatures, `ok`, outcomes, errors, skip reasons,
-CLI exit classes, artifact metadata, and compiled schema files are unchanged.
+same field. Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit
+classes, artifact metadata, and compiled schema files are unchanged; skip reasons change
+only for the TypeScript library fix above.
 Strict serialized-result consumers must accept the new layer fields and remove the
 unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or
