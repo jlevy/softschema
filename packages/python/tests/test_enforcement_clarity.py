@@ -15,6 +15,7 @@ from softschema.pipeline import repair_and_validate_artifact
 from softschema.validate import (
     ArtifactInvalidError,
     load_artifact,
+    unreadable_artifact_result,
     validate_artifact,
     validate_values,
 )
@@ -127,6 +128,78 @@ def test_pre_payload_failure_runs_neither_check(tmp_path: Path) -> None:
     assert not result.warnings
 
 
+@pytest.mark.parametrize("name", ["hello", "rejected", 123])
+@pytest.mark.parametrize("already_bound", [False, True])
+def test_repair_model_override_controls_final_verdict(
+    tmp_path: Path, name: str | int, already_bound: bool
+) -> None:
+    class NameOnly(BaseModel):
+        name: str
+
+    schema = tmp_path / "sample.schema.yaml"
+    compile_model(NameOnly, schema, contract_id="example:Sample/v1")
+    path = tmp_path / "sample.yaml"
+    original = f"name: {name}\n"
+    path.write_text(original)
+    bound_model = NameOnly if already_bound else None
+    contract = Contract(
+        id="example:Sample/v1",
+        model=bound_model,
+        schema_path=schema,
+        profile=SchemaProfile.pure_yaml,
+        status=SchemaStatus.enforced,
+    )
+
+    result = repair_and_validate_artifact(path, contract=contract, model=Sample, write=False)
+
+    assert result.structural.execution == result.semantic.execution == "completed"
+    assert result.structural.ok
+    assert result.semantic.ok == (name != "rejected")
+    assert result.outcome == ("invalid" if name == "rejected" else "valid")
+    assert bool(result.semantic.errors) == (name == "rejected")
+    assert result.values == {"name": str(name)}
+    assert bool(result.repairs) == isinstance(name, int)
+    assert result.contract is not None
+    assert result.contract.model is Sample
+    assert contract.model is bound_model
+    assert path.read_text() == original
+
+
+def test_repair_without_any_model_preserves_skipped_semantics(tmp_path: Path) -> None:
+    path = tmp_path / "sample.yaml"
+    original = "name: rejected\n"
+    path.write_text(original)
+    contract = Contract(id="example:Sample/v1", profile=SchemaProfile.pure_yaml)
+
+    result = repair_and_validate_artifact(path, contract=contract, write=False)
+
+    assert result.outcome == "valid"
+    assert result.structural.execution == result.semantic.execution == "not_run"
+    assert result.semantic.skipped_reason == "no_semantic_model"
+    assert not result.repairs
+    assert path.read_text() == original
+
+
+def test_repair_model_override_programmer_error_propagates(tmp_path: Path) -> None:
+    class BrokenModel(BaseModel):
+        name: str
+
+        @model_validator(mode="after")
+        def fail(self) -> BrokenModel:
+            raise TypeError("callback bug")
+
+    path = tmp_path / "sample.yaml"
+    original = "name: hello\n"
+    path.write_text(original)
+    contract = Contract(id="example:Sample/v1", profile=SchemaProfile.pure_yaml)
+
+    with pytest.raises(TypeError, match="callback bug"):
+        repair_and_validate_artifact(path, contract=contract, model=BrokenModel, write=False)
+
+    assert contract.model is None
+    assert path.read_text() == original
+
+
 def test_semantic_programmer_exception_does_not_become_a_verdict() -> None:
     class BrokenModel(BaseModel):
         name: str
@@ -214,6 +287,26 @@ def test_required_check_keeps_pre_payload_input_error(tmp_path: Path) -> None:
     assert result.outcome == "input_error"
     assert result.structural.errors[0]["kind"] == "artifact_unreadable"
     assert result.structural.errors[-1]["kind"] == "check_not_completed"
+
+
+@pytest.mark.parametrize(
+    ("kind", "outcome"),
+    [
+        ("artifact_unreadable", "input_error"),
+        ("artifact_invalid_utf8", "input_error"),
+        ("yaml_parse_error", "invalid"),
+    ],
+)
+def test_unreadable_artifact_without_contract_preserves_outcome(
+    tmp_path: Path, kind: str, outcome: str
+) -> None:
+    result = unreadable_artifact_result(
+        tmp_path / "sample.yaml", profile=SchemaProfile.pure_yaml, kind=kind, message="failure"
+    )
+    assert result.outcome == outcome
+    assert result.structural.execution == "not_run"
+    assert result.semantic.execution == "not_run"
+    assert result.structural.errors[0]["kind"] == kind
 
 
 def test_required_checks_on_values(tmp_path: Path) -> None:

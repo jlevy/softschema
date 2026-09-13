@@ -664,14 +664,20 @@ export function unreadableArtifactResult(
     engine: "json_schema",
     skipped_reason: null,
   };
+  const semantic: SemanticResult = {
+    ok: false,
+    execution: "not_run",
+    errors: [],
+    skipped_reason: args.kind,
+  };
   const result = {
     contract: null,
     contract_id: "",
     document_metadata: null,
-    outcome: "invalid",
+    outcome: artifactOutcome(structural, semantic),
     path: docPath,
     profile: args.profile,
-    semantic: { ok: false, execution: "not_run", errors: [], skipped_reason: args.kind },
+    semantic,
     status: "soft",
     structural,
     values: null,

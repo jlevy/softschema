@@ -10,6 +10,7 @@ import { repairAndValidateArtifact } from "./repairValidate.js";
 import {
   ArtifactInvalidError,
   loadArtifact,
+  unreadableArtifactResult,
   validateArtifact,
   validateStructural,
   validateValues,
@@ -172,6 +173,60 @@ describe("actual validation execution", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  for (const name of ["hello", "rejected", 123]) {
+    test(`repair uses its supplied model for the final verdict (${name})`, () => {
+      const directory = tmpDir();
+      const schemaPath = join(directory, "sample.schema.yaml");
+      writeFileSync(schemaPath, stringify(schema));
+      const path = document(directory, { name });
+      const original = readFileSync(path, "utf8");
+      const binding = contract({ schemaPath });
+
+      const result = repairAndValidateArtifact(path, binding, {
+        semanticModel: Sample,
+        write: false,
+      });
+
+      expect(result.structural.execution).toBe("completed");
+      expect(result.semantic.execution).toBe("completed");
+      expect(result.structural.ok).toBe(true);
+      expect(result.semantic.ok).toBe(name !== "rejected");
+      expect(result.outcome).toBe(name === "rejected" ? "invalid" : "valid");
+      expect(result.semantic.errors.length > 0).toBe(name === "rejected");
+      expect(result.values).toEqual({ name: String(name) });
+      expect(result.repairs.length > 0).toBe(typeof name === "number");
+      expect(binding.model).toBeNull();
+      expect(readFileSync(path, "utf8")).toBe(original);
+    });
+  }
+
+  test("repair without a model preserves skipped semantics", () => {
+    const path = document(tmpDir(), { name: "rejected" });
+    const original = readFileSync(path, "utf8");
+
+    const result = repairAndValidateArtifact(path, contract(), { write: false });
+
+    expect(result.outcome).toBe("valid");
+    expect(result.structural.execution).toBe("not_run");
+    expect(result.semantic.execution).toBe("not_run");
+    expect(result.semantic.skipped_reason).toBe("no_semantic_model");
+    expect(result.repairs).toEqual([]);
+    expect(readFileSync(path, "utf8")).toBe(original);
+  });
+
+  test("repair propagates a supplied model's programmer error", () => {
+    const path = document(tmpDir());
+    const original = readFileSync(path, "utf8");
+    const brokenModel = z.object({ name: z.string() }).refine(() => {
+      throw new TypeError("callback bug");
+    });
+
+    expect(() =>
+      repairAndValidateArtifact(path, contract(), { semanticModel: brokenModel, write: false }),
+    ).toThrow("callback bug");
+    expect(readFileSync(path, "utf8")).toBe(original);
+  });
+
   test("an exception during actual structural evaluation is errored", () => {
     const values = Object.defineProperty({}, "name", {
       enumerable: true,
@@ -266,6 +321,26 @@ describe("actual validation execution", () => {
     expect(result.outcome).toBe("input_error");
     expect(result.structural.errors[0]?.kind).toBe("artifact_unreadable");
     expect(result.structural.errors.at(-1)?.kind).toBe("check_not_completed");
+  });
+
+  test("an unreadable artifact with no contract preserves the input error outcome", () => {
+    for (const kind of ["artifact_unreadable", "artifact_invalid_utf8"]) {
+      const result = unreadableArtifactResult("absent.yaml", {
+        profile: "pure-yaml",
+        kind,
+        message: "Could not read artifact",
+      });
+      expect(result.outcome).toBe("input_error");
+      expect(result.structural.execution).toBe("not_run");
+      expect(result.semantic.execution).toBe("not_run");
+      expect(result.structural.errors[0]?.kind).toBe(kind);
+    }
+    const parseFailure = unreadableArtifactResult("broken.yaml", {
+      profile: "pure-yaml",
+      kind: "yaml_parse_error",
+      message: "Could not parse artifact",
+    });
+    expect(parseFailure.outcome).toBe("invalid");
   });
 
   test("required checks on values", () => {

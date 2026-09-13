@@ -43,6 +43,14 @@ checks. Declared `status` still selects validation mode; it does not prove a che
 
 ### Fixed
 
+- Python `repair_and_validate_artifact(..., model=...)` uses the supplied model for both
+  conformance and the final verdict.
+  A model rejection now returns `invalid` after repair rather than validating against
+  the caller’s model-free contract.
+  The caller’s contract is unchanged.
+- TypeScript repair results for a missing or invalid-UTF-8 artifact without an inferred
+  contract report `input_error`, matching Python and other library reads.
+  Parse failures remain `invalid`.
 - TypeScript `validateArtifact` without a bound schema reports structural
   `skipped_reason: inferred_via_model` only when the call supplies a `semanticModel`, as
   Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
@@ -54,10 +62,10 @@ checks. Declared `status` still selects validation mode; it does not prove a che
 Target the next coordinated minor release, **0.9.0**. Python layer-result constructors
 require an explicit keyword-only `execution`; TypeScript layer interfaces require the
 same field. Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit
-classes, artifact metadata, and compiled schema files are unchanged; skip reasons change
-only for the TypeScript library fix above.
-Strict serialized-result consumers must accept the new layer fields and remove the
-unreleased aggregate field.
+classes, artifact metadata, and compiled schema files are unchanged except for the
+corrected repair-result verdicts above; skip reasons change only for the TypeScript
+library fix above. Strict serialized-result consumers must accept the new layer fields
+and remove the unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or
 revalidate rather than fabricating evidence.
 See the

@@ -114,6 +114,15 @@ completed checks rather than a winning mechanism.
 | Public TypeScript interfaces | Require the same field on manually constructed layer records. |
 | Validation function callers | Existing arguments and default verdict rules remain supported. The optional `require` argument rejects checks that did not complete. TypeScript structural skip reasons now follow the supplied semantic validator, not its label. |
 
+Two repair-result corrections share this release boundary.
+Python callers passing `model=` to `repair_and_validate_artifact` receive a final
+semantic verdict from that model, even when their `Contract` has no model or names a
+different one; the caller’s contract is not mutated.
+TypeScript callers repairing a missing or invalid-UTF-8 file without a contract receive
+`input_error` instead of `invalid`. Existing artifact bytes and bindings need no
+migration. Consumers of stored results should preserve historical verdicts as recorded,
+and revalidate when they need the corrected semantics.
+
 The new field is under Unreleased and has no containing release tag at the baseline.
 Do not keep a compatibility alias for it.
 Released result constructors are a source compatibility boundary, so prepare this API
@@ -214,6 +223,17 @@ both artifact profiles, required structural validation, bundled-resource access,
 skill bootstrap checks.
 This local verification does not replace the hosted operating-system matrix or the
 coordinated release gate.
+
+Follow-up repair tests cover a model supplied separately from a model-free or
+differently bound `Contract`, including acceptance, rejection, scalar conformance,
+unchanged `write=False` bytes, and callback exceptions.
+Both runtimes also check missing-file, invalid-UTF-8, and parse-failure outcomes without
+an inferred contract.
+A shared CLI journey pins the missing-file result with both layers `not_run`. Local
+checks pass 268 Python tests, 303 TypeScript tests, 86 Python, 84 Node, and 86 Bun
+golden commands, and 27 direct Python–Node parity comparisons.
+The golden commands used an installed `tryscript` 0.1.7 because the sandbox could not
+download the configured 0.2.1 runner; hosted CI must confirm the configured runner.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -914,6 +914,47 @@ byte-identical
 ? 0
 ```
 
+# Journey: a missing file has an input error with no invented contract
+
+`repair` reports a missing artifact as a result at exit `1`. Neither validation layer
+ran, and the absent file supplied no contract. Filesystem message wording varies by
+runtime, so the record pins its kind and outcome while eliding only that message.
+
+```console
+$ $SOFTSCHEMA repair absent/does-not-exist.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "input_error",
+  "path": "absent/does-not-exist.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "artifact_unreadable"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "artifact_unreadable",
+        "message": [..]
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
 With the mark gone and the scalar quoted, the consuming-side gate opens on the artifact
 that arrived with three extra bytes.
 
