@@ -121,6 +121,74 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md
 ? 0
 ```
 
+# Test: --require structural refuses a result no structural check completed
+
+A gate that needs a completed structural check says so with `--require`. The same
+metadata-only document now fails: the structural record is not ok and names the layer
+and its actual execution, so the outcome is `invalid` at exit 1.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --require structural
+{
+  "contract": {
+    "envelope_key": "record",
+    "id": "test.enforced:Record/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "test.enforced:Record/v1",
+  "document_metadata": {
+    "contract": "test.enforced:Record/v1",
+    "envelope": null,
+    "schema": null,
+    "status": "enforced"
+  },
+  "outcome": "invalid",
+  "path": "tests/golden/fixtures/extra-field-enforced.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "execution": "not_run",
+        "kind": "check_not_completed",
+        "layer": "structural",
+        "message": "required structural check did not complete (execution: not_run)"
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "no_schema"
+  },
+  "values": {
+    "confidence": "high",
+    "meta": {
+      "fetched_by": "agent",
+      "source": "web"
+    },
+    "name": "Acme"
+  },
+  "warnings": [
+    {
+      "code": "document-enforcement-not-applied",
+      "message": "status is 'enforced' but neither structural nor semantic validation completed; the result does not establish payload validity",
+      "severity": "warning"
+    }
+  ]
+}
+? 1
+```
+
 # Test: --status enforced applies the strict-extras overlay
 
 The SAME document and schema under `--status enforced`: object schemas that declare

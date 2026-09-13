@@ -150,3 +150,50 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/execution-rejected.md --model packa
 }
 ? 1
 ```
+
+With `--require` for both layers, a gate accepts only a result whose schema and model
+checks both completed. Here both complete and accept, so the verdict stays `valid`.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/execution-accepted.md --model packages.python.tests.fixtures.execution_model:Sample --require structural --require semantic
+{
+  "contract": {
+    "envelope_key": "sample",
+    "id": "example:Sample/v1",
+    "model": "packages.python.tests.fixtures.execution_model:Sample",
+    "profile": "frontmatter-md",
+    "schema_path": null,
+    "status": "enforced"
+  },
+  "contract_id": "example:Sample/v1",
+  "document_metadata": {
+    "contract": "example:Sample/v1",
+    "envelope": "sample",
+    "schema": "execution.schema.yaml",
+    "status": "enforced"
+  },
+  "outcome": "valid",
+  "path": "tests/golden/fixtures/execution-accepted.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "completed",
+    "ok": true,
+    "skipped_reason": null
+  },
+  "status": "enforced",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "execution": "completed",
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "hello"
+  },
+  "warnings": []
+}
+? 0
+```

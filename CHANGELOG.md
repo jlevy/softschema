@@ -21,6 +21,12 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   not complete: `document-enforcement-via-model-only` if semantic validation completed,
   or `document-enforcement-not-applied` otherwise.
   Failures before payload extraction do not emit a payload-check shortfall warning.
+- An opt-in requirement for completed checks: `require=` on Python `validate_artifact`,
+  `load_artifact`, and `validate_values`, a `require` option on their TypeScript
+  counterparts, and a repeatable `validate --require structural|semantic` in both CLIs.
+  A required layer that did not complete is not ok and gains a `check_not_completed`
+  error carrying `layer` and `execution`, so the outcome is `invalid`, strict reads
+  raise or throw, and the CLI exits 1. Without a requirement, results are unchanged.
 
 ### Changed
 

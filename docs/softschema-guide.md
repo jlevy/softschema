@@ -64,6 +64,8 @@ A model label or schema path alone proves no execution.
 An effective `enforced` mode without a completed structural check emits a warning.
 A valid metadata-only result establishes format and metadata validity, so hosts that
 require payload checks must supply trusted bindings and verify their completed results.
+`validate --require structural` (repeatable, also `semantic`) makes a required check
+that did not complete fail validation.
 See [validation execution](softschema-spec.md#reporting-validation-execution).
 
 The schema itself can evolve throughout this progression.

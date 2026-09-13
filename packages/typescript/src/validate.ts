@@ -522,6 +522,9 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
 /**
  * Validate a pre-extracted values mapping against a model, a schema, or both: the
  * idiomatic mirror of Python `validate_values`. Throws if neither is supplied.
+ *
+ * `require` names layers that must complete; a required layer that did not complete is
+ * not ok and carries a `check_not_completed` error.
  */
 export function validateValues(
   values: unknown,
@@ -530,11 +533,13 @@ export function validateValues(
     schema?: Record<string, unknown>;
     status?: SchemaStatus;
     resources?: Record<string, Record<string, unknown>>;
+    require?: readonly ("structural" | "semantic")[];
   } = {},
 ): ValidationResult {
   if (options.model === undefined && options.schema === undefined) {
     throw new Error("validateValues() requires at least one of model or schema");
   }
+  const required = requiredLayers(options.require);
   let structural: StructuralResult;
   if (options.schema !== undefined) {
     structural = validateStructural(values, options.schema, {
@@ -555,7 +560,85 @@ export function validateValues(
   const semantic: SemanticResult = options.model
     ? validateSemantic(values, options.model)
     : { ok: true, execution: "not_run", errors: [], skipped_reason: null };
+  return requireCompletedLayers({ structural, semantic }, required);
+}
+
+const CHECK_LAYERS: readonly string[] = ["structural", "semantic"];
+
+/** The layers a caller requires to complete, rejecting any unknown layer name. */
+function requiredLayers(require: readonly string[] | undefined): Set<string> {
+  const required = new Set(require ?? []);
+  const unknown = [...required].filter((layer) => !CHECK_LAYERS.includes(layer)).sort();
+  if (unknown.length > 0) {
+    throw new Error(
+      `require accepts only 'structural' and 'semantic', got ${JSON.stringify(unknown)}`,
+    );
+  }
+  return required;
+}
+
+function checkNotCompleted(layer: string, execution: ValidationExecution) {
+  return {
+    kind: "check_not_completed",
+    message: `required ${layer} check did not complete (execution: ${execution})`,
+    layer,
+    execution,
+  };
+}
+
+/**
+ * Fail each required layer whose validator did not complete.
+ *
+ * With no requirement the records are returned as they are. Otherwise a required layer
+ * whose `execution` is not `completed` becomes not ok and gains a `check_not_completed`
+ * error after its existing errors, so an original failure stays first and keeps its
+ * outcome. A completed layer keeps its own verdict, including a rejection. Kept in step
+ * with Python's `_require_completed`.
+ */
+function requireCompletedLayers(result: ValidationResult, required: Set<string>): ValidationResult {
+  if (required.size === 0) return result;
+  let { structural, semantic } = result;
+  if (required.has("structural") && structural.execution !== "completed") {
+    structural = {
+      ...structural,
+      ok: false,
+      errors: [...structural.errors, checkNotCompleted("structural", structural.execution)],
+    };
+  }
+  if (required.has("semantic") && semantic.execution !== "completed") {
+    semantic = {
+      ...semantic,
+      ok: false,
+      errors: [...semantic.errors, checkNotCompleted("semantic", semantic.execution)],
+    };
+  }
   return { structural, semantic };
+}
+
+function requireCompletedArtifact(
+  result: ArtifactValidationResult,
+  required: Set<string>,
+): ArtifactValidationResult {
+  if (required.size === 0) return result;
+  const { structural, semantic } = requireCompletedLayers(result, required);
+  const next = {
+    ...result,
+    outcome: artifactOutcome(structural, semantic),
+    semantic,
+    structural,
+  } as ArtifactValidationResult;
+  Object.defineProperty(next, "ok", { value: structural.ok && semantic.ok, enumerable: false });
+  return next;
+}
+
+/** `valid` when both layers are ok, `input_error` for an unreadable artifact, else `invalid`. */
+function artifactOutcome(
+  structural: StructuralResult,
+  semantic: SemanticResult,
+): ArtifactValidationResult["outcome"] {
+  if (structural.ok && semantic.ok) return "valid";
+  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
+  return inputCodes.has(String(structural.errors[0]?.kind)) ? "input_error" : "invalid";
 }
 
 /**
@@ -610,13 +693,11 @@ function buildResult(args: {
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
-  const firstKind = structural.errors[0]?.kind;
-  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
   const result = {
     contract: contractToOutput(contract),
     contract_id: contract.id,
     document_metadata: metadataToOutput(args.metadata),
-    outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
+    outcome: artifactOutcome(structural, semantic),
     path: args.docPath,
     profile: contract.profile,
     semantic,
@@ -948,8 +1029,9 @@ export class ArtifactInvalidError extends Error {
  * throws `ArtifactInvalidError` instead, with the whole result attached.
  *
  * Returns the payload mapping — the envelope's contents, or the document root for a
- * pure-yaml artifact without one — never `null`. Kept in step with Python's
- * `load_artifact`.
+ * pure-yaml artifact without one — never `null`. `require` has the same meaning as in
+ * `validateArtifact`, so a required check that did not complete throws. Kept in step with
+ * Python's `load_artifact`.
  */
 export function loadArtifact(
   docPath: string,
@@ -958,6 +1040,7 @@ export function loadArtifact(
     semanticModel?: z.ZodType;
     metadataMode?: MetadataMode;
     document?: ParsedDocument;
+    require?: readonly ("structural" | "semantic")[];
   } = {},
 ): Record<string, unknown> {
   const result = validateArtifact(docPath, contract, options);
@@ -980,7 +1063,23 @@ export function validateArtifact(
      * The CLI passes what it parsed for binding inference so the file is read once.
      */
     document?: ParsedDocument;
+    /**
+     * Layers the caller needs to have completed. A required layer whose `execution` is
+     * not `completed` becomes not ok with a `check_not_completed` error, so a
+     * metadata-only or skipped check cannot produce a `valid` outcome. Omitted, nothing
+     * is required and every result is unchanged.
+     */
+    require?: readonly ("structural" | "semantic")[];
   } = {},
+): ArtifactValidationResult {
+  const required = requiredLayers(options.require);
+  return requireCompletedArtifact(validateBoundArtifact(docPath, contract, options), required);
+}
+
+function validateBoundArtifact(
+  docPath: string,
+  contract: Contract,
+  options: { semanticModel?: z.ZodType; metadataMode?: MetadataMode; document?: ParsedDocument },
 ): ArtifactValidationResult {
   checkContractId(contract.id);
   const warnings: SchemaWarning[] = [];

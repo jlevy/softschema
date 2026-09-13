@@ -95,3 +95,55 @@ cases:
       skipped_reason: null
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
     error_kind: schema_invalid
+  # A caller requirement turns a layer that did not complete into a failing record.
+  - name: metadata-only-enforced-required
+    values: {name: hello}
+    require: [structural]
+    structural: {execution: not_run, ok: false, skipped_reason: no_schema}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: check_not_completed
+    warning: document-enforcement-not-applied
+  - name: metadata-only-required-semantic
+    values: {name: hello}
+    require: [semantic]
+    structural: {execution: not_run, ok: true, skipped_reason: no_schema}
+    semantic: {execution: not_run, ok: false, skipped_reason: no_semantic_model}
+    warning: document-enforcement-not-applied
+  - name: schema-accepts-required-structural
+    values: {name: hello}
+    require: [structural]
+    schema: *sample_schema
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: schema-rejects-required-structural
+    values: {name: 42}
+    require: [structural]
+    schema: *sample_schema
+    structural: {execution: completed, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_violation
+  - name: model-only-required-both
+    values: {name: hello}
+    require: [structural, semantic]
+    model: true
+    structural: {execution: not_run, ok: false, skipped_reason: inferred_via_model}
+    semantic: {execution: completed, ok: true, skipped_reason: null}
+    error_kind: check_not_completed
+    warning: document-enforcement-via-model-only
+  - name: missing-schema-required-structural
+    values: {name: hello}
+    require: [structural, semantic]
+    missing_schema: true
+    model: true
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: completed, ok: true, skipped_reason: null}
+    error_kind: schema_missing
+    warning: document-enforcement-via-model-only
+  - name: malformed-schema-required-structural
+    values: {name: hello}
+    require: [structural]
+    status: soft
+    schema_text: "["
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid

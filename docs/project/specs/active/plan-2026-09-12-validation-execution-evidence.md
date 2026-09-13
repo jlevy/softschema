@@ -51,11 +51,12 @@ Three existing inputs retain distinct meanings:
   An absent required schema still produces its error.
   A TypeScript model label alone supplies no validator.
 
-No new artifact metadata, policy language, additional check list, or aggregate
-enforcement level is introduced.
-Hosts that require specific checks must supply and verify their trusted bindings.
-A generic metadata-only CLI check can remain valid without establishing payload
-validity.
+No new artifact metadata, policy language, or aggregate enforcement level is introduced.
+Hosts that require specific checks must supply trusted bindings, then verify execution
+in the result or pass an opt-in caller requirement (`require`, `validate --require`)
+that fails any required layer that did not complete.
+Without that requirement, a generic metadata-only CLI check can remain valid without
+establishing payload validity.
 
 Keep `ok`, error records, skip reasons, and CLI exit classes.
 A completed rejection is evidence of execution and remains invalid.
@@ -74,6 +75,7 @@ without introducing a new exception policy.
 | --- | --- | --- | --- |
 | Artifact read, format, metadata, or envelope failure | `not_run` | `not_run` | Preserve existing failure result or CLI input error. |
 | Metadata-only artifact in effective `enforced` mode | `not_run` | `not_run` | Format/metadata valid, with shortfall warning. |
+| Caller requires a layer that did not complete | Actual invocation state | Actual invocation state | Required layer not ok with an appended `check_not_completed` error; outcome invalid. |
 | Missing, malformed, or unsupported schema fails preparation | `not_run` | Actual model result, if supplied | Preserve schema error and invalid outcome. |
 | Schema accepts, no model | `completed` | `not_run` | Valid. |
 | Schema rejects | `completed` | Actual model result, if supplied | Invalid. |
@@ -145,6 +147,8 @@ Their existing artifact files need no format migration.
   package checks; every golden runtime and cross-implementation output comparison.
 - [x] Verify source integration of the exact commit in Metaproc and a downstream
   consumer.
+- [x] Add an opt-in caller requirement for completed checks, with shared vectors, CLI
+  journeys, and documentation.
 - [ ] Publish coordinated 0.9.0 releases and migrate released consumer dependency
   ranges; this remains separate from source implementation completion.
 

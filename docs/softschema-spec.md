@@ -738,6 +738,8 @@ A validator must reject:
 - a model validation failure
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
   Values)
+- a layer the caller requires that did not complete (`check_not_completed`; see
+  [Required checks](#required-checks))
 
 Validation output is deterministic within each implementation.
 Across implementations, structural error records have the same engine-neutral fields and
@@ -755,7 +757,8 @@ The artifact’s `softschema.status` declares maturity or mode.
 The result’s `status` reports the effective mode after caller and registry precedence.
 Neither is evidence that a payload check ran.
 A host that requires a particular check supplies a trusted binding and verifies that
-check’s execution and verdict.
+check’s execution and verdict, either by reading the result or by passing the
+requirement to the validator as described in [Required checks](#required-checks).
 Metadata alone cannot satisfy that requirement.
 
 A conforming validator reports an `execution` field on each existing `structural` and
@@ -766,6 +769,7 @@ A conforming validator reports an `execution` field on each existing `structural
 | `not_run` | No payload validator was invoked. This includes absent bindings, failures before payload extraction, and failed schema preparation. Existing errors and skip reasons explain the cause. |
 | `completed` | The validator completed its verdict. `ok: true` is acceptance; `ok: false` with errors is rejection. Both are evidence that the check ran. |
 | `errored` | Payload evaluation began but did not produce a completed verdict. Existing error records describe the failure where the API returns a result. |
+| Key absent | The serialized record predates the `execution` field, so execution is unknown. Readers must not default it to any value or infer it from `ok`, errors, or skip reasons. |
 
 Record execution at the invocation and completion boundaries.
 A schema path, model label, `engine` field, absent skip reason, or successful aggregate
@@ -803,9 +807,44 @@ verdict to qualify.
 
 The warning does not change `ok`, `outcome`, or CLI exit classes.
 Hosts that require a completed structural check must inspect execution as well as the
-verdict. Historical reports without execution fields have unknown execution; consumers
-preserve absence or revalidate.
+verdict, or require the check.
+Consumers of historical reports without execution fields preserve absence or revalidate.
 This output change introduces no artifact metadata or schema-file format change.
+
+#### Required checks
+
+A caller may name layers that must complete: `structural`, `semantic`, or both.
+The requirement comes from the caller for one validation, never from artifact metadata.
+Reference implementations accept it on artifact validation, strict reads, and values
+validation, and the `validate` command accepts a repeatable
+`--require structural|semantic`.
+
+After both checks run, each required layer is judged by its `execution`:
+
+| Required layer execution | Effect |
+| --- | --- |
+| `completed` | None. The layer keeps its own verdict; a completed rejection is already not ok and gains no further error. |
+| `not_run` or `errored` | The layer’s `ok` becomes `false`, and one error is appended after its existing errors. |
+
+The appended error record has these fields:
+
+| Field | Value |
+| --- | --- |
+| `kind` | `check_not_completed` |
+| `layer` | `structural` or `semantic` |
+| `execution` | The layer’s actual `execution` value |
+| `message` | `required <layer> check did not complete (execution: <execution>)` |
+
+`execution`, `skipped_reason`, warnings, and existing errors keep their values and
+order, so a schema preparation error remains the first structural error.
+`outcome` is recomputed by the usual rule: a result that was `valid` becomes `invalid`,
+and an `input_error` stays one.
+A strict read refuses the artifact, and the `validate` command exits `1`. An unknown
+layer name is a caller error, not a validation result.
+
+Without a requirement, results are identical to those of a validator that does not
+support the option. A metadata-only artifact in effective `enforced` mode therefore
+remains `valid`, while the same run with `--require structural` is `invalid`.
 
 ### Repair
 

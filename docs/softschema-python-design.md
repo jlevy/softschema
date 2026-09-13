@@ -313,6 +313,17 @@ mark completed. `validate_values`, artifact validation, and repair share these r
 Older serialized records without this field have unknown execution and must not be
 backfilled from skip reasons or a successful outcome.
 
+`validate_artifact`, `load_artifact`, and `validate_values` accept
+`require: Collection[Literal["structural", "semantic"]] = ()`, per the spec’s
+[required checks](softschema-spec.md#required-checks).
+Each required layer whose `execution` is not `completed` is rebuilt with
+`dataclasses.replace` as `ok=False` with a `check_not_completed` error appended, and the
+artifact result recomputes `outcome` from the new records, so `load_artifact` raises
+`ArtifactInvalidError`. The empty default returns the original result object.
+An unknown layer name raises `ValueError` before validation starts.
+The CLI exposes the requirement as a repeatable
+`validate --require structural|semantic`.
+
 ### Alignment with `python-cli-patterns`
 
 The CLI follows the house Python-CLI conventions: exit codes `0` success / `1`
@@ -398,6 +409,7 @@ The current first-release kinds:
 | `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
 | `enforcement_unsupported` | The schema is valid Draft 2020-12, but its topology is outside the checked enforced profile; `reason` and `schema_path` identify the boundary. |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
+| `check_not_completed` | A layer named in `require` did not complete. It carries `layer` and `execution` and is appended after existing errors; a required semantic layer receives the same record in `SemanticResult.errors`. |
 
 Structural error kinds are stable but do not currently carry a public enum; treat them
 as the documented surface and open an issue if a consumer needs a typed constant.

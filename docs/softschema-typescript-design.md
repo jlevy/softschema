@@ -136,9 +136,9 @@ explicitly in the shared vectors.
 
 | Python | TypeScript | Notes |
 | --- | --- | --- |
-| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, per-layer `execution`, error kinds, and warnings |
-| `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached |
-| `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status` and offline `resources` |
+| `validate_artifact` | `validateArtifact` | same result fields, `outcome`, per-layer `execution`, error kinds, and warnings; `require=` ↔ `require` option |
+| `load_artifact` | `loadArtifact` | strict consuming call: returns the payload values, raises/throws `ArtifactInvalidError` on anything short of valid, with the result attached; accepts the same `require` |
+| `validate_values` | `validateValues` | combined structural and semantic on a values mapping; both accept `status`, offline `resources`, and `require` |
 | `validate_structural` | `validateStructural` | jsonschema ↔ Ajv; shared record shape and meaning, with pinned native-engine deviations |
 | `clear_validator_cache` | `clearValidatorCache` | drop memoized compiled validators; both cache on schema content, keyed with the enforced overlay, and skip the cache when `resources` are supplied |
 | `validate_semantic` | `validateSemantic` | Pydantic ↔ Zod; errors impl-specific |
@@ -178,6 +178,17 @@ Ajv compilation errors are `not_run`; exceptions after invocation are
 `errored` under the existing structural error contract.
 Unexpected semantic callback errors propagate.
 Old serialized layer records without execution fields have unknown execution.
+
+The `require` option of `validateArtifact`, `loadArtifact`, and `validateValues` takes
+`"structural"` and `"semantic"`, per the spec’s
+[required checks](softschema-spec.md#required-checks).
+Each required layer whose `execution` is not `completed` becomes `ok: false` with a
+`check_not_completed` error appended, and the artifact result recomputes `outcome` and
+its non-enumerable `ok`, so `loadArtifact` throws `ArtifactInvalidError`. An omitted or
+empty requirement returns the original result object.
+An unknown layer name throws before validation starts.
+The CLI exposes the requirement as a repeatable `validate --require structural|semantic`
+and reports an unknown value as a usage error (exit `2`).
 
 Structural errors use engine-neutral records
 `{ kind, code, path, property?, validator, validator_value, value, message }`, sorted by

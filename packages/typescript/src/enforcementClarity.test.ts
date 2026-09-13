@@ -7,7 +7,13 @@ import { parse, stringify } from "yaml";
 import { z } from "zod";
 import type { Contract, SchemaStatus, ValidationExecution, WarningCode } from "./models.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
-import { validateArtifact, validateStructural, validateValues } from "./validate.js";
+import {
+  ArtifactInvalidError,
+  loadArtifact,
+  validateArtifact,
+  validateStructural,
+  validateValues,
+} from "./validate.js";
 
 const Sample = z.strictObject({ name: z.string() }).refine((value) => value.name !== "rejected", {
   message: "name is unavailable",
@@ -46,6 +52,7 @@ interface ExecutionCase {
   schema?: Record<string, unknown>;
   schema_text?: string;
   missing_schema?: boolean;
+  require?: ("structural" | "semantic")[];
   structural: LayerExpectation;
   semantic: LayerExpectation;
   warning?: WarningCode;
@@ -80,21 +87,24 @@ describe("actual validation execution", () => {
       const result = validateArtifact(
         path,
         contract({ schemaPath, status: vector.status ?? "enforced", model: label }),
-        { semanticModel: vector.model ? Sample : undefined },
+        { semanticModel: vector.model ? Sample : undefined, require: vector.require },
       );
       for (const layer of ["structural", "semantic"] as const) {
         const expected = vector[layer];
+        const execution =
+          typeof expected.execution === "string"
+            ? expected.execution
+            : expected.execution.typescript;
         expect({
           execution: result[layer].execution,
           ok: result[layer].ok,
           skipped_reason: result[layer].skipped_reason,
-        }).toEqual({
-          ...expected,
-          execution:
-            typeof expected.execution === "string"
-              ? expected.execution
-              : expected.execution.typescript,
-        });
+        }).toEqual({ ...expected, execution });
+        const unmet = (result[layer].errors as Record<string, unknown>[])
+          .filter((error) => error.kind === "check_not_completed")
+          .map(({ kind, layer, execution }) => ({ kind, layer, execution }));
+        const required = (vector.require ?? []).includes(layer) && execution !== "completed";
+        expect(unmet).toEqual(required ? [{ kind: "check_not_completed", layer, execution }] : []);
       }
       const expectedOk = vector.structural.ok && vector.semantic.ok;
       expect(result.ok).toBe(expectedOk);
@@ -173,6 +183,111 @@ describe("actual validation execution", () => {
     expect(result.execution).toBe("errored");
     expect(result.ok).toBe(false);
     expect(result.errors[0]?.kind).toBe("schema_invalid");
+  });
+
+  test("a required structural check completed by a bound schema stays valid", () => {
+    const directory = tmpDir();
+    const schemaPath = join(directory, "sample.schema.yaml");
+    writeFileSync(schemaPath, stringify(schema));
+    const path = document(directory);
+    const bound = contract({ schemaPath });
+    const result = validateArtifact(path, bound, { require: ["structural"] });
+    expect(result.outcome).toBe("valid");
+    expect(result.ok).toBe(true);
+    expect(result.structural.execution).toBe("completed");
+    expect(result.structural.errors).toEqual([]);
+    expect(result).toEqual(validateArtifact(path, bound));
+    expect(loadArtifact(path, bound, { require: ["structural"] })).toEqual({ name: "hello" });
+  });
+
+  test("a required semantic check without a model is invalid", () => {
+    const path = document(tmpDir());
+    const unrequired = validateArtifact(path, contract({ model: "inline:Sample" }));
+    expect(unrequired.outcome).toBe("valid");
+    const result = validateArtifact(path, contract({ model: "inline:Sample" }), {
+      require: ["semantic"],
+    });
+    expect(result.outcome).toBe("invalid");
+    expect(result.ok).toBe(false);
+    expect(result.structural).toEqual(unrequired.structural);
+    expect(result.semantic).toEqual({
+      ok: false,
+      execution: "not_run",
+      errors: [
+        {
+          kind: "check_not_completed",
+          message: "required semantic check did not complete (execution: not_run)",
+          layer: "semantic",
+          execution: "not_run",
+        },
+      ],
+      skipped_reason: "no_semantic_model",
+    });
+    let thrown: unknown;
+    try {
+      loadArtifact(path, contract(), { require: ["semantic"] });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ArtifactInvalidError);
+    expect((thrown as ArtifactInvalidError).result.outcome).toBe("invalid");
+  });
+
+  test("a required check preserves the schema preparation error", () => {
+    const directory = tmpDir();
+    const schemaPath = join(directory, "sample.schema.yaml");
+    writeFileSync(schemaPath, "[");
+    const path = document(directory);
+    const unrequired = validateArtifact(path, contract({ schemaPath }), { semanticModel: Sample });
+    const result = validateArtifact(path, contract({ schemaPath }), {
+      semanticModel: Sample,
+      require: ["structural", "semantic"],
+    });
+    expect(result.outcome).toBe("invalid");
+    expect(result.structural.execution).toBe("not_run");
+    expect(result.structural.errors).toEqual([
+      unrequired.structural.errors[0] as Record<string, unknown>,
+      {
+        kind: "check_not_completed",
+        message: "required structural check did not complete (execution: not_run)",
+        layer: "structural",
+        execution: "not_run",
+      },
+    ]);
+    expect(result.structural.errors[0]?.kind).toBe("schema_invalid");
+    expect(result.semantic).toEqual(unrequired.semantic);
+    expect(result.warnings).toEqual(unrequired.warnings);
+  });
+
+  test("a required check keeps a pre-payload input error", () => {
+    const result = validateArtifact(join(tmpDir(), "absent.yaml"), contract(), {
+      require: ["structural"],
+    });
+    expect(result.outcome).toBe("input_error");
+    expect(result.structural.errors[0]?.kind).toBe("artifact_unreadable");
+    expect(result.structural.errors.at(-1)?.kind).toBe("check_not_completed");
+  });
+
+  test("required checks on values", () => {
+    const both = validateValues({ name: "hello" }, { model: Sample, schema });
+    expect(
+      validateValues(
+        { name: "hello" },
+        { model: Sample, schema, require: ["structural", "semantic"] },
+      ),
+    ).toEqual(both);
+    const modelOnly = validateValues({ name: "hello" }, { model: Sample, require: ["structural"] });
+    expect(modelOnly.structural.ok).toBe(false);
+    expect(modelOnly.structural.errors.at(-1)?.kind).toBe("check_not_completed");
+    expect(modelOnly.semantic.ok).toBe(true);
+  });
+
+  test("require rejects an unknown layer", () => {
+    expect(() =>
+      validateArtifact(document(tmpDir()), contract(), {
+        require: ["payload"] as unknown as ("structural" | "semantic")[],
+      }),
+    ).toThrow("payload");
   });
 
   test("semantic programmer errors propagate without a fabricated verdict", () => {

@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import re
 from ast import literal_eval
-from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Collection, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
@@ -112,6 +112,56 @@ class ArtifactValidationResult:
     @property
     def warning_codes(self) -> list[str]:
         return [warning.code for warning in self.warnings]
+
+
+_CHECK_LAYERS = ("structural", "semantic")
+
+_Checked = TypeVar("_Checked", ArtifactValidationResult, ValidationResult)
+
+
+def _required_layers(require: Collection[str]) -> frozenset[str]:
+    """The layers a caller requires to complete, rejecting any unknown layer name."""
+    required = frozenset(require)
+    unknown = sorted(required.difference(_CHECK_LAYERS))
+    if unknown:
+        raise ValueError(f"require accepts only 'structural' and 'semantic', got {unknown}")
+    return required
+
+
+def _require_completed(result: _Checked, required: frozenset[str]) -> _Checked:
+    """Fail each required layer whose validator did not complete.
+
+    With no requirement the result is returned as is. Otherwise a required layer whose
+    ``execution`` is not ``completed`` becomes not ok and gains a ``check_not_completed``
+    error after its existing errors, so an original failure stays first and keeps its
+    outcome. A completed layer keeps its own verdict, including a rejection.
+    """
+    if not required:
+        return result
+    structural = result.structural
+    if "structural" in required and structural.execution != "completed":
+        structural = replace(
+            structural,
+            ok=False,
+            errors=[*structural.errors, _check_not_completed("structural", structural.execution)],
+        )
+    semantic = result.semantic
+    if "semantic" in required and semantic.execution != "completed":
+        semantic = replace(
+            semantic,
+            ok=False,
+            errors=[*semantic.errors, _check_not_completed("semantic", semantic.execution)],
+        )
+    return replace(result, structural=structural, semantic=semantic)
+
+
+def _check_not_completed(layer: str, execution: ValidationExecution) -> dict[str, Any]:
+    return _error(
+        "check_not_completed",
+        f"required {layer} check did not complete (execution: {execution})",
+        layer=layer,
+        execution=execution,
+    )
 
 
 class _SchemaRootNotAMapping(Exception):
@@ -475,12 +525,15 @@ def validate_values(
     schema: Path | None = None,
     status: SchemaStatus = SchemaStatus.soft,
     resources: Mapping[str, dict[str, Any]] | None = None,
+    require: Collection[Literal["structural", "semantic"]] = (),
 ) -> ValidationResult:
     """Validate a pre-extracted values mapping against a model, a schema, or both.
 
     Returns a ``ValidationResult`` with separate ``structural`` and ``semantic``
     fields. Engines that were not requested are reported as ok (with no errors)
-    so callers can read either field without checking which one ran.
+    so callers can read either field without checking which one ran, unless
+    ``require`` names that layer: a required layer that did not complete is not ok
+    and carries a ``check_not_completed`` error.
 
     Use this when values are already extracted or come from outside a softschema
     artifact (a body-form runtime, a structured-output adapter, or a hand-written
@@ -489,6 +542,7 @@ def validate_values(
     """
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")
+    required = _required_layers(require)
     if schema is not None:
         structural = validate_structural(
             values,
@@ -503,7 +557,7 @@ def validate_values(
     semantic = (
         validate_semantic(values, model) if model else SemanticResult(ok=True, execution="not_run")
     )
-    return ValidationResult(structural=structural, semantic=semantic)
+    return _require_completed(ValidationResult(structural=structural, semantic=semantic), required)
 
 
 _UNREAD: Any = object()
@@ -541,8 +595,14 @@ def validate_artifact(
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
     document: Any = _UNREAD,
+    require: Collection[Literal["structural", "semantic"]] = (),
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
+
+    ``require`` names the layers the caller needs to have completed. A required layer
+    whose ``execution`` is not ``completed`` becomes not ok with a ``check_not_completed``
+    error, so a metadata-only or skipped check cannot produce a ``valid`` outcome. The
+    default requires nothing and leaves every result unchanged.
 
     ``document`` is an optional already-parsed document root: frontmatter for a
     frontmatter-md contract, the YAML root for a pure-yaml one. When supplied the file is
@@ -561,11 +621,12 @@ def validate_artifact(
     reports as ``no_frontmatter``; a pure-yaml contract reports it as ``yaml_not_mapping``
     like any other non-mapping root.
     """
+    required = _required_layers(require)
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
     if contract is None:
         resolved_contract_id = contract_id or "<unknown>"
-        return ArtifactValidationResult(
+        unknown = ArtifactValidationResult(
             path=doc_path,
             contract_id=resolved_contract_id,
             status=SchemaStatus.soft,
@@ -586,11 +647,16 @@ def validate_artifact(
                 ok=False, execution="not_run", skipped_reason="contract_unknown"
             ),
         )
+        return _require_completed(unknown, required)
 
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode, document)
-    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, document)
+        result = _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode, document)
+    else:
+        result = _validate_frontmatter_artifact(
+            doc_path, contract, warnings, metadata_mode, document
+        )
+    return _require_completed(result, required)
 
 
 def _validate_frontmatter_artifact(
@@ -1030,6 +1096,7 @@ def load_artifact(
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
     document: Any = _UNREAD,
+    require: Collection[Literal["structural", "semantic"]] = (),
 ) -> dict[str, Any]:
     """Read an artifact that is required to be valid, and return its payload values.
 
@@ -1045,7 +1112,8 @@ def load_artifact(
     the whole result attached.
 
     Returns the payload mapping — the envelope's contents, or the document root for a
-    pure-yaml artifact without one — never ``None``.
+    pure-yaml artifact without one — never ``None``. ``require`` has the same meaning as
+    in :func:`validate_artifact`, so a required check that did not complete raises.
     """
     result = validate_artifact(
         doc_path,
@@ -1054,6 +1122,7 @@ def load_artifact(
         registry=registry,
         metadata_mode=metadata_mode,
         document=document,
+        require=require,
     )
     if result.outcome != "valid" or result.values is None:
         raise ArtifactInvalidError(result)
