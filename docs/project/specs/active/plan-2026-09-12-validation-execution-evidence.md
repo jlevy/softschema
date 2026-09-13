@@ -13,22 +13,25 @@ tracking: [trading-jrva, trading-pkyo, trading-2rc2, trading-y277, trading-44ot]
 ## Problem and Decision
 
 A result must distinguish a check that accepted a payload from one that never ran.
-The current PR reports a single `enforcement_applied` value: `schema`, `model`, or
-`none`. Both validators can run, however, and a model can reject a payload its schema
-accepts. Reporting `schema` cannot establish that the overall verdict is reproducible
-from the compiled schema.
-TypeScript also mistakes a model label for an invoked model, and both runtimes report
+At the review baseline, PR 59 reported a single `enforcement_applied` value: `schema`,
+`model`, or `none`. Both validators can run, however, and a model can reject a payload
+its schema accepts. Reporting `schema` cannot establish that the overall verdict is
+reproducible from the compiled schema.
+TypeScript also mistook a model label for an invoked model, and both runtimes reported
 schema preparation failures as an applied schema.
+The implementation below resolves these defects.
 
 Use the existing independent `structural` and `semantic` result records.
 Add an `execution` field to each and remove the unreleased `enforcement_applied` field
 and type. The spec remains the authority for the public definitions.
 This plan records the migration and verification decisions.
 
-PR 525 pins the baseline above.
-That selects source, but does not resolve these defects or establish a release.
-Integration must advance the gitlink after this implementation and its consumer checks
-pass.
+PR 525 advanced from that baseline to the reviewed SoftSchema `b494f729` and Metaproc
+`54f38d8` sources. Its head `ed8043f24` migrates the manual result consumers and bounds
+the scalar timeout retries activated by the Metaproc update; all fifteen hosted checks
+passed. PR 524 incorporates that adoption in `269bdc0f3` alongside the broader V3 fixes.
+These exact source pins establish downstream integration, while the coordinated package
+release remains pending.
 
 ## Public Contract
 
@@ -173,11 +176,16 @@ existing analysis for other composition.
 Five shared vectors cover nested models, null, unknown-property rejection, explicit open
 policy, and validation siblings (`trading-xcv9`). Existing files require no rewrite.
 
-Source implementation `aadb398` and Metaproc serializer `6d0cc9f` are integrated in
-Trading’s review branch.
-Its V3 and model consumer suite passes 596 tests with two retained-data skips and an
-unchanged lockfile (`trading-y277`). This verifies source integration; the coordinated
-release and released dependency ranges remain open.
+Source implementation `aadb398` and Metaproc serializer `6d0cc9f` first passed Trading’s
+596-test V3 and model suite, with two retained-data skips and an unchanged lockfile.
+The expanded integration passed 719 V3/model checks with the same two skips, 704 EIA
+checks with two skips, and 253 affected V2 checks.
+That broader verification found manual constructors outside V3 that needed the required
+field: follow-on parsing/binding errors now explicitly record both layers as `not_run`,
+and registry metadata errors preserve the actual native check record through
+`dataclasses.replace`. PR 525 includes these migrations and their regressions
+(`trading-y277`). This verifies source integration; the coordinated release and released
+dependency ranges remain open.
 
 The final source passes 251 Python tests and the complete Python lint suite (Ruff,
 BasedPyright, codespell, documentation footers, and retired-surface checks).
@@ -197,8 +205,10 @@ skill output.
 
 Metaproc’s serializer integration passed 96 tests against this source through native
 dataclass forwarding.
-Exact committed-source pins and Trading consumer verification remain the responsibility
-of `trading-y277`; publication remains `trading-44ot`.
+The final source revision `b494f729` passed all eighteen hosted checks, including both
+language suites, shared journeys and package smoke tests across operating systems.
+Downstream source adoption and consumer verification close `trading-y277`; publication
+remains `trading-44ot`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
