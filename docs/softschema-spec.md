@@ -571,7 +571,7 @@ ones it refuses.
 | `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site, while fields declared only in `then` or `else` are admitted only when that branch applies and succeeds |
 | `dependentSchemas` branch declarations | Admit fields only when the trigger is present and the dependent schema succeeds |
 | `not` | Preserve the prohibition; declarations below it do not cause closure |
-| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
+| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword, including an `anyOf` or `oneOf` wrapper containing only that reference and a null-only branch; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
 | Plain structured `items` | Close each element schema independently when no `contains` schema co-describes its elements |
 | `prefixItems` with `items` | Close their structured value schemas independently; they apply to disjoint index ranges |
 | `contains` | Preserve the matcher without inferred closure so enforcement cannot change which elements match; an unclosed structured child below the matcher is unsupported |

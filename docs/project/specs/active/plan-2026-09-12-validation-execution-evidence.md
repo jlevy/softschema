@@ -2,7 +2,7 @@
 title: Actual Validation Execution and Result Migration
 description: Replace the unreleased mechanism hierarchy with execution evidence on independent structural and semantic checks.
 date: 2026-09-12
-status: Implemented; downstream integration and release pending
+status: Implemented and source-integrated; coordinated release pending
 upstream_pr: https://github.com/jlevy/softschema/pull/59
 baseline: 0dfbe95f4083678d61a379f26822c05ce32eb508
 downstream_integration_pr: https://github.com/finterm-ai/trading/pull/525
@@ -162,6 +162,16 @@ structural success. Regenerate whole result transcripts through the configured g
 runner, review the changes, and retain the existing golden fixture ownership rules.
 
 ## Verification Record
+
+Trading’s structured projection-failure record exposed a compatibility defect in the
+checked overlay: a nullable model containing another nullable, explicitly closed model
+was refused because the compiler added redundant closure to the inner nullable wrapper.
+The compiler now recognizes a pure reference plus a null-only branch in `anyOf` or
+`oneOf`, with annotation-only siblings.
+It preserves the referenced object’s explicit closure or opt-out and retains the
+existing analysis for other composition.
+Five shared vectors cover nested models, null, unknown-property rejection, explicit open
+policy, and validation siblings (`trading-xcv9`). Existing files require no rewrite.
 
 Source implementation `aadb398` and Metaproc serializer `6d0cc9f` are integrated in
 Trading’s review branch.

@@ -634,6 +634,36 @@ class _SchemaGraph:
             return False
         return self._pure_reference_reaches_explicit_closure(target, seen | {marker})
 
+    def _nullable_reference_delegates_closure(self, node: dict[str, Any]) -> bool:
+        """A generated nullable closed reference needs no closure on its wrapper.
+
+        Only a pure reference and a null-only branch are recognized. Object validation
+        still belongs entirely to the referenced schema, including an explicit opt-out.
+        Other composition or validation siblings retain the ordinary safety analysis.
+        """
+        for keyword in ("anyOf", "oneOf"):
+            branches = node.get(keyword)
+            if (
+                not isinstance(branches, list)
+                or len(branches) != 2
+                or any(
+                    key != keyword and key not in _REFERENCE_NONVALIDATION_SIBLINGS for key in node
+                )
+            ):
+                continue
+            for null_branch, reference in (branches, list(reversed(branches))):
+                if (
+                    isinstance(null_branch, dict)
+                    and null_branch.get("type") == "null"
+                    and all(
+                        key == "type" or key in _REFERENCE_NONVALIDATION_SIBLINGS
+                        for key in null_branch
+                    )
+                    and self._pure_reference_reaches_explicit_closure(reference)
+                ):
+                    return True
+        return False
+
     def _check_context_sensitive_references(
         self,
         node: Any,
@@ -700,7 +730,11 @@ class _SchemaGraph:
             else:
                 out[key] = value
 
-        explicit = _has_explicit_closure(out) or self._pure_reference_reaches_explicit_closure(node)
+        explicit = (
+            _has_explicit_closure(out)
+            or self._pure_reference_reaches_explicit_closure(node)
+            or self._nullable_reference_delegates_closure(node)
+        )
         declares = self.declares_properties(node)
         if context == "nested_instance" and declares and not explicit:
             raise EnforcementUnsupportedError(

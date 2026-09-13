@@ -28,6 +28,10 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   TypeScript now reports actual model invocation independently of its optional label.
 - The spec defines execution boundaries, including engine-specific preparation versus
   evaluation failures, and the effective status fallback to `soft`.
+- Checked enforcement accepts nested nullable references to explicitly closed models
+  without adding redundant object closure to their nullable wrappers.
+  Explicit open object policy and rejection of unknown fields remain owned by the
+  referenced model.
 
 ### Compatibility
 
