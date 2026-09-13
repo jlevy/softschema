@@ -312,6 +312,8 @@ def test_skill_uses_latest_runner(
 def test_skill_install_creates_both_mirrors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Keep project discovery inside this fixture even when pytest scratch is in a repo.
+    (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
 
     exit_code = softschema_main(
@@ -336,6 +338,7 @@ def test_skill_install_creates_both_mirrors(
 def test_skill_install_is_idempotent_and_refreshes_managed_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     args = ["skill", "--install", "--scope", "project", "--agent", "portable", "--agent", "claude"]
     softschema_main(args)
@@ -361,6 +364,7 @@ def test_skill_install_is_idempotent_and_refreshes_managed_files(
 def test_skill_install_dry_run_and_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     args = ["skill", "--install", "--scope", "project", "--agent", "portable"]
     assert softschema_main([*args, "--dry-run"]) == 0
