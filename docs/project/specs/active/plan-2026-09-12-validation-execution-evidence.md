@@ -150,7 +150,7 @@ consumers. No artifact-format migration is needed for PR 525’s existing files.
 - [x] Verify frozen Python tests and lint; TypeScript lint, types, coverage, build, and
   package checks; every golden runtime and cross-implementation output comparison
   (`trading-jrva`, `trading-pkyo`, `trading-2rc2`).
-- [ ] Integrate the exact commit into Metaproc and Trading consumer verification
+- [x] Integrate the exact commit into Metaproc and Trading consumer verification
   (`trading-y277`).
 - [ ] Publish coordinated 0.9.0 releases and migrate released consumer dependency ranges
   (`trading-44ot`); this remains separate from source implementation completion.
@@ -162,6 +162,12 @@ structural success. Regenerate whole result transcripts through the configured g
 runner, review the changes, and retain the existing golden fixture ownership rules.
 
 ## Verification Record
+
+Source implementation `aadb398` and Metaproc serializer `6d0cc9f` are integrated in
+Trading’s review branch.
+Its V3 and model consumer suite passes 596 tests with two retained-data skips and an
+unchanged lockfile (`trading-y277`). This verifies source integration; the coordinated
+release and released dependency ranges remain open.
 
 The final source passes 251 Python tests and the complete Python lint suite (Ruff,
 BasedPyright, codespell, documentation footers, and retired-surface checks).
