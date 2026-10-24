@@ -57,6 +57,22 @@ portable_values:
   - { id: depth_65, generated: deep_sequence, depth: 65, valid: false, code: yaml_limit }
   - { id: excessive_depth, generated: deep_sequence, depth: 1000, valid: false, code: yaml_limit }
   - { id: hostile_depth, generated: deep_sequence, depth: 50000, valid: false, code: yaml_limit }
+  # A JSON document is a YAML document and keeps its YAML meaning, including where the
+  # two languages disagree: NaN is a plain scalar string, and duplicate keys fail.
+  - id: json_document
+    text: '{"text": "hello", "count": 42, "ratio": 1.5, "enabled": true, "empty": null, "items": [1, "two"]}'
+    valid: true
+    expected: { text: hello, count: 42, ratio: 1.5, enabled: true, empty: null, items: [1, two] }
+  - id: json_quoted_scalars
+    text: '{"date": "2026-07-11", "flag": "yes", "nothing": "null", "number": "1e5"}'
+    valid: true
+    expected: { date: "2026-07-11", flag: "yes", nothing: "null", number: "1e5" }
+  - { id: json_nan, text: '{"value": NaN}', valid: true, expected: { value: "NaN" } }
+  - { id: json_duplicate_key, text: '{"value": "first", "value": "second"}', valid: false, code: yaml_duplicate_key }
+  - { id: json_merge_key, text: '{"<<": {"name": "Ada"}}', valid: false, code: yaml_merge_key }
+  - { id: json_unsafe_integer, text: '{"value": 9007199254740992}', valid: false, code: number_out_of_range }
+  - { id: json_negative_zero, text: '{"value": -0.0}', valid: false, code: number_negative_zero }
+  - { id: json_lone_surrogate, text: '{"value": "\ud800"}', valid: false, code: yaml_unsupported_scalar }
 
 structural:
   - id: format_is_annotation

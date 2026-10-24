@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import date
 from io import StringIO
@@ -20,6 +22,7 @@ from ruamel.yaml.events import (
     SequenceStartEvent,
 )
 from ruamel.yaml.nodes import ScalarNode
+from ruamel.yaml.parser import Parser as RuamelParser
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 """Largest integer that survives a round trip through a JS number."""
@@ -98,6 +101,26 @@ def read_utf8(path: Path) -> str:
 
 
 def parse_yaml(text: str) -> Any:
+    """Parse one portable YAML document, reading strict JSON with ``json`` when exact.
+
+    A JSON document is a YAML document, and it means what YAML says it means: that
+    reading is the contract, and ruamel is the reference for it. Without its optional C
+    extension ruamel is pure Python and reads a few hundred kilobytes a second, which is
+    most of the time a large JSON artifact spends in validation. :func:`_parse_json_subset`
+    therefore hands a JSON document to :mod:`json` when, and only when, ruamel is known to
+    read that text to an identical value, and every other text goes to
+    :func:`_parse_with_ruamel` unchanged. Both paths end in the same :func:`_check_value`,
+    so the value, its types, its key order, and any error code and message are the same
+    whichever one ran.
+    """
+    value = _parse_json_subset(text)
+    if value is _NOT_JSON:
+        return _parse_with_ruamel(text)
+    _check_value(value)
+    return value
+
+
+def _parse_with_ruamel(text: str) -> Any:
     """Parse YAML with the existing library after a representation preflight."""
     yaml = YAML(typ="safe")
     yaml.Constructor = _PortableConstructor
@@ -187,6 +210,179 @@ def _check_value(root: Any) -> None:
         raise PortableInputError(
             "yaml_unsupported_scalar", f"unsupported YAML value: {type(value).__name__}"
         )
+
+
+_NOT_JSON: Any = object()
+"""What :func:`_parse_json_subset` returns for a text it leaves to ruamel."""
+
+_JSON_PATH_ENABLED = YAML(typ="safe").Parser is RuamelParser
+"""Whether ruamel parses with its pure-Python parser, the one the JSON path matches.
+
+With the optional ``ruamel.yaml.clib`` extension installed, ruamel parses through libyaml
+instead, whose edge cases have not been compared with ``json``; every text then takes
+the ruamel path.
+"""
+
+_JSON_ROOT = re.compile(r"[ \n\r]*[\[{]")
+"""A root JSON array or object, preceded by whitespace that ruamel also skips.
+
+ruamel skips a tab only inside a flow collection, so a tab before the root is a YAML
+error although JSON calls it whitespace; :func:`_parse_json_subset` checks the text
+after the root the same way. Space and line breaks are whitespace to both. A scalar
+root is left to ruamel: it is cheap there and rare.
+"""
+
+_JSON_WHITESPACE = " \t\n\r"
+
+_JSON_UNSAFE_CHARACTER = re.compile(r"[\x7f-\x9f\u2028\u2029\ud800-\udfff\ufffe\uffff]")
+"""Raw characters JSON accepts in a string and ruamel does not read the same way.
+
+ruamel's reader rejects DEL, the C1 controls, a raw surrogate, U+FFFE and U+FFFF
+outright, and its scanner treats NEL, U+2028 and U+2029 as line breaks, which folds a
+quoted string and moves where a key ends. The C0 controls other than tab, line feed and
+carriage return are absent already, because strict ``json`` refuses them raw. The
+escaped form of any of these but a surrogate, such as ``\\u2028``, decodes identically
+in both.
+"""
+
+_JSON_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89a-fA-F]")
+"""An escaped UTF-16 surrogate, which ruamel decodes one half at a time.
+
+``json`` joins an escaped pair into one character; ruamel produces two lone surrogates,
+which :func:`_check_value` rejects. Any text with such an escape goes to ruamel. The
+pattern also matches an escaped backslash followed by ``ud8..``, which only costs that
+text the fast path.
+"""
+
+_JSON_KEY_LIMIT = 128
+"""Longest key, in decoded characters, that the JSON path accepts.
+
+YAML limits an implicit key to 1024 characters, measured in the source from the key's
+opening quote to its colon, and ruamel enforces that inside flow mappings too: a longer
+key is a parse error there. A decoded character is at most six source characters
+(``\\uXXXX``; escaped surrogates never reach this path), so 128 decoded characters keep
+the key itself within 770 source characters, quotes included.
+"""
+
+_JSON_GAP_LIMIT = 200
+"""Fewest spaces or tabs between a key and its colon that send a text to ruamel.
+
+With a key of at most 770 source characters and fewer than 200 characters of gap, the
+key's extent stays under ruamel's 1024.
+"""
+
+_JSON_SPACED_COLON = re.compile(r":(?<=[ \t\r\n]:)")
+"""A colon right after whitespace, which both key patterns below need.
+
+Most JSON writes ``"key": value`` and has none, so this one cheap scan (it starts from
+the literal colon) usually rules both out.
+"""
+
+_JSON_KEY_LINE_BREAK = re.compile(r"[\r\n][ \t]*:")
+"""A colon on a later line than its key, which YAML does not allow for a flow key.
+
+In strict JSON a raw line break can only sit between tokens, and the only token a colon
+follows is a key, so this matches exactly the keys separated from their colon by one:
+the last break before such a colon is followed only by spaces and tabs.
+"""
+
+_JSON_KEY_GAP = re.compile(rf"(?<![ \t])[ \t]{{{_JSON_GAP_LIMIT},}}:")
+
+
+class _NotPortableJson(Exception):
+    """Raised inside a ``json`` hook to hand the whole text to ruamel."""
+
+
+def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build one object, refusing what ruamel reads differently.
+
+    A duplicate key is ``yaml_duplicate_key`` to ruamel and a silent overwrite to
+    ``json``, and a ``<<`` key is a merge-key rejection in ruamel's preflight. Both, and an
+    over-long key, leave the whole text to ruamel, which reports them as it always has.
+    """
+    obj = dict(pairs)
+    if len(obj) != len(pairs) or "<<" in obj or (obj and max(map(len, obj)) > _JSON_KEY_LIMIT):
+        raise _NotPortableJson
+    return obj
+
+
+def _json_constant(_name: str) -> Any:
+    """``NaN`` and ``Infinity`` are not JSON; YAML reads them as plain-scalar strings."""
+    raise _NotPortableJson
+
+
+def _json_has_unsafe_character(text: str) -> bool:
+    """Whether ``text`` holds a raw character ruamel reads differently from ``json``.
+
+    An ASCII text can only hold DEL, because ``json`` refuses the C0 controls.
+    """
+    if text.isascii():
+        return "\x7f" in text
+    return _JSON_UNSAFE_CHARACTER.search(text) is not None
+
+
+def _json_within_depth(root: Any) -> bool:
+    """Whether no more than :data:`MAX_DEPTH` collections are ever open at once."""
+    level = [root]
+    for _ in range(MAX_DEPTH):
+        level = [
+            child
+            for node in level
+            for child in (node.values() if type(node) is dict else node)
+            if type(child) is dict or type(child) is list
+        ]
+        if not level:
+            return True
+    return False
+
+
+def _parse_json_subset(text: str) -> Any:
+    """The value of a strict JSON text that ruamel reads identically, else ``_NOT_JSON``.
+
+    This never raises; a text it declines is simply left to :func:`_parse_with_ruamel`,
+    which is how every disagreement between the two languages keeps today's outcome.
+
+    Strict JSON maps onto YAML 1.2 flow syntax token for token: braces, brackets, commas
+    and colons are flow indicators, a JSON string is a double-quoted scalar with the same
+    escapes, and a JSON number, ``true``, ``false`` or ``null`` is a plain scalar that
+    ruamel's YAML 1.2 resolver types as JSON does: an integer without a fraction or
+    exponent, a float with either. JSON text cannot spell a tag, anchor, alias, comment,
+    directive or block scalar. What remains is the list of places the two still differ,
+    each of which sends the text to ruamel:
+
+    - every text, when ruamel parses with its C extension (:data:`_JSON_PATH_ENABLED`);
+    - anything ``json`` rejects, including a BOM, empty text, and integers too long for
+      ``int``, and a ``RecursionError`` from very deep nesting;
+    - ``NaN``, ``Infinity`` and ``-Infinity`` (:func:`_json_constant`);
+    - duplicate keys, a ``<<`` key, and long keys (:func:`_json_object`);
+    - tabs outside the root collection (:data:`_JSON_ROOT`);
+    - raw characters ruamel refuses or treats as line breaks
+      (:data:`_JSON_UNSAFE_CHARACTER`) and escaped surrogates
+      (:data:`_JSON_SURROGATE_ESCAPE`);
+    - a key separated from its colon by a line break or a long gap
+      (:data:`_JSON_KEY_LINE_BREAK`, :data:`_JSON_KEY_GAP`);
+    - nesting past :data:`MAX_DEPTH`, which ruamel's preflight reports as ``yaml_limit``.
+
+    The tests in ``test_json_fast_path.py`` check each of these against ruamel and
+    compare both paths over generated documents built to hit them.
+    """
+    if not _JSON_PATH_ENABLED or _JSON_ROOT.match(text) is None:
+        return _NOT_JSON
+    try:
+        value = json.loads(text, object_pairs_hook=_json_object, parse_constant=_json_constant)
+    except (_NotPortableJson, ValueError, RecursionError):
+        return _NOT_JSON
+    if "\t" in text[len(text.rstrip(_JSON_WHITESPACE)) :]:
+        return _NOT_JSON
+    if _json_has_unsafe_character(text) or _JSON_SURROGATE_ESCAPE.search(text):
+        return _NOT_JSON
+    if _JSON_SPACED_COLON.search(text) and (
+        _JSON_KEY_LINE_BREAK.search(text) or _JSON_KEY_GAP.search(text)
+    ):
+        return _NOT_JSON
+    if not _json_within_depth(value):
+        return _NOT_JSON
+    return value
 
 
 @dataclass(frozen=True)
