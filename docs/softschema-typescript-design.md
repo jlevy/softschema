@@ -163,6 +163,7 @@ explicitly in the shared vectors.
 | `regenerate` | `regenerate` | byte-identical marker bodies |
 | `GeneratedSection` | `GeneratedSection` | parsed marker with `kind`, `schema`, `pointer` |
 | `WarningCode` (`document-*`) | `WarningCode` union | same codes |
+| `yaml_parser_mode` | none | Python only: whether ruamel’s optional C parser is in use; results are identical either way, and TypeScript always parses with `yaml` |
 
 ## Result Shape and CLI Output
 

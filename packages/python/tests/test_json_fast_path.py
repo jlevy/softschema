@@ -26,8 +26,6 @@ from typing import Any
 
 import pytest
 import ruamel.yaml
-from ruamel.yaml import YAML
-from ruamel.yaml.parser import Parser as RuamelParser
 from ruamel.yaml.reader import Reader
 
 from softschema import _portable, read_yaml_doc
@@ -45,11 +43,7 @@ generated comparisons), and leave the suite green.
 """
 requires_json_path = pytest.mark.skipif(
     not _portable._JSON_PATH_ENABLED and not os.environ.get(REQUIRE_JSON_PATH_ENV),
-    reason="ruamel's C extension or an unchecked ruamel release keeps every text on the ruamel path",
-)
-pure_ruamel_only = pytest.mark.skipif(
-    YAML(typ="safe").Parser is not RuamelParser,
-    reason="libyaml reads this text differently from pure ruamel",
+    reason="an unchecked ruamel release keeps every text on the ruamel path",
 )
 slow = pytest.mark.slow
 """Costly evidence, left out of the default run; `uv run pytest -m slow` runs it.
@@ -60,8 +54,12 @@ node ID alone deselects it (exit 5): add ``-m slow`` to the command as well.
 
 
 def _ruamel_path(text: str) -> Any:
-    """The unchanged ruamel parse that every JSON fast-path result must equal."""
-    return _portable._parse_with_ruamel(text)
+    """Pure ruamel's parse, which every JSON fast-path result must equal.
+
+    Pure, not the C-first default: pure ruamel is the reading the JSON path was derived
+    against and the one ``parse_yaml`` keeps with or without the C extension.
+    """
+    return _portable._parse_with(text, pure=True)
 
 
 Outcome = tuple[str, Any, str]
@@ -235,22 +233,8 @@ ERROR_CASES: list[tuple[str, str, str]] = [
 ]
 
 
-PURE_RUAMEL_ONLY = {"lone_surrogate_escape", "surrogate_pair_escape", "trailing_tab"}
-"""Pinned errors that describe pure ruamel only.
-
-libyaml refuses an escaped surrogate outright, joins an escaped pair into one character,
-and accepts a trailing tab, so with the C extension installed these three read differently.
-"""
-
-
 @pytest.mark.parametrize(
-    ("text", "code"),
-    [
-        pytest.param(
-            *case[1:], id=case[0], marks=[pure_ruamel_only] if case[0] in PURE_RUAMEL_ONLY else []
-        )
-        for case in ERROR_CASES
-    ],
+    ("text", "code"), [c[1:] for c in ERROR_CASES], ids=[c[0] for c in ERROR_CASES]
 )
 def test_pinned_error(text: str, code: str) -> None:
     with pytest.raises(PortableInputError) as raised:
@@ -551,14 +535,12 @@ def _forbid_ruamel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_portable, "YAML", refuse)
 
 
-@requires_json_path
 def test_plain_json_document_never_reaches_ruamel(monkeypatch: pytest.MonkeyPatch) -> None:
     _forbid_ruamel(monkeypatch)
     text = '{"text": "hello", "count": 42, "ratio": 1.5, "items": [true, null, {"k": "v"}]}'
     assert parse_yaml(text) == json.loads(text)
 
 
-@requires_json_path
 def test_json_artifact_file_never_reaches_ruamel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -568,7 +550,6 @@ def test_json_artifact_file_never_reaches_ruamel(
     assert read_yaml_doc(path) == {"softschema": {"contract": "example:Doc/v1"}, "a": [1]}
 
 
-@requires_json_path
 def test_portable_value_errors_in_json_documents_never_reach_ruamel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -609,7 +590,9 @@ def test_every_disagreement_shape_takes_the_ruamel_path(text: str) -> None:
     assert _portable._parse_json_subset(text) is _portable._NOT_JSON
 
 
-def test_c_parser_keeps_every_text_on_the_ruamel_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_unchecked_ruamel_release_keeps_every_text_on_the_ruamel_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(_portable, "_JSON_PATH_ENABLED", False)
     assert _portable._parse_json_subset('{"a": [1, 2.5, "x"]}') is _portable._NOT_JSON
 
@@ -632,31 +615,27 @@ def test_json_path_is_gated_to_the_checked_ruamel_releases(
     assert _portable._ruamel_is_checked(version) is checked
 
 
-class _NotRuamelsParser:
-    """Stands in for libyaml's ``CParser``, which the gate must turn the path off for."""
-
-
 @pytest.mark.parametrize(
-    ("parser_cls", "version", "enabled"),
+    ("version", "enabled"),
     [
-        (RuamelParser, (0, 19, 1), True),
-        (RuamelParser, (0, 18, 0), True),
-        (RuamelParser, (0, 20, 0), False),
-        (RuamelParser, (0, 17, 40), False),
-        (_NotRuamelsParser, (0, 19, 1), False),
+        ((0, 19, 1), True),
+        ((0, 18, 0), True),
+        ((0, 20, 0), False),
+        ((0, 17, 40), False),
     ],
 )
-def test_the_json_path_gate_needs_the_pure_parser_at_a_checked_release(
-    parser_cls: type, version: tuple[int, ...], enabled: bool
+def test_the_json_path_gate_is_the_checked_ruamel_range(
+    version: tuple[int, ...], enabled: bool
 ) -> None:
-    """Both halves of the gate: a C parser or an unchecked release turns the path off."""
-    assert _portable._json_path_enabled(parser_cls, version) is enabled
+    """An unchecked release turns the path off; the parser in use does not matter here,
+    because the ruamel path reads as pure ruamel in both modes (see
+    ``test_json_path_runs_whichever_ruamel_parser_is_active``).
+    """
+    assert _portable._json_path_enabled(version) is enabled
 
 
 def test_the_gate_is_what_this_process_runs() -> None:
-    assert _portable._JSON_PATH_ENABLED is _portable._json_path_enabled(
-        YAML(typ="safe").Parser, ruamel.yaml.version_info
-    )
+    assert _portable._JSON_PATH_ENABLED is _portable._json_path_enabled(ruamel.yaml.version_info)
 
 
 def test_installed_ruamel_is_a_checked_release() -> None:
@@ -693,3 +672,14 @@ def test_tabs_between_flow_tokens_are_whitespace_to_ruamel() -> None:
         assert _ruamel_path(text) == json.loads(text), text
         # Both paths agree, and the JSON path takes the text whenever it is on at all.
         assert _assert_equivalent(text) is _portable._JSON_PATH_ENABLED, text
+
+
+@pytest.mark.parametrize("c_parser", [True, False], ids=["c-first", "pure"])
+def test_json_path_runs_whichever_ruamel_parser_is_active(
+    c_parser: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The JSON path matches pure ruamel, which ``parse_yaml`` keeps in both modes."""
+    monkeypatch.delenv(_portable.PURE_YAML_ENV, raising=False)
+    monkeypatch.setattr(_portable, "_C_PARSER_AVAILABLE", c_parser)
+    _forbid_ruamel(monkeypatch)
+    assert parse_yaml('{"a": [1, 2.5, "x"]}') == {"a": [1, 2.5, "x"]}

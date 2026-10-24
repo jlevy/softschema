@@ -253,11 +253,35 @@ keys past YAML’s 1024-character implicit-key limit or with a line break before
 colon, and nesting past the depth limit.
 Both paths finish with the same portable-value check, so values, types, key order, and
 error codes and messages do not depend on which one ran.
-With ruamel’s C extension installed every text stays on the ruamel path, because
-libyaml’s edge cases have not been compared.
-The guards were derived from ruamel’s reader, scanner and resolver at 0.18 and 0.19
-(`CHECKED_RUAMEL_VERSIONS`), so a later ruamel release also turns the path off until the
+The JSON path is compared with pure-Python ruamel, and it stays valid when ruamel’s C
+extension is installed, because the ruamel path then still reads every text as pure
+ruamel does.
+Its guards were derived from ruamel’s reader, scanner and resolver at 0.18 and 0.19
+(`CHECKED_RUAMEL_VERSIONS`), so a later ruamel release turns the path off until the
 comparison is rerun; that costs only speed.
+
+ruamel’s optional C extension (`ruamel.yaml.clib`) is libyaml, a YAML 1.1 scanner and
+parser; ruamel’s constructor and resolver stay in Python either way.
+softschema uses it when it is installed, and pure ruamel stays the definition of every
+result: `yaml_parser_mode()` reports `"c-first"` then, and `"pure"` when the extension
+is absent or `SOFTSCHEMA_PURE_YAML` is set to anything but empty or `0`. On ordinary
+documents libyaml reads exactly what pure ruamel reads, several times faster.
+Where the two differ, libyaml usually rejects what pure ruamel accepts (a URL inside a
+flow sequence, a reserved directive) or words the error differently, so any exception
+from the C attempt, including the preflight and the portable-value check, discards it
+and pure ruamel reads the text again.
+The fallback cannot catch the opposite direction, libyaml accepting a text pure ruamel
+rejects or reading a different value, so texts with any shape where that was found go to
+pure ruamel directly: a tab anywhere, NEL, LS, PS or a byte order mark, a line starting
+with `%` (libyaml ignores `%YAML 1.1` when resolving values), a block scalar header with
+a comment and no space or followed by a line of only spaces, a document that is a block
+scalar, and a quoted scalar followed by a colon with no space after it.
+The shapes were found by comparing the two parsers over every short text, generated and
+mutated documents, and all of Unicode, and `test_c_parser.py` compares C-first, forced
+pure, and a process without the extension on each of them.
+`compile` writes the schema through ruamel’s pure-Python emitter whether or not the
+extension is installed, because libyaml’s emitter escapes astral characters and breaks
+long lines differently.
 
 ruamel.yaml normally constructs implicit date- and timestamp-shaped scalars as Python
 `date` and `datetime` objects.
