@@ -240,6 +240,22 @@ boundary has been identified.
 It preflights parser events for limits and unsupported YAML features, then checks the
 constructed result against the JSON-compatible portable domain defined by the spec.
 
+A document whose text is strict JSON is read with the standard library `json` module
+instead, when ruamel is known to read that text to an identical value.
+ruamel without its optional C extension is pure Python, so for a large JSON artifact the
+YAML parse otherwise costs far more than the schema validation itself.
+The JSON path is an optimization, not a second dialect: a JSON document still means what
+YAML 1.2 says it means.
+Every text on which the two can disagree goes to ruamel unchanged: duplicate keys, `NaN`
+and `Infinity` (plain-scalar strings in YAML), a `<<` key, escaped surrogates, raw
+characters ruamel rejects or treats as line breaks, tabs outside the root collection,
+keys past YAML’s 1024-character implicit-key limit or with a line break before their
+colon, and nesting past the depth limit.
+Both paths finish with the same portable-value check, so values, types, key order, and
+error codes and messages do not depend on which one ran.
+With ruamel’s C extension installed every text stays on the ruamel path, because
+libyaml’s edge cases have not been compared.
+
 ruamel.yaml normally constructs implicit date- and timestamp-shaped scalars as Python
 `date` and `datetime` objects.
 The softschema parser assigns a private `SafeConstructor` subclass that returns the
