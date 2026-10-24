@@ -32,15 +32,14 @@ from softschema._portable import MAX_DEPTH, PortableInputError, parse_yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PRUNED_DIRS = {".git", ".venv", "node_modules", "dist", "attic", "__pycache__"}
 
-requires_json_path = pytest.mark.skipif(
-    not _portable._JSON_PATH_ENABLED,
-    reason="ruamel's C extension is installed, so every text stays on the ruamel path",
-)
-
 
 def _ruamel_path(text: str) -> Any:
-    """The unchanged ruamel parse that every JSON fast-path result must equal."""
-    return _portable._parse_with_ruamel(text)
+    """Pure ruamel's parse, which every JSON fast-path result must equal.
+
+    Pure, not the C-first default: pure ruamel is the reading the JSON path was derived
+    against and the one ``parse_yaml`` keeps with or without the C extension.
+    """
+    return _portable._parse_with(text, pure=True)
 
 
 Outcome = tuple[str, Any, str]
@@ -268,7 +267,6 @@ JSON_SPELLINGS: list[Callable[[Any], str]] = [
 ]
 
 
-@requires_json_path
 def test_repo_yaml_documents_respelled_as_json_parse_identically() -> None:
     """Every parseable YAML document in the repo, in each common JSON spelling."""
     fast = total = 0
@@ -415,7 +413,6 @@ class _Generator:
         return text
 
 
-@requires_json_path
 def test_generated_documents_parse_identically() -> None:
     rng = random.Random(20261024)
     fast = slow = 0
@@ -501,14 +498,12 @@ def _forbid_ruamel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_portable, "YAML", refuse)
 
 
-@requires_json_path
 def test_plain_json_document_never_reaches_ruamel(monkeypatch: pytest.MonkeyPatch) -> None:
     _forbid_ruamel(monkeypatch)
     text = '{"text": "hello", "count": 42, "ratio": 1.5, "items": [true, null, {"k": "v"}]}'
     assert parse_yaml(text) == json.loads(text)
 
 
-@requires_json_path
 def test_json_artifact_file_never_reaches_ruamel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -518,7 +513,6 @@ def test_json_artifact_file_never_reaches_ruamel(
     assert read_yaml_doc(path) == {"softschema": {"contract": "example:Doc/v1"}, "a": [1]}
 
 
-@requires_json_path
 def test_portable_value_errors_in_json_documents_never_reach_ruamel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -559,6 +553,12 @@ def test_every_disagreement_shape_takes_the_ruamel_path(text: str) -> None:
     assert _portable._parse_json_subset(text) is _portable._NOT_JSON
 
 
-def test_c_parser_keeps_every_text_on_the_ruamel_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_portable, "_JSON_PATH_ENABLED", False)
-    assert _portable._parse_json_subset('{"a": [1, 2.5, "x"]}') is _portable._NOT_JSON
+@pytest.mark.parametrize("c_parser", [True, False], ids=["c-first", "pure"])
+def test_json_path_runs_whichever_ruamel_parser_is_active(
+    c_parser: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The JSON path matches pure ruamel, which ``parse_yaml`` keeps in both modes."""
+    monkeypatch.delenv(_portable.PURE_YAML_ENV, raising=False)
+    monkeypatch.setattr(_portable, "_C_PARSER_AVAILABLE", c_parser)
+    _forbid_ruamel(monkeypatch)
+    assert parse_yaml('{"a": [1, 2.5, "x"]}') == {"a": [1, 2.5, "x"]}

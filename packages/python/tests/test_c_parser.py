@@ -1,0 +1,703 @@
+"""With ruamel's C extension installed, ``parse_yaml`` still reads every text as pure ruamel.
+
+``ruamel.yaml.clib`` replaces ruamel's reader, scanner and parser with libyaml, a YAML 1.1
+scanner. Construction and resolution stay in Python, so on ordinary documents the two
+agree, but libyaml rejects some texts pure ruamel reads, accepts some it rejects, reads a
+few differently, and words almost every error differently. ``parse_yaml`` therefore
+tries the C parser first only on texts with none of the shapes where the two disagree,
+and re-reads with pure ruamel on any failure, so pure ruamel stays the definition.
+
+These tests compare three readings of each text:
+
+- **C-first**: ``parse_yaml`` as it runs with the extension, the default once installed;
+- **forced**: ``parse_yaml`` with ``SOFTSCHEMA_PURE_YAML=1``;
+- **reference**: ``parse_yaml`` in a fresh interpreter that cannot import the extension,
+  which is softschema exactly as it behaves without it.
+
+All three must agree on the value (type, key order, float bits) or on the error code and
+message. Without the extension there is no C parser to compare, and those tests skip.
+"""
+
+from __future__ import annotations
+
+import io
+import math
+import os
+import pickle
+import random
+import subprocess
+import sys
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml.parser import Parser as RuamelParser
+
+import softschema
+from softschema import _portable
+from softschema._portable import PortableInputError, parse_yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+PRUNED_DIRS = {".git", ".venv", "node_modules", "dist", "attic", "__pycache__"}
+PURE_ENV = "SOFTSCHEMA_PURE_YAML"
+
+C_AVAILABLE = YAML(typ="safe").Parser is not RuamelParser
+requires_c = pytest.mark.skipif(
+    not C_AVAILABLE,
+    reason="ruamel.yaml.clib is not installed, so there is no C parser to compare",
+)
+
+Outcome = tuple[Any, ...]
+
+
+def _outcome(text: str) -> Outcome:
+    try:
+        return ("value", parse_yaml(text))
+    except PortableInputError as exc:
+        return ("error", exc.code, str(exc))
+    except Exception as exc:
+        return ("exception", type(exc).__name__, str(exc))
+
+
+# A fresh interpreter in which ``import _ruamel_yaml`` fails, so ruamel falls back to its
+# pure-Python parser exactly as it does when the extension is not installed.
+_REFERENCE_PROGRAM = """
+import pickle, sys
+sys.modules["_ruamel_yaml"] = None
+from ruamel.yaml import YAML
+from ruamel.yaml.parser import Parser
+assert YAML(typ="safe").Parser is Parser, "the C parser is still importable"
+from softschema._portable import PortableInputError, parse_yaml
+request = pickle.load(sys.stdin.buffer)
+if request == "mode":
+    from softschema import yaml_parser_mode
+    pickle.dump(yaml_parser_mode(), sys.stdout.buffer)
+    raise SystemExit
+if request == "compile":
+    from softschema.compile import _yaml_dump
+    from tests_c_parser_schema import SCHEMA
+    pickle.dump(_yaml_dump(SCHEMA), sys.stdout.buffer)
+    raise SystemExit
+outcomes = []
+for text in request:
+    try:
+        outcomes.append(("value", parse_yaml(text)))
+    except PortableInputError as exc:
+        outcomes.append(("error", exc.code, str(exc)))
+    except Exception as exc:
+        outcomes.append(("exception", type(exc).__name__, str(exc)))
+pickle.dump(outcomes, sys.stdout.buffer)
+"""
+
+
+def _in_reference_process(request: Any, extra_path: Path | None = None) -> Any:
+    env = {key: value for key, value in os.environ.items() if key != PURE_ENV}
+    if extra_path is not None:
+        env["PYTHONPATH"] = os.pathsep.join([str(extra_path), env.get("PYTHONPATH", "")])
+    result = subprocess.run(
+        [sys.executable, "-c", _REFERENCE_PROGRAM],
+        input=pickle.dumps(request),
+        capture_output=True,
+        env=env,
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    return pickle.loads(result.stdout)
+
+
+def _same(left: Any, right: Any) -> bool:
+    """Equal in type, key order, and float bits, which ``==`` does not check."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return list(left) == list(right) and all(_same(left[key], right[key]) for key in left)
+    if isinstance(left, (list, tuple)):
+        return len(left) == len(right) and all(map(_same, left, right))
+    if isinstance(left, float):
+        return left.hex() == right.hex() or (math.isnan(left) and math.isnan(right))
+    return left == right
+
+
+def _assert_reads_as_pure(texts: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """C-first, forced-pure and reference readings agree on every text."""
+    reference = _in_reference_process(texts)
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    c_first = [_outcome(text) for text in texts]
+    monkeypatch.setenv(PURE_ENV, "1")
+    forced = [_outcome(text) for text in texts]
+    mismatches = [
+        (text[:120], ref, c, f)
+        for text, ref, c, f in zip(texts, reference, c_first, forced, strict=True)
+        if not (_same(ref, c) and _same(ref, f))
+    ]
+    assert not mismatches, f"{len(mismatches)} of {len(texts)} differ, first: {mismatches[:5]}"
+
+
+# --- Inputs on which libyaml and pure ruamel disagree ---------------------------------
+
+EDGE_CASES: dict[str, str] = {
+    # A plain scalar with a colon inside a flow collection is YAML 1.2, not 1.1.
+    "flow_seq_https_url": "sources: [https://example.com/a?b=c]\n",
+    "flow_map_https_url": "m: {url: https://example.com/a}\n",
+    "flow_seq_times": "t: [10:30, 11:00]\n",
+    "plain_colon_in_flow": "{a: b:c}\n",
+    "url_in_flow": "[http://x.y/z]\n",
+    "flow_seq_spaced_colon": "[a :1]",
+    "flow_map_spaced_colon": "{a :b}",
+    "flow_seq_quoted_url": 'sources: ["https://example.com/a"]\n',
+    "flow_single_pair": "a: [x: 1]\n",
+    # libyaml reads ':' after a quoted key in a flow sequence as an indicator.
+    "flow_seq_quoted_key_adjacent_colon": '["a":1]',
+    "flow_seq_single_quoted_key_adjacent_colon": "['a':b]",
+    "flow_seq_quoted_key_spaced_colon": '["k"  :v]',
+    "flow_seq_quoted_key_colon_no_value": '["":]',
+    "flow_seq_nested_quoted_key": 'x: [a, "k":v]\n',
+    "flow_seq_explicit_key_adjacent_colon": '[? "a":1]',
+    # Tabs: libyaml skips a tab between block tokens where pure ruamel refuses it.
+    "trailing_tab_after_root": '{"a": 1}\t\n',
+    "tab_before_root": '\t{"a": 1}\n',
+    "tab_after_quoted_value": 'a: "x"\t\n',
+    "tab_after_plain_value": "a: b\t\n",
+    "tab_after_colon": "a:\tb\n",
+    "tab_after_flow_value": "a: [1]\t\n",
+    "tab_before_colon": '"a"\t: 1\n',
+    "tab_after_document_start": "---\tx\n",
+    "tab_after_dash": '- "x"\t\n',
+    "tab_before_comment": "a: 1\t# c\n",
+    "tab_indent": "a:\n\tb: 1\n",
+    "tab_in_quoted": 'a: "x\ty"\n',
+    "tab_in_block_scalar": "a: |\n  x\ty\n",
+    # A byte order mark: libyaml skips one at the start of any line.
+    "bom_at_line_start": "a: 1\n\ufeffb: 2\n",
+    "bom_inside": "a: \ufeffx\n",
+    "bom_leading": "\ufeffa: 1\n",
+    "bom_before_directive": "\ufeff%YAML 1.1\n---\na: yes\n",
+    # NEL, LS and PS: line breaks to both scanners, which still fold them differently.
+    "nel_in_plain": "a: x\u0085y\n",
+    "nel_in_quoted": 'a: "x\u0085y"\n',
+    "ls_in_plain": "a: x\u2028y\n",
+    "ls_in_dq": 'a: "x\u2028y"\n',
+    "ps_in_plain": "a: x\u2029y\n",
+    "nel_line_breaks": "a: 1\u0085b: 2\u0085",
+    # Directives: libyaml ignores %YAML 1.1 when values are resolved.
+    "yaml11_directive_bools": "%YAML 1.1\n---\na: yes\nb: on\nc: 0o17\nd: 017\n",
+    "yaml12_directive": "%YAML 1.2\n---\na: yes\n",
+    "reserved_directive": "%FOO bar\n---\na: 1\n",
+    "tag_directive": "%TAG !e! tag:example.com,2000:\n---\na: 1\n",
+    "directive_after_cr": "a: 1\r%YAML 1.1\r---\rb: 2\r",
+    # Block scalars.
+    "block_header_comment_without_space": "a: |#c\n  x\n",
+    "folded_header_comment_without_space": "a: >-#c\n  x\n",
+    "root_block_scalar_column_zero_hash": "|\n#x\n",
+    "root_block_scalar_after_marker": "--- |\n#x\n",
+    "root_block_scalar_after_comment": "# c\n>\n#x\n",
+    "block_scalar_short_space_line": "a: |\n \n  x\n",
+    "block_scalar_short_space_line_folded": "a: >\n  \n   x\n",
+    "block_scalar_space_line_with_indicator": "a: |2\n \n   x\n",
+    "block_scalar_empty_first_line": "a: |\n\n \n  x\n",
+    "block_scalar_keep": "a: |+\n  x\n\n\nb: 1\n",
+    "folded": "a: >\n  x\n  y\n\n  z\n",
+    "nested_block_scalar_hash": "a: |\n  #x\n",
+    # Escapes: libyaml refuses escaped surrogates, pure ruamel decodes each half.
+    "lone_surrogate_escape": 'a: "\\ud800"\n',
+    "surrogate_pair_escape": 'a: "\\ud83d\\ude00"\n',
+    "quoted_escapes": 'a: "\\x41\\u00e9\\U0001F600\\t\\N\\_\\L\\P"\n',
+    "solidus_escape": 'a: "\\/"\n',
+    "invalid_escape": 'a: "\\q"\n',
+    "raw_lone_surrogate": "a: \ud800\n",
+    # Errors both reject, where libyaml words the message differently.
+    "duplicate_key": "a: 1\na: 2\n",
+    "bad_indent": "a:\n  b: 1\n c: 2\n",
+    "unterminated_dq": 'a: "abc\n',
+    "unterminated_sq": "a: 'abc\n",
+    "nul_char": "a: x\x00y\n",
+    "del_char": "a: x\x7fy\n",
+    "c1_char": "a: x\x9fy\n",
+    "long_key_1100": "k" * 1100 + ": 1\n",
+    "flow_long_key": '{"' + "k" * 1100 + '": 1}\n',
+    "key_colon_newline_flow": '{"a"\n: 1}\n',
+    "multi_doc": "a: 1\n---\nb: 2\n",
+    "non_string_key": "1: a\ntrue: b\n",
+    "percent_plain": "a: %x\n",
+    "backtick": "a: `x`\n",
+    "at_sign": "a: @x\n",
+    "deep_nesting": "[" * 70 + "]" * 70,
+    "content_after_document_end": "a: 1\n... b\n",
+    # Rejected by the preflight on both paths.
+    "alias": "a: &x 1\nb: *x\n",
+    "anchor_only": "a: &x 1\n",
+    "explicit_tag": "a: !!str 1\n",
+    "custom_tag": "a: !foo 1\n",
+    "merge_key": "a: {x: 1}\nb:\n  <<: {y: 2}\n",
+    # Ordinary documents, which both read alike.
+    "yaml12_bools": "a: yes\nb: on\nc: true\nd: 0o17\ne: 017\n",
+    "timestamp": "a: 2026-10-24\nb: 2026-10-24T10:00:00Z\n",
+    "floats": "a: 1e3\nb: .5\nc: 1_000\nd: .inf\ne: -.NaN\n",
+    "big_int": "a: 9007199254740993\n",
+    "neg_zero": "a: -0.0\n",
+    "astral_raw": "a: \U0001f600\n",
+    "unicode_key": "\u00e9: 1\n",
+    "single_quote_escape": "a: 'it''s'\n",
+    "complex_key": "? [a, b]\n: 1\n",
+    "comment_after_value": "a: 1 # c\nb: 'x' #c\n",
+    "comment_after_quoted_without_space": 'a: "x"#c\n',
+    "crlf": "a: 1\r\nb:\r\n  - x\r\n",
+    "cr_only": "a: 1\rb: 2\r",
+    "indented_seq": "a:\n- 1\n- 2\n",
+    "dash_no_space": "a:\n  -1\n",
+    "question_plain": "a: ?x\n",
+    "doc_end_marker": "a: 1\n...\n",
+    "empty": "",
+    "only_comment": "# c\n",
+    "null_root": "null\n",
+    "scalar_root": "hello\n",
+    "very_long_line": "a: " + "x" * 200_000 + "\n",
+    "block_url": "a: https://example.com/a\n",
+    "block_seq_url": "a:\n  - https://example.com/a\n",
+}
+
+
+@requires_c
+def test_edge_cases_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    _assert_reads_as_pure(list(EDGE_CASES.values()), monkeypatch)
+
+
+# --- Corpus: the repo's own documents and the shared vectors ---------------------------
+
+
+def _repo_files(*suffixes: str) -> Iterator[Path]:
+    for root, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = sorted(name for name in dirs if name not in PRUNED_DIRS)
+        for name in sorted(files):
+            if name.endswith(suffixes):
+                yield Path(root) / name
+
+
+def _strings(value: Any) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _strings(key)
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
+def _repo_texts() -> list[str]:
+    """Every repo YAML/JSON file and frontmatter block, and every string in the vectors."""
+    texts = [path.read_text(encoding="utf-8") for path in _repo_files(".yaml", ".yml", ".json")]
+    for path in _repo_files(".md"):
+        split = _portable.split_frontmatter(path.read_text(encoding="utf-8"))
+        if split is not None:
+            texts.append(split.metadata_text)
+    for path in sorted((REPO_ROOT / "tests/vectors").glob("*.yaml")):
+        texts.extend(_strings(YAML(typ="safe", pure=True).load(path.read_text(encoding="utf-8"))))
+    return list(dict.fromkeys(texts))
+
+
+@requires_c
+def test_repo_documents_and_vector_texts_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    texts = _repo_texts()
+    assert len(texts) > 200, len(texts)
+    _assert_reads_as_pure(texts, monkeypatch)
+
+
+# --- Generated corpus ---------------------------------------------------------------------
+
+ALPHABET = [
+    "a", " ", "\t", "\n", ":", "-", "#", '"', "'", "[", "]", "{", "}", ",", "?", "\\",
+    "\ufeff", "\x85", "%", "|", ">", "!", "&", "*", "\r", "1", ".", "\u2028",
+]  # fmt: skip
+TEMPLATES = [
+    "{s}", "a: {s}\n", "- {s}\n", "[{s}]", "{{{s}}}", "a:\n  {s}\n", '"{s}"', "a: '{s}'\n",
+    "a: |\n  {s}\n", "a: >\n  x\n  {s}\n", "{s}\nb: 1\n", "a: 1\n{s}", "- [x, {s}]\n",
+    "a: {{b: {s}}}\n", '{{"a": {s}}}', "--- {s}\n", "a: x\n  {s}\n", "? {s}\n: 1\n",
+    '["k"{s}]', "|\n{s}\n",
+]  # fmt: skip
+PAIR_TEMPLATES = ["{s}", "a: {s}\n", "[{s}]", "{{{s}}}", '["k"{s}]', "|\n{s}\n", "a: |\n  {s}\n"]
+
+
+def _short_texts() -> list[str]:
+    """Every string of up to one alphabet character in each template, and of two in some.
+
+    The offline search behind the guards went to four characters bare and three in each
+    template; this keeps the unit run to a few seconds.
+    """
+    singles = [template.format(s=piece) for piece in ["", *ALPHABET] for template in TEMPLATES]
+    pairs = [a + b for a in ALPHABET for b in ALPHABET]
+    return singles + [template.format(s=pair) for pair in pairs for template in PAIR_TEMPLATES]
+
+
+@requires_c
+def test_generated_short_texts_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    _assert_reads_as_pure(_short_texts(), monkeypatch)
+
+
+SCALARS = [
+    "x", "hello world", "a:b", "a #b", "-x", "?x", ":x", "x:", "http://e.com/a?b=c", "10:30",
+    "2026-10-24", "yes", "on", "~", "null", "1e3", "0o17", "017", "0x1F", ".inf", "1_000",
+    "+1", "-0", "-0.0", "\u00e9", "\u4e2d\u6587", "\U0001f600", "tab\there", "nel\x85x",
+    "ls\u2028x", "bom\ufeffx", "back\\slash", 'quote"d', "it's", "multi\nline",
+    "multi\n\nblank", "trail ", " lead", "%pct", "@at", "&and", "*ali", "!tag", "|pipe",
+    ">gt", "[br]", "{cb}", "a,b", "", " ", "k" * 1030,
+]  # fmt: skip
+
+
+class _Generator:
+    """Seeded block and flow documents that mix every shape the scanners disagree on."""
+
+    def __init__(self, rng: random.Random) -> None:
+        self.rng = rng
+
+    def scalar(self, flow: bool, indent: int) -> str:
+        rng = self.rng
+        text = rng.choice(SCALARS)
+        style = rng.choice(["plain", "plain", "single", "double", "double", "literal", "folded"])
+        if flow and style in ("literal", "folded"):
+            style = "double"
+        if style == "plain":
+            return text.replace("\n", "\n" + " " * (indent + 2))
+        if style == "single":
+            return "'" + text.replace("'", "''").replace("\n", "\n" + " " * (indent + 1)) + "'"
+        if style == "double":
+            body = text.replace("\\", "\\\\").replace('"', '\\"')
+            body = body.replace("\n", "\\n" if rng.random() < 0.3 else "\n" + " " * (indent + 1))
+            if rng.random() < 0.2:
+                body += rng.choice(["\\t", "\\/", "\\x41", "\\u00e9", "\\U0001F600", "\\N", "\\_"])
+            return '"' + body + '"'
+        header = rng.choice(["|", ">", "|-", ">+", "|2", ">-", "|+", "|#", "| #c"])
+        pad = " " * (indent + 2)
+        lines = text.split("\n")
+        lead = rng.choice(["", "", "\n", " \n", pad + "\n"])
+        return header + "\n" + lead + "\n".join(pad + line if line else "" for line in lines)
+
+    def flow(self, depth: int) -> str:
+        rng = self.rng
+        if rng.random() < 0.5:
+            items = [self.flow_node(depth + 1) for _ in range(rng.randrange(4))]
+            if rng.random() < 0.3:
+                items.append(self.scalar(True, 0) + rng.choice([":", ": ", " :", ":x", " : "]))
+            return "[" + rng.choice([", ", ",", ",\n  "]).join(items) + "]"
+        pairs = [
+            self.scalar(True, 0) + rng.choice([": ", ":", " : ", " :"]) + self.flow_node(depth + 1)
+            for _ in range(rng.randrange(4))
+        ]
+        return "{" + rng.choice([", ", ","]).join(pairs) + "}"
+
+    def flow_node(self, depth: int) -> str:
+        if depth < 3 and self.rng.random() < 0.3:
+            return self.flow(depth)
+        return self.scalar(True, 0)
+
+    def block(self, indent: int, depth: int) -> str:
+        rng = self.rng
+        pad = " " * indent
+        lines = []
+        if rng.random() < 0.6:
+            for _ in range(rng.randrange(1, 4)):
+                key = rng.choice(["a", "b", "key", "x y", '"q"', "'s'", "\u00e9", "k" * 1020])
+                sep = rng.choice([":", ":", " :", ":\t", "\t:"])
+                if depth < 3 and rng.random() < 0.35:
+                    child = indent + rng.choice([2, 2, 4, 1])
+                    lines.append(pad + key + sep + "\n" + self.block(child, depth + 1))
+                else:
+                    value = self.flow(depth) if rng.random() < 0.25 else self.scalar(False, indent)
+                    gap = rng.choice([" ", " ", "  ", "\t"])
+                    tail = rng.choice(["", "", " # c", "\t# c", "#c", "\t"])
+                    lines.append(pad + key + sep + gap + value + tail + "\n")
+        else:
+            for _ in range(rng.randrange(1, 4)):
+                dash = rng.choice(["- ", "- ", "-\t", "-  "])
+                value = self.flow(depth) if rng.random() < 0.25 else self.scalar(False, indent)
+                lines.append(pad + dash + value + rng.choice(["", " # c", "\t"]) + "\n")
+        return "".join(lines)
+
+    def document(self) -> str:
+        rng = self.rng
+        body = self.flow(0) if rng.random() < 0.2 else self.block(0, 0)
+        prefix = rng.choice(
+            ["", "", "", "---\n", "--- ", "---\t", "# c\n", "\ufeff", "%YAML 1.1\n---\n"]
+        )
+        suffix = rng.choice(["", "", "...\n", "\n\n", "\t\n", "# end", "\n\ufeffz: 1\n"])
+        text = prefix + body + suffix
+        if rng.random() < 0.15:
+            text = text.replace("\n", rng.choice(["\r\n", "\r", "\x85", "\u2028"]))
+        return text
+
+
+def _generated_documents(seed: int, count: int) -> list[str]:
+    generator = _Generator(random.Random(seed))
+    return [generator.document() for _ in range(count)]
+
+
+@requires_c
+def test_generated_documents_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    _assert_reads_as_pure(_generated_documents(20261024, 2000), monkeypatch)
+
+
+MUTATION_CHARACTERS = [
+    "\t", " ", "\n", ":", "#", "-", '"', "'", "\ufeff", "\x85", "\u2028", "%", "?", ",",
+    "[", "]", "{", "}", "\\", "\r", "|", ">",
+]  # fmt: skip
+
+
+def _mutations(texts: list[str], seed: int, per_text: int) -> list[str]:
+    """Each text with one or two characters inserted, deleted or replaced."""
+    rng = random.Random(seed)
+    mutated = []
+    for text in texts:
+        for _ in range(per_text):
+            out = text
+            for _ in range(rng.randrange(1, 3)):
+                index = rng.randrange(len(out) + 1)
+                roll = rng.random()
+                if roll < 0.6:
+                    out = out[:index] + rng.choice(MUTATION_CHARACTERS) + out[index:]
+                elif roll < 0.8:
+                    out = out[:index] + out[index + 1 :]
+                else:
+                    out = out[:index] + rng.choice(MUTATION_CHARACTERS) + out[index + 1 :]
+            mutated.append(out)
+    return mutated
+
+
+@requires_c
+def test_mutated_documents_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    small = [text for text in _repo_texts() if len(text) < 4000]
+    edge = [text for text in EDGE_CASES.values() if len(text) < 4000]
+    seeds = edge + small + _generated_documents(7, 300)
+    _assert_reads_as_pure(_mutations(seeds, 11, 3), monkeypatch)
+
+
+SAMPLED_CODE_POINTS = [
+    *range(0x100),
+    *range(0x2000, 0x2030),
+    *range(0xD7F8, 0xD808),
+    *range(0xDFF8, 0xE008),
+    *range(0xFDD0, 0xFDF0),
+    *range(0xFEF8, 0x10000),
+    0x10000,
+    0x1F600,
+    0x10FFFF,
+]
+CODE_POINT_TEMPLATES = ["a: x{c}y\n", 'a: "x{c}y"\n', "a: |\n  x{c}y\n", "x{c}y: 1\n", "[x{c}y]"]
+
+
+@requires_c
+def test_sampled_code_points_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    texts = [
+        template.format(c=chr(code))
+        for code in SAMPLED_CODE_POINTS
+        for template in CODE_POINT_TEMPLATES
+    ]
+    _assert_reads_as_pure(texts, monkeypatch)
+
+
+# --- Which parser runs ---------------------------------------------------------------------
+
+
+def _record_parsers(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    """Record, for each ruamel ``YAML`` softschema builds, whether it asked for pure."""
+    calls: list[bool] = []
+    real = YAML
+
+    def recording(*args: Any, **kwargs: Any) -> Any:
+        calls.append(bool(kwargs.get("pure", False)))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(_portable, "YAML", recording)
+    return calls
+
+
+ROUTED_TO_PURE = {
+    "yaml_directive": "%YAML 1.1\n---\na: yes\n",
+    "tag_directive": "%TAG !e! tag:example.com,2000:\n---\na: 1\n",
+    "directive_on_later_line": "# c\n%YAML 1.2\n---\na: 1\n",
+    "directive_after_cr": "# c\r%YAML 1.2\r---\ra: 1\r",
+    "tab": "a: 1\t\n",
+    "tab_in_quoted": 'a: "x\ty"\n',
+    "bom": "a: 1\n\ufeffb: 2\n",
+    "nel": "a: x\x85y\n",
+    "line_separator": "a: x\u2028y\n",
+    "paragraph_separator": "a: x\u2029y\n",
+    "block_header_comment": "a: |#c\n  x\n",
+    "block_header_space_line": "a: |\n \n  x\n",
+    "block_header_space_line_after_comment": "a: >- # c\r\n \r\n  x\r\n",
+    "root_block_scalar": "|\n  x\n",
+    "root_block_scalar_after_marker_and_comment": "# c\n--- # d\n>\n  x\n",
+    "flow_quoted_key_adjacent_colon": '["a":1]',
+    "flow_quoted_key_spaced_colon": "['k'  :v]",
+    "quoted_key_colon_at_end": '"a":',
+}
+
+
+@requires_c
+@pytest.mark.parametrize("text", ROUTED_TO_PURE.values(), ids=ROUTED_TO_PURE.keys())
+def test_disagreement_shapes_skip_the_c_parser(text: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    calls = _record_parsers(monkeypatch)
+    _outcome(text)
+    assert calls == [True]
+
+
+C_FIRST = {
+    "block_mapping": "a: 1\nb:\n  - x\n  - 'y'\nc: {d: [1, 2]}\n",
+    "block_scalar": "a: |\n  line\n\n  more\nb: >-\n  folded\n",
+    "frontmatter_style": "softschema:\n  contract: example:Doc/v1\ntitle: Spirited Away\n",
+    "non_ascii": "title: na\u00efve \U0001f600\n",
+    "flow_json_like_mapping": '{"a": 1, "b": [true, null]}  # trailing comment\n',
+    "nested_block_scalar_comment_line": "a: |\n  x\n# c\nb: 1\n",
+}
+
+
+@requires_c
+@pytest.mark.parametrize("text", C_FIRST.values(), ids=C_FIRST.keys())
+def test_ordinary_documents_are_read_by_the_c_parser_alone(
+    text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    calls = _record_parsers(monkeypatch)
+    expected = _in_reference_process([text])[0]
+    assert _same(_outcome(text), expected)
+    assert calls == [False]
+
+
+C_REJECTS = {
+    "yaml_error_on_flow_colon": "sources: [https://example.com/a]\n",
+    "yaml_error_on_flow_times": "t: [10:30, 11:00]\n",
+    "error_code_on_escaped_surrogate": 'a: "\\ud800"\n',
+    "error_message_on_duplicate_key": "a: 1\na: 2\n",
+    "error_message_on_bad_indent": "a:\n  b: 1\n c: 2\n",
+    "encoding_error_on_raw_surrogate": "a: \ud800\n",
+    "preflight_error_on_alias": "a: &x 1\nb: *x\n",
+    "value_check_error": "a: 9007199254740992\n",
+}
+
+
+@requires_c
+@pytest.mark.parametrize("text", C_REJECTS.values(), ids=C_REJECTS.keys())
+def test_a_c_parser_failure_is_reread_by_pure(text: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    calls = _record_parsers(monkeypatch)
+    expected = _in_reference_process([text])[0]
+    assert _same(_outcome(text), expected), (_outcome(text), expected)
+    assert calls == [False, True]
+
+
+C_EXCEPTIONS = [
+    YAMLError("libyaml refused it"),
+    PortableInputError("yaml_limit", "from the C preflight"),
+    RecursionError("deep"),
+    ValueError("bad value"),
+    UnicodeEncodeError("utf-8", "\ud800", 0, 1, "surrogates not allowed"),
+    MemoryError(),
+    TypeError("unexpected"),
+]
+
+
+@requires_c
+@pytest.mark.parametrize("error", C_EXCEPTIONS, ids=lambda error: type(error).__name__)
+def test_any_exception_from_the_c_attempt_falls_back_to_pure(
+    error: Exception, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    real = _portable._parse_with
+
+    def failing_c(text: str, *, pure: bool) -> Any:
+        if not pure:
+            raise error
+        return real(text, pure=pure)
+
+    monkeypatch.setattr(_portable, "_parse_with", failing_c)
+    assert parse_yaml("a: [1, x]\n") == {"a": [1, "x"]}
+    with pytest.raises(PortableInputError) as raised:
+        parse_yaml("a: 1\na: 2\n")
+    assert raised.value.code == "yaml_duplicate_key"
+    assert "line 1, column 1:\n    a: 1\n    ^ (line: 1)" in str(raised.value)
+
+
+def test_the_portable_error_from_pure_is_the_one_raised(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without C, or with it forced off, the one parse is pure and errors pass through."""
+    monkeypatch.setenv(PURE_ENV, "1")
+    calls = _record_parsers(monkeypatch)
+    with pytest.raises(PortableInputError) as raised:
+        parse_yaml("a: [1\n")
+    assert raised.value.code == "yaml_parse_error"
+    assert calls == [True]
+
+
+# --- The switch and the report --------------------------------------------------------------
+
+
+@requires_c
+@pytest.mark.parametrize(
+    ("setting", "mode"),
+    [(None, "c-first"), ("", "c-first"), ("0", "c-first"), ("1", "pure"), ("yes", "pure")],
+)
+def test_pure_yaml_switch(setting: str | None, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    if setting is None:
+        monkeypatch.delenv(PURE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(PURE_ENV, setting)
+    calls = _record_parsers(monkeypatch)
+    assert softschema.yaml_parser_mode() == mode
+    assert parse_yaml("a: 1\n") == {"a": 1}
+    assert calls == ([False] if mode == "c-first" else [True])
+
+
+def test_mode_is_pure_without_the_c_extension() -> None:
+    assert _in_reference_process("mode") == "pure"
+
+
+def test_mode_is_pure_when_the_c_extension_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    monkeypatch.setattr(_portable, "_C_PARSER_AVAILABLE", False)
+    calls = _record_parsers(monkeypatch)
+    assert softschema.yaml_parser_mode() == "pure"
+    assert parse_yaml("a: 1\n") == {"a": 1}
+    assert calls == [True]
+
+
+@requires_c
+def test_mode_reports_the_c_parser_when_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    assert softschema.yaml_parser_mode() == "c-first"
+
+
+# --- The compiled-schema writer does not depend on the extension ----------------------------
+
+
+COMPILE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Emoji \U0001f600 and an astral \U00010000",
+    "description": " ".join(["word"] * 1200),
+    "properties": {"name": {"type": "string", "description": "x" * 5000}},
+    "type": "object",
+}
+
+
+@requires_c
+def test_compiled_schema_bytes_do_not_depend_on_the_c_emitter(tmp_path: Path) -> None:
+    """The C emitter escapes astral characters and wraps long lines differently."""
+    from frontmatter_format import new_yaml
+
+    from softschema.compile import _yaml_dump
+
+    module = tmp_path / "tests_c_parser_schema.py"
+    module.write_text(f"SCHEMA = {COMPILE_SCHEMA!r}\n", encoding="utf-8")
+    reference = _in_reference_process("compile", extra_path=tmp_path)
+    assert "\U0001f600" in reference
+    assert _yaml_dump(COMPILE_SCHEMA) == reference
+
+    # The fixture discriminates: through libyaml's emitter the same dump differs.
+    unpinned = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
+    unpinned.width = 4096
+    buffer = io.StringIO()
+    unpinned.dump(COMPILE_SCHEMA, buffer)
+    assert unpinned.Emitter.__name__ == "CEmitter"
+    assert buffer.getvalue() != reference

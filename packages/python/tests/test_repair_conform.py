@@ -62,7 +62,8 @@ def test_schema_conform_vectors(case: dict[str, Any], tmp_path: Path) -> None:
     path = tmp_path / "artifact.md"
     _write(path, case["text"])
     schema_path = tmp_path / "schema.yaml"
-    YAML(typ="safe").dump(case["schema"], schema_path.open("w", encoding="utf-8"))
+    with schema_path.open("w", encoding="utf-8") as handle:
+        YAML(typ="safe").dump(case["schema"], handle)
 
     result = conform_artifact(
         path, schema_path=schema_path, envelope_key=case["envelope"], write=True
