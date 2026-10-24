@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from softschema._portable import yaml_parser_mode
 from softschema.compile import CompileResult, compile_model
 from softschema.conform import ConformResult, conform_artifact
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
@@ -85,4 +86,5 @@ __all__ = [
     "validate_semantic",
     "validate_structural",
     "validate_values",
+    "yaml_parser_mode",
 ]

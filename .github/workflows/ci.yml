@@ -153,6 +153,13 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+      # The dev group installs ruamel's C extension, so the run above reads YAML C-first.
+      # Repeat it with the pure-Python parser, which is what installs without it get.
+      - name: Run tests with the pure-Python YAML parser
+        env:
+          SOFTSCHEMA_PURE_YAML: "1"
+        run: uv run pytest
+
       - name: Build package
         run: uv build
 

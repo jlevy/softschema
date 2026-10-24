@@ -34,6 +34,17 @@ npm install -D softschema@latest    # or: pnpm add -D / bun add -d
 npx softschema --help               # resolves the local pinned copy
 ```
 
+### Faster YAML Parsing in Python
+
+The Python implementation reads YAML with ruamel.yaml, which is pure Python unless its
+optional C extension is installed.
+Installing `ruamel.yaml.clib` next to softschema (for example
+`uv add --dev ruamel.yaml.clib`) makes large YAML artifacts parse several times faster.
+Results do not change: softschema uses the C parser only where it reads a document
+exactly as the pure parser does, and the pure parser decides everything else.
+`softschema.yaml_parser_mode()` returns `"c-first"` when the extension is in use and
+`"pure"` otherwise; set `SOFTSCHEMA_PURE_YAML=1` to turn it off.
+
 ## Zero-Install
 
 ```bash

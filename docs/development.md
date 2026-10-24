@@ -38,6 +38,12 @@ uv build
 
 The Python package is built from `packages/python/src/softschema`.
 
+The dev group installs ruamel’s optional C extension (`ruamel.yaml.clib`), so the suite
+reads YAML C-first by default; `test_c_parser.py` compares that with the pure-Python
+parser.
+`SOFTSCHEMA_PURE_YAML=1 uv run pytest` runs the whole suite with the pure parser,
+which CI also does.
+
 ### Git Hooks (This Repo)
 
 Hooks are managed by [lefthook](https://lefthook.dev) (`lefthook.yml`), installed with
