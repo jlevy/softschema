@@ -6,88 +6,76 @@ version number.
 
 ## Unreleased
 
-### Security
+Validation results now record actual execution independently for structural and semantic
+checks. Declared `status` still selects validation mode; it does not prove a check ran.
+The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
 
-- **The `fast-uri` override is raised to exactly 3.1.9.** It closes seven advisories
-  against the 3.1.6 pin, a transitive dependency of the TypeScript implementation’s
-  schema validator (`ajv`): GHSA-qw65-cvwx-89v3 (authority injection through an
-  unvalidated port), GHSA-58mr-gqgx-xq4g (host confusion through an unclosed bracket),
-  GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization), GHSA-w74x-v6f9-j3xg
-  (scheme spoofing through percent-encoded scheme decoding), GHSA-wjr9-j795-jxcr (host
-  confusion through unchecked WHATWG host canonicalization), GHSA-xhq7-xmqj-769h
-  (improper path equivalence in relative reference normalization), and
-  GHSA-333x-w4r6-6crp (scheme injection through an unescaped first-segment colon).
-  3.1.9 was published 2026-10-19, inside the 14-day cool-off; it is installed under a
-  maintainer-approved exception, pinned exactly.
-  The override applies only to this repository’s own install, for development and CI.
-  npm and Bun ignore the `overrides` of a dependency, and the published package does not
-  bundle `fast-uri`, so a project that installs softschema gets the `fast-uri` its own
-  lockfile resolves for `ajv`; update it to 3.1.9 or later there.
-- **The TypeScript package requires zod `^4.6.6`** (locked at 4.6.6), which closes
-  GHSA-mrhx-c7xc-m3w5: validating an oversized array, set, or map against a size bound
-  could exhaust memory, because Zod parsed every element before checking the bound.
+### Added
 
-### Fixed
-
-- **TypeScript-compiled schemas match Pydantic again for nullable fields under zod 4.5
-  and later.** Zod 4.5 began rewriting `anyOf: [{type: "string"}, {type: "null"}]`, what
-  `.nullable()` and a union of plain primitives emit, as `type: ["string", "null"]`. The
-  two forms validate identically, but Pydantic emits `anyOf`, so a model with a nullable
-  field compiled to different canonical content and a different `schema_sha256` than its
-  Python mirror. The published `^4.4.3` range already admitted those zod versions.
-  The compiler now expands every `type` array back into `anyOf` branches before
-  canonicalization; the committed reference schemas and goldens are unchanged.
-- **TypeScript-compiled schemas match Pydantic again for `.startsWith()`, `.endsWith()`,
-  and `.includes()` under zod 4.6.** Zod 4.6 writes each check’s name (`starts_with`,
-  `ends_with`, `includes`) as the string’s `format`. No JSON Schema vocabulary defines
-  those names and Pydantic never emits them, and the name replaces a real format written
-  by an earlier check: `z.email().startsWith("a")` lost `format: email`. The compiler
-  now removes the three names and restores the earlier format, so each helper compiles
-  to the bare `pattern` that the `.regex()` spelling and a Pydantic `Field(pattern=...)`
-  mirror emit, with the same `schema_sha256` as under zod 4.4. Only a format Zod
-  generated is corrected: an authored `.meta({ format })` is kept whatever its name.
-  Each other string helper zod 4.4 already had, used alone, emits the same `format` as
-  under zod 4.4.
-- **TypeScript-compiled schemas match Pydantic again for `.catch()` under zod 4.6.** Zod
-  4.6 lists a `.catch()` field in `required` because its inner type is required,
-  although Zod’s runtime fills an absent key with the catch value and the field’s
-  Pydantic mirror, `f: str = "x"`, is not required.
-  It also drops the catch value from `default` when the caught type transforms, which
-  zod 4.4 and the Pydantic mirror, a defaulted field with an `AfterValidator`, keep.
-  The compiler removes such a field from `required` again, including behind
-  `z.preprocess()` and in `$defs`, and restores the `default`, so these fields compile
-  as under zod 4.4, with the same `schema_sha256` as the Pydantic mirror.
-  A record whose value has a `.catch()` no longer requires its enum or literal keys,
-  since Zod’s runtime fills each one and a Pydantic `dict` never requires its keys.
-  A tuple element with a `.catch()` still counts toward `minItems`, as an element of
-  Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
-  Pydantic cannot default a tuple element.
-- **TypeScript-compiled schemas keep the `default` of a `.default()` over a transform,
-  as Pydantic does.** In input mode zod 4.4 and 4.6 drop the `default` of a schema that
-  transforms, so `z.string().transform(f).default("x")`, a `.default()` over
-  `z.preprocess()` or `.pipe(z.transform(f))`, and an object default whose fields
-  transform compiled without their `default`. The Pydantic mirror,
-  `Annotated[str, AfterValidator(f)] = "x"` (`BeforeValidator` for `z.preprocess()`),
-  keeps it. The compiler now restores the value, including in a record value and in
-  `$defs`, so each such field compiles to the same schema and `schema_sha256` as the
-  plain `.default()` and its Pydantic mirror.
-  The value is written as given, because neither Zod nor Pydantic runs the transform on
-  a default, and it is checked like every other default (see below).
-  As Zod does for any default, a field that references a `$defs` entry carrying the same
-  value leaves the value out, so an id’d default compiles alike whether or not it
-  transforms, for `.default()` and `.catch()`. The KitchenSink parity fixture now covers
-  a defaulted transform.
-- **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
-  compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
-  `default` used to compile to `default: null`, because Zod’s final JSON copy of the
-  schema turns non-finite numbers into `null`. It now fails with
-  `canonical JSON requires finite numbers` and the schema path of the value, as the
-  Python compiler fails on a NaN or infinite default.
-  A BigInt `.catch()` value fails with a named error instead of Zod’s
-  `Error converting schema to JSON.` A `Date` value is still written as its ISO string.
+- `structural.execution` and `semantic.execution` on all returned validation records,
+  including CLI JSON and repair results.
+  The public `ValidationExecution` type is `not_run`, `completed`, or `errored`. A
+  completed check may accept or reject; read `ok` and errors for its verdict.
+  Missing or malformed schemas report preparation failure without claiming payload
+  evaluation. Both checks remain visible when a schema accepts and a model rejects.
+- Two advisory warnings when effective mode is `enforced` and structural validation did
+  not complete: `document-enforcement-via-model-only` if semantic validation completed,
+  or `document-enforcement-not-applied` otherwise.
+  Failures before payload extraction do not emit a payload-check shortfall warning.
+- An opt-in requirement for completed checks: `require=` on Python `validate_artifact`,
+  `load_artifact`, and `validate_values`, a `require` option on their TypeScript
+  counterparts, and a repeatable `validate --require structural|semantic` in both CLIs.
+  A required layer that did not complete is not ok and gains a `check_not_completed`
+  error carrying `layer` and `execution`. An otherwise valid result becomes `invalid`,
+  strict reads raise or throw, and `validate` exits 1 for readable invalid artifacts.
+  An unreadable artifact retains the library’s `input_error` outcome and the `validate`
+  command’s exit 2. Without a requirement, results are unchanged.
 
 ### Changed
 
+- Replace the unreleased `enforcement_applied` hierarchy with per-layer execution.
+  TypeScript now reports actual model invocation independently of its optional label.
+- The spec defines execution boundaries, including preparation versus evaluation
+  failures, and the effective status fallback to `soft`.
+- Python schema preparation resolves every `$ref` that evaluation could reach before
+  checking a payload, as Ajv already did while compiling.
+  A schema with an unresolvable local or remote reference on a branch the payload never
+  reaches is now `schema_invalid` (`reason: reference`) with structural `not_run` in
+  both runtimes, instead of a Python-only completed acceptance, so
+  `--require structural` gives one answer.
+  The walk follows the applicators both engines evaluate; a definition nothing
+  references, a `contentSchema` annotation, and a `then` or `else` with no `if` are not
+  checked in raw mode.
+  The remaining engine differences on degenerate schemas are pinned as
+  `engine_deviations` in the shared vectors and listed in the spec.
+- Both runtimes refuse, before either engine runs, a `$schema` other than the canonical
+  Draft 2020-12 URI (with or without a trailing `#`) and the keywords only Ajv honored
+  while jsonschema ignored them: the legacy `dependencies`, the OpenAPI `nullable`, and
+  2019-09’s `$recursiveRef` and `$recursiveAnchor`, each as `schema_invalid` with
+  `reason: dialect`. Write `dependentSchemas` or `dependentRequired`,
+  `type: [..., "null"]`, and `$dynamicRef`/`$dynamicAnchor` instead.
+- Every resource identity (the root `$id`, a nested `$id`, a supplied resource’s `$id`
+  or key, and `softschema compile --schema-id`, which is `schema_id`/`schemaId` in the
+  libraries) follows one grammar, implemented identically in both runtimes, and anything
+  outside it is `schema_invalid` with `reason: resource_identity` before either engine
+  runs (compile exits 2 with the same message).
+  The grammar admits only spellings that neither Python’s `urllib.parse` nor Ajv’s
+  fast-uri rewrites: printable ASCII, no fragment (not even an empty `#`), uppercase
+  `%HH` escapes of reserved or non-ASCII bytes only, a lowercase scheme, `//host` only
+  for `http:`, `https:`, and `file:` (lowercase host or canonical IP address,
+  non-default port, no user information, a path of at least `/`), the opaque
+  `scheme:path` form for every other scheme except those `urllib.parse` writes with
+  `//`, a lowercase `urn:` namespace identifier and a lowercase UUID after `urn:uuid:`,
+  and no `//`, `.`, or `..` path segment, trailing `;`, empty query, or `'` in a query.
+  A nested `$id` may also be a relative path.
+  The spec lists the rules and `tests/vectors/identities.yaml` has a case for each.
+- The TypeScript `validate --require` with an unknown layer reports
+  `softschema validate: invalid require: <value>` with the usual exit 2, the prefix the
+  Python CLI uses, instead of the argument parser’s own line.
+- Checked enforcement accepts nested nullable references to explicitly closed models
+  without adding redundant object closure to their nullable wrappers.
+  Explicit open object policy and rejection of unknown fields remain owned by the
+  referenced model.
 - **CI runs the dependency audit as its own `dependency-audit` job.** `bun audit` used
   to be a step inside the `typescript` job, so a new upstream advisory skipped the
   TypeScript typecheck, tests, build, publint, and golden runs on every PR. The audit
@@ -153,6 +141,155 @@ version number.
     as every other helper already did: `z.ipv4().lowercase()` emits `format: lowercase`
     and `z.ipv4().regex(...)` emits none.
 
+### Fixed
+
+- Python `repair_and_validate_artifact(..., model=...)` uses the supplied model for both
+  conformance and the final verdict.
+  A model rejection now returns `invalid` after repair rather than validating against
+  the caller’s model-free contract.
+  The caller’s contract is unchanged.
+- TypeScript repair results for a missing or invalid-UTF-8 artifact without an inferred
+  contract report `input_error`, matching Python and other library reads.
+  Parse failures remain `invalid`.
+- TypeScript `validateArtifact` without a bound schema reports structural
+  `skipped_reason: inferred_via_model` only when the call supplies a `semanticModel`, as
+  Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
+  without a label reports `inferred_via_model`. The CLI output is unchanged because
+  `--model` sets both.
+- Python `validate_values(schema=...)` with a schema file that does not exist reports
+  `schema_missing` with the path, as artifact validation does, instead of
+  `schema_invalid` with the operating system’s message.
+- **TypeScript-compiled schemas match Pydantic again for nullable fields under zod 4.5
+  and later.** Zod 4.5 began rewriting `anyOf: [{type: "string"}, {type: "null"}]`, what
+  `.nullable()` and a union of plain primitives emit, as `type: ["string", "null"]`. The
+  two forms validate identically, but Pydantic emits `anyOf`, so a model with a nullable
+  field compiled to different canonical content and a different `schema_sha256` than its
+  Python mirror. The published `^4.4.3` range already admitted those zod versions.
+  The compiler now expands every `type` array back into `anyOf` branches before
+  canonicalization; the committed reference schemas and goldens are unchanged.
+- **TypeScript-compiled schemas match Pydantic again for `.startsWith()`, `.endsWith()`,
+  and `.includes()` under zod 4.6.** Zod 4.6 writes each check’s name (`starts_with`,
+  `ends_with`, `includes`) as the string’s `format`. No JSON Schema vocabulary defines
+  those names and Pydantic never emits them, and the name replaces a real format written
+  by an earlier check: `z.email().startsWith("a")` lost `format: email`. The compiler
+  now removes the three names and restores the earlier format, so each helper compiles
+  to the bare `pattern` that the `.regex()` spelling and a Pydantic `Field(pattern=...)`
+  mirror emit, with the same `schema_sha256` as under zod 4.4. Only a format Zod
+  generated is corrected: an authored `.meta({ format })` is kept whatever its name.
+  Each other string helper zod 4.4 already had, used alone, emits the same `format` as
+  under zod 4.4.
+- **TypeScript-compiled schemas match Pydantic again for `.catch()` under zod 4.6.** Zod
+  4.6 lists a `.catch()` field in `required` because its inner type is required,
+  although Zod’s runtime fills an absent key with the catch value and the field’s
+  Pydantic mirror, `f: str = "x"`, is not required.
+  It also drops the catch value from `default` when the caught type transforms, which
+  zod 4.4 and the Pydantic mirror, a defaulted field with an `AfterValidator`, keep.
+  The compiler removes such a field from `required` again, including behind
+  `z.preprocess()` and in `$defs`, and restores the `default`, so these fields compile
+  as under zod 4.4, with the same `schema_sha256` as the Pydantic mirror.
+  A record whose value has a `.catch()` no longer requires its enum or literal keys,
+  since Zod’s runtime fills each one and a Pydantic `dict` never requires its keys.
+  A tuple element with a `.catch()` still counts toward `minItems`, as an element of
+  Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
+  Pydantic cannot default a tuple element.
+- **TypeScript-compiled schemas keep the `default` of a `.default()` over a transform,
+  as Pydantic does.** In input mode zod 4.4 and 4.6 drop the `default` of a schema that
+  transforms, so `z.string().transform(f).default("x")`, a `.default()` over
+  `z.preprocess()` or `.pipe(z.transform(f))`, and an object default whose fields
+  transform compiled without their `default`. The Pydantic mirror,
+  `Annotated[str, AfterValidator(f)] = "x"` (`BeforeValidator` for `z.preprocess()`),
+  keeps it. The compiler now restores the value, including in a record value and in
+  `$defs`, so each such field compiles to the same schema and `schema_sha256` as the
+  plain `.default()` and its Pydantic mirror.
+  The value is written as given, because neither Zod nor Pydantic runs the transform on
+  a default, and it is checked like every other default (see below).
+  As Zod does for any default, a field that references a `$defs` entry carrying the same
+  value leaves the value out, so an id’d default compiles alike whether or not it
+  transforms, for `.default()` and `.catch()`. The KitchenSink parity fixture now covers
+  a defaulted transform.
+- **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
+  compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
+  `default` used to compile to `default: null`, because Zod’s final JSON copy of the
+  schema turns non-finite numbers into `null`. It now fails with
+  `canonical JSON requires finite numbers` and the schema path of the value, as the
+  Python compiler fails on a NaN or infinite default.
+  A BigInt `.catch()` value fails with a named error instead of Zod’s
+  `Error converting schema to JSON.` A `Date` value is still written as its ISO string.
+
+### Security
+
+- **The `fast-uri` override is raised to exactly 3.1.9.** It closes seven advisories
+  against the 3.1.6 pin, a transitive dependency of the TypeScript implementation’s
+  schema validator (`ajv`): GHSA-qw65-cvwx-89v3 (authority injection through an
+  unvalidated port), GHSA-58mr-gqgx-xq4g (host confusion through an unclosed bracket),
+  GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization), GHSA-w74x-v6f9-j3xg
+  (scheme spoofing through percent-encoded scheme decoding), GHSA-wjr9-j795-jxcr (host
+  confusion through unchecked WHATWG host canonicalization), GHSA-xhq7-xmqj-769h
+  (improper path equivalence in relative reference normalization), and
+  GHSA-333x-w4r6-6crp (scheme injection through an unescaped first-segment colon).
+  3.1.9 was published 2026-10-19, inside the 14-day cool-off; it is installed under a
+  maintainer-approved exception, pinned exactly.
+  The override applies only to this repository’s own install, for development and CI.
+  npm and Bun ignore the `overrides` of a dependency, and the published package does not
+  bundle `fast-uri`, so a project that installs softschema gets the `fast-uri` its own
+  lockfile resolves for `ajv`; update it to 3.1.9 or later there.
+- **The TypeScript package requires zod `^4.6.6`** (locked at 4.6.6), which closes
+  GHSA-mrhx-c7xc-m3w5: validating an oversized array, set, or map against a size bound
+  could exhaust memory, because Zod parsed every element before checking the bound.
+
+### Compatibility
+
+Target the next coordinated minor release, **0.9.0**. Python layer-result constructors
+require an explicit keyword-only `execution`; TypeScript layer interfaces require the
+same field. Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit
+classes, artifact metadata, and compiled schema files are unchanged except for the
+corrected repair-result verdicts above, the Zod 4.6 model behavior above, and the schema
+refusals below, each of which turns an artifact bound to such a schema `invalid` (`ok`
+false, `validate` exit 1, under every status, with or without `--require`) until the
+schema is fixed.
+They affect hand-written or third-party schemas only; schemas written by
+`softschema compile` carry the canonical `$schema` and absolute ids and use none of the
+refused keywords. **Python users** are the ones who change for an unresolvable `$ref` on
+a branch the payload never reaches (TypeScript already refused it; remove or fix the
+reference), for a `$schema` line naming draft-07 or another draft, which Python used to
+accept and validate as 2020-12 (TypeScript already refused it, now under
+`reason: dialect` rather than `compilation`; delete the line or set the 2020-12 URI),
+and for `$recursiveRef`, which Python ignored and TypeScript evaluated (write
+`$dynamicRef`). **Both runtimes** change for the legacy `dependencies` keyword, which
+TypeScript enforced and Python ignored (write `dependentSchemas` or
+`dependentRequired`), for OpenAPI `nullable`, which TypeScript honored and Python
+ignored (write `type: [..., "null"]`), and for any resource identity outside the
+identity grammar, which both now refuse as `reason: resource_identity` and
+`compile --schema-id` refuses too.
+Before, the engines read such identities differently: a relative root `$id` against
+different invented bases; `URN:`, `urn:Ex:…`, an uppercase host, `%7E`, or a dot
+segment, which fast-uri normalizes and Python does not; a whitespace-prefixed id, which
+Python’s `urlsplit` trims; a malformed host such as `http://[::1`, which Python refused
+as `compilation` and TypeScript accepted; and `urn:example` or `urn:dir/item.json`,
+which TypeScript failed to compile.
+Ordinary-looking ids it also refuses: `https://example.com` with no path (write
+`https://example.com/`), an explicit default port as in `https://example.com:443/x`, an
+uppercase `urn:uuid:6E8BC430-…`, a trailing empty `#` as in
+`http://example.com/schema#`, common in draft-07-era schemas, and `s3://` or `gs://`
+ids, since only `http`, `https`, and `file` take `//host`. Write `https://host/path`,
+`file:///path`, `urn:<nid>:<name>` in lowercase, or another `scheme:path`, with no
+fragment. Skip reasons change only for the TypeScript library fix above.
+Strict serialized-result consumers must accept the new layer fields and remove the
+unreleased aggregate field.
+Old reports without execution fields have **unknown** execution; preserve absence or
+revalidate rather than fabricating evidence.
+See the
+[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
+for downstream adoption and release sequencing.
+
+Compiled schema files also change for one TypeScript construct.
+A model with a `.default()` over a transforming schema compiles to a new schema and
+`schema_sha256`, because the field gains the `default` that 0.8.1 dropped under zod 4.4
+and 4.6 (see Fixed).
+`compile --check` reports drift for such a model; recompile its committed schema.
+The new schema is the one its Pydantic mirror compiles to.
+The fix changes no other compiled schema, and no Python-compiled schema.
+
 ### Performance
 
 - **A strict JSON document is parsed with `json`** when ruamel would read it
@@ -169,15 +306,6 @@ version number.
   `yaml_parser_mode()` and `softschema doctor` report which parser is active, and
   `SOFTSCHEMA_PURE_YAML=1` turns the C parser off.
   Compiled schemas are always written by the pure-Python emitter.
-
-### Compatibility
-
-A TypeScript model with a `.default()` over a transforming schema compiles to a new
-schema and `schema_sha256`, because the field gains the `default` that 0.8.1 dropped
-under zod 4.4 and 4.6 (see Fixed).
-`compile --check` reports drift for such a model; recompile its committed schema.
-The new schema is the one its Pydantic mirror compiles to.
-The fix changes no other compiled schema, and no Python-compiled schema.
 
 ## v0.8.1—2026-09-11
 

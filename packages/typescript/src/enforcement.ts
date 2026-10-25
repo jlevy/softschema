@@ -601,6 +601,37 @@ class SchemaGraph {
     return this.pureReferenceReachesExplicitClosure(target, new Set(seen).add(target));
   }
 
+  /** A pure closed reference plus a null-only branch already owns its object policy.
+   * Other composition and validation siblings keep the ordinary safety analysis.
+   */
+  private nullableReferenceDelegatesClosure(node: Schema): boolean {
+    for (const keyword of ["anyOf", "oneOf"]) {
+      const branches = node[keyword];
+      if (
+        !Array.isArray(branches) ||
+        branches.length !== 2 ||
+        Object.keys(node).some(
+          (key) => key !== keyword && !REFERENCE_NONVALIDATION_SIBLINGS.has(key),
+        )
+      ) {
+        continue;
+      }
+      for (const [nullBranch, reference] of [branches, [...branches].reverse()]) {
+        if (
+          isMapping(nullBranch) &&
+          nullBranch.type === "null" &&
+          Object.keys(nullBranch).every(
+            (key) => key === "type" || REFERENCE_NONVALIDATION_SIBLINGS.has(key),
+          ) &&
+          this.pureReferenceReachesExplicitClosure(reference)
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   private checkContextSensitiveReferences(node: Json, compositionContext = false): void {
     if (!isMapping(node)) {
       return;
@@ -665,7 +696,10 @@ class SchemaGraph {
       }
     }
 
-    const explicit = hasExplicitClosure(out) || this.pureReferenceReachesExplicitClosure(node);
+    const explicit =
+      hasExplicitClosure(out) ||
+      this.pureReferenceReachesExplicitClosure(node) ||
+      this.nullableReferenceDelegatesClosure(node);
     const declares = this.declaresProperties(node);
     if (context === "nested_instance" && declares && !explicit) {
       throw new EnforcementUnsupportedError(

@@ -16,6 +16,8 @@ let stdout: string;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "softschema-skill-install-"));
+  // Keep project discovery inside the fixture when TMPDIR is under another repo.
+  mkdirSync(join(tempDir, ".git"));
   originalCwd = process.cwd();
   process.chdir(tempDir);
   originalWrite = process.stdout.write.bind(process.stdout);

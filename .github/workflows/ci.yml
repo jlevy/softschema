@@ -103,14 +103,16 @@ jobs:
       # The build job runs C-first on Linux only. Here the wheel runs with ruamel's C
       # extension on each OS and must report c-first: the gate fails closed, so a wheel
       # that silently lost the speedup on macOS or Windows would otherwise go unnoticed.
-      # ruamel.yaml is pinned to the range the gate admits (CHECKED_RUAMEL_VERSIONS), so a
-      # new ruamel release cannot turn these required checks red on unrelated PRs; the
-      # lock-bump PR that moves past the range fails its own named test instead.
+      # ruamel.yaml is pinned to the range the gate admits (CHECKED_RUAMEL_VERSIONS), and
+      # ruamel.yaml.clib to the uv.lock build, whose libyaml is CHECKED_LIBYAML_VERSION, so
+      # a new release of either cannot turn these required checks red on unrelated PRs.
+      # The lock-bump PR that moves clib moves this pin with it, and one that moves past
+      # the checked builds fails its own named test instead.
       - name: Smoke the wheel with ruamel's C extension
         working-directory: ${{ runner.temp }}
         run: |
           uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.whl \
-            --with 'ruamel.yaml>=0.18,<0.20' --with 'ruamel.yaml.clib>=0.2.15' python -c '
+            --with 'ruamel.yaml>=0.18,<0.20' --with 'ruamel.yaml.clib==0.2.15' python -c '
           import sys
           from softschema import yaml_parser_mode
           from softschema._portable import yaml_parser_reason

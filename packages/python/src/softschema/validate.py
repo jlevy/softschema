@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import re
 from ast import literal_eval
-from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Collection, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar, cast
 
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
@@ -28,6 +28,7 @@ from referencing import Registry, Resource
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
+from softschema._identity import check_identity, check_root_id
 from softschema._portable import PortableInputError, parse_yaml, read_utf8
 from softschema.enforcement import (
     EnforcementUnsupportedError,
@@ -41,6 +42,7 @@ from softschema.models import (
     SchemaProfile,
     SchemaStatus,
     SchemaWarning,
+    ValidationExecution,
     WarningCode,
     parse_schema_metadata,
 )
@@ -50,6 +52,7 @@ from softschema.registry import Contracts
 @dataclass(frozen=True)
 class StructuralResult:
     ok: bool
+    execution: ValidationExecution = field(kw_only=True)
     errors: list[dict[str, Any]] = field(default_factory=list)
     engine: str = "json_schema"
     skipped_reason: str | None = None
@@ -58,6 +61,7 @@ class StructuralResult:
 @dataclass(frozen=True)
 class SemanticResult:
     ok: bool
+    execution: ValidationExecution = field(kw_only=True)
     errors: list[dict[str, Any]] = field(default_factory=list)
     skipped_reason: str | None = None
 
@@ -111,6 +115,73 @@ class ArtifactValidationResult:
         return [warning.code for warning in self.warnings]
 
 
+_CHECK_LAYERS = ("structural", "semantic")
+
+_Checked = TypeVar("_Checked", ArtifactValidationResult, ValidationResult)
+
+
+def _required_layers(require: Collection[str]) -> frozenset[str]:
+    """The layers a caller requires to complete, rejecting any unknown layer name.
+
+    A bare string is refused rather than iterated, so ``require="structural"`` is a
+    clear caller error instead of a complaint about its letters; so is ``None``, since
+    omitting the argument is how a caller asks for no requirement, and so is a mapping,
+    whose keys would otherwise be read as the layer names (``{"semantic": "structural"}``
+    would require only ``semantic``). Lists, tuples, and sets of layer names are accepted.
+    """
+    candidate = cast("object", require)  # typed callers are fine; untyped ones pass anything
+    if isinstance(candidate, str | Mapping) or not isinstance(candidate, Collection):
+        raise TypeError(
+            f"require must be a list of layer names such as ['structural'], got {candidate!r}"
+        )
+    layers: list[object] = list(candidate)
+    if any(not isinstance(layer, str) for layer in layers):
+        raise TypeError(
+            f"require must be a list of layer names such as ['structural'], got {layers!r}"
+        )
+    required = frozenset(require)
+    unknown = sorted(required.difference(_CHECK_LAYERS))
+    if unknown:
+        raise ValueError(f"require accepts only 'structural' and 'semantic', got {unknown}")
+    return required
+
+
+def _require_completed(result: _Checked, required: frozenset[str]) -> _Checked:
+    """Fail each required layer whose validator did not complete.
+
+    With no requirement the result is returned as is. Otherwise a required layer whose
+    ``execution`` is not ``completed`` becomes not ok and gains a ``check_not_completed``
+    error after its existing errors, so an original failure stays first and keeps its
+    outcome. A completed layer keeps its own verdict, including a rejection.
+    """
+    if not required:
+        return result
+    structural = result.structural
+    if "structural" in required and structural.execution != "completed":
+        structural = replace(
+            structural,
+            ok=False,
+            errors=[*structural.errors, _check_not_completed("structural", structural.execution)],
+        )
+    semantic = result.semantic
+    if "semantic" in required and semantic.execution != "completed":
+        semantic = replace(
+            semantic,
+            ok=False,
+            errors=[*semantic.errors, _check_not_completed("semantic", semantic.execution)],
+        )
+    return replace(result, structural=structural, semantic=semantic)
+
+
+def _check_not_completed(layer: str, execution: ValidationExecution) -> dict[str, Any]:
+    return _error(
+        "check_not_completed",
+        f"required {layer} check did not complete (execution: {execution})",
+        layer=layer,
+        execution=execution,
+    )
+
+
 class _SchemaRootNotAMapping(Exception):
     """A compiled schema file did not parse to a mapping."""
 
@@ -138,8 +209,10 @@ def _build_validator(
     if not isinstance(schema, dict):
         raise _SchemaRootNotAMapping
     resource_schemas = dict(resources or {})
+    _check_identities(schema, resource_schemas)
     for document in (schema, *resource_schemas.values()):
         _check_patterns(document)
+        _check_dialect(document)
         Draft202012Validator.check_schema(document)
     if strict_extras:
         prepared = prepare_schema_graph(schema, resource_schemas)
@@ -154,7 +227,11 @@ def _build_validator(
             resource_id,
             Resource.from_contents(resource_schema, default_specification=DRAFT202012),
         )
-    return Draft202012Validator(schema, registry=registry.crawl())
+    registry = registry.crawl()
+    if not strict_extras:
+        # The enforced graph above already resolved every reference it visited.
+        _check_references(schema, registry)
+    return Draft202012Validator(schema, registry=registry)
 
 
 @lru_cache(maxsize=_VALIDATOR_CACHE_SIZE)
@@ -219,22 +296,39 @@ def validate_structural(
     checked enforced profile before compilation; unsupported composition fails with a
     stable ``enforcement_unsupported`` record.
     """
+    execution: ValidationExecution = "not_run"
     try:
         validator = _validator_for(schema_yaml_path, strict_extras, resources)
+        execution = "errored"
         errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
-        return _schema_invalid("syntax", "compiled schema root must be a mapping")
+        return _schema_invalid("syntax", "compiled schema root must be a mapping", execution)
+    except FileNotFoundError:
+        # The record artifact validation gives for an unresolvable binding, so a
+        # values-level caller does not see an absent file reported as a broken schema.
+        return StructuralResult(
+            ok=False,
+            execution=execution,
+            errors=[
+                _error(
+                    "schema_missing",
+                    f"compiled schema not found: {schema_yaml_path}",
+                    path=str(schema_yaml_path),
+                )
+            ],
+        )
     except PortableInputError as exc:
-        return _schema_invalid("syntax", str(exc))
+        return _schema_invalid("syntax", str(exc), execution)
     except SchemaError as exc:
-        return _schema_invalid("dialect", exc.message)
+        return _schema_invalid("dialect", exc.message, execution)
     except Unresolvable as exc:
-        return _schema_invalid("reference", str(exc))
+        return _schema_invalid("reference", str(exc), execution)
     except re.error as exc:
-        return _schema_invalid("pattern", str(exc))
+        return _schema_invalid("pattern", str(exc), execution)
     except EnforcementUnsupportedError as exc:
         return StructuralResult(
             ok=False,
+            execution=execution,
             errors=[
                 {
                     "kind": "enforcement_unsupported",
@@ -245,9 +339,9 @@ def validate_structural(
             ],
         )
     except SchemaGraphError as exc:
-        return _schema_invalid(exc.reason, str(exc))
+        return _schema_invalid(exc.reason, str(exc), execution)
     except Exception as exc:
-        return _schema_invalid(_schema_failure_reason(exc), str(exc))
+        return _schema_invalid(_schema_failure_reason(exc), str(exc), execution)
     # Sort for a deterministic, engine-independent order (jsonschema and ajv do
     # not guarantee the same iteration order), so golden output is stable.
     errors.sort(
@@ -257,7 +351,7 @@ def validate_structural(
             record.get("property", ""),
         )
     )
-    return StructuralResult(ok=not errors, errors=errors)
+    return StructuralResult(ok=not errors, errors=errors, execution="completed")
 
 
 def _structural_error_records(errors: Iterator[Any]) -> Iterator[dict[str, Any]]:
@@ -410,6 +504,191 @@ def _check_schema_identities(
             seen.add(resource_id)
 
 
+_DIALECT_URIS = frozenset(
+    {
+        "https://json-schema.org/draft/2020-12/schema",
+        "https://json-schema.org/draft/2020-12/schema#",
+    }
+)
+
+
+# Keywords Ajv honors that jsonschema's Draft 2020-12 validator ignores, each with the
+# portable form to write instead. Kept in step with TypeScript's `FOREIGN_KEYWORDS`.
+_FOREIGN_KEYWORDS = {
+    "dependencies": "use dependentSchemas or dependentRequired",
+    "nullable": "use type: [..., 'null']",
+    "$recursiveRef": "use $dynamicRef",
+    "$recursiveAnchor": "use $dynamicAnchor",
+}
+
+
+def _check_dialect(schema: dict[str, Any]) -> None:
+    """Refuse keywords that only one engine would honor.
+
+    Ajv's 2020 vocabulary still evaluates the legacy ``dependencies`` keyword, the
+    OpenAPI ``nullable`` keyword, and 2019-09's ``$recursiveRef``/``$recursiveAnchor``,
+    all of which jsonschema's Draft 2020-12 validator ignores, and Ajv refuses a
+    ``$schema`` other than its 2020-12 meta-schema while jsonschema validates the document
+    as 2020-12 regardless. Any of these would let the two runtimes return different
+    verdicts for one schema; refusing the schema up front (``schema_invalid``,
+    ``reason: dialect``) keeps them agreeing. Kept in step with TypeScript's
+    ``checkDialect``.
+    """
+    for node in _iter_schemas(schema):
+        for keyword, remedy in _FOREIGN_KEYWORDS.items():
+            if keyword in node:
+                raise SchemaError(
+                    f"the {keyword!r} keyword is not part of Draft 2020-12 as both engines "
+                    f"evaluate it; {remedy}"
+                )
+        if "$schema" in node:
+            dialect = node["$schema"]
+            # Check the type first: a list or mapping is unhashable, so a bare set lookup
+            # would raise TypeError and be reported as a compilation failure instead.
+            if not isinstance(dialect, str) or dialect not in _DIALECT_URIS:
+                raise SchemaError(
+                    f"compiled schemas use the canonical Draft 2020-12 $schema URI; got {dialect!r}"
+                )
+
+
+def _check_identities(schema: dict[str, Any], resources: Mapping[str, dict[str, Any]]) -> None:
+    """Hold every resource identity to the grammar in :mod:`softschema._identity`.
+
+    The root ``$id`` and each supplied resource's identity (its ``$id``, or its key when
+    it has none, since that is what it is registered under) must be absolute; a nested
+    ``$id`` may also be a relative path. A relative root ``$id`` has no base to resolve
+    against, and any spelling either engine normalizes would name one resource for one
+    engine and another for the other, so both are refused before either engine runs.
+    Resources and nested ids are checked in code-point order of their keys and ids, not
+    in mapping order: JavaScript iterates integer-like keys first, so with two invalid
+    identities a walk in mapping order would quote a different one in each runtime.
+    Kept in step with TypeScript's ``checkIdentities``.
+    """
+    root_id = schema.get("$id")
+    if isinstance(root_id, str):
+        check_root_id(root_id)
+    for key in sorted(resources):
+        resource_id = resources[key].get("$id")
+        if isinstance(resource_id, str):
+            check_identity(resource_id, "a supplied resource $id", absolute=True)
+        else:
+            check_identity(key, "a supplied resource key", absolute=True)
+    nested: set[str] = set()
+    for document in (schema, *resources.values()):
+        for node in _iter_schemas(document):
+            identity = node.get("$id")
+            if node is not document and isinstance(identity, str):
+                nested.add(identity)
+    for identity in sorted(nested):
+        check_identity(identity, "a $id", absolute=False)
+
+
+def _contains_is_inert(node: dict[str, Any]) -> bool:
+    """Whether Ajv compiles nothing for this node's ``contains`` subschema.
+
+    Mirrors Ajv's ``contains`` keyword: ``minContains: 0`` with no ``maxContains`` makes
+    the keyword a no-op, and ``minContains > maxContains`` fails every array without
+    looking at the subschema. jsonschema evaluates the subschema in both cases, so a
+    dangling reference inside it is a pinned engine deviation when the payload reaches it.
+    """
+    minimum = node.get("minContains", 1)
+    maximum = node.get("maxContains")
+    if not isinstance(minimum, int | float):
+        return False
+    if maximum is None:
+        return minimum == 0
+    return isinstance(maximum, int | float) and minimum > maximum
+
+
+# The applicators both engines evaluate, which is what the reference walk follows. The
+# definition maps are deliberately absent, since neither engine evaluates a definition
+# nothing references, and `if`/`then`/`else` are handled in the walk itself, because they
+# count only together.
+_WALK_MAP_KEYWORDS = frozenset({"properties", "patternProperties", "dependentSchemas"})
+_WALK_SINGLE_KEYWORDS = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "items",
+        "not",
+        "propertyNames",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
+
+
+def _check_references(schema: dict[str, Any], registry: Registry[Any]) -> None:
+    """Resolve every ``$ref`` that evaluating ``schema`` could reach.
+
+    jsonschema resolves a reference lazily, when evaluation reaches it, so without this
+    walk a schema whose unresolvable ``$ref`` sits on a branch the payload never
+    exercises would report a completed acceptance, while Ajv, which resolves the same
+    references while compiling, reports ``schema_invalid``. Failing here, before any
+    payload is checked, keeps both runtimes at ``not_run`` with the same record (see
+    ``unreached-local-reference`` in ``tests/vectors/validation-execution.yaml``).
+
+    The walk follows what Ajv compiles, which is also the spec's reach rule: the
+    applicators in ``_WALK_MAP_KEYWORDS``, ``_SCHEMA_LISTS`` and
+    ``_WALK_SINGLE_KEYWORDS``, ``then`` and ``else`` only beside an ``if`` and ``if`` only
+    beside a ``then`` or ``else``, plus the target of every ``$ref`` so reached. It skips
+    annotations such as ``contentSchema`` and definitions nothing references, which
+    neither engine evaluates. A lone ``if`` is the one shape jsonschema evaluates and Ajv
+    does not; it is pinned as an engine deviation in the same vector file.
+
+    Base URIs follow jsonschema's own descent: a node reached structurally enters its
+    ``$id`` with ``in_subresource``, while the root and every ``lookup()`` target arrive
+    with a resolver already scoped to them, so entering their ``$id`` again would join a
+    directory-bearing relative id twice (``dir/item.json`` into ``dir/dir/item.json``).
+
+    Raises :class:`referencing.exceptions.Unresolvable`, which
+    :func:`validate_structural` reports as a ``reference`` failure.
+    """
+    root = Resource.from_contents(schema, default_specification=DRAFT202012)
+    # (node, resolver, entered): `entered` is true when `resolver` is already scoped to
+    # `node`, which holds for the root and for every `lookup()` result.
+    pending: list[tuple[Any, Any, bool]] = [(schema, registry.resolver_with_root(root), True)]
+    seen: set[int] = set()
+    while pending:
+        node, resolver, entered = pending.pop()
+        if not isinstance(node, dict) or id(node) in seen:
+            continue
+        seen.add(id(node))
+        if not entered and isinstance(node.get("$id"), str):
+            resolver = resolver.in_subresource(
+                Resource.from_contents(node, default_specification=DRAFT202012)
+            )
+        reference = node.get("$ref")
+        if isinstance(reference, str):
+            resolved = resolver.lookup(reference)
+            pending.append((resolved.contents, resolved.resolver, True))
+        # `if` counts only beside a `then` or `else`, and they count only beside an `if`.
+        single_keywords = set(_WALK_SINGLE_KEYWORDS)
+        if "then" in node or "else" in node:
+            single_keywords.add("if")
+        if "if" in node:
+            single_keywords.update(("then", "else"))
+        # Ajv compiles nothing for a subschema that can never apply: an inert `contains`,
+        # `unevaluatedProperties` once a sibling `additionalProperties` has evaluated
+        # every property, and `unevaluatedItems` once a sibling `items` (or a compiled
+        # `contains`) has evaluated every item. Evaluated-set tracking through `allOf`
+        # or references is not modeled; those subschemas are followed, and the
+        # difference is pinned as an engine deviation.
+        if _contains_is_inert(node):
+            single_keywords.discard("contains")
+        if "additionalProperties" in node:
+            single_keywords.discard("unevaluatedProperties")
+        if "items" in node or ("contains" in node and "contains" in single_keywords):
+            single_keywords.discard("unevaluatedItems")
+        for key, value in node.items():
+            if key in _WALK_MAP_KEYWORDS and isinstance(value, dict):
+                pending.extend((child, resolver, False) for child in value.values())
+            elif key in _SCHEMA_LISTS and isinstance(value, list):
+                pending.extend((child, resolver, False) for child in value)
+            elif key in single_keywords and isinstance(value, dict):
+                pending.append((value, resolver, False))
+
+
 def _schema_failure_reason(error: Exception) -> str:
     message = str(error).lower()
     if "reference" in message or "unresolvable" in message:
@@ -421,9 +700,10 @@ def _schema_failure_reason(error: Exception) -> str:
     return "compilation"
 
 
-def _schema_invalid(reason: str, message: str) -> StructuralResult:
+def _schema_invalid(reason: str, message: str, execution: ValidationExecution) -> StructuralResult:
     return StructuralResult(
         ok=False,
+        execution=execution,
         errors=[{"kind": "schema_invalid", "reason": reason, "message": message}],
     )
 
@@ -443,9 +723,10 @@ def validate_semantic(values: Any, model_cls: type[BaseModel]) -> SemanticResult
     except ValidationError as exc:
         return SemanticResult(
             ok=False,
+            execution="completed",
             errors=[_serializable_error(error) for error in exc.errors()],
         )
-    return SemanticResult(ok=True)
+    return SemanticResult(ok=True, execution="completed")
 
 
 def _serializable_error(error: Mapping[str, Any]) -> dict[str, Any]:
@@ -467,12 +748,15 @@ def validate_values(
     schema: Path | None = None,
     status: SchemaStatus = SchemaStatus.soft,
     resources: Mapping[str, dict[str, Any]] | None = None,
+    require: Collection[Literal["structural", "semantic"]] = (),
 ) -> ValidationResult:
     """Validate a pre-extracted values mapping against a model, a schema, or both.
 
     Returns a ``ValidationResult`` with separate ``structural`` and ``semantic``
     fields. Engines that were not requested are reported as ok (with no errors)
-    so callers can read either field without checking which one ran.
+    so callers can read either field without checking which one ran, unless
+    ``require`` names that layer: a required layer that did not complete is not ok
+    and carries a ``check_not_completed`` error.
 
     Use this when values are already extracted or come from outside a softschema
     artifact (a body-form runtime, a structured-output adapter, or a hand-written
@@ -481,6 +765,7 @@ def validate_values(
     """
     if model is None and schema is None:
         raise ValueError("validate_values() requires at least one of model= or schema=")
+    required = _required_layers(require)
     if schema is not None:
         structural = validate_structural(
             values,
@@ -491,12 +776,38 @@ def validate_values(
     else:
         # The semantic model is the requested validator; the structural slot remains an
         # unrequested successful pass so callers can read both result fields uniformly.
-        structural = StructuralResult(ok=True)
-    semantic = validate_semantic(values, model) if model else SemanticResult(ok=True)
-    return ValidationResult(structural=structural, semantic=semantic)
+        structural = StructuralResult(ok=True, execution="not_run")
+    semantic = (
+        validate_semantic(values, model) if model else SemanticResult(ok=True, execution="not_run")
+    )
+    return _require_completed(ValidationResult(structural=structural, semantic=semantic), required)
 
 
 _UNREAD: Any = object()
+
+
+def _enforcement_shortfall(
+    status: SchemaStatus, structural: StructuralResult, semantic: SemanticResult
+) -> SchemaWarning | None:
+    """Qualify an enforced-mode verdict when no structural check completed."""
+    if status is not SchemaStatus.enforced or structural.execution == "completed":
+        return None
+    if semantic.execution == "completed":
+        return SchemaWarning(
+            code=WarningCode.DOCUMENT_ENFORCEMENT_VIA_MODEL_ONLY,
+            message=(
+                "status is 'enforced' but structural validation did not complete; "
+                "semantic validation completed with a source model, which does not provide "
+                "a cross-language structural guarantee"
+            ),
+        )
+    return SchemaWarning(
+        code=WarningCode.DOCUMENT_ENFORCEMENT_NOT_APPLIED,
+        message=(
+            "status is 'enforced' but neither structural nor semantic validation completed; "
+            "the result does not establish payload validity"
+        ),
+    )
 
 
 def validate_artifact(
@@ -507,8 +818,14 @@ def validate_artifact(
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
     document: Any = _UNREAD,
+    require: Collection[Literal["structural", "semantic"]] = (),
 ) -> ArtifactValidationResult:
     """Validate an artifact using a complete schema contract.
+
+    ``require`` names the layers the caller needs to have completed. A required layer
+    whose ``execution`` is not ``completed`` becomes not ok with a ``check_not_completed``
+    error, so a metadata-only or skipped check cannot produce a ``valid`` outcome. The
+    default requires nothing and leaves every result unchanged.
 
     ``document`` is an optional already-parsed document root: frontmatter for a
     frontmatter-md contract, the YAML root for a pure-yaml one. When supplied the file is
@@ -527,11 +844,12 @@ def validate_artifact(
     reports as ``no_frontmatter``; a pure-yaml contract reports it as ``yaml_not_mapping``
     like any other non-mapping root.
     """
+    required = _required_layers(require)
     if contract is None and contract_id is not None and registry is not None:
         contract = registry.resolve(contract_id)
     if contract is None:
         resolved_contract_id = contract_id or "<unknown>"
-        return ArtifactValidationResult(
+        unknown = ArtifactValidationResult(
             path=doc_path,
             contract_id=resolved_contract_id,
             status=SchemaStatus.soft,
@@ -539,6 +857,7 @@ def validate_artifact(
             contract=None,
             structural=StructuralResult(
                 ok=False,
+                execution="not_run",
                 errors=[
                     _error(
                         "contract_unknown",
@@ -547,13 +866,20 @@ def validate_artifact(
                     )
                 ],
             ),
-            semantic=SemanticResult(ok=False, skipped_reason="contract_unknown"),
+            semantic=SemanticResult(
+                ok=False, execution="not_run", skipped_reason="contract_unknown"
+            ),
         )
+        return _require_completed(unknown, required)
 
     warnings: list[SchemaWarning] = []
     if contract.profile == SchemaProfile.pure_yaml:
-        return _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode, document)
-    return _validate_frontmatter_artifact(doc_path, contract, warnings, metadata_mode, document)
+        result = _validate_pure_yaml_artifact(doc_path, contract, warnings, metadata_mode, document)
+    else:
+        result = _validate_frontmatter_artifact(
+            doc_path, contract, warnings, metadata_mode, document
+        )
+    return _require_completed(result, required)
 
 
 def _validate_frontmatter_artifact(
@@ -661,6 +987,7 @@ def _envelope_mismatch_result(
         warnings=warnings,
         structural=StructuralResult(
             ok=False,
+            execution="not_run",
             errors=[
                 _error(
                     "envelope_mismatch",
@@ -670,7 +997,7 @@ def _envelope_mismatch_result(
                 )
             ],
         ),
-        semantic=SemanticResult(ok=False, skipped_reason="envelope_mismatch"),
+        semantic=SemanticResult(ok=False, execution="not_run", skipped_reason="envelope_mismatch"),
     )
 
 
@@ -808,22 +1135,22 @@ def _metadata_from_frontmatter(
     return metadata
 
 
-def _validate_extracted_values(
+def _structural_verdict(
     doc_path: Path,
     contract: Contract,
     values: dict[str, Any],
-    *,
-    metadata: SchemaMetadata | None,
-    warnings: list[SchemaWarning],
-) -> ArtifactValidationResult:
+    metadata_schema: str | None,
+) -> StructuralResult:
+    """Resolve the bound schema and retain the structural engine's actual progress."""
     # Schema precedence (host over document): a caller/registry schema_path,
     # then the document's own softschema.schema binding, then none.
-    metadata_schema = metadata.schema_ref if metadata is not None else None
+    strict_extras = contract.status == SchemaStatus.enforced
     if contract.schema_path is not None:
         schema_path = _resolve_schema_path(contract.schema_path, doc_path)
         if schema_path is None:
-            structural = StructuralResult(
+            return StructuralResult(
                 ok=False,
+                execution="not_run",
                 errors=[
                     _error(
                         "schema_missing",
@@ -832,35 +1159,38 @@ def _validate_extracted_values(
                     )
                 ],
             )
-        else:
-            structural = validate_structural(
-                values,
-                schema_path,
-                strict_extras=contract.status == SchemaStatus.enforced,
-            )
-    elif metadata_schema is not None:
+        return validate_structural(values, schema_path, strict_extras=strict_extras)
+    if metadata_schema is not None:
         bound_path, bind_error = _resolve_metadata_schema(metadata_schema, doc_path)
         if bound_path is None:
-            structural = StructuralResult(
+            return StructuralResult(
                 ok=False,
+                execution="not_run",
                 errors=[_error("schema_missing", bind_error or "", path=metadata_schema)],
             )
-        else:
-            structural = validate_structural(
-                values,
-                bound_path,
-                strict_extras=contract.status == SchemaStatus.enforced,
-            )
-    elif contract.model is not None:
-        structural = StructuralResult(ok=True, skipped_reason="inferred_via_model")
-    else:
-        structural = StructuralResult(ok=True, skipped_reason="no_schema")
+        return validate_structural(values, bound_path, strict_extras=strict_extras)
+    if contract.model is not None:
+        return StructuralResult(ok=True, execution="not_run", skipped_reason="inferred_via_model")
+    return StructuralResult(ok=True, execution="not_run", skipped_reason="no_schema")
+
+
+def _validate_extracted_values(
+    doc_path: Path,
+    contract: Contract,
+    values: dict[str, Any],
+    *,
+    metadata: SchemaMetadata | None,
+    warnings: list[SchemaWarning],
+) -> ArtifactValidationResult:
+    metadata_schema = metadata.schema_ref if metadata is not None else None
+    structural = _structural_verdict(doc_path, contract, values, metadata_schema)
 
     semantic = (
         validate_semantic(values, contract.model)
         if contract.model is not None
-        else SemanticResult(ok=True, skipped_reason="no_semantic_model")
+        else SemanticResult(ok=True, execution="not_run", skipped_reason="no_semantic_model")
     )
+    enforcement_warning = _enforcement_shortfall(contract.status, structural, semantic)
     return ArtifactValidationResult(
         path=doc_path,
         contract_id=contract.id,
@@ -869,7 +1199,7 @@ def _validate_extracted_values(
         contract=contract,
         document_metadata=metadata,
         values=values,
-        warnings=warnings,
+        warnings=[*warnings, enforcement_warning] if enforcement_warning else warnings,
         structural=structural,
         semantic=semantic,
     )
@@ -961,8 +1291,8 @@ def _artifact_failure(
         contract=contract,
         document_metadata=metadata,
         warnings=warnings or [],
-        structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
-        semantic=SemanticResult(ok=False, skipped_reason=kind),
+        structural=StructuralResult(ok=False, execution="not_run", errors=[_error(kind, message)]),
+        semantic=SemanticResult(ok=False, execution="not_run", skipped_reason=kind),
     )
 
 
@@ -989,6 +1319,7 @@ def load_artifact(
     registry: Contracts | None = None,
     metadata_mode: Literal["enforced", "advisory"] = "enforced",
     document: Any = _UNREAD,
+    require: Collection[Literal["structural", "semantic"]] = (),
 ) -> dict[str, Any]:
     """Read an artifact that is required to be valid, and return its payload values.
 
@@ -1004,7 +1335,8 @@ def load_artifact(
     the whole result attached.
 
     Returns the payload mapping — the envelope's contents, or the document root for a
-    pure-yaml artifact without one — never ``None``.
+    pure-yaml artifact without one — never ``None``. ``require`` has the same meaning as
+    in :func:`validate_artifact`, so a required check that did not complete raises.
     """
     result = validate_artifact(
         doc_path,
@@ -1013,6 +1345,7 @@ def load_artifact(
         registry=registry,
         metadata_mode=metadata_mode,
         document=document,
+        require=require,
     )
     if result.outcome != "valid" or result.values is None:
         raise ArtifactInvalidError(result)
@@ -1040,8 +1373,8 @@ def unreadable_artifact_result(
         contract=None,
         document_metadata=None,
         warnings=[],
-        structural=StructuralResult(ok=False, errors=[_error(kind, message)]),
-        semantic=SemanticResult(ok=False, skipped_reason=kind),
+        structural=StructuralResult(ok=False, execution="not_run", errors=[_error(kind, message)]),
+        semantic=SemanticResult(ok=False, execution="not_run", skipped_reason=kind),
     )
 
 
