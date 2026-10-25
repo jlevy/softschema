@@ -55,6 +55,10 @@ version number.
   now has its own check, and the TypeScript results always report on the change under
   review. Until `dependency-audit` is a required check, the `typescript` job repeats the
   audit as its last step so an advisory still blocks merging.
+- **The `typescript` and `cross-impl` CI jobs are hardened like `dependency-audit`.**
+  Their checkouts no longer persist the token, which neither job uses afterward, and
+  they install with `--ignore-scripts`; no dependency of the TypeScript package runs an
+  install script, so the builds and tests are unchanged.
 - **Zod 4.5 and 4.6 semantic behavior applies to TypeScript models.** String `.min()`,
   `.max()`, and `.length()` count code points rather than UTF-16 units, matching
   Pydantic. An object-level `.refine()` or `.superRefine()` on a strict object now runs
