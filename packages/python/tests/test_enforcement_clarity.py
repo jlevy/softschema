@@ -62,9 +62,7 @@ def test_shared_validation_execution_vectors(tmp_path: Path) -> None:
             require=case.get("require", ()),
         )
         for layer in ("structural", "semantic"):
-            expected = dict(case[layer])
-            if isinstance(expected["execution"], dict):
-                expected["execution"] = expected["execution"]["python"]
+            expected = case[layer]
             actual = asdict(getattr(result, layer))
             assert {key: actual.get(key) for key in expected} == expected, case["name"]
             unmet = [
@@ -90,6 +88,8 @@ def test_shared_validation_execution_vectors(tmp_path: Path) -> None:
         assert result.warning_codes == ([case["warning"]] if "warning" in case else [])
         if "error_kind" in case:
             assert result.structural.errors[0]["kind"] == case["error_kind"], case["name"]
+        if "error_reason" in case:
+            assert result.structural.errors[0]["reason"] == case["error_reason"], case["name"]
         assert "enforcement_applied" not in asdict(result)
 
 

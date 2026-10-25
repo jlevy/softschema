@@ -84,18 +84,62 @@ cases:
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
     error_kind: enforcement_unsupported
     warning: document-enforcement-not-applied
+  # Both engines resolve every reference that evaluation could reach before any payload
+  # is checked: Ajv while compiling, jsonschema through an eager preparation walk.
   - name: unresolved-reference
     values: {name: hello}
     status: soft
     schema: {$ref: "#/$defs/Missing"}
-    # jsonschema resolves during evaluation; Ajv resolves during compilation.
-    structural:
-      execution: {python: errored, typescript: not_run}
-      ok: false
-      skipped_reason: null
+    structural: {execution: not_run, ok: false, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
     error_kind: schema_invalid
+    error_reason: reference
+  - name: unreached-local-reference
+    values: {name: hello}
+    status: soft
+    schema: &unreached_local_reference
+      type: object
+      properties:
+        name: {type: string}
+        extra: {$ref: "#/$defs/Missing"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
+  - name: unreached-remote-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        extra: {$ref: "https://example.invalid/missing.json"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
+  - name: unreferenced-definition-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      $defs:
+        Unused: {$ref: "#/$defs/Missing"}
+    # Neither engine evaluates a definition nothing references.
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
   # A caller requirement turns a layer that did not complete into a failing record.
+  - name: unreached-reference-required-structural
+    values: {name: hello}
+    status: soft
+    require: [structural]
+    schema: *unreached_local_reference
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
   - name: metadata-only-enforced-required
     values: {name: hello}
     require: [structural]

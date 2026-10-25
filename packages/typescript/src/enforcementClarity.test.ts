@@ -41,7 +41,7 @@ function document(directory: string, values: unknown = { name: "hello" }): strin
   return path;
 }
 interface LayerExpectation {
-  execution: ValidationExecution | { python: ValidationExecution; typescript: ValidationExecution };
+  execution: ValidationExecution;
   ok: boolean;
   skipped_reason: string | null;
 }
@@ -58,6 +58,7 @@ interface ExecutionCase {
   semantic: LayerExpectation;
   warning?: WarningCode;
   error_kind?: string;
+  error_reason?: string;
 }
 const vectors = parse(
   readFileSync(
@@ -92,15 +93,12 @@ describe("actual validation execution", () => {
       );
       for (const layer of ["structural", "semantic"] as const) {
         const expected = vector[layer];
-        const execution =
-          typeof expected.execution === "string"
-            ? expected.execution
-            : expected.execution.typescript;
+        const { execution } = expected;
         expect({
           execution: result[layer].execution,
           ok: result[layer].ok,
           skipped_reason: result[layer].skipped_reason,
-        }).toEqual({ ...expected, execution });
+        }).toEqual(expected);
         const unmet = (result[layer].errors as Record<string, unknown>[])
           .filter((error) => error.kind === "check_not_completed")
           .map(({ kind, layer, execution }) => ({ kind, layer, execution }));
@@ -114,6 +112,10 @@ describe("actual validation execution", () => {
         vector.warning ? [vector.warning] : [],
       );
       if (vector.error_kind) expect(result.structural.errors[0]?.kind).toBe(vector.error_kind);
+      if (vector.error_reason) {
+        const first = result.structural.errors[0] as Record<string, unknown> | undefined;
+        expect(first?.reason).toBe(vector.error_reason);
+      }
       expect(result).not.toHaveProperty("enforcement_applied");
     });
   }

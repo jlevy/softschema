@@ -306,12 +306,16 @@ including hand-built fixtures.
 No default may invent historical evidence.
 
 `completed` means the layer returned a verdict; `ok` distinguishes pass from rejection.
-A schema preparation failure is `not_run`. An error raised during `iter_errors`, such as
-a lazily resolved missing reference, is `errored` with the existing structural error.
-Unexpected semantic callback exceptions propagate, so there is no returned result to
-mark completed. `validate_values`, artifact validation, and repair share these records.
-Older serialized records without this field have unknown execution and must not be
-backfilled from skip reasons or a successful outcome.
+A schema preparation failure is `not_run`. Preparation resolves every `$ref` that
+evaluation could reach (`_check_references`), because jsonschema would otherwise resolve
+a reference lazily and accept a payload that never reaches a dangling one, where Ajv
+refuses the schema while compiling; an unresolvable reference is therefore `not_run`
+with `schema_invalid` in both runtimes.
+An error raised during `iter_errors` itself is `errored` with the existing structural
+error. Unexpected semantic callback exceptions propagate, so there is no returned result
+to mark completed. `validate_values`, artifact validation, and repair share these
+records. Older serialized records without this field have unknown execution and must not
+be backfilled from skip reasons or a successful outcome.
 
 `validate_artifact`, `load_artifact`, and `validate_values` accept
 `require: Collection[Literal["structural", "semantic"]] = ()`, per the spec’s

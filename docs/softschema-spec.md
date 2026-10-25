@@ -785,11 +785,13 @@ An actual semantic validator still runs when supplied.
 Failures before payload extraction report both checks as `not_run`. A skipped layer may
 retain `ok: true` for compatibility; it never establishes payload acceptance.
 
-Engine preparation boundaries can differ.
-For a raw-mode unresolved local reference, Python’s jsonschema may begin evaluation
-before resolution fails (`errored`), while Ajv rejects the reference during compilation
-(`not_run`). The common definitions apply to both runtimes; shared vectors pin these
-explicit differences.
+Schema preparation resolves every `$ref` that payload evaluation could reach before any
+payload is checked, in raw and enforced mode alike.
+A reference that cannot be resolved offline, local or remote, is a `schema_invalid`
+error with `reason: reference` and structural `not_run`, whether or not the payload
+would have reached it, so both runtimes give one verdict and a `--require structural`
+gate gives one answer.
+A definition that nothing references is not evaluated, and raw mode does not check it.
 Normal completed passes and rejections retain the common execution meaning.
 
 Unexpected semantic callback exceptions propagate under the existing API exception

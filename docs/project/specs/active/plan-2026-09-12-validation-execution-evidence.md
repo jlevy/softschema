@@ -87,13 +87,15 @@ without introducing a new exception policy.
 | CLI source model cannot be loaded | No payload check is invoked by that command | No payload check is invoked by that command | Preserve CLI error; no fabricated validation report. |
 | Unexpected semantic exception | Earlier check may have completed | No returned semantic verdict | Raise; never manufacture acceptance or rejection. |
 
-Python resolves some raw-mode references during `iter_errors`; Ajv resolves them while
-compiling. For `$ref: '#/$defs/Missing'`, truthful progress is therefore `errored` in
-Python and `not_run` in TypeScript.
-Keep the common state definitions and make this engine difference explicit in shared
-test expectations. Ordinary successful and rejected payload checks retain cross-runtime
-result parity. Do not manufacture equal progress or add an eager schema traversal solely
-to hide the implementation difference.
+Python resolved raw-mode references lazily during `iter_errors`, while Ajv resolves them
+while compiling, so `$ref: '#/$defs/Missing'` was `errored` in Python and `not_run` in
+TypeScript, and a dangling reference the payload never reached passed in Python alone.
+Review of this plan’s PR chose parity over pinning that difference, because
+`--require structural` turned it into a different gate result: Python preparation now
+resolves every reference evaluation could reach before any payload is checked, so both
+runtimes report `not_run` with `schema_invalid`. The walk follows evaluation reach, not
+the whole document, so a definition nothing references stays unchecked in both runtimes.
+Ordinary successful and rejected payload checks retain cross-runtime result parity.
 
 Warnings use effective mode and actual completed checks.
 If a model ran after schema preparation failed, report the missing structural guarantee

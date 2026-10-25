@@ -34,8 +34,15 @@ checks. Declared `status` still selects validation mode; it does not prove a che
 
 - Replace the unreleased `enforcement_applied` hierarchy with per-layer execution.
   TypeScript now reports actual model invocation independently of its optional label.
-- The spec defines execution boundaries, including engine-specific preparation versus
-  evaluation failures, and the effective status fallback to `soft`.
+- The spec defines execution boundaries, including preparation versus evaluation
+  failures, and the effective status fallback to `soft`.
+- Python schema preparation resolves every `$ref` that evaluation could reach before
+  checking a payload, as Ajv already did while compiling.
+  A schema with an unresolvable local or remote reference on a branch the payload never
+  reaches is now `schema_invalid` (`reason: reference`) with structural `not_run` in
+  both runtimes, instead of a Python-only completed acceptance, so
+  `--require structural` gives one answer.
+  A definition nothing references is still not checked in raw mode.
 - Checked enforcement accepts nested nullable references to explicitly closed models
   without adding redundant object closure to their nullable wrappers.
   Explicit open object policy and rejection of unknown fields remain owned by the

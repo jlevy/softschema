@@ -207,7 +207,11 @@ def _build_validator(
             resource_id,
             Resource.from_contents(resource_schema, default_specification=DRAFT202012),
         )
-    return Draft202012Validator(schema, registry=registry.crawl())
+    registry = registry.crawl()
+    if not strict_extras:
+        # The enforced graph above already resolved every reference it visited.
+        _check_references(schema, registry)
+    return Draft202012Validator(schema, registry=registry)
 
 
 @lru_cache(maxsize=_VALIDATOR_CACHE_SIZE)
@@ -464,6 +468,48 @@ def _check_schema_identities(
             if resource_id in seen:
                 raise ValueError(f"duplicate schema resource identity: {resource_id}")
             seen.add(resource_id)
+
+
+_EVALUATED_SCHEMA_MAPS = frozenset({"properties", "patternProperties", "dependentSchemas"})
+
+
+def _check_references(schema: dict[str, Any], registry: Registry[Any]) -> None:
+    """Resolve every ``$ref`` that evaluating ``schema`` could reach.
+
+    jsonschema resolves a reference lazily, when evaluation reaches it, so without this
+    walk a schema whose unresolvable ``$ref`` sits on a branch the payload never
+    exercises would report a completed acceptance, while Ajv, which resolves the same
+    references while compiling, reports ``schema_invalid``. Failing here, before any
+    payload is checked, keeps both runtimes at ``not_run`` with the same record (see
+    ``unreached-local-reference`` in ``tests/vectors/validation-execution.yaml``). Only
+    subschemas evaluation can reach are walked, so a definition nothing references is
+    left alone, as both engines leave it unevaluated. Raises
+    :class:`referencing.exceptions.Unresolvable`, which :func:`validate_structural`
+    reports as a ``reference`` failure.
+    """
+    root = Resource.from_contents(schema, default_specification=DRAFT202012)
+    pending: list[tuple[Any, Any]] = [(schema, registry.resolver_with_root(root))]
+    seen: set[int] = set()
+    while pending:
+        node, resolver = pending.pop()
+        if not isinstance(node, dict) or id(node) in seen:
+            continue
+        seen.add(id(node))
+        if node is not schema and isinstance(node.get("$id"), str):
+            resolver = resolver.in_subresource(
+                Resource.from_contents(node, default_specification=DRAFT202012)
+            )
+        reference = node.get("$ref")
+        if isinstance(reference, str):
+            resolved = resolver.lookup(reference)
+            pending.append((resolved.contents, resolved.resolver))
+        for key, value in node.items():
+            if key in _EVALUATED_SCHEMA_MAPS and isinstance(value, dict):
+                pending.extend((child, resolver) for child in value.values())
+            elif key in _SCHEMA_LISTS and isinstance(value, list):
+                pending.extend((child, resolver) for child in value)
+            elif key in _SCHEMA_SINGLES and isinstance(value, dict):
+                pending.append((value, resolver))
 
 
 def _schema_failure_reason(error: Exception) -> str:
