@@ -367,6 +367,33 @@ describe("compile: write mode + build", () => {
     expect(properties.isoTime?.format).toBe("time");
     expect(properties.isoTime?.allOf).toEqual([{ pattern: "^12:" }]);
   });
+  test("emits nullable and primitive unions as anyOf branches, as Pydantic does", () => {
+    const model = z.strictObject({
+      nickname: z.string().nullable(),
+      choice: z.union([z.string(), z.int()]),
+      nested: z.array(z.strictObject({ note: z.string().nullable() })),
+      shaped: z
+        .string()
+        .nullable()
+        .default("n/a")
+        .meta({ examples: [{ type: ["kept"] }] }),
+    });
+    const { schema } = buildCanonicalSchema(model, "x:Unions/v1");
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+    const nullableString = [{ type: "string" }, { type: "null" }];
+
+    expect(properties.nickname?.anyOf).toEqual(nullableString);
+    expect(properties.nickname?.type).toBeUndefined();
+    expect(properties.choice?.anyOf).toEqual([{ type: "string" }, { type: "integer" }]);
+    const item = (properties.nested?.items as Record<string, unknown>).properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(item.note?.anyOf).toEqual(nullableString);
+    expect(properties.shaped?.anyOf).toEqual(nullableString);
+    // Annotation values are data, not subschemas: a `type` array inside one is untouched.
+    expect(properties.shaped?.examples).toEqual([{ type: ["kept"] }]);
+  });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [
       z.iso.datetime(),

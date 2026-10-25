@@ -77,7 +77,19 @@ bun install --frozen-lockfile
 bun run check       # biome lint, tsc --noEmit, bun test (+ coverage gate)
 bun run build       # copy-resources + bunup → dist/
 bun run publint     # lint the publishable package layout (run after build)
+bun audit           # dependency advisories against the committed bun.lock
 ```
+
+CI runs `bun audit` in its own `dependency-audit` job, separate from the `typescript`
+job (typecheck, lint, tests, build, publint, and the TypeScript golden runs), so a new
+upstream advisory shows up as a dependency-policy failure rather than as a skipped test
+run. Until `dependency-audit` is a required check in the `Protect main` ruleset, the
+`typescript` job also runs `bun audit` as its last step, after every test, build, and
+golden step, so the audit still blocks merges without hiding any TypeScript result.
+That step is a stopgap (`ss-6v74`); drop it once the repository owner adds
+`dependency-audit` to the required status checks.
+Clear an advisory by moving the affected package to a fixed version that clears the
+14-day cool-off, or by recording an explicit, approved exception for a fresher one.
 
 It publishes to npm as `softschema` (the same name as the PyPI package) and exposes the
 CLI as both `softschema` and `softschema-ts`. The two packages **release together under

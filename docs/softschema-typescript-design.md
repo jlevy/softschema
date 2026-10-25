@@ -78,6 +78,14 @@ The compiler’s `toJSONSchema` override identifies `z.ZodISODate`, `z.ZodISODat
 An authored `z.string().regex(...)` pattern remains intact, including when its metadata
 also declares a date format.
 
+Zod 4.5 and later also rewrite a union of bare type branches, which is what
+`.nullable()` and a union of plain primitives produce, from
+`anyOf: [{type: "string"}, {type: "null"}]` to `type: ["string", "null"]`. Pydantic
+emits the `anyOf` form, so the compiler expands every `type` array in a subschema
+position back into ordered `anyOf` branches before canonicalization.
+Zod creates a `type` array only through that rewrite, so the expansion changes nothing
+else.
+
 Zod ISO datetime options such as offset, local-time, and precision affect semantic
 validation but are not represented in the canonical sidecar or `schema_sha256`. The
 digest proves structural parity; it does not prove identical semantic accept sets.

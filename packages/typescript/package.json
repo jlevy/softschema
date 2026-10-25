@@ -65,10 +65,10 @@
     "atomically": "^2.1.1",
     "commander": "^15.0.0",
     "yaml": "^2.8.4",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "overrides": {
-    "fast-uri": "3.1.6"
+    "fast-uri": "3.1.9"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
