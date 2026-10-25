@@ -394,6 +394,340 @@ describe("compile: write mode + build", () => {
     // Annotation values are data, not subschemas: a `type` array inside one is untouched.
     expect(properties.shaped?.examples).toEqual([{ type: ["kept"] }]);
   });
+  test("emits .startsWith(), .endsWith(), and .includes() as plain patterns, as Pydantic does", () => {
+    const compile = (schema: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: schema }), "x:Affix/v1");
+    const field = (schema: z.ZodType) =>
+      (compile(schema).schema.properties as { f: Record<string, unknown> }).f;
+    const sha = (schema: z.ZodType) => compile(schema).sha;
+
+    // The same canonical content and digest as the `.regex()` spelling and a Pydantic
+    // `Field(pattern=...)` mirror: Zod 4.6 adds `format: "starts_with"` and friends.
+    expect(field(z.string().startsWith("ab"))).toEqual({
+      pattern: "^ab.*",
+      title: "F",
+      type: "string",
+    });
+    expect(sha(z.string().startsWith("ab"))).toBe(sha(z.string().regex(/^ab.*/)));
+    expect(field(z.string().endsWith("z"))).toEqual({
+      pattern: ".*z$",
+      title: "F",
+      type: "string",
+    });
+    expect(field(z.string().includes("q"))).toEqual({ pattern: "q", title: "F", type: "string" });
+    expect(field(z.string().startsWith("ab").endsWith("z"))).toEqual({
+      allOf: [{ pattern: "^ab.*" }, { pattern: ".*z$" }],
+      title: "F",
+      type: "string",
+    });
+
+    // A real format written by an earlier check survives the affix check written over it.
+    expect(field(z.email().startsWith("a")).format).toBe("email");
+    expect(field(z.url().endsWith("/")).format).toBe("uri");
+    expect(field(z.string().lowercase().includes("q")).format).toBe("lowercase");
+    expect(field(z.stringFormat("sku", /^[A-Z]+$/).startsWith("A")).format).toBe("sku");
+    expect(field(z.string().regex(/^a/).startsWith("ab")).format).toBeUndefined();
+    expect(field(z.iso.date().startsWith("2"))).toEqual({
+      allOf: [{ pattern: "^2.*" }],
+      format: "date",
+      title: "F",
+      type: "string",
+    });
+
+    // Wrappers copy the corrected node.
+    expect(field(z.string().startsWith("a").nullable().default(null))).toEqual({
+      anyOf: [{ pattern: "^a.*", type: "string" }, { type: "null" }],
+      default: null,
+      title: "F",
+    });
+    expect(field(z.array(z.string().includes("q")).optional())).toEqual({
+      items: { pattern: "q", type: "string" },
+      title: "F",
+      type: "array",
+    });
+    // Only a format Zod generated is corrected: an authored one survives even when it is
+    // spelled like an affix check and sits on a string with one, before or after it.
+    expect(field(z.string().meta({ format: "includes" })).format).toBe("includes");
+    expect(field(z.string().startsWith("a").meta({ format: "includes" })).format).toBe("includes");
+    expect(field(z.string().meta({ format: "ends_with" }).startsWith("a")).format).toBe(
+      "ends_with",
+    );
+    expect(field(z.string().startsWith("a").meta({ format: "date" }).describe("d")).format).toBe(
+      "date",
+    );
+  });
+  test("pins Zod's JSON Schema output for constructs the parity fixture does not cover", () => {
+    // Each of these changed schema_sha256 between zod 4.4 and 4.6. Pinning them makes the
+    // next Zod upgrade show any further change here, instead of in a downstream drift check.
+    const compiled = (schema: z.ZodType) => {
+      const { schema: out } = buildCanonicalSchema(z.strictObject({ f: schema }), "x:Pin/v1");
+      return {
+        f: (out.properties as Record<string, unknown>).f,
+        required: out.required,
+      };
+    };
+    const field = (schema: z.ZodType) => compiled(schema).f;
+    const A = z.strictObject({ a: z.string() });
+    const B = z.strictObject({ b: z.int() });
+
+    // Closed tuples: Pydantic's `tuple[str, int]` form (Zod's redundant `items: false` dropped).
+    expect(field(z.tuple([z.string(), z.int()]))).toEqual({
+      maxItems: 2,
+      minItems: 2,
+      prefixItems: [{ type: "string" }, { type: "integer" }],
+      title: "F",
+      type: "array",
+    });
+    expect(field(z.tuple([z.string(), z.int().optional()]))).toEqual({
+      maxItems: 2,
+      minItems: 1,
+      prefixItems: [{ type: "string" }, { type: "integer" }],
+      title: "F",
+      type: "array",
+    });
+    // A rest tuple keeps its rest schema and gains the prefix as minItems.
+    expect(field(z.tuple([z.string()], z.int()))).toEqual({
+      items: { type: "integer" },
+      minItems: 1,
+      prefixItems: [{ type: "string" }],
+      title: "F",
+      type: "array",
+    });
+    // Empty tuples drop `prefixItems: []`: Pydantic's `tuple[()]` and `tuple[int, ...]`.
+    expect(field(z.tuple([]))).toEqual({ maxItems: 0, minItems: 0, title: "F", type: "array" });
+    // Zod's types require a prefix element beside a rest schema; its runtime does not.
+    const emptyRest = (z.tuple as (items: z.ZodType[], rest: z.ZodType) => z.ZodType)([], z.int());
+    expect(field(emptyRest)).toEqual(field(z.array(z.int())));
+    expect(field(emptyRest)).toEqual({
+      items: { type: "integer" },
+      title: "F",
+      type: "array",
+    });
+    // An empty array bound is not a tuple and keeps Pydantic's `list` form.
+    expect(field(z.array(z.int()).max(0))).toEqual({
+      items: { type: "integer" },
+      maxItems: 0,
+      title: "F",
+      type: "array",
+    });
+    // Intersections of inline objects fold into the one object they describe, as a merged
+    // Pydantic model would; an `allOf` of two closed objects validated nothing.
+    const folded = {
+      additionalProperties: false,
+      properties: { a: { title: "A", type: "string" }, b: { title: "B", type: "integer" } },
+      required: ["a", "b"],
+      title: "F",
+      type: "object",
+    };
+    expect(field(z.intersection(A, B))).toEqual(folded);
+    expect(field(A.and(B))).toEqual(folded);
+    // Numeric record keys are constrained as the strings JSON keys are. Pydantic's
+    // `dict[int, V]` emits no key constraint; matching it would drop one Zod enforces.
+    expect(field(z.record(z.number(), z.string()))).toEqual({
+      additionalProperties: { type: "string" },
+      propertyNames: { pattern: "^-?\\d+(?:\\.\\d+)?$" },
+      title: "F",
+      type: "object",
+    });
+    expect(field(z.record(z.int(), z.string()))).toEqual({
+      additionalProperties: { type: "string" },
+      propertyNames: { pattern: "^-?\\d+$" },
+      title: "F",
+      type: "object",
+    });
+    // A key schema carries no `type: "string"`: an enum-keyed record with optional values
+    // is Pydantic's `dict[Literal["a", "b"], int]`, a literal key `dict[Literal["a"], int]`,
+    // and a constrained key `dict[Annotated[str, Field(min_length=2)], int]`.
+    expect(field(z.record(z.enum(["a", "b"]), z.int().optional()))).toEqual({
+      additionalProperties: { type: "integer" },
+      propertyNames: { enum: ["a", "b"] },
+      title: "F",
+      type: "object",
+    });
+    expect(field(z.record(z.literal("a"), z.int().optional()))).toEqual({
+      additionalProperties: { type: "integer" },
+      propertyNames: { const: "a" },
+      title: "F",
+      type: "object",
+    });
+    expect(field(z.record(z.string().min(2), z.int()))).toEqual({
+      additionalProperties: { type: "integer" },
+      propertyNames: { minLength: 2 },
+      title: "F",
+      type: "object",
+    });
+    // A plain string key keeps no key schema at all.
+    expect(field(z.record(z.string(), z.int()))).toEqual({
+      additionalProperties: { type: "integer" },
+      title: "F",
+      type: "object",
+    });
+    // Duplicate and nested-nullable unions collapse to Pydantic's form.
+    expect(field(z.union([z.string(), z.string()]))).toEqual({ title: "F", type: "string" });
+    expect(field(z.string().nullable().nullable())).toEqual({
+      anyOf: [{ type: "string" }, { type: "null" }],
+      title: "F",
+    });
+    // A second `.multipleOf()` is kept instead of dropped.
+    expect(field(z.number().multipleOf(0.5).multipleOf(2))).toEqual({
+      allOf: [{ multipleOf: 2 }],
+      multipleOf: 0.5,
+      title: "F",
+      type: "number",
+    });
+    // `.includes(text, { position })` allows any longer prefix, as String.includes does.
+    expect(field(z.string().includes("q", { position: 2 }))).toEqual({
+      pattern: "^.{2,}q",
+      title: "F",
+      type: "string",
+    });
+    // A `z.preprocess()` field is required, as a Pydantic `BeforeValidator` field is.
+    expect(compiled(z.preprocess((value) => value, z.string())).required).toEqual(["f"]);
+  });
+  test("compiles a .catch() field as the defaulted field Pydantic and Zod 4.4 emit", () => {
+    // Zod's runtime fills an absent key with the catch value, and the Pydantic mirror is
+    // `f: str = "x"`; Zod 4.6 lists the field in `required` anyway.
+    const sha = (field: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: field }), "x:Catch/v1").sha;
+    const compiled = (model: z.ZodType) => buildCanonicalSchema(model, "x:Catch/v1").schema;
+
+    expect(z.strictObject({ f: z.string().catch("x") }).safeParse({}).success).toBe(true);
+    expect(compiled(z.strictObject({ f: z.string().catch("x") })).required).toBeUndefined();
+    expect(sha(z.string().catch("x"))).toBe(sha(z.string().default("x")));
+    expect(sha(z.string().catch("x").describe("d"))).toBe(
+      sha(z.string().default("x").describe("d")),
+    );
+    expect(sha(z.preprocess((value) => value, z.string().catch("x")))).toBe(
+      sha(z.string().default("x")),
+    );
+    // Other keys stay required, and a nested or `$defs` object is corrected too.
+    expect(
+      compiled(z.strictObject({ f: z.string().catch("x"), g: z.int(), h: z.int().optional() }))
+        .required,
+    ).toEqual(["g"]);
+    const Inner = z.strictObject({ g: z.int().catch(0), h: z.int() }).meta({ id: "Inner" });
+    const defs = compiled(z.strictObject({ f: Inner })).$defs as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(defs.Inner?.required).toEqual(["h"]);
+  });
+  test("compiles .catch() in records, tuples, and over transforms as Pydantic mirrors do", () => {
+    const field = (schema: z.ZodType) =>
+      (
+        buildCanonicalSchema(z.strictObject({ f: schema }), "x:Catch/v1").schema.properties as {
+          f: Record<string, unknown>;
+        }
+      ).f;
+    const sha = (schema: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: schema }), "x:Catch/v1").sha;
+
+    // A record whose value catches requires no key, as a Pydantic `dict` never does; Zod's
+    // runtime fills each absent key. The value keeps its catch value as `default`, as
+    // `dict[Literal["a", "b"], Annotated[int, Field(default=0)]]` emits it.
+    const record = z.record(z.enum(["a", "b"]), z.int().catch(0));
+    expect(record.safeParse({}).data).toEqual({ a: 0, b: 0 });
+    expect(field(record)).toEqual({
+      additionalProperties: { default: 0, type: "integer" },
+      propertyNames: { enum: ["a", "b"] },
+      title: "F",
+      type: "object",
+    });
+    expect(
+      field(
+        z.record(
+          z.enum(["a", "b"]),
+          z.preprocess((v) => v, z.int().catch(0)),
+        ),
+      ),
+    ).toEqual(field(record));
+    // A required value still requires every key.
+    expect(field(z.record(z.enum(["a", "b"]), z.int())).required).toEqual(["a", "b"]);
+
+    // Over a transform, Zod 4.6 drops the catch value; the Pydantic mirror,
+    // `Annotated[str, AfterValidator(f)] = "x"`, keeps it as `default`, as Zod 4.4 did.
+    expect(
+      sha(
+        z
+          .string()
+          .transform((text) => text)
+          .catch("x"),
+      ),
+    ).toBe(sha(z.string().default("x")));
+    expect(
+      field(
+        z
+          .string()
+          .transform((text) => text.length)
+          .catch(0),
+      ),
+    ).toEqual({
+      default: 0,
+      title: "F",
+      type: "string",
+    });
+
+    // A tuple element is left alone: Pydantic cannot default one, and its
+    // `tuple[str, Annotated[int, Field(default=0)]]` also counts it toward `minItems`.
+    expect(field(z.tuple([z.string(), z.int().catch(0)]))).toEqual({
+      maxItems: 2,
+      minItems: 2,
+      prefixItems: [{ type: "string" }, { default: 0, type: "integer" }],
+      title: "F",
+      type: "array",
+    });
+  });
+  test("rejects a default or catch value canonical JSON cannot carry, as Python does", () => {
+    const compile = (field: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: field }), "x:NonJson/v1");
+    const toNumber = (value: number) => value;
+    const transformingCatch = (fallback: unknown) =>
+      z
+        .number()
+        .transform(toNumber)
+        .catch(fallback as number);
+
+    // A restored fallback over a transform is checked: Zod's JSON copy would turn these into
+    // `null` or fail without naming the field.
+    for (const [fallback, shown] of [
+      [Number.NaN, "NaN"],
+      [Number.POSITIVE_INFINITY, "Infinity"],
+      [Number.NEGATIVE_INFINITY, "-Infinity"],
+    ] as const) {
+      expect(() => compile(transformingCatch(fallback))).toThrow(
+        `canonical JSON requires finite numbers; the .catch() value at #/properties/f is ${shown}`,
+      );
+    }
+    expect(() => compile(transformingCatch(1n))).toThrow(
+      "canonical JSON cannot represent a BigInt; the .catch() value at #/properties/f is 1n",
+    );
+    // So is every other default, which used to compile to `default: null`.
+    expect(() => compile(z.number().catch(Number.NaN))).toThrow(
+      "the .catch() value at #/properties/f is NaN",
+    );
+    expect(() => compile(z.number().default(Number.POSITIVE_INFINITY))).toThrow(
+      "the .default() value at #/properties/f is Infinity",
+    );
+    expect(() => compile(z.number().prefault(Number.NaN))).toThrow(
+      "the .prefault() value at #/properties/f is NaN",
+    );
+    expect(() => compile(z.number().meta({ default: Number.NaN }))).toThrow(
+      "the default at #/properties/f is NaN",
+    );
+    // A Date fallback is written as its ISO string, as a `.default()` Date already is and as
+    // Pydantic writes a datetime default.
+    const epoch = new Date(0);
+    const dateCatch = z
+      .string()
+      .transform((text) => new Date(text))
+      .catch(epoch);
+    expect((compile(dateCatch).schema.properties as { f: unknown }).f).toEqual({
+      default: "1970-01-01T00:00:00.000Z",
+      title: "F",
+      type: "string",
+    });
+    expect(compile(dateCatch).sha).toBe(compile(z.string().default(epoch as never)).sha);
+  });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [
       z.iso.datetime(),

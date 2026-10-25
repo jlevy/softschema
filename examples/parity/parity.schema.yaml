@@ -81,6 +81,10 @@ properties:
     pattern: ^[A-Z]+$
     title: Code
     type: string
+  contact:
+    pattern: '@'
+    title: Contact
+    type: string
   control_text:
     default: "tab\there"
     description: "Carries a CRLF\r\nand a tab\tand ends with ="
@@ -98,6 +102,10 @@ properties:
     default: true
     title: Enabled
     type: boolean
+  filename:
+    pattern: .*\.md$
+    title: Filename
+    type: string
   history:
     items:
       $ref: '#/$defs/Event'
@@ -136,6 +144,14 @@ properties:
     - type: 'null'
     default: null
     title: Notes
+  pair:
+    maxItems: 2
+    minItems: 2
+    prefixItems:
+    - type: string
+    - type: integer
+    title: Pair
+    type: array
   primary:
     $ref: '#/$defs/Address'
   priority:
@@ -174,6 +190,10 @@ properties:
     - "line\Lseparator"
     title: Separator
     type: string
+  sku:
+    pattern: ^SKU-.*
+    title: Sku
+    type: string
   step:
     multipleOf: 5
     title: Step
@@ -195,11 +215,15 @@ required:
 - calendar_time
 - channels
 - code
+- contact
 - count
+- filename
 - kind
 - mixed
+- pair
 - primary
 - ratio
+- sku
 - step
 - tags
 - title
@@ -207,4 +231,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: a67903cc24f20fd48776b5c19f9336828e7f720ec3250ffcf8485abadb7dd8c3
+  schema_sha256: eb42fd756915b663235574b8becc406b19c3dfea2f1fd49d2a6712c76dcb2c7e
