@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
-import { isProgrammerBug } from "./cli.js";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
   collapseUndeclaredProperties,
@@ -21,7 +20,7 @@ import {
   parseSchemaMetadata,
   SchemaMetadataError,
 } from "./models.js";
-import { validateArtifact, validateStructural } from "./validate.js";
+import { validateArtifact } from "./validate.js";
 
 const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
@@ -437,38 +436,6 @@ describe("compile: write mode + build", () => {
     expect(schema.$id).toBe("https://example.com/schemas/sample-v1");
     const Reserved = Sample.meta({ "x-softschema": { custom: true } });
     expect(() => buildCanonicalSchema(Reserved, "x:S/v1")).toThrow("reserved root identity key");
-  });
-  test("a schemaId that validation refuses is refused at compile time", () => {
-    // `schemaId` becomes the root `$id`, so compile applies validation's own
-    // resource-identity rule and never writes a schema validation would refuse. The
-    // messages are byte-identical to Python's.
-    const directory = mkdtempSync(join(tmpdir(), "softschema-schema-id-"));
-    const out = join(directory, "s.yaml");
-    const refused: Record<string, string> = {
-      "schemas/sample.json": 'the root $id must be an absolute URI, got "schemas/sample.json"',
-      "urn:example":
-        'a urn: $id must name a namespace identifier, as in urn:example:name, got "urn:example"',
-      "URN:dir/item.json":
-        'a urn: $id must name a namespace identifier, as in urn:example:name, got "URN:dir/item.json"',
-    };
-    for (const [schemaId, message] of Object.entries(refused)) {
-      let thrown: unknown;
-      try {
-        compileSchema(Sample, out, { contractId: "x:S/v1", schemaId });
-      } catch (error) {
-        thrown = error;
-      }
-      // A plain Error, not a programmer-bug class, so the CLI reports it with exit 2.
-      expect(thrown).toBeInstanceOf(Error);
-      expect(isProgrammerBug(thrown)).toBe(false);
-      expect((thrown as Error).message).toBe(message);
-      const structural = validateStructural({}, { $id: schemaId, type: "object" });
-      expect(structural.errors[0]).toMatchObject({ reason: "resource_identity", message });
-    }
-    expect(existsSync(out)).toBe(false);
-    const { schema } = buildCanonicalSchema(Sample, "x:S/v1", "urn:example:sample");
-    expect(schema.$id).toBe("urn:example:sample");
-    expect(validateStructural({ name: "n" }, schema).ok).toBe(true);
   });
   test("drift comparison is portable and boolean-safe", () => {
     const out = join(mkdtempSync(join(tmpdir(), "softschema-drift-")), "s.yaml");

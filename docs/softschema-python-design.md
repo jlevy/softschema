@@ -318,10 +318,11 @@ for: an inert or impossible `contains`, `unevaluatedProperties` beside
 `additionalProperties`, and `unevaluatedItems` beside `items` or a compiled `contains`.
 `_check_dialect` refuses, before either engine runs, a `$schema` other than the
 canonical 2020-12 URI and the keywords only Ajv honors (`dependencies`, `nullable`,
-`$recursiveRef`, `$recursiveAnchor`); `_check_root_identity` refuses a relative root
-`$id`, and `_check_urn_identities` a `urn:` `$id`, root or nested, without a namespace
-identifier. The engine differences that remain on degenerate schemas are pinned per
-runtime in the `engine_deviations` list of the shared execution vectors.
+`$recursiveRef`, `$recursiveAnchor`); `_check_identities` holds the root `$id`, every
+nested `$id`, and each supplied resource’s `$id` or key to the identity grammar in
+`softschema._identity`, which `compile_model` applies to `schema_id` as well.
+The engine differences that remain on degenerate schemas are pinned per runtime in the
+`engine_deviations` list of the shared execution vectors.
 An error raised during `iter_errors` itself is `errored` with the existing structural
 error. Unexpected semantic callback exceptions propagate, so there is no returned result
 to mark completed. `validate_values`, artifact validation, and repair share these
@@ -443,8 +444,8 @@ The emitted schema includes:
 
 - `$schema` for JSON Schema 2020-12
 - `$id` only when the separate optional `--schema-id` resource URI is supplied; compile
-  refuses an id that validation would refuse as `resource_identity` (relative, or a
-  `urn:` without a namespace identifier) through the same `_check_root_id` helper
+  refuses an id outside the identity grammar (`softschema._identity.check_root_id`, the
+  check validation applies to a root `$id`)
 - an `x-softschema` annotation block with `contract` and `schema_sha256` (a
   deterministic SHA-256 over the canonical JSON form of the schema).
   The block is deliberately language-neutral; it carries no `generated_from` provenance,

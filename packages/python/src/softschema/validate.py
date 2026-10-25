@@ -14,7 +14,6 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
-import json
 import re
 from ast import literal_eval
 from collections.abc import Collection, Iterator, Mapping, Sequence
@@ -22,7 +21,6 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, TypeVar, cast
-from urllib.parse import urlparse
 
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
@@ -30,6 +28,7 @@ from referencing import Registry, Resource
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
+from softschema._identity import check_identity, check_root_id
 from softschema._portable import PortableInputError, parse_yaml, read_utf8
 from softschema.enforcement import (
     EnforcementUnsupportedError,
@@ -210,13 +209,8 @@ def _build_validator(
     if not isinstance(schema, dict):
         raise _SchemaRootNotAMapping
     resource_schemas = dict(resources or {})
-    _check_root_identity(schema)
-    for key, resource_schema in resource_schemas.items():
-        # A supplied resource without its own `$id` is registered under its key.
-        if not isinstance(resource_schema.get("$id"), str):
-            _check_urn_identity(key, "resource key")
+    _check_identities(schema, resource_schemas)
     for document in (schema, *resource_schemas.values()):
-        _check_urn_identities(document)
         _check_patterns(document)
         _check_dialect(document)
         Draft202012Validator.check_schema(document)
@@ -557,74 +551,30 @@ def _check_dialect(schema: dict[str, Any]) -> None:
                 )
 
 
-def _check_root_identity(schema: dict[str, Any]) -> None:
-    """Require an absolute root ``$id``.
+def _check_identities(schema: dict[str, Any], resources: Mapping[str, dict[str, Any]]) -> None:
+    """Hold every resource identity to the grammar in :mod:`softschema._identity`.
 
-    A relative root ``$id`` has no base to resolve against, so the engines invent one:
-    ``referencing`` crawls the document under the relative id and joins nested relative
-    ids onto it a second time, while Ajv resolves them once. Refusing the form keeps one
-    verdict. Kept in step with TypeScript's ``checkRootIdentity``.
+    The root ``$id`` and each supplied resource's identity (its ``$id``, or its key when
+    it has none, since that is what it is registered under) must be absolute; a nested
+    ``$id`` may also be a relative path. A relative root ``$id`` has no base to resolve
+    against, and any spelling either engine normalizes would name one resource for one
+    engine and another for the other, so both are refused before either engine runs.
+    Kept in step with TypeScript's ``checkIdentities``.
     """
     root_id = schema.get("$id")
     if isinstance(root_id, str):
-        _check_root_id(root_id)
-
-
-def _check_root_id(root_id: str) -> None:
-    """Refuse a root ``$id`` that validation refuses as ``resource_identity``.
-
-    That is a relative one (see :func:`_check_root_identity`) or a ``urn:`` without a
-    namespace identifier (see :func:`_check_urn_identity`). ``compile_model`` applies it
-    to ``schema_id``, so compile never writes a root ``$id`` that validation refuses.
-    Kept in step with TypeScript's ``checkRootId``.
-    """
-    if not urlparse(root_id).scheme:
-        raise SchemaGraphError(
-            "resource_identity",
-            f"the root $id must be an absolute URI, got {_quoted(root_id)}",
-        )
-    _check_urn_identity(root_id, "$id")
-
-
-def _quoted(value: str) -> str:
-    """Quote ``value`` as TypeScript's ``JSON.stringify`` does, so messages match."""
-    return json.dumps(value, ensure_ascii=False)
-
-
-# The name after `urn:`, up to any query or fragment: a namespace identifier of one to 32
-# ASCII letters, digits, or hyphens starting with a letter or digit, a colon, and a
-# non-empty namespace-specific string. Mirrors fast-uri's `URN_REG` over ASCII. Kept in
-# step with TypeScript's `URN_NAME`.
-_URN_NAME = re.compile(
-    r"[0-9A-Za-z][0-9A-Za-z-]{0,31}:(?:[0-9A-Za-z_!$'()*+,\-./:;=@]|%[0-9A-Fa-f]{2})+"
-)
-
-
-def _check_urn_identity(identity: str, label: str) -> None:
-    """Require a ``urn:`` resource identity to name a namespace identifier.
-
-    fast-uri, the URI library Ajv resolves with, cannot serialize a URN without one, such
-    as ``urn:example`` or ``urn:dir/item.json``, so Ajv fails on the identity while
-    jsonschema accepts it. Refusing it keeps one verdict. Kept in step with TypeScript's
-    ``checkUrnIdentity``.
-    """
-    scheme, separator, rest = identity.partition(":")
-    if not separator or scheme.lower() != "urn":
-        return
-    if not _URN_NAME.fullmatch(re.split(r"[?#]", rest, maxsplit=1)[0]):
-        raise SchemaGraphError(
-            "resource_identity",
-            f"a urn: {label} must name a namespace identifier, as in urn:example:name, "
-            f"got {_quoted(identity)}",
-        )
-
-
-def _check_urn_identities(schema: dict[str, Any]) -> None:
-    """Apply :func:`_check_urn_identity` to every ``$id``, root or nested."""
-    for node in _iter_schemas(schema):
-        identity = node.get("$id")
-        if isinstance(identity, str):
-            _check_urn_identity(identity, "$id")
+        check_root_id(root_id)
+    for key, resource in resources.items():
+        resource_id = resource.get("$id")
+        if isinstance(resource_id, str):
+            check_identity(resource_id, "a supplied resource $id", absolute=True)
+        else:
+            check_identity(key, "a supplied resource key", absolute=True)
+    for document in (schema, *resources.values()):
+        for node in _iter_schemas(document):
+            identity = node.get("$id")
+            if node is not document and isinstance(identity, str):
+                check_identity(identity, "a $id", absolute=False)
 
 
 def _contains_is_inert(node: dict[str, Any]) -> bool:

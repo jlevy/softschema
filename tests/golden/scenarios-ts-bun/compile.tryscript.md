@@ -41,16 +41,23 @@ $ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --
 # Test: compile refuses a --schema-id that validation would refuse (exit 2)
 
 The same refusals and messages as the Python compiler: `--schema-id` becomes the root
-`$id`, so a relative id and a `urn:` without a namespace identifier exit 2.
+`$id`, so a `urn:` without a namespace identifier, a relative id, and a malformed host
+exit 2.
 
 ```console
 $ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract example.parity:KitchenSink/v1 --out examples/parity/parity.schema.yaml --check --schema-id urn:example
-! softschema compile: a urn: $id must name a namespace identifier, as in urn:example:name, got "urn:example"
+! softschema compile: the root $id must name a lowercase namespace identifier and a name, as in urn:example:name, got "urn:example"
 ? 2
 ```
 
 ```console
 $ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract example.parity:KitchenSink/v1 --out examples/parity/parity.schema.yaml --check --schema-id schemas/movie.json
 ! softschema compile: the root $id must be an absolute URI, got "schemas/movie.json"
+? 2
+```
+
+```console
+$ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --contract example.parity:KitchenSink/v1 --out examples/parity/parity.schema.yaml --check --schema-id 'http://[::1'
+! softschema compile: the root $id must have a lowercase host name or a canonical IP address, an optional non-default port, and no user information, got "http://[::1"
 ? 2
 ```

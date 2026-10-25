@@ -46,18 +46,24 @@ $ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract wrong:Movie
 # Test: compile refuses a --schema-id that validation would refuse (exit 2)
 
 `--schema-id` becomes the root `$id`, so compile applies validation’s resource-identity
-rule before writing or checking anything: a relative id and a `urn:` without a
-namespace identifier are refused with exit 2. Both messages are byte-identical across
-implementations, so they are asserted in full on stderr (`!`).
+grammar before writing or checking anything: a `urn:` without a namespace identifier, a
+relative id, and a malformed host are refused with exit 2. The messages are
+byte-identical across implementations, so they are asserted in full on stderr (`!`).
 
 ```console
 $ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check --schema-id urn:example
-! softschema compile: a urn: $id must name a namespace identifier, as in urn:example:name, got "urn:example"
+! softschema compile: the root $id must name a lowercase namespace identifier and a name, as in urn:example:name, got "urn:example"
 ? 2
 ```
 
 ```console
 $ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check --schema-id schemas/movie.json
 ! softschema compile: the root $id must be an absolute URI, got "schemas/movie.json"
+? 2
+```
+
+```console
+$ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check --schema-id 'http://[::1'
+! softschema compile: the root $id must have a lowercase host name or a canonical IP address, an optional non-default port, and no user information, got "http://[::1"
 ? 2
 ```

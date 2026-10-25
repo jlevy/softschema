@@ -484,6 +484,24 @@ cases:
             V: {type: string}
     structural: {execution: completed, ok: true, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: tag-root-nested-relative-id-local-reference
+    values: {name: hello, item: {v: s}}
+    status: soft
+    schema:
+      $id: "tag:example.com,2026:root"
+      type: object
+      properties:
+        name: {type: string}
+        item: {$ref: "#/$defs/Item"}
+      $defs:
+        Item:
+          $id: dir/item.json
+          properties:
+            v: {$ref: "#/$defs/V"}
+          $defs:
+            V: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
   - name: urn-root-id
     values: {name: hello}
     status: soft
@@ -573,14 +591,194 @@ cases:
         name: {$id: "urn:isbn:0451450523", type: string}
     structural: {execution: completed, ok: true, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
-  - name: uppercase-urn-root-id
+  # Every identity follows one grammar (tests/vectors/identities.yaml has a case per
+  # rule): spellings either engine would normalize, or could not resolve against, are
+  # refused before either engine runs, in raw and enforced mode alike.
+  - name: uppercase-urn-scheme-root-id-self-reference
     values: {name: hello}
     status: soft
     schema:
       $id: "URN:Example:Root"
       type: object
       properties:
+        name: {$ref: "URN:Example:Root#/$defs/S"}
+      $defs:
+        S: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: whitespace-prefixed-root-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: " https://example.com/schemas/movie.json"
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: unclosed-ipv6-root-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "http://[::1"
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: unclosed-ipv6-root-id-enforced
+    values: {name: hello}
+    schema:
+      $id: "http://[::1"
+      type: object
+      properties:
         name: {type: string}
+      required: [name]
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+    warning: document-enforcement-not-applied
+  - name: fragment-root-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "https://example.com/schemas/movie.json#frag"
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: escaped-tilde-urn-root-id-local-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "urn:example:a%7Eb"
+      type: object
+      properties:
+        name: {$ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: escaped-tilde-urn-root-id-local-reference-enforced
+    values: {name: hello}
+    schema:
+      $id: "urn:example:a%7Eb"
+      type: object
+      properties:
+        name: {$ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+      required: [name]
+      additionalProperties: false
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+    warning: document-enforcement-not-applied
+  - name: escaped-tilde-urn-nested-id-inner-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name:
+          $id: "urn:example:a%7Eb"
+          allOf: [{$ref: "#/$defs/S"}]
+          $defs:
+            S: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: malformed-escape-nested-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "https://example.com/root.json"
+      type: object
+      $defs:
+        X: {$id: "https://example.com/%zz", type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: escaped-tilde-urn-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {$ref: "urn:example:a%7Eb"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
+  - name: https-root-id-local-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "https://example.com/schemas/movie.json"
+      type: object
+      properties:
+        name: {$ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: https-root-id-local-reference-enforced
+    values: {name: hello}
+    schema:
+      $id: "https://example.com/schemas/movie.json"
+      type: object
+      properties:
+        name: {$ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+      required: [name]
+      additionalProperties: false
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: ipv6-root-id-local-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "http://[2001:db8::1]:8080/schemas/movie.json"
+      type: object
+      properties:
+        name: {$ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: tag-root-id-local-reference-enforced
+    values: {name: hello}
+    schema:
+      $id: "tag:example.com,2026:movie"
+      type: object
+      properties:
+        name: {$ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+      required: [name]
+      additionalProperties: false
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: file-root-id-relative-child-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "file:///schemas/movie.json"
+      type: object
+      properties:
+        name: {$ref: "item.json"}
+      $defs:
+        Item: {$id: item.json, type: string}
     structural: {execution: completed, ok: true, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
   # Subschemas Ajv compiles nothing for are not walked either: an inert contains, and
@@ -931,8 +1129,8 @@ engine_deviations:
       inside it, and completes. Ajv resolves the id to `urn:dir/item.json`, a URN with no
       namespace identifier, and fast-uri throws `URN without nid cannot be serialized`
       when Ajv resolves the `$ref` inside that resource, so TypeScript refuses the schema
-      whether or not the payload reaches it. The `urn:` identity check reads each `$id`
-      as written, and neither id here lacks a namespace identifier.
+      whether or not the payload reaches it. The identity grammar reads each `$id` as
+      written, and both ids here follow it.
     python: {execution: completed, ok: true}
     typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
   - name: tag-root-nested-relative-id-absolute-reference
@@ -952,8 +1150,8 @@ engine_deviations:
       Ajv gives the embedded resource the id `tag:dir/item.json`, so a `$ref` to that URI
       resolves and TypeScript completes. Python's id for it stays `dir/item.json`, the
       walk finds no resource at `tag:dir/item.json`, and Python refuses the schema. A
-      local `$ref` inside the resource resolves in both runtimes under `tag:`, where
-      fast-uri has no scheme handler to fail.
+      local `$ref` inside the resource resolves in both runtimes, as the
+      `tag-root-nested-relative-id-local-reference` case shows.
     python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
     typescript: {execution: completed, ok: true}
   - name: reference-cycle

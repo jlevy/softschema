@@ -153,6 +153,38 @@ structural:
       "urn:example:item": { type: string }
     value: Ada
     valid: true
+  # A resource identity in a spelling fast-uri normalizes would be registered under one
+  # URI by Ajv and another by Python; the identity grammar refuses it in either place.
+  - id: uppercase_host_resource_key
+    schema: { $ref: "https://EXAMPLE.com/X" }
+    resources:
+      "https://EXAMPLE.com/X": { type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: escaped_unreserved_resource_key
+    schema: { $ref: "https://example.com/%7Euser/x.json" }
+    resources:
+      "https://example.com/%7Euser/x.json": { type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: uppercase_scheme_resource_id
+    schema: { $ref: "urn:example:b" }
+    resources:
+      "urn:example:b": { $id: "URN:example:b", type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: https_resource_key
+    schema: { $ref: "https://example.com/schemas/name.json" }
+    resources:
+      "https://example.com/schemas/name.json": { type: string }
+    value: Ada
+    valid: true
 
 canonicalization:
   - id: preserve_empty_default

@@ -543,8 +543,8 @@ Supported spellings include:
 - supplied resources keyed by an absolute URI without a fragment.
 
 A supplied resource’s root `$id`, when present, must resolve to its mapping key.
-A `urn:` key of a resource without a root `$id` follows the namespace-identifier rule in
-Compiled Schemas, in raw and enforced validation alike.
+That `$id`, or the key of a resource without one, follows the resource identity grammar
+in Compiled Schemas, in raw and enforced validation alike.
 All resources are supplied explicitly; neither runtime performs network retrieval.
 Valid `$dynamicRef` and `$dynamicAnchor` schemas are outside this profile.
 Caller-constructed schema graphs must also use a distinct mapping object at every schema
@@ -633,15 +633,39 @@ model library can express.
 A compiled schema is Draft 2020-12. When it carries `$schema`, the value is the
 canonical URI `https://json-schema.org/draft/2020-12/schema`, with or without a trailing
 `#`; any other value, including the `http://` spelling, is refused.
-A root `$id`, when present, is an absolute URI. Any `$id`, root or nested, that is a
-`urn:` names a namespace identifier, as in `urn:example:name`: after `urn:` (in any
-case) come one to 32 ASCII letters, digits, or hyphens starting with a letter or digit,
-a colon, and a non-empty name, so `urn:example` and `urn:dir/item.json` are refused.
+Every resource identity (the root `$id`, a nested `$id`, a supplied resource’s `$id` or
+key, and the `--schema-id` that `softschema compile` writes as the root `$id`) follows
+one grammar, which admits only spellings that neither engine’s URI library rewrites:
+
+- printable ASCII with no whitespace, and no fragment, not even an empty `#`;
+- percent-escapes written as uppercase `%HH`, never for letters, digits, or `-._~`;
+- a lowercase scheme; only the root `$id` and supplied resources need one, and a nested
+  `$id` may instead be a relative path with no colon in its first segment;
+- `//host` only after `http:`, `https:`, or `file:`, which require it: a lowercase host
+  name, a canonical IPv4 or RFC 5952 IPv6 address, an optional port other than the
+  scheme’s default, no user information, and a path of at least `/`, with `file:` taking
+  an empty host (`file:///path`);
+- no other scheme that is written with `//host` (such as `ftp:`, `ws:`, or `git:`);
+  every other scheme takes the form `scheme:path`, the path not starting with `/`;
+- for `urn:`, a lowercase namespace identifier of one to 32 letters, digits, or hyphens
+  starting with a letter or digit, a colon, and a name of letters, digits, `%HH`, and
+  `_!$'()*+,-./:;=@`, as in `urn:example:name`, and a lowercase UUID after `urn:uuid:`;
+  and
+- no empty (`//`), `.`, or `..` path segment, no path ending in `;`, no empty query, and
+  no `'` in a query.
+
+So `https://example.com/schemas/movie.json`, `urn:example:movie-page`,
+`urn:uuid:6e8bc430-9c3a-11d9-9669-0800200c9a66`, `tag:example.com,2026:movie`, and
+`file:///schemas/movie.json` are identities, and `URN:Example:Movie`,
+`urn:example:a%7Eb`, `https://EXAMPLE.com/x`, `http://[::1`, and
+`https://example.com/s.json#frag` are not.
+`tests/vectors/identities.yaml` has a case for each rule.
 Keywords that only one engine would honor are refused as well: the legacy `dependencies`
 (write `dependentSchemas` or `dependentRequired`), the OpenAPI `nullable` (write
 `type: [..., "null"]`), and 2019-09’s `$recursiveRef` and `$recursiveAnchor`. Validation
-reports each as `schema_invalid` with `reason: dialect` (`resource_identity` for the
-`$id` rules) before either engine runs; see Reporting Validation Execution.
+reports each as `schema_invalid` with `reason: dialect` (`resource_identity` for an
+identity outside the grammar) before either engine runs; see Reporting Validation
+Execution.
 
 ### Release-Level Mapping Across JSON Schema, Pydantic, and Zod
 
@@ -821,9 +845,9 @@ gate gives one answer.
 Preparation also refuses, before either engine runs, a `$schema` other than the
 canonical Draft 2020-12 URI and the keywords only one engine would honor
 (`dependencies`, `nullable`, `$recursiveRef`, `$recursiveAnchor`), each as
-`schema_invalid` with `reason: dialect`, and a relative root `$id` or a `urn:` `$id`
-without a namespace identifier, root or nested, as `reason: resource_identity`; the
-Compiled Schemas section lists the portable forms to write instead.
+`schema_invalid` with `reason: dialect`, and any resource identity outside the grammar
+in Compiled Schemas, root, nested, or supplied, as `reason: resource_identity`; that
+section lists the portable forms to write instead.
 Normal completed passes and rejections retain the common execution meaning.
 
 Outside that rule the engines keep their own behavior on degenerate schemas, and every

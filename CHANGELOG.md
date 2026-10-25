@@ -52,16 +52,23 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   Draft 2020-12 URI (with or without a trailing `#`) and the keywords only Ajv honored
   while jsonschema ignored them: the legacy `dependencies`, the OpenAPI `nullable`, and
   2019-09’s `$recursiveRef` and `$recursiveAnchor`, each as `schema_invalid` with
-  `reason: dialect`. A relative root `$id`, which the engines resolved against different
-  invented bases, is refused as `reason: resource_identity`, and so is a `$id`, root or
-  nested, that is a `urn:` without a namespace identifier, such as `urn:example`, which
-  Python accepted and Ajv could not serialize.
-  `softschema compile --schema-id` (and `schema_id`/`schemaId` in the libraries) refuses
-  an id either rule would refuse, with the validation message and the usual exit 2, so
-  compile never writes a schema that validation refuses.
-  Write `dependentSchemas` or `dependentRequired`, `type: [..., "null"]`,
-  `$dynamicRef`/`$dynamicAnchor`, an absolute root `$id`, and a URN as
-  `urn:<nid>:<name>`.
+  `reason: dialect`. Write `dependentSchemas` or `dependentRequired`,
+  `type: [..., "null"]`, and `$dynamicRef`/`$dynamicAnchor` instead.
+- Every resource identity (the root `$id`, a nested `$id`, a supplied resource’s `$id`
+  or key, and `softschema compile --schema-id`, which is `schema_id`/`schemaId` in the
+  libraries) follows one grammar, implemented identically in both runtimes, and anything
+  outside it is `schema_invalid` with `reason: resource_identity` before either engine
+  runs (compile exits 2 with the same message).
+  The grammar admits only spellings that neither Python’s `urllib.parse` nor Ajv’s
+  fast-uri rewrites: printable ASCII, no fragment, uppercase `%HH` escapes of reserved
+  or non-ASCII bytes only, a lowercase scheme, `//host` only for `http:`, `https:`, and
+  `file:` (lowercase host or canonical IP address, non-default port, no user
+  information, a path of at least `/`), the opaque `scheme:path` form for every other
+  scheme except those `urllib.parse` writes with `//`, a lowercase `urn:` namespace
+  identifier and a lowercase UUID after `urn:uuid:`, and no `//`, `.`, or `..` path
+  segment, trailing `;`, empty query, or `'` in a query.
+  A nested `$id` may also be a relative path.
+  The spec lists the rules and `tests/vectors/identities.yaml` has a case for each.
 - The TypeScript `validate --require` with an unknown layer reports
   `softschema validate: invalid require: <value>` with the usual exit 2, the prefix the
   Python CLI uses, instead of the argument parser’s own line.
@@ -148,12 +155,17 @@ and for `$recursiveRef`, which Python ignored and TypeScript evaluated (write
 `$dynamicRef`). **Both runtimes** change for the legacy `dependencies` keyword, which
 TypeScript enforced and Python ignored (write `dependentSchemas` or
 `dependentRequired`), for OpenAPI `nullable`, which TypeScript honored and Python
-ignored (write `type: [..., "null"]`), for a relative root `$id`, which each resolved
-against a different invented base (write an absolute `$id`), and for a `$id`, root or
-nested, that is a `urn:` without a namespace identifier, such as `urn:example` or
-`urn:dir/item.json`, which Python accepted and TypeScript failed to compile as
-`reason: compilation` (write `urn:<nid>:<name>`, such as `urn:example:name`); both now
-refuse it as `reason: resource_identity`, and `compile --schema-id` refuses it too.
+ignored (write `type: [..., "null"]`), and for any resource identity outside the
+identity grammar, which both now refuse as `reason: resource_identity` and
+`compile --schema-id` refuses too.
+Before, the engines read such identities differently: a relative root `$id` against
+different invented bases; `URN:`, `urn:Ex:…`, an uppercase host, `%7E`, or a dot
+segment, which fast-uri normalizes and Python does not; a whitespace-prefixed id, which
+Python’s `urlsplit` trims; a malformed host such as `http://[::1`, which Python refused
+as `compilation` and TypeScript accepted; and `urn:example` or `urn:dir/item.json`,
+which TypeScript failed to compile.
+Write `https://host/path`, `file:///path`, `urn:<nid>:<name>` in lowercase, or another
+`scheme:path`, with no fragment.
 Skip reasons change only for the TypeScript library fix above.
 Strict serialized-result consumers must accept the new layer fields and remove the
 unreleased aggregate field.

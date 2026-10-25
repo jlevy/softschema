@@ -19,10 +19,10 @@ import {
   SCHEMA_LIST_KEYWORDS,
 } from "./canonicalize.js";
 import { isMapping } from "./guards.js";
+import { checkRootId } from "./identity.js";
 import { checkContractId } from "./models.js";
 import { parsePortableYaml, readUtf8 } from "./portable.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
-import { checkRootId } from "./validate.js";
 
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
 

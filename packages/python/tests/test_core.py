@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -135,39 +134,6 @@ def test_compile_separates_optional_schema_id_and_reserves_metadata(tmp_path: Pa
 
     with pytest.raises(ValueError, match="reserved root identity key"):
         compile_model(ReservedModel, out, contract_id="example:Reserved/v1")
-
-
-def test_compile_refuses_a_schema_id_that_validation_refuses(tmp_path: Path) -> None:
-    # `schema_id` becomes the root `$id`, so compile applies validation's own
-    # resource-identity rule and never writes a schema validation would refuse. The
-    # messages are byte-identical to TypeScript's.
-    out = tmp_path / "sample.schema.yaml"
-    refused = {
-        "schemas/sample.json": 'the root $id must be an absolute URI, got "schemas/sample.json"',
-        "urn:example": (
-            'a urn: $id must name a namespace identifier, as in urn:example:name, got "urn:example"'
-        ),
-        "URN:dir/item.json": (
-            "a urn: $id must name a namespace identifier, as in urn:example:name, "
-            'got "URN:dir/item.json"'
-        ),
-    }
-    for schema_id, message in refused.items():
-        # A ValueError, so the CLI reports it with exit 2.
-        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-            compile_model(SampleModel, out, contract_id="example:Sample/v1", schema_id=schema_id)
-        written = tmp_path / "written.schema.yaml"
-        written.write_text(f"$id: {json.dumps(schema_id)}\ntype: object\n")
-        structural = validate_structural({}, written)
-        assert structural.errors[0]["reason"] == "resource_identity"
-        assert structural.errors[0]["message"] == message
-    assert not out.exists()
-    result = compile_model(
-        SampleModel, out, contract_id="example:Sample/v1", schema_id="urn:example:sample"
-    )
-    assert "$id: urn:example:sample" in result.schema_yaml
-    payload = {"name": "n", "direction": "up", "delta": 1.0}
-    assert validate_structural(payload, out).ok
 
 
 def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
