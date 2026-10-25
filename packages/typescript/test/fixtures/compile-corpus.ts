@@ -84,6 +84,9 @@ export function compileCorpus(z: ZodApi, transforming: boolean): Record<string, 
     field(`id_${kind}_catch_diff`, () => schema().catch("b"));
     field(`id_${kind}_prefault_same`, () => schema().prefault("a"));
     field(`id_${kind}_examples`, () => schema().meta({ examples: ["a"] }));
+    field(`id_${kind}_describe_describe`, () => schema().describe("a").describe("b"));
+    field(`id_${kind}_describe_examples`, () => schema().describe("a").meta({ examples: ["b"] }));
+    field(`id_${kind}_optional_catch`, () => schema().optional().catch("a"));
   }
 
   // An id'd schema with authored metadata, re-wrapped.

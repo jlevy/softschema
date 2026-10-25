@@ -216,10 +216,12 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   On a field that references a `$defs` entry, a restored value is left out when the
   first entry along the `$ref` chain that has the key carries the same value, so
   `X.describe("d")` compiles alike whether or not the id’d `X` transforms.
-  Zod compares only the entry a field refers to directly, so an alias of an id’d default
-  that restates its value, such as `R.optional().default("x")` or
-  `R.default("x").meta({ id })`, can compile differently with a transform than without
-  one; such shapes have no Pydantic mirror.
+  Zod compares only one level, so where it writes a `default` or `examples` beside a
+  `$ref` whose chain already carries the same value, the transforming twin leaves that
+  value out: an alias such as `R.default("x").meta({ id })`, a wrapper between the field
+  and its `$ref` such as `R.optional().default("x")`, or a second `.describe()` or
+  `.meta()` clone such as `R.describe("a").describe("b")`. Validation is the same, and
+  such shapes have no Pydantic mirror.
   The KitchenSink parity fixture now covers a defaulted transform.
 - **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
   compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
@@ -303,9 +305,9 @@ A model with a `.default()` over a transforming schema, or an authored `default`
 the `default` or `examples` that 0.8.1 dropped under zod 4.4 and 4.6 (see Fixed).
 `compile --check` reports drift for such a model; recompile its committed schema.
 The new schema is the one its Pydantic mirror compiles to.
-The fix changes no compiled schema without a transform, and no Python-compiled schema.
-A `.catch()` whose value the referenced `$defs` entry already carries is included: it
-compiles to the bare `$ref` Zod writes, without the value beside it.
+This fix changes no compiled schema without a transform, and no Python-compiled schema.
+A `.catch()` whose value the referenced `$defs` entry already carries compiles as in
+0.8.1, to the bare `$ref` Zod writes; only the unreleased #66 wrote the value beside it.
 
 ### Performance
 

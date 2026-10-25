@@ -127,8 +127,10 @@ same value, which only the finished `$defs` shows.
 A dropped key on a `$ref` node is therefore settled after compilation: it is left out
 when the first entry along the `$ref` chain that has the key carries the same value.
 Zod compares only the entry a node refers to directly and the entry of the schema it was
-cloned from, so an alias of an id’d default that restates its value can compile
-differently with a transform than without one.
+cloned from. So where it writes a `default` or `examples` beside a `$ref` whose chain
+already carries the same value (an alias, a wrapper between the field and its `$ref`, or
+a second `.describe()` or `.meta()` clone), the transforming twin leaves that value out.
+The two validate alike, and such shapes have no Pydantic mirror.
 `test/compile-digests.test.ts` pins both behaviors over a corpus of shapes.
 
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
