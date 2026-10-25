@@ -100,6 +100,11 @@ Zod 4.6 lists a `.catch()` field in `required`, because its inner type is requir
 although Zod’s runtime fills an absent key with the catch value.
 Its Pydantic mirror is a defaulted field, so the override removes such a field from an
 object’s `required`, including behind a `z.preprocess()` transform.
+For the same reason it drops `required` from a record whose value has a `.catch()`,
+since a Pydantic `dict` never requires its keys, and it restores the catch value as
+`default` where Zod 4.6 dropped it because the caught type transforms.
+A tuple element with a `.catch()` keeps counting toward `minItems`, as an element of
+Pydantic’s `tuple[...]` does.
 
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler

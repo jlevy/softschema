@@ -177,12 +177,15 @@ function dropStringKeyType(node: Record<string, unknown>): void {
 }
 
 /**
- * Whether an object field fills an absent key through `.catch()`, possibly behind a
- * `z.preprocess()` transform, which is how Zod 4.6 resolves a field's input optionality.
+ * Whether an object field or record value fills an absent key through `.catch()`,
+ * possibly behind a `z.preprocess()` transform, which is how Zod 4.6 resolves input
+ * optionality.
  *
- * Zod's runtime accepts the missing key and substitutes the catch value, and the field's
- * Pydantic mirror is a defaulted field, which is not required. Zod 4.6 still lists the
- * field in `required` because the inner type is required; Zod 4.4 did not.
+ * Zod's runtime accepts the missing key and substitutes the catch value. An object
+ * field's Pydantic mirror is a defaulted field, which is not required, and a Pydantic
+ * `dict` never requires its keys. Zod 4.6 still requires the key because the inner type
+ * is required. A tuple element is left alone: Pydantic cannot default one, and its
+ * `tuple[...]` counts every element toward `minItems`, as Zod 4.6 does.
  */
 function catchesAbsentKey(field: z.core.$ZodType | undefined): boolean {
   if (field instanceof z.core.$ZodPipe && field._zod.def.in instanceof z.core.$ZodTransform) {
@@ -278,6 +281,16 @@ export function buildCanonicalSchema(
         const required = jsonSchema.required.filter((key) => !catchesAbsentKey(shape[key]));
         if (required.length > 0) jsonSchema.required = required;
         else delete jsonSchema.required;
+      }
+      if (source instanceof z.core.$ZodRecord && catchesAbsentKey(source._zod.def.valueType)) {
+        delete jsonSchema.required;
+      }
+      // Zod 4.6 drops the `default` of a transforming schema in input mode, the catch value
+      // included. Zod 4.4 kept it, and so does the Pydantic mirror, a defaulted field with an
+      // `AfterValidator`, so put it back.
+      if (source instanceof z.core.$ZodCatch && !("default" in jsonSchema)) {
+        const catchValue = source._zod.def.catchValue(undefined as never);
+        if (catchValue !== undefined) jsonSchema.default = catchValue;
       }
       // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
       // validate semantically with an intrinsic regex; drop it and keep the format.

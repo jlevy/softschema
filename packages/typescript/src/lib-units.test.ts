@@ -611,6 +611,71 @@ describe("compile: write mode + build", () => {
     >;
     expect(defs.Inner?.required).toEqual(["h"]);
   });
+  test("compiles .catch() in records, tuples, and over transforms as Pydantic mirrors do", () => {
+    const field = (schema: z.ZodType) =>
+      (
+        buildCanonicalSchema(z.strictObject({ f: schema }), "x:Catch/v1").schema.properties as {
+          f: Record<string, unknown>;
+        }
+      ).f;
+    const sha = (schema: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: schema }), "x:Catch/v1").sha;
+
+    // A record whose value catches requires no key, as a Pydantic `dict` never does; Zod's
+    // runtime fills each absent key. The value keeps its catch value as `default`, as
+    // `dict[Literal["a", "b"], Annotated[int, Field(default=0)]]` emits it.
+    const record = z.record(z.enum(["a", "b"]), z.int().catch(0));
+    expect(record.safeParse({}).data).toEqual({ a: 0, b: 0 });
+    expect(field(record)).toEqual({
+      additionalProperties: { default: 0, type: "integer" },
+      propertyNames: { enum: ["a", "b"] },
+      title: "F",
+      type: "object",
+    });
+    expect(
+      field(
+        z.record(
+          z.enum(["a", "b"]),
+          z.preprocess((v) => v, z.int().catch(0)),
+        ),
+      ),
+    ).toEqual(field(record));
+    // A required value still requires every key.
+    expect(field(z.record(z.enum(["a", "b"]), z.int())).required).toEqual(["a", "b"]);
+
+    // Over a transform, Zod 4.6 drops the catch value; the Pydantic mirror,
+    // `Annotated[str, AfterValidator(f)] = "x"`, keeps it as `default`, as Zod 4.4 did.
+    expect(
+      sha(
+        z
+          .string()
+          .transform((text) => text)
+          .catch("x"),
+      ),
+    ).toBe(sha(z.string().default("x")));
+    expect(
+      field(
+        z
+          .string()
+          .transform((text) => text.length)
+          .catch(0),
+      ),
+    ).toEqual({
+      default: 0,
+      title: "F",
+      type: "string",
+    });
+
+    // A tuple element is left alone: Pydantic cannot default one, and its
+    // `tuple[str, Annotated[int, Field(default=0)]]` also counts it toward `minItems`.
+    expect(field(z.tuple([z.string(), z.int().catch(0)]))).toEqual({
+      maxItems: 2,
+      minItems: 2,
+      prefixItems: [{ type: "string" }, { default: 0, type: "integer" }],
+      title: "F",
+      type: "array",
+    });
+  });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [
       z.iso.datetime(),

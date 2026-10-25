@@ -48,13 +48,20 @@ version number.
   generated is corrected: an authored `.meta({ format })` is kept whatever its name.
   Each other string helper zod 4.4 already had, used alone, emits the same `format` as
   under zod 4.4.
-- **TypeScript-compiled schemas match Pydantic again for `.catch()` fields under zod
-  4.6.** Zod 4.6 lists a `.catch()` field in `required` because its inner type is
-  required, although Zod’s runtime fills an absent key with the catch value and the
-  field’s Pydantic mirror, `f: str = "x"`, is not required.
+- **TypeScript-compiled schemas match Pydantic again for `.catch()` under zod 4.6.** Zod
+  4.6 lists a `.catch()` field in `required` because its inner type is required,
+  although Zod’s runtime fills an absent key with the catch value and the field’s
+  Pydantic mirror, `f: str = "x"`, is not required.
+  It also drops the catch value from `default` when the caught type transforms, which
+  zod 4.4 and the Pydantic mirror, a defaulted field with an `AfterValidator`, keep.
   The compiler removes such a field from `required` again, including behind
-  `z.preprocess()` and in `$defs`, so it compiles as under zod 4.4, with the same
-  `schema_sha256` as the `.default()` spelling and the Pydantic mirror.
+  `z.preprocess()` and in `$defs`, and restores the `default`, so these fields compile
+  as under zod 4.4, with the same `schema_sha256` as the Pydantic mirror.
+  A record whose value has a `.catch()` no longer requires its enum or literal keys,
+  since Zod’s runtime fills each one and a Pydantic `dict` never requires its keys.
+  A tuple element with a `.catch()` still counts toward `minItems`, as an element of
+  Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
+  Pydantic cannot default a tuple element.
 
 ### Changed
 
@@ -81,7 +88,7 @@ version number.
   compiled schema and `schema_sha256` of TypeScript models that use these constructs;
   recompile their committed schemas.** `compile --check` reports drift for them after
   upgrading. `.startsWith()`, `.endsWith()`, `.includes()` without a position, and
-  `.catch()` fields still compile as they did under zod 4.4 (see Fixed).
+  `.catch()` object fields still compile as they did under zod 4.4 (see Fixed).
   The KitchenSink parity fixture now covers the three helpers and closed tuples, and a
   unit test pins the output of the other constructs below.
   - `z.tuple([...])` with elements gains `minItems` and `maxItems`, and a rest tuple
@@ -103,8 +110,8 @@ version number.
     it would drop a key constraint Zod enforces.
   - A record’s key schema no longer carries `type: "string"`, which every JSON key
     satisfies, so a record with enum, literal, or constrained string keys changes
-    digest. A record with enum or literal keys and an optional or defaulted value also no
-    longer lists every key in `required`. With both changes,
+    digest. A record with enum or literal keys and an optional, defaulted, or `.catch()`
+    value also no longer lists every key in `required`. With both changes,
     `z.record(z.enum(["a", "b"]), V.optional())` equals Pydantic’s
     `dict[Literal["a", "b"], V]`, and `z.record(z.string().min(2), V)` equals
     `dict[Annotated[str, Field(min_length=2)], V]`. With required values, an enum-keyed
