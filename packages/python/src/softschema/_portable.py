@@ -152,6 +152,12 @@ CHECKED_LIBYAML_VERSION = "0.1.7"
 """The libyaml build, as ``ruamel.yaml.clib`` reports it, that the C-first guards were
 derived for and searched against.
 
+Every ``ruamel.yaml.clib`` release so far reports this string, so the check cannot tell
+clib releases apart, and it is the clib release that varies between installs: its
+maintainer patches the bundled libyaml. The searches behind the guards ran on clib 0.2.8
+(with ruamel.yaml 0.18.10) and 0.2.15 (with 0.19.1); a new clib release needs
+``devtools/yaml_parser_fuzz.py`` rerun even when this string is unchanged.
+
 :func:`_needs_pure_parser` lists the shapes on which this libyaml accepts what pure
 ruamel rejects, or reads a different value. Another libyaml build could add a shape, so
 the C parser is used only when it is this build on a checked ruamel release
@@ -163,10 +169,40 @@ Widen either only after rerunning ``devtools/yaml_parser_fuzz.py`` and
 
 def _c_parser_is_checked() -> bool:
     """Whether ruamel found a C parser, and it is the build the guards were derived for."""
+    return _installed_libyaml_version() == CHECKED_LIBYAML_VERSION and _ruamel_is_checked()
+
+
+def _installed_libyaml_version() -> str | None:
+    """The libyaml version of the C parser ruamel found, or ``None`` without one.
+
+    ``CParser.__module__`` is ``ruamel.yaml.clib._ruamel_yaml`` on recent clib releases and
+    ``_ruamel_yaml`` on older ones; ruamel itself imports the latter name, so it is the
+    fallback when the qualified name is not registered.
+    """
     parser = YAML(typ="safe").Parser
-    if parser is RuamelParser or not _ruamel_is_checked():
-        return False
-    return _libyaml_version(sys.modules.get(parser.__module__)) == CHECKED_LIBYAML_VERSION
+    if parser is RuamelParser:
+        return None
+    module = sys.modules.get(parser.__module__) or sys.modules.get("_ruamel_yaml")
+    return _libyaml_version(module)
+
+
+def yaml_parser_reason() -> str:
+    """Why :func:`yaml_parser_mode` answers as it does, in one sentence for ``doctor``."""
+    ruamel_version = ".".join(map(str, ruamel.yaml.version_info[:3]))
+    libyaml = _installed_libyaml_version()
+    if libyaml is None:
+        return "ruamel.yaml.clib is not installed"
+    if libyaml != CHECKED_LIBYAML_VERSION:
+        return f"libyaml {libyaml} is not the checked build {CHECKED_LIBYAML_VERSION}"
+    if not _ruamel_is_checked():
+        lower, upper = CHECKED_RUAMEL_VERSIONS
+        return (
+            f"ruamel.yaml {ruamel_version} is outside the checked releases "
+            f"{lower[0]}.{lower[1]} to {upper[0]}.{upper[1] - 1}"
+        )
+    if not _c_parser_active():
+        return f"turned off by {PURE_YAML_ENV}"
+    return f"ruamel.yaml.clib (libyaml {libyaml}) with ruamel.yaml {ruamel_version}"
 
 
 def _libyaml_version(module: Any) -> str | None:
@@ -181,13 +217,17 @@ _C_PARSER_AVAILABLE = _c_parser_is_checked()
 
 
 def yaml_parser_mode() -> Literal["c-first", "pure"]:
-    """Which ruamel parser :func:`parse_yaml` reads YAML with in this process.
+    """Which ruamel parser :func:`parse_yaml` reads YAML with, at the time of the call.
 
-    ``"c-first"`` means ruamel's C extension is installed and not turned off with
-    ``SOFTSCHEMA_PURE_YAML``: texts are read by libyaml where it is known to agree with
-    pure ruamel, and by pure ruamel otherwise. ``"pure"`` means every text is read by
-    pure ruamel, because the extension is absent or turned off. Results are identical in
-    both modes; only speed differs.
+    ``"c-first"`` means ruamel's C extension (``ruamel.yaml.clib``) is installed, is the
+    libyaml build the guards were checked against on a checked ruamel release
+    (:data:`CHECKED_LIBYAML_VERSION`, :data:`CHECKED_RUAMEL_VERSIONS`), and is not turned
+    off with ``SOFTSCHEMA_PURE_YAML``: texts are read by libyaml where it is known to agree
+    with pure ruamel, and by pure ruamel otherwise. ``"pure"`` means every text is read by
+    pure ruamel: the extension is absent, is another build or release, or is turned off.
+    The build check happens once at import; the environment variable is read on every
+    call, so setting it later changes the answer. Results are identical in both modes;
+    only speed differs. :func:`yaml_parser_reason` says which case applies.
     """
     return "c-first" if _c_parser_active() else "pure"
 
@@ -220,9 +260,11 @@ search skips ahead to each one.
 _SPACE_ONLY_LINE = re.compile(r"(?:\r\n?|\n)( ++)(?=\r|\n)")
 """A line of only spaces, which is where a block scalar can read differently (below).
 
-Such lines are rare, so the search finds them first and then looks at the line before
-each one. The possessive ``++`` means the engine never retries a shorter run of spaces,
-so the whole search is one pass over the text.
+The search finds these lines first and then looks at the line before each one. The
+possessive ``++`` means the engine never retries a shorter run of spaces, so the search
+is one pass over the text. Such lines are not rare: an editor that keeps indentation on
+blank lines writes one for every blank line inside a literal block, so the work per
+line has to stay constant (see :func:`_block_scalar_before_space_line`).
 """
 
 _BLOCK_HEADER_AT_LINE_END = re.compile(r"[|>][-+0-9]{0,2}(?: ++#| *+\Z)")
@@ -240,12 +282,23 @@ def _block_scalar_before_space_line(text: str) -> bool:
 
     When such a line has fewer spaces than a later leading line, pure ruamel reports "more
     indented follow up line than first in a block scalar"; libyaml reads the scalar.
+
+    The backward search for the start of the line before each match is bounded by the
+    start of the previous match, the break that ended the line before it, so each
+    space-only line costs the length of the one line before it. Searching from 0 instead made the
+    whole text quadratic in the number of space-only lines: in an LF-only text the search
+    for ``\\r`` found nothing and scanned back to the start every time.
     """
+    low = 0
     for match in _SPACE_ONLY_LINE.finditer(text):
         line_end = match.start()
-        line_start = max(text.rfind("\n", 0, line_end), text.rfind("\r", 0, line_end)) + 1
+        line_start = max(text.rfind("\n", low, line_end), text.rfind("\r", low, line_end)) + 1
         if _BLOCK_HEADER_AT_LINE_END.search(text, line_start, line_end) is not None:
             return True
+        # The break that starts this match ends the line before the next one, so the next
+        # search can stop here (not at ``match.end()``, which for consecutive space-only
+        # lines is where the next match starts, leaving nothing to find and a scan from 0).
+        low = line_end
     return False
 
 
@@ -301,10 +354,12 @@ def _needs_pure_parser(text: str) -> bool:
 
     Each check is a substring test or a single pass over the text: the regexes either
     start at a literal character and skip ahead between candidates, or use possessive
-    quantifiers so that nothing is rescanned, and the space-line check looks at the rare
-    lines of only spaces first. The cost is linear in the text and a few percent of a C
-    parse; ``test_c_parser.py`` pins it on adversarial inputs such as a long ``#`` banner
-    and a line of thousands of ``| #``.
+    quantifiers so that nothing is rescanned, and the space-line check visits each line
+    of only spaces once and looks back only as far as the line before it. The cost is
+    linear in the text, plus one Python step per space-only line, and a few percent of a
+    C parse; ``test_c_parser.py`` pins bounded time and linear growth on adversarial
+    inputs such as a long ``#`` banner, a line of thousands of ``| #`` and a block scalar
+    with a hundred thousand indented blank lines.
     """
     if "\t" in text:
         return True

@@ -284,9 +284,19 @@ found by comparing the two parsers over every text of up to four characters, tem
 generated and mutated documents, and every Basic Multilingual Plane code point, and
 `test_c_parser.py` compares C-first, forced pure, and a process without the extension on
 each of them. The guards run in linear time: each is a substring test or one pass whose
-regex uses possessive quantifiers, the space-line check looks at the rare lines of only
-spaces first, and `test_c_parser.py` pins bounded time on adversarial inputs such as a
-long `#` banner comment and thousands of `| #` on one line.
+regex uses possessive quantifiers, and the space-line check visits each line of only
+spaces once and looks back only as far as the line before it, so a block scalar with
+thousands of indented blank lines costs one short step per line.
+`test_c_parser.py` pins bounded time and linear growth on adversarial inputs such as a
+long `#` banner comment, thousands of `| #` on one line and a hundred thousand
+space-only lines. softschema’s routed list is shorter than the one frontmatter-format
+uses for the same idea, and that is sufficient only because of softschema’s portable
+domain: the other shapes on which libyaml reads a value pure ruamel rejects (`[? ]]`,
+`&a: 1`, `k: !`) all give libyaml a reading with an anchor, a tag or a non-string key,
+which the event preflight (`yaml_alias`, `yaml_custom_tag`) or the portable-value check
+(`yaml_non_string_key`) raises on, so the C attempt falls back.
+If the portable domain ever admits anchors, tags or non-string keys, the routed list
+must grow to cover them.
 The differential search behind the guards is `devtools/yaml_parser_fuzz.py`; rerun it
 after any ruamel or `ruamel.yaml.clib` bump before widening either checked range.
 `compile` writes the schema through ruamel’s pure-Python emitter whether or not the

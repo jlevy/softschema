@@ -23,6 +23,7 @@ from softschema._portable import (
     opens_frontmatter_fence,
     read_utf8,
     yaml_parser_mode,
+    yaml_parser_reason,
 )
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
@@ -816,6 +817,7 @@ def _doctor_report() -> dict[str, Any]:
     return {
         "version": _installed_version(),
         "yaml_parser": yaml_parser_mode(),
+        "yaml_parser_reason": yaml_parser_reason(),
         "runners": runners,
         "recommended_invocation": recommended,
     }
@@ -824,7 +826,7 @@ def _doctor_report() -> dict[str, Any]:
 def _doctor_text(report: dict[str, Any]) -> str:
     lines = [
         f"softschema version: {report['version']}",
-        f"yaml parser: {report['yaml_parser']}",
+        f"yaml parser: {report['yaml_parser']} ({report['yaml_parser_reason']})",
         "available runners:",
     ]
     for runner in report["runners"]:

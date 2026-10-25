@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 import ruamel.yaml
+from ruamel.yaml import YAML
 from ruamel.yaml.reader import Reader
 
 from softschema import _portable, read_yaml_doc

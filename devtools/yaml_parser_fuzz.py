@@ -16,24 +16,49 @@ Run it from the repo root with the C extension installed (the dev group installs
     uv run python devtools/yaml_parser_fuzz.py 200000
     uv run python devtools/yaml_parser_fuzz.py 1000000 --seed 7 --jobs 4
 
-Exit status is 1 when any divergence is found. The unit tests in
-``packages/python/tests/test_c_parser.py`` run a small deterministic corpus of the same
-kind on every CI run; this script is the larger search behind them.
+Exit status is 1 when any divergence is found, 2 without the C parser. The count is
+split into batches of ``--batch`` texts, one seed each, with a partial last batch. The
+unit tests in ``packages/python/tests/test_c_parser.py`` run a small deterministic
+corpus of the same kind on every CI run; this script is the larger search behind them.
+
+Pairs this search has been run on with no divergence: ruamel.yaml 0.19.1 with
+ruamel.yaml.clib 0.2.15 (CPython 3.13 and 3.14, Linux and macOS, about 3 million texts
+across the reviews of the change that introduced C-first) and ruamel.yaml 0.18.10 with
+ruamel.yaml.clib 0.2.8 (CPython 3.12, about 260,000 texts). Both report libyaml 0.1.7.
+Rerun it, and widen ``CHECKED_LIBYAML_VERSION`` or ``CHECKED_RUAMEL_VERSIONS`` only
+afterwards, when either package moves.
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import math
 import multiprocessing
 import random
 import sys
+from collections.abc import Iterator
 from typing import Any
 
+import ruamel.yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.parser import Parser as RuamelParser
 
-from softschema._portable import PortableInputError, _needs_pure_parser, _parse_with
+from softschema._portable import (
+    _C_PARSER_AVAILABLE,
+    PortableInputError,
+    _installed_libyaml_version,
+    _needs_pure_parser,
+    _parse_with,
+)
+
+
+def _distribution_version(name: str) -> str:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return "not installed"
+
 
 Outcome = tuple[Any, ...]
 
@@ -296,6 +321,17 @@ def search(job: tuple[int, int]) -> tuple[Stats, list[tuple[str, Outcome, Outcom
     return (routed, rejected, accepted), divergences
 
 
+def _results(
+    jobs: list[tuple[int, int]], workers: int | None
+) -> Iterator[tuple[Stats, list[tuple[str, Outcome, Outcome]]]]:
+    """The search results of ``jobs``, from worker processes, or inline when ``workers`` is 1."""
+    if workers == 1:
+        yield from map(search, jobs)
+        return
+    with multiprocessing.Pool(workers) as pool:
+        yield from pool.imap_unordered(search, jobs)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -316,16 +352,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    jobs = [(args.seed + index, args.batch) for index in range(max(1, args.count // args.batch))]
+    # Whole batches, then one partial batch for the remainder, so every text is run.
+    sizes = [args.batch] * (args.count // args.batch)
+    if args.count % args.batch or not sizes:
+        sizes.append(args.count % args.batch or args.count)
+    jobs = [(args.seed + index, size) for index, size in enumerate(sizes)]
     totals = [0, 0, 0]
     found: dict[str, tuple[Outcome, Outcome]] = {}
-    with multiprocessing.Pool(args.jobs) as pool:
-        for stats, divergences in pool.imap_unordered(search, jobs):
-            totals = [total + stat for total, stat in zip(totals, stats, strict=True)]
-            for text, c_reading, pure_reading in divergences:
-                found.setdefault(text, (c_reading, pure_reading))
+    for stats, divergences in _results(jobs, args.jobs):
+        totals = [total + stat for total, stat in zip(totals, stats, strict=True)]
+        for text, c_reading, pure_reading in divergences:
+            found.setdefault(text, (c_reading, pure_reading))
 
     routed, rejected, accepted = totals
+    print(
+        f"ruamel.yaml {ruamel.yaml.__version__}, ruamel.yaml.clib "
+        f"{_distribution_version('ruamel.yaml.clib')} (libyaml {_installed_libyaml_version()}), "
+        f"seeds {args.seed}-{args.seed + len(jobs) - 1}, C parser {'on' if _C_PARSER_AVAILABLE else 'off'}"
+    )
     print(
         f"texts: {sum(totals)}  routed to pure: {routed}  rejected by C: {rejected}  read by C: {accepted}"
     )

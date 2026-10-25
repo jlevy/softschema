@@ -29,7 +29,7 @@ import random
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,10 @@ request = pickle.load(sys.stdin.buffer)
 if request == "mode":
     from softschema import yaml_parser_mode
     pickle.dump(yaml_parser_mode(), sys.stdout.buffer)
+    raise SystemExit
+if request == "reason":
+    from softschema._portable import yaml_parser_reason
+    pickle.dump(yaml_parser_reason(), sys.stdout.buffer)
     raise SystemExit
 if request == "compile":
     from softschema.compile import _yaml_dump
@@ -536,12 +540,17 @@ ADVERSARIAL_GUARD_INPUTS = {
     "long_line_of_block_header_comments": "a: '" + "| #" * 20000 + "' \nb: 1\n",
     "long_line_of_block_headers_before_space_line": "a: '" + "| #" * 20000 + "'\n \nb: 1\n",
     "many_space_only_lines": "a: |\n \n" + "  x\n \n" * 5000,
+    "indented_blank_lines_in_a_block_scalar": "a: |\n" + "  x\n  \n" * 50_000,
+    "space_only_lines_after_an_emoji": "t: \U0001f600\n" + "a: 1\n \n" * 100_000,
+    "space_only_lines_with_cr_endings": "a: 1\r" + " \r" * 50_000,
 }
 """Texts on which the first guard regexes backtracked exponentially or quadratically.
 
 A 24-character ``#`` banner cost 1.4 s and doubled with every ``#``; 8,000 ``| #`` on one
-line cost 1.4 s and quadrupled with every doubling. The budget below is generous: each
-of these now takes a few milliseconds.
+line cost 1.4 s and quadrupled with every doubling; and the first rewrite of the
+space-line check scanned back to the start of the text for every line of only spaces,
+so 100,000 of them after one emoji (a UCS-4 string) cost 3.6 s. The budget below is
+generous: each of these now takes a few milliseconds.
 """
 
 _GUARD_TIMING_PROGRAM = """
@@ -584,27 +593,48 @@ def test_the_guard_is_bounded_on_adversarial_inputs() -> None:
         "long_line_of_block_header_comments": False,
         "long_line_of_block_headers_before_space_line": True,
         "many_space_only_lines": True,
+        "indented_blank_lines_in_a_block_scalar": False,
+        "space_only_lines_after_an_emoji": False,
+        "space_only_lines_with_cr_endings": False,
     }
 
 
-def test_the_guard_cost_grows_linearly_with_the_input() -> None:
-    """Ten times the input costs well under a hundred times the time, for each adversarial shape."""
-    shapes = {
-        "hash_banner": lambda n: "#" * n + "\na: 1\n",
-        "comment_lines": lambda n: "## x\n" * n + "a: 1\n",
-        "block_header_comments": lambda n: "a: '" + "| #" * n + "' \nb: 1\n",
-    }
-    for name, shape in shapes.items():
-        small = _time_guard(shape(2000))
-        large = _time_guard(shape(20000))
-        # Timer resolution and scheduling noise dominate the small run, so give it a floor.
-        assert large < 100 * max(small, 0.001), (name, small, large)
+GROWTH_SHAPES: dict[str, Callable[[int], str]] = {
+    "hash_banner": lambda n: "#" * n + "\na: 1\n",
+    "comment_lines": lambda n: "## x\n" * n + "a: 1\n",
+    "block_header_comments": lambda n: "a: '" + "| #" * n + "' \nb: 1\n",
+    "space_only_lines": lambda n: "a: 1\n" + " \n" * n,
+    "indented_blank_lines_in_a_block_scalar": lambda n: "a: |\n" + "  x\n  \n" * n,
+    "space_only_lines_with_cr_endings": lambda n: "a: 1\r" + " \r" * n,
+    "space_only_lines_after_an_emoji": lambda n: "t: \U0001f600\n" + "a: 1\n \n" * n,
+}
+"""Shapes with a cost that is linear in ``n``; a quadratic term shows between the sizes below."""
 
 
-def _time_guard(text: str) -> float:
-    start = time.perf_counter()
+@pytest.mark.parametrize("shape", GROWTH_SHAPES.values(), ids=GROWTH_SHAPES.keys())
+def test_the_guard_cost_grows_linearly_with_the_input(shape: Callable[[int], str]) -> None:
+    """Ten times the input costs under thirty times the time, where a quadratic costs a hundred.
+
+    The sizes are large enough for a quadratic term to dominate (the first space-line
+    rewrite measured 41x to 79x here), and each timing is the best of three after a
+    warm-up, so scheduling noise on a shared CI runner does not decide the ratio. The
+    fixed guard measures 6x to 13x on these shapes.
+    """
+    small = _time_guard(shape(20_000))
+    large = _time_guard(shape(200_000))
+    # Timer resolution still matters for the small run, so give it a floor.
+    assert large < 30 * max(small, 0.001), (small, large)
+
+
+def _time_guard(text: str, repeats: int = 3) -> float:
+    """The best of ``repeats`` timings of the guard on ``text``, after one warm-up run."""
     _portable._needs_pure_parser(text)
-    return time.perf_counter() - start
+    best = math.inf
+    for _ in range(repeats):
+        start = time.perf_counter()
+        _portable._needs_pure_parser(text)
+        best = min(best, time.perf_counter() - start)
+    return best
 
 
 # --- Which parser runs ---------------------------------------------------------------------
@@ -811,6 +841,58 @@ def test_an_unchecked_ruamel_release_keeps_every_text_on_pure(
 def test_no_libyaml_version_without_the_extension() -> None:
     assert _portable._libyaml_version(None) is None
     assert _portable._libyaml_version(object()) is None
+
+
+@requires_c
+def test_the_gate_reads_the_bare_extension_module_when_the_qualified_name_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Older clib releases register only ``_ruamel_yaml``, which ruamel itself imports."""
+    qualified = YAML(typ="safe").Parser.__module__
+    if qualified != "_ruamel_yaml":
+        monkeypatch.setitem(sys.modules, "_ruamel_yaml", sys.modules[qualified])
+        monkeypatch.delitem(sys.modules, qualified)
+    assert _portable._installed_libyaml_version() == _portable.CHECKED_LIBYAML_VERSION
+
+
+@requires_c
+def test_the_reason_names_why_the_parser_is_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    assert _portable.yaml_parser_reason().startswith("ruamel.yaml.clib (libyaml 0.1.7)")
+    monkeypatch.setenv(PURE_ENV, "1")
+    assert _portable.yaml_parser_reason() == f"turned off by {PURE_ENV}"
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    monkeypatch.setattr(_portable, "CHECKED_LIBYAML_VERSION", "0.2.5")
+    assert _portable.yaml_parser_reason() == "libyaml 0.1.7 is not the checked build 0.2.5"
+    monkeypatch.setattr(_portable, "CHECKED_LIBYAML_VERSION", "0.1.7")
+    monkeypatch.setattr(_portable, "CHECKED_RUAMEL_VERSIONS", ((9, 0), (9, 1)))
+    assert _portable.yaml_parser_reason().endswith("is outside the checked releases 9.0 to 9.0")
+
+
+def test_the_reason_without_the_extension_is_that_it_is_not_installed() -> None:
+    assert _in_reference_process("reason") == "ruamel.yaml.clib is not installed"
+
+
+# --- The differential search harness runs ---------------------------------------------------
+
+
+@requires_c
+def test_the_fuzz_harness_runs_and_finds_no_divergence(capsys: pytest.CaptureFixture[str]) -> None:
+    """``devtools/yaml_parser_fuzz.py`` keeps working when ``_parse_with`` or the guard changes."""
+    import importlib.util
+
+    path = REPO_ROOT / "devtools" / "yaml_parser_fuzz.py"
+    spec = importlib.util.spec_from_file_location("yaml_parser_fuzz", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    assert module.main(["1500", "--batch", "1000", "--jobs", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "texts: 1500 " in out
+    assert "divergences: 0" in out
+    assert "libyaml 0.1.7" in out
 
 
 # --- The compiled-schema writer does not depend on the extension ----------------------------

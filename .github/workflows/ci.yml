@@ -100,6 +100,21 @@ jobs:
           uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.tar.gz \
             softschema docs spec > /dev/null
 
+      # The build job runs C-first on Linux only. Here the wheel runs with ruamel's C
+      # extension on each OS and must report c-first: the gate fails closed, so a wheel
+      # that silently lost the speedup on macOS or Windows would otherwise go unnoticed.
+      - name: Smoke the wheel with ruamel's C extension
+        working-directory: ${{ runner.temp }}
+        run: |
+          uv run --no-project --with "$GITHUB_WORKSPACE"/release-candidates/python/*.whl \
+            --with 'ruamel.yaml.clib>=0.2.15' python -c '
+          import sys
+          from softschema import yaml_parser_mode
+          from softschema._portable import yaml_parser_reason
+          print(yaml_parser_mode(), "-", yaml_parser_reason())
+          sys.exit(yaml_parser_mode() != "c-first")
+          '
+
       - name: Smoke npm tarball outside the checkout
         working-directory: ${{ runner.temp }}
         run: |
