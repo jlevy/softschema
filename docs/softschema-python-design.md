@@ -287,13 +287,17 @@ each of them. The guards run in linear time: each is a substring test or one pas
 regex uses possessive quantifiers, and the space-line check visits each line of only
 spaces once and looks back only as far as the line before it, so a block scalar with
 thousands of indented blank lines costs one short step per line.
-`test_c_parser.py` pins bounded time and linear growth on adversarial inputs such as a
-long `#` banner comment, thousands of `| #` on one line and a hundred thousand
-space-only lines. softschema’s routed list is shorter than the one frontmatter-format
-uses for the same idea, and that is sufficient only because of softschema’s portable
-domain: the other shapes on which libyaml reads a value pure ruamel rejects (`[? ]]`,
-`&a: 1`, `k: !`) all give libyaml a reading with an anchor, a tag or a non-string key,
-which the event preflight (`yaml_alias`, `yaml_custom_tag`) or the portable-value check
+`test_c_parser.py` pins the routing of adversarial inputs such as a long `#` banner
+comment, thousands of `| #` on one line and a hundred thousand space-only lines, counts
+the characters the space-line loop hands to `rfind` and the header search (a
+deterministic bound of three per character of text, so the gate cannot flake on a shared
+runner), and times the guard’s growth over a hundredfold input in the `slow` tier, where
+a quadratic would cost a hundred times the linear ratio.
+softschema’s routed list is shorter than the one frontmatter-format uses for the same
+idea, and that is sufficient only because of softschema’s portable domain: the other
+shapes on which libyaml reads a value pure ruamel rejects (`[? ]]`, `&a: 1`, `k: !`) all
+give libyaml a reading with an anchor, a tag or a non-string key, which the event
+preflight (`yaml_alias`, `yaml_custom_tag`) or the portable-value check
 (`yaml_non_string_key`) raises on, so the C attempt falls back.
 If the portable domain ever admits anchors, tags or non-string keys, the routed list
 must grow to cover them.

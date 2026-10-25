@@ -26,6 +26,7 @@ import math
 import os
 import pickle
 import random
+import re
 import subprocess
 import sys
 import time
@@ -549,30 +550,29 @@ ADVERSARIAL_GUARD_INPUTS = {
 A 24-character ``#`` banner cost 1.4 s and doubled with every ``#``; 8,000 ``| #`` on one
 line cost 1.4 s and quadrupled with every doubling; and the first rewrite of the
 space-line check scanned back to the start of the text for every line of only spaces,
-so 100,000 of them after one emoji (a UCS-4 string) cost 3.6 s. The budget below is
-generous: each of these now takes a few milliseconds.
+so 100,000 of them after one emoji (a UCS-4 string) cost 3.6 s. Each of these now takes
+a few milliseconds.
 """
 
-_GUARD_TIMING_PROGRAM = """
-import json, sys, time
+_GUARD_ROUTING_PROGRAM = """
+import json, sys
 from softschema._portable import _needs_pure_parser
-timings = {}
-for name, text in json.load(sys.stdin).items():
-    start = time.perf_counter()
-    routed = _needs_pure_parser(text)
-    timings[name] = (time.perf_counter() - start, routed)
-json.dump(timings, sys.stdout)
+json.dump({name: _needs_pure_parser(text) for name, text in json.load(sys.stdin).items()}, sys.stdout)
 """
 
 
-def test_the_guard_is_bounded_on_adversarial_inputs() -> None:
-    """Every adversarial text is classified within the budget, in a process that can time out.
+def test_the_guard_classifies_every_adversarial_input() -> None:
+    """Every adversarial text is routed as expected, in a process that can time out.
 
     A separate process, because the regexes this pins hung for years on these inputs: a
-    regression must fail the test, not stall the suite.
+    regression must fail the test, not stall the suite. The only clock is the subprocess
+    timeout, and it is a hang guard, not a measurement: the ten texts take well under a
+    second together and the patterns they were written against take hours, so no runner
+    contention moves a run across it (``ci-and-gates-rules``). The cost itself is gated
+    by the deterministic scan count below and, in the ``slow`` tier, by the growth ratio.
     """
     result = subprocess.run(
-        [sys.executable, "-c", _GUARD_TIMING_PROGRAM],
+        [sys.executable, "-c", _GUARD_ROUTING_PROGRAM],
         input=json.dumps(ADVERSARIAL_GUARD_INPUTS),
         capture_output=True,
         text=True,
@@ -581,11 +581,7 @@ def test_the_guard_is_bounded_on_adversarial_inputs() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    timings = json.loads(result.stdout)
-    slow = {name: seconds for name, (seconds, _) in timings.items() if seconds > 2.0}
-    assert not slow, slow
-    routed = {name: routed for name, (_, routed) in timings.items()}
-    assert routed == {
+    assert json.loads(result.stdout) == {
         "hash_banner": False,
         "comment_with_many_hashes": False,
         "many_comment_lines": False,
@@ -597,6 +593,81 @@ def test_the_guard_is_bounded_on_adversarial_inputs() -> None:
         "space_only_lines_after_an_emoji": False,
         "space_only_lines_with_cr_endings": False,
     }
+
+
+SPACE_LINE_SHAPES: dict[str, Callable[[int], str]] = {
+    "space_only_lines": lambda n: "a: 1\n" + " \n" * n,
+    "indented_blank_lines_in_a_block_scalar": lambda n: "a: |\n" + "  x\n  \n" * n,
+    "space_only_lines_with_cr_endings": lambda n: "a: 1\r" + " \r" * n,
+    "space_only_lines_with_crlf_endings": lambda n: "a: 1\r\n" + " \r\n" * n,
+    "space_only_lines_after_an_emoji": lambda n: "t: \U0001f600\n" + "a: 1\n \n" * n,
+    "block_header_before_the_last_space_line": lambda n: "a: 1\n" + " \n" * n + "b: |\n \n",
+}
+"""Texts with ``n`` lines of only spaces, where the space-line loop does its work."""
+
+
+class _CountingText(str):
+    """A ``str`` that records how many characters its ``rfind`` calls may scan."""
+
+    __slots__ = ("calls", "scanned")
+
+    def __new__(cls, text: str) -> _CountingText:
+        self = super().__new__(cls, text)
+        self.calls = 0
+        self.scanned = 0
+        return self
+
+    def rfind(self, sub: str, start: int = 0, end: int | None = None, /) -> int:  # pyright: ignore[reportIncompatibleMethodOverride, reportImplicitOverride]
+        self.calls += 1
+        self.scanned += (len(self) if end is None else end) - start
+        return super().rfind(sub, start, end)
+
+
+class _CountingSearch:
+    """Stands in for ``_BLOCK_HEADER_AT_LINE_END`` and records the span of each search."""
+
+    def __init__(self, pattern: re.Pattern[str]) -> None:
+        self.pattern = pattern
+        self.scanned = 0
+
+    def search(self, text: str, pos: int, endpos: int) -> re.Match[str] | None:
+        self.scanned += endpos - pos
+        return self.pattern.search(text, pos, endpos)
+
+
+@pytest.mark.parametrize("n", [1, 2_000, 20_000])
+@pytest.mark.parametrize("shape", SPACE_LINE_SHAPES.values(), ids=SPACE_LINE_SHAPES.keys())
+def test_the_space_line_guard_looks_back_only_as_far_as_the_previous_line(
+    shape: Callable[[int], str], n: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The loop hands ``rfind`` at most twice the text, and the header search at most once.
+
+    A deterministic proxy for the loop's cost, counted rather than timed, so it cannot
+    flake on a shared runner (``ci-and-gates-rules``). Each space-only line costs two
+    ``rfind`` calls bounded by the previous match and one search over the line before
+    it; the spans telescope, so the totals are at most twice and once the text, whatever
+    ``n`` is. The first rewrite, which searched from offset 0, hands ``rfind`` about ``n``
+    times the text (2,001x at n = 2,000 and 20,001x at n = 20,000 on these shapes), and
+    bounding by the previous match's end instead hands the search 1,000x to 10,000x the
+    text on consecutive space-only lines; both fail here by three orders of magnitude.
+    """
+    plain = shape(n)
+    expected = _portable._block_scalar_before_space_line(plain)
+    text = _CountingText(plain)
+    search = _CountingSearch(_portable._BLOCK_HEADER_AT_LINE_END)
+    monkeypatch.setattr(_portable, "_BLOCK_HEADER_AT_LINE_END", search)
+
+    assert _portable._block_scalar_before_space_line(text) is expected
+
+    space_only_lines = sum(1 for _ in _portable._SPACE_ONLY_LINE.finditer(plain))
+    assert space_only_lines >= n
+    # Two lookups per space-only line visited; a hit ends the loop at that line.
+    if expected:
+        assert text.calls <= 2 * space_only_lines
+    else:
+        assert text.calls == 2 * space_only_lines
+    assert text.scanned <= 2 * len(text), (text.calls, text.scanned, len(text))
+    assert search.scanned <= len(text), (search.scanned, len(text))
 
 
 GROWTH_SHAPES: dict[str, Callable[[int], str]] = {
@@ -611,22 +682,26 @@ GROWTH_SHAPES: dict[str, Callable[[int], str]] = {
 """Shapes with a cost that is linear in ``n``; a quadratic term shows between the sizes below."""
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("shape", GROWTH_SHAPES.values(), ids=GROWTH_SHAPES.keys())
 def test_the_guard_cost_grows_linearly_with_the_input(shape: Callable[[int], str]) -> None:
-    """Ten times the input costs under thirty times the time, where a quadratic costs a hundred.
+    """A hundred times the input costs under a thousand times the time; a quadratic costs ten thousand.
 
-    The sizes are large enough for a quadratic term to dominate (the first space-line
-    rewrite measured 41x to 79x here), and each timing is the best of three after a
-    warm-up, so scheduling noise on a shared CI runner does not decide the ratio. The
-    fixed guard measures 6x to 13x on these shapes.
+    This is the one timed check, and it covers the regex patterns, whose work the count
+    above cannot see. It is in the ``slow`` tier because a wall-clock ratio on a shared
+    runner carries noise (``ci-and-gates-rules``), and it is built so that noise does not
+    decide it: the sizes are a hundred apart, so a linear cost (about 100x; the guard
+    measures 60x to 200x) and a quadratic one (about 10,000x) sit an order of magnitude
+    on either side of the bound; each timing is the best of five after a warm-up; and
+    there is no absolute threshold, only the within-run ratio.
     """
-    small = _time_guard(shape(20_000))
+    small = _time_guard(shape(2_000))
     large = _time_guard(shape(200_000))
-    # Timer resolution still matters for the small run, so give it a floor.
-    assert large < 30 * max(small, 0.001), (small, large)
+    # The small run is tens of microseconds on some shapes; floor it at timer-noise scale.
+    assert large < 1000 * max(small, 0.0001), (small, large)
 
 
-def _time_guard(text: str, repeats: int = 3) -> float:
+def _time_guard(text: str, repeats: int = 5) -> float:
     """The best of ``repeats`` timings of the guard on ``text``, after one warm-up run."""
     _portable._needs_pure_parser(text)
     best = math.inf

@@ -357,9 +357,11 @@ def _needs_pure_parser(text: str) -> bool:
     quantifiers so that nothing is rescanned, and the space-line check visits each line
     of only spaces once and looks back only as far as the line before it. The cost is
     linear in the text, plus one Python step per space-only line, and a few percent of a
-    C parse; ``test_c_parser.py`` pins bounded time and linear growth on adversarial
-    inputs such as a long ``#`` banner, a line of thousands of ``| #`` and a block scalar
-    with a hundred thousand indented blank lines.
+    C parse. ``test_c_parser.py`` pins the routing of adversarial inputs such as a long
+    ``#`` banner, a line of thousands of ``| #`` and a block scalar with a hundred thousand
+    indented blank lines, counts the characters the space-line loop hands to ``rfind``
+    and the header search (at most three per character of text, whatever the input),
+    and, in the ``slow`` tier, times the growth of the whole guard.
     """
     if "\t" in text:
         return True
