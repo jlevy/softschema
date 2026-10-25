@@ -526,6 +526,7 @@ $ $SOFTSCHEMA repair floor/repair-next-line.md --contract test.repair:Doc/v1 --s
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -533,6 +534,7 @@ $ $SOFTSCHEMA repair floor/repair-next-line.md --contract test.repair:Doc/v1 --s
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -577,6 +579,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.yaml --check
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "yaml_parse_error"
   },
@@ -589,6 +592,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.yaml --check
         "message": "`floor/repair-unrepairable.yaml`: [..]
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -633,6 +637,7 @@ $ $SOFTSCHEMA repair floor/repair-non-utf8.md --check
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "artifact_invalid_utf8"
   },
@@ -645,6 +650,7 @@ $ $SOFTSCHEMA repair floor/repair-non-utf8.md --check
         "message": "`floor/repair-non-utf8.md`: input is not valid UTF-8"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -685,6 +691,7 @@ $ $SOFTSCHEMA repair floor/no-frontmatter.md --check
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "no_frontmatter"
   },
@@ -697,6 +704,7 @@ $ $SOFTSCHEMA repair floor/no-frontmatter.md --check
         "message": "`floor/no-frontmatter.md`: the document has no YAML frontmatter"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -718,6 +726,7 @@ $ $SOFTSCHEMA repair floor/repair-root-list.yaml --check
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "yaml_not_mapping"
   },
@@ -730,6 +739,7 @@ $ $SOFTSCHEMA repair floor/repair-root-list.yaml --check
         "message": "YAML root is list, expected mapping"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
