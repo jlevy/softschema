@@ -34,6 +34,7 @@ The automated half of the story runs on every push and PR
 | Python build (`uv build`) | `build` job |
 | TS typecheck, biome, unit tests + coverage gate | `typescript` job |
 | TS build + publint (publishable layout) | `typescript` job |
+| TS dependency advisories (`bun audit` on the frozen lockfile) | `dependency-audit` job |
 | Golden corpus on py, ts (Node), ts-bun | `golden` + `typescript` jobs |
 | Python-vs-TypeScript semantic parity | `cross-impl` job |
 | Tag ↔ `package.json` version match | `publish.yml` guard |
@@ -59,6 +60,7 @@ uv run pytest       # Python unit tests
 uv build            # wheel + sdist into dist/ (used by Phase 2)
 
 cd packages/typescript
+bun audit           # dependency advisories (the `dependency-audit` job)
 bun run check       # biome + tsc + bun test with coverage gate
 bun run build       # copy-resources + bunup → dist/ (required by the ts golden runs)
 bun run publint

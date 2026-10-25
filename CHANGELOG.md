@@ -4,6 +4,16 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### Changed
+
+- **CI runs the dependency audit as its own `dependency-audit` job.** `bun audit` used
+  to be a step inside the `typescript` job, so a new upstream advisory skipped the
+  TypeScript typecheck, tests, build, publint, and golden runs on every PR. The audit
+  still blocks, but it now fails on its own, and the TypeScript results always report on
+  the change under review.
+
 ## v0.8.1—2026-09-11
 
 A patch release. Python semantic validation returned a result that could not be
