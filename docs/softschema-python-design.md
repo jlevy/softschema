@@ -272,13 +272,16 @@ rejects or reading a different value, so texts with any shape where that was fou
 pure ruamel directly: a tab anywhere, NEL, LS, PS or a byte order mark, a line starting
 with `%` (libyaml ignores `%YAML 1.1` when resolving values), a block scalar header with
 a comment and no space or followed by a line of only spaces, a document that is a block
-scalar, and a quoted scalar followed by a colon with no space after it.
-The shapes were found by comparing the two parsers over every short text, generated and
-mutated documents, and all of Unicode, and `test_c_parser.py` compares C-first, forced
-pure, and a process without the extension on each of them.
-`compile` writes the schema through ruamel’s pure-Python emitter whether or not the
-extension is installed, because libyaml’s emitter escapes astral characters and breaks
-long lines differently.
+scalar, a colon after a space, line break or quote and before anything but a space or
+line break (libyaml reads `["a":1]` and `[? a #c` + newline + `:x]` as mappings, YAML
+1.2 does not), and a document end marker (libyaml skips a second `...`). The shapes were
+found by comparing the two parsers over every text of up to four characters, templates,
+generated and mutated documents, and every Basic Multilingual Plane code point, and
+`test_c_parser.py` compares C-first, forced pure, and a process without the extension on
+each of them.
+`compile` writes the schema through ruamel’s pure-Python emitter whether or
+not the extension is installed, because libyaml’s emitter escapes astral characters and
+breaks long lines differently.
 
 ruamel.yaml normally constructs implicit date- and timestamp-shaped scalars as Python
 `date` and `datetime` objects.

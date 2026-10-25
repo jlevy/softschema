@@ -3,7 +3,7 @@
 ``ruamel.yaml.clib`` replaces ruamel's reader, scanner and parser with libyaml, a YAML 1.1
 scanner. Construction and resolution stay in Python, so on ordinary documents the two
 agree, but libyaml rejects some texts pure ruamel reads, accepts some it rejects, reads a
-few differently, and words almost every error differently. ``parse_yaml`` therefore
+few differently, and words most errors differently. ``parse_yaml`` therefore
 tries the C parser first only on texts with none of the shapes where the two disagree,
 and re-reads with pure ruamel on any failure, so pure ruamel stays the definition.
 
@@ -156,6 +156,22 @@ EDGE_CASES: dict[str, str] = {
     "flow_seq_quoted_key_colon_no_value": '["":]',
     "flow_seq_nested_quoted_key": 'x: [a, "k":v]\n',
     "flow_seq_explicit_key_adjacent_colon": '[? "a":1]',
+    # ... and after an explicit key, a colon on a later line or after a comment.
+    "flow_seq_explicit_key_colon_next_line": '[? "a"\n:x]',
+    "flow_seq_explicit_key_colon_after_comment": '[? "a" # c\n:x]',
+    "flow_seq_explicit_plain_key_colon_after_comment": "[? a #c\n:x]",
+    "flow_seq_explicit_key_colon_indented": "a: [? 'k'\n  :v]\n",
+    "flow_seq_explicit_key_empty_value": '[?""\n:]',
+    "flow_seq_explicit_key_spaced_colon_space": '[? "a"\n: x]',
+    "flow_seq_explicit_plain_key_next_line": "[? a\n:x]",
+    "flow_map_explicit_key_colon_next_line": '{? "a"\n:x}',
+    # Document end markers: libyaml skips a second one, pure ruamel rejects it.
+    "repeated_document_end": "a: 1\n...\n...\n",
+    "repeated_document_end_after_comment": "a: 1\n...\n# c\n...\n",
+    "repeated_document_end_after_block_scalar": "a: |\n  x\n...\n...\n",
+    "repeated_document_end_after_marker": "---\n...\n...\n",
+    "document_end_with_comment": "a: 1\n... # c\n",
+    "ellipsis_in_value": "a: and so on...\nb: ...\n",
     # Tabs: libyaml skips a tab between block tokens where pure ruamel refuses it.
     "trailing_tab_after_root": '{"a": 1}\t\n',
     "tab_before_root": '\t{"a": 1}\n',
@@ -533,6 +549,11 @@ ROUTED_TO_PURE = {
     "flow_quoted_key_adjacent_colon": '["a":1]',
     "flow_quoted_key_spaced_colon": "['k'  :v]",
     "quoted_key_colon_at_end": '"a":',
+    "explicit_key_colon_next_line": '[? "a"\n:x]',
+    "explicit_plain_key_colon_after_comment": "[? a #c\n:x]",
+    "spaced_colon_in_block_value": "a: x :y\n",
+    "repeated_document_end": "a: 1\n...\n...\n",
+    "single_document_end": "a: 1\n...\n",
 }
 
 
@@ -552,6 +573,7 @@ C_FIRST = {
     "non_ascii": "title: na\u00efve \U0001f600\n",
     "flow_json_like_mapping": '{"a": 1, "b": [true, null]}  # trailing comment\n',
     "nested_block_scalar_comment_line": "a: |\n  x\n# c\nb: 1\n",
+    "ellipsis_and_times": "a: and so on...\nt: 12:30\nu: http://example.com/x\n",
 }
 
 

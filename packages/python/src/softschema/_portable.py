@@ -181,18 +181,24 @@ Its content may start at column zero, where libyaml reads a ``#`` line as a comm
 pure ruamel as content.
 """
 
-_SPACED_COLON = re.compile(r":(?<=[ \"']:)(?![ \r\n])")
-"""A colon after a space or quote and before anything but a space or line break.
+_FLOW_VALUE_COLON = re.compile(r":(?<=[ \r\n\"']:)(?![ \r\n])")
+"""A colon after a space, line break or quote, before anything but a space or line break.
 
-Every :data:`_FLOW_KEY_COLON` match ends in one, and starting at the colon lets the search
-skip ahead to each colon instead of testing every character.
+In a flow sequence pure ruamel, following YAML 1.2, reads such a colon as a mapping
+value indicator only when a space or line break follows it, while libyaml reads every
+colon in a flow collection as one. So libyaml accepts ``["a":1]``, ``["k"  :v]`` and an
+explicit key such as ``[? "a"\\n:x]`` or ``[? a #c\\n:x]``, all of which pure ruamel
+rejects. A colon attached to anything but a quote is safe to leave: after a plain scalar
+libyaml rejects it, and after a collection, an alias, a tag or nothing the key is not a
+string, which the preflight or :func:`_check_value` rejects, so the fallback runs.
+The pattern starts at the colon, so the search skips ahead from colon to colon.
 """
 
-_FLOW_KEY_COLON = re.compile(r"[\"'] *:(?![ \r\n])")
-"""A quoted scalar followed by a colon that is not followed by a space or line break.
+_DOCUMENT_END = re.compile(r"\.\.\.(?=[ \r\n]|\Z)(?<![^\r\n]\.\.\.)")
+"""A document end marker, ``...`` at the start of a line.
 
-In a flow sequence such as ``["a":1]``, libyaml reads the colon as a mapping indicator
-and pure ruamel, following YAML 1.2, does not, and rejects the text.
+libyaml skips any number of them after a document; pure ruamel reads a second one as
+the start of a document with no content, and rejects the text.
 """
 
 
@@ -224,7 +230,9 @@ def _needs_pure_parser(text: str) -> bool:
         return True
     if (" \n" in text or " \r" in text) and _BLOCK_SPACE_LINE.search(text) is not None:
         return True
-    if _SPACED_COLON.search(text) is not None and _FLOW_KEY_COLON.search(text) is not None:
+    if _FLOW_VALUE_COLON.search(text) is not None:
+        return True
+    if "..." in text and _DOCUMENT_END.search(text) is not None:
         return True
     return _ROOT_BLOCK_SCALAR.match(text) is not None
 
