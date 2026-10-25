@@ -3,16 +3,18 @@
  * directory. This runs the built CLI from a temp dir OUTSIDE the repo: if the CLI
  * depended on cwd (the original bug) these would fail with "resource not found".
  *
- * beforeAll builds the package so the test is self-contained regardless of run order.
+ * The file builds a private copy of the package (see `built-package.ts`), so the test is
+ * self-contained regardless of run order and never rewrites the shared `dist/`.
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { SPAWN_TEST_TIMEOUT_MS, usePrivateBuild } from "./built-package.js";
 
-const PACKAGE_ROOT = resolve(import.meta.dir, "..");
-const CLI = join(PACKAGE_ROOT, "dist", "cli.js");
+setDefaultTimeout(SPAWN_TEST_TIMEOUT_MS);
+const builtRoot = usePrivateBuild();
 
 interface RunResult {
   status: number | null;
@@ -26,18 +28,12 @@ function runFromTmp(args: string[], files: Record<string, string> = {}): RunResu
     mkdirSync(resolve(cwd, name, ".."), { recursive: true });
     writeFileSync(join(cwd, name), content);
   }
-  const r = spawnSync("bun", [CLI, ...args], { cwd, encoding: "utf8" });
+  const cli = join(builtRoot(), "dist", "cli.js");
+  const r = spawnSync("bun", [cli, ...args], { cwd, encoding: "utf8" });
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
 describe("bundled resources (standalone, outside the repo)", () => {
-  // Building can exceed Bun's default hook timeout on a cold cache or loaded machine,
-  // so the hook gets an explicit generous timeout.
-  beforeAll(() => {
-    const build = spawnSync("bun", ["run", "build"], { cwd: PACKAGE_ROOT, encoding: "utf8" });
-    if (build.status !== 0) throw new Error(`build failed: ${build.stderr}`);
-  }, 120_000);
-
   test("--help points agents to repo-local skill install", () => {
     const r = runFromTmp(["--help"]);
     expect(r.status).toBe(0);

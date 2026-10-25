@@ -13,13 +13,24 @@ import { RESOURCE_PATHS } from "../src/resources-manifest.js";
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
 const OUT_ROOT = resolve(import.meta.dir, "../resources");
 
-// Clear first so a removed resource does not linger from a previous build (the dir is
-// gitignored, so local rebuilds otherwise keep stale files).
-rmSync(OUT_ROOT, { recursive: true, force: true });
-for (const rel of RESOURCE_PATHS) {
-  const src = join(REPO_ROOT, rel);
-  const dest = join(OUT_ROOT, rel);
-  mkdirSync(dirname(dest), { recursive: true });
-  cpSync(src, dest);
+/**
+ * Replace `outRoot` with a fresh copy of every bundled resource. The build writes the
+ * package's own `resources/`; the tests that run the built CLI pass a private directory
+ * (see `test/built-package.ts`) so they never rewrite the one other readers use.
+ */
+export function copyResources(outRoot: string = OUT_ROOT): void {
+  // Clear first so a removed resource does not linger from a previous build (the dir is
+  // gitignored, so local rebuilds otherwise keep stale files).
+  rmSync(outRoot, { recursive: true, force: true });
+  for (const rel of RESOURCE_PATHS) {
+    const src = join(REPO_ROOT, rel);
+    const dest = join(outRoot, rel);
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(src, dest);
+  }
 }
-console.log(`Copied ${RESOURCE_PATHS.length} resources to ${OUT_ROOT}`);
+
+if (import.meta.main) {
+  copyResources();
+  console.log(`Copied ${RESOURCE_PATHS.length} resources to ${OUT_ROOT}`);
+}
