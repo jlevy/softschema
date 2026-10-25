@@ -20,7 +20,7 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
@@ -120,7 +120,22 @@ _Checked = TypeVar("_Checked", ArtifactValidationResult, ValidationResult)
 
 
 def _required_layers(require: Collection[str]) -> frozenset[str]:
-    """The layers a caller requires to complete, rejecting any unknown layer name."""
+    """The layers a caller requires to complete, rejecting any unknown layer name.
+
+    A bare string is refused rather than iterated, so ``require="structural"`` is a
+    clear caller error instead of a complaint about its letters; so is ``None``, since
+    omitting the argument is how a caller asks for no requirement.
+    """
+    candidate = cast("object", require)  # typed callers are fine; untyped ones pass anything
+    if isinstance(candidate, str) or not isinstance(candidate, Collection):
+        raise TypeError(
+            f"require must be a list of layer names such as ['structural'], got {candidate!r}"
+        )
+    layers: list[object] = list(candidate)
+    if any(not isinstance(layer, str) for layer in layers):
+        raise TypeError(
+            f"require must be a list of layer names such as ['structural'], got {layers!r}"
+        )
     required = frozenset(require)
     unknown = sorted(required.difference(_CHECK_LAYERS))
     if unknown:

@@ -329,3 +329,18 @@ def test_require_rejects_unknown_layer(tmp_path: Path) -> None:
     doc, contract = _sample_contract(tmp_path)
     with pytest.raises(ValueError, match="payload"):
         validate_artifact(doc, contract=contract, require=["payload"])  # pyright: ignore[reportArgumentType]
+
+
+def test_require_rejects_bare_string_and_none(tmp_path: Path) -> None:
+    # A bare string must not be read as its letters, and None is not "no requirement":
+    # omitting the argument is.
+    doc, contract = _sample_contract(tmp_path)
+    expected = r"require must be a list of layer names such as \['structural'\], got "
+    with pytest.raises(TypeError, match=expected + "'structural'"):
+        validate_artifact(doc, contract=contract, require="structural")  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError, match=expected + "None"):
+        validate_artifact(doc, contract=contract, require=None)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError, match=expected + r"\[1\]"):
+        validate_values({"name": "hello"}, model=Sample, require=[1])  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError, match=expected + "'semantic'"):
+        load_artifact(doc, contract=contract, require="semantic")  # pyright: ignore[reportArgumentType]

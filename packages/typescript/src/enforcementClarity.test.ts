@@ -257,6 +257,26 @@ describe("actual validation execution", () => {
     expect(loadArtifact(path, bound, { require: ["structural"] })).toEqual({ name: "hello" });
   });
 
+  test("require rejects a bare string, null, and an unknown layer as caller errors", () => {
+    const path = document(tmpDir());
+    // A bare string must not be read as its letters, and null is not "no requirement":
+    // omitting the option is. Kept in step with Python's `_required_layers`.
+    type Require = ("structural" | "semantic")[];
+    const attempt = (require: unknown) => () =>
+      validateArtifact(path, contract(), { require: require as Require });
+    const expected = 'require must be a list of layer names such as ["structural"], got ';
+    expect(attempt("structural")).toThrow(`${expected}"structural"`);
+    expect(attempt(null)).toThrow(`${expected}null`);
+    expect(attempt([1])).toThrow(`${expected}[1]`);
+    expect(attempt(["payload"])).toThrow(
+      `require accepts only 'structural' and 'semantic', got ["payload"]`,
+    );
+    expect(() =>
+      loadArtifact(path, contract(), { require: "semantic" as unknown as Require }),
+    ).toThrow(`${expected}"semantic"`);
+    expect(validateArtifact(path, contract(), { require: undefined }).outcome).toBe("valid");
+  });
+
   test("a required semantic check without a model is invalid", () => {
     const path = document(tmpDir());
     const unrequired = validateArtifact(path, contract({ model: "inline:Sample" }));

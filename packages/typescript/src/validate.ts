@@ -565,9 +565,22 @@ export function validateValues(
 
 const CHECK_LAYERS: readonly string[] = ["structural", "semantic"];
 
-/** The layers a caller requires to complete, rejecting any unknown layer name. */
+/**
+ * The layers a caller requires to complete, rejecting any unknown layer name.
+ *
+ * A bare string is refused rather than iterated, so `require: "structural"` is a clear
+ * caller error instead of a complaint about its letters; so is `null`, since omitting the
+ * option is how a caller asks for no requirement. Kept in step with Python's
+ * `_required_layers`.
+ */
 function requiredLayers(require: readonly string[] | undefined): Set<string> {
-  const required = new Set(require ?? []);
+  if (require === undefined) return new Set();
+  if (!Array.isArray(require) || require.some((layer) => typeof layer !== "string")) {
+    throw new TypeError(
+      `require must be a list of layer names such as ["structural"], got ${JSON.stringify(require)}`,
+    );
+  }
+  const required = new Set(require);
   const unknown = [...required].filter((layer) => !CHECK_LAYERS.includes(layer)).sort();
   if (unknown.length > 0) {
     throw new Error(

@@ -842,7 +842,9 @@ order, so a schema preparation error remains the first structural error.
 `outcome` is recomputed by the usual rule: a result that was `valid` becomes `invalid`,
 and an `input_error` stays one.
 A strict read refuses the artifact, and the `validate` command exits `1`. An unknown
-layer name is a caller error, not a validation result.
+layer name is a caller error, not a validation result; so is a requirement that is not a
+list of layer names, such as a bare string or a null value.
+Omitting the requirement means none.
 
 Without a requirement, results are identical to those of a validator that does not
 support the option. A metadata-only artifact in effective `enforced` mode therefore
