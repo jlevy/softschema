@@ -292,6 +292,10 @@ function portableVectorText(item: Record<string, unknown>): string {
     const key = String(item.key_char ?? "k").repeat(Number(item.length));
     return item.json === true ? `{"${key}": 1}` : `value: {"${key}": 1}`;
   }
+  if (item.generated === "long_key") {
+    const key = String(item.key_char).repeat(Number(item.length));
+    return item.form === "block" ? `${key}: 1` : `value: [${key}: 1]`;
+  }
   expect(item.generated).toBeUndefined();
   return String(item.text);
 }

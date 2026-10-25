@@ -65,13 +65,32 @@ flow collection, a closing bracket at the parent’s column, and every line of a
 collection (a JSON document indented with tabs) are still accepted by both.
 Indent such a line past its parent with spaces.
 
-**Implicit flow-mapping keys.** A flow-mapping key whose `:` is more than 1,024
-characters after the key starts, or on a later line, such as `{"<1,100 characters>": 1}`
-or `{"a"` followed by a line `: 1}`, was a parse error in Python and read by TypeScript;
-TypeScript now rejects it too, as `yaml_parse_error`. Keys in block mappings and flow
-sequences already behaved alike, except that TypeScript counts their 1,024 in UTF-16
-code units, so a key holding more than 512 characters outside the Basic Multilingual
-Plane still reaches the limit sooner there.
+**Implicit keys.** A flow-mapping key whose `:` is more than 1,024 characters after the
+key starts, or on a later line, such as `{"<1,100 characters>": 1}` or `{"a"` followed
+by a line `: 1}`, was a parse error in Python and read by TypeScript; TypeScript now
+rejects it too, as `yaml_parse_error`. For a block-mapping key or a flow-sequence pair,
+TypeScript counts the 1,024 in UTF-16 code units and Python counted characters, so a key
+of more than 512 characters outside the Basic Multilingual Plane read in Python and
+failed in TypeScript; Python now counts UTF-16 code units there too.
+
+**Number forms outside the core schema.** A plain scalar that ruamel reads as a number
+and the YAML 1.2 core schema as a string, or the reverse, was a number in one runtime
+and a string in the other, silently: `1_000`, `1_0.5`, `0b101`, `-0x10`, `+0x10`, and
+`-0o17` were numbers in Python and strings in TypeScript, and `.5e3` the reverse.
+Both runtimes now reject such a scalar as `yaml_unsupported_scalar`, with a message
+naming it; write the number in core form (`1000`, `0x10`, `0o17`, `500.0`) or quote it.
+Core-form numbers, quoted scalars, and strings such as `1:30` and `yes` are unaffected.
+A generated sweep of 350,355 number-like plain scalars in block values, sequence items,
+keys, flow collections, and JSON arrays now finds no number the two runtimes read
+differently.
+
+**Directives.** `%YAML 1.1` switched both engines to YAML 1.1 schemas that differ (`08`
+was a string in Python and 8 in TypeScript, and a date a string in one and an
+unsupported host value in the other); `%YAML 1.0` and `%YAML 1.3` crashed the Python
+reader with an assertion; and an unknown directive such as `%FOO` was ignored by Python
+and refused by TypeScript.
+Both runtimes now accept only `%YAML 1.2` and `%TAG` and reject any other directive as
+`yaml_parse_error`.
 
 **Integer negative zero.** The integer literal `-0` (also `-00`, and `-0` in JSON text)
 read as `0` in Python and was rejected as `number_negative_zero` in TypeScript; Python
@@ -432,9 +451,17 @@ for downstream adoption and release sequencing.
 
 - **A tab after a block scalar header, a closing quote, or a flow collection’s closing
   bracket, an under-indented flow continuation line, a long or multi-line implicit
-  flow-mapping key, and an integer `-0` get one verdict in both runtimes.** Each was
-  read by one runtime and a parse or value error in the other; see Compatibility.
+  flow-mapping key, an astral block key past 1,024 UTF-16 code units, and an integer
+  `-0` get one verdict in both runtimes.** Each was read by one runtime and a parse or
+  value error in the other; see Compatibility.
   Shared `portable_values` vectors pin every case.
+
+- **A number form only one engine reads as a number is refused in both runtimes**
+  instead of reading as a number in one and a string in the other; see Compatibility.
+
+- **A `%YAML 1.0` or `%YAML 1.3` directive no longer crashes the Python reader.** ruamel
+  raised an `AssertionError` that escaped `validate` as a traceback; the directive is
+  now a `yaml_parse_error`, as in TypeScript.
 
 - **Control characters in a filename never reach stderr raw.** A document name in a
   human-readable message is written through one helper per runtime that escapes C0/C1

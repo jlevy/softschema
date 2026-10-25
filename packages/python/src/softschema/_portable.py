@@ -27,6 +27,7 @@ from ruamel.yaml.events import (
 from ruamel.yaml.nodes import ScalarNode
 from ruamel.yaml.parser import Parser as RuamelParser
 from ruamel.yaml.representer import RoundTripRepresenter
+from ruamel.yaml.tokens import DirectiveToken
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 """Largest integer that survives a round trip through a JS number."""
@@ -697,6 +698,151 @@ class _FlowIndentation:
         )
 
 
+_RUAMEL_NUMBER = re.compile(
+    r"""
+     [-+]?[0-9][0-9_]*\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+    |[-+]?[0-9][0-9_]*[eE][-+]?[0-9]+
+    |[-+]?\.[0-9_]+(?:[eE][-+][0-9]+)?
+    |[-+]?\.(?:inf|Inf|INF)
+    |\.(?:nan|NaN|NAN)
+    |[-+]?0b[0-1_]+
+    |[-+]?0o?[0-7_]+
+    |[-+][0-9_]+
+    |[0-9][0-9_]*
+    |[-+]?0x[0-9a-fA-F_]+
+    """,
+    re.X,
+)
+"""The plain scalars ruamel's YAML 1.2 resolver reads as a float or an int.
+
+Copied from ``ruamel.yaml.resolver`` for the checked releases
+(:data:`CHECKED_RUAMEL_VERSIONS`); ``test_number_forms_match_ruamels_resolver`` compares
+the two over generated scalars, and the patterns include its first-character index (an
+unsigned ``_1`` is a string). ruamel still accepts YAML 1.1 spellings here: ``_``
+separators, ``0b`` binary, signed ``0x`` and ``0o``, and a float exponent after a bare
+``.5`` only when it is signed.
+"""
+
+_CORE_NUMBER = re.compile(
+    r"""
+     [-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?
+    |[-+]?\.(?:inf|Inf|INF)
+    |\.(?:nan|NaN|NAN)
+    |0o[0-7]+
+    |0x[0-9a-fA-F]+
+    """,
+    re.X,
+)
+"""The plain scalars the YAML 1.2 core schema reads as a float or an int, as the ``yaml``
+package does (its ``core`` schema's ``int``, ``float`` and ``exp`` tests)."""
+
+_NUMBER_START = frozenset("-+.0123456789")
+
+
+def _number_form_error(event: ScalarEvent) -> PortableInputError | None:
+    """The error for a plain scalar one engine reads as a number and the other as a string.
+
+    ``1_000``, ``0b101``, ``-0x10`` and ``1_0.5`` are numbers to ruamel and strings to
+    the YAML 1.2 core schema the ``yaml`` package follows; ``.5e3`` is the reverse. Both
+    runtimes would accept the document with different values, and neither reading can be
+    reproduced in the other engine, so neither is portable. A quoted scalar is a string
+    in both and is never checked. The caller raises the error only once the whole text has
+    parsed, so a parse error elsewhere in the document is reported first, as the ``yaml``
+    package reports it.
+    """
+    value = event.value
+    if event.style or not value or value[0] not in _NUMBER_START:
+        return None
+    if (_RUAMEL_NUMBER.fullmatch(value) is None) == (_CORE_NUMBER.fullmatch(value) is None):
+        return None
+    mark = event.start_mark
+    return PortableInputError(
+        "yaml_unsupported_scalar",
+        f"plain scalar `{value}` at line {mark.line + 1}, column {mark.column + 1} is a number "
+        "to one YAML engine and a string to the other; write the number in YAML 1.2 core form "
+        "(such as 1000, 0x10, 0o17, 1.5e3) or quote it to keep it a string",
+    )
+
+
+_DIRECTIVE_LINE = re.compile(r"(?:\A|[\r\n])%")
+"""A ``%`` at the start of a line, the only place a directive can be."""
+
+
+def _check_directives(text: str, yaml: YAML) -> None:
+    """Reject a ``%YAML`` directive other than ``%YAML 1.2``, and any directive but ``%TAG``.
+
+    Under ``%YAML 1.1`` both engines switch to a YAML 1.1 schema, and the two schemas
+    differ: ``08`` is a string to ruamel and the number 8 to the ``yaml`` package, and a
+    date is a string to one and a host date to the other. ruamel fails on ``%YAML 1.0`` and
+    ``1.3`` with an assertion rather than a parse error, and the ``yaml`` package refuses an
+    unknown directive that ruamel ignores. Only the tokens are scanned, with the handle the
+    parse then uses, and only for a text with a ``%`` at a line start (which
+    :func:`_needs_pure_parser` sends to pure ruamel); a scanner error is left for the parse
+    to report.
+    """
+    if "%" not in text or _DIRECTIVE_LINE.search(text) is None:
+        return
+    try:
+        for token in yaml.scan(text):
+            if not isinstance(token, DirectiveToken):
+                continue
+            if token.name == "TAG" or (token.name == "YAML" and tuple(token.value) == (1, 2)):
+                continue
+            where = f"line {token.start_mark.line + 1}, column {token.start_mark.column + 1}"
+            if token.name == "YAML":
+                major, minor = token.value
+                raise PortableInputError(
+                    "yaml_parse_error",
+                    f"unsupported directive `%YAML {major}.{minor}` at {where}: softschema reads "
+                    "YAML 1.2, and the two YAML engines read a document under another version "
+                    "differently; remove the directive or write `%YAML 1.2`",
+                )
+            raise PortableInputError(
+                "yaml_parse_error",
+                f"unknown directive `%{token.name}` at {where}: one YAML engine ignores it and "
+                "the other refuses it; remove it",
+            )
+    except YAMLError:
+        return
+
+
+_IMPLICIT_KEY_LIMIT = 1024
+"""The longest implicit key YAML allows, from the key's first character to its ``:``."""
+
+
+def _utf16_length(text: str) -> int:
+    return len(text) + sum(1 for char in text if ord(char) > 0xFFFF)
+
+
+def _check_key_width(text_lines: list[str], event: ScalarEvent) -> None:
+    """Reject an implicit key the ``yaml`` package refuses for its UTF-16 length.
+
+    For a block-mapping key and a flow-sequence pair, both engines enforce YAML's
+    1,024-character limit from the key's first character to its ``:``, but ruamel counts
+    code points and the ``yaml`` package UTF-16 code units, so a key holding characters
+    outside the Basic Multilingual Plane could pass in Python and fail in TypeScript.
+    Python applies the stricter count. ruamel itself rejects a key whose ``:`` is on
+    another line or more than 1,024 code points away, so only a one-line key is measured.
+    """
+    start, end = event.start_mark, event.end_mark
+    if start.line != end.line:
+        return
+    line = text_lines[start.line]
+    colon = end.column
+    while colon < len(line) and line[colon] in " \t":
+        colon += 1
+    if colon >= len(line) or line[colon] != ":" or colon - start.column <= _IMPLICIT_KEY_LIMIT // 2:
+        return
+    if _utf16_length(line[start.column : colon]) <= _IMPLICIT_KEY_LIMIT:
+        return
+    raise PortableInputError(
+        "yaml_parse_error",
+        f"implicit key at line {start.line + 1}, column {start.column + 1}: its ':' is more "
+        "than 1024 UTF-16 code units after the key starts, which one YAML engine cannot read; "
+        "shorten the key",
+    )
+
+
 def _parse_with(text: str, *, pure: bool) -> Any:
     """Parse YAML after a representation preflight, both through the same parser.
 
@@ -705,7 +851,13 @@ def _parse_with(text: str, *, pure: bool) -> Any:
     """
     yaml = YAML(typ="safe", pure=pure)
     yaml.Constructor = _PortableConstructor
+    _check_directives(text, yaml)
     stack: list[tuple[str, bool]] = []
+    measured: list[bool] = []
+    """Per open collection: whether its keys get the UTF-16 width check (a block mapping,
+    or a flow-sequence pair, which has no ``{``)."""
+    text_lines: list[str] | None = None
+    number_error: PortableInputError | None = None
     has_alias = False
     indentation = _FlowIndentation(text)
 
@@ -714,6 +866,12 @@ def _parse_with(text: str, *, pure: bool) -> Any:
             kind, expects_key = stack[-1]
             stack[-1] = (kind, not expects_key)
 
+    def lines() -> list[str]:
+        nonlocal text_lines
+        if text_lines is None:
+            text_lines = text.split("\n")
+        return text_lines
+
     try:
         for event in yaml.parse(text):
             if isinstance(event, AliasEvent) or getattr(event, "anchor", None) is not None:
@@ -721,21 +879,38 @@ def _parse_with(text: str, *, pure: bool) -> Any:
             if getattr(event, "tag", None) is not None:
                 raise PortableInputError("yaml_custom_tag", "explicit YAML tags are not supported")
             if isinstance(event, ScalarEvent):
-                if stack and stack[-1] == ("map", True) and event.value == "<<":
-                    raise PortableInputError("yaml_merge_key", "YAML merge keys are not supported")
+                if stack and stack[-1] == ("map", True):
+                    if event.value == "<<":
+                        raise PortableInputError(
+                            "yaml_merge_key", "YAML merge keys are not supported"
+                        )
+                    if measured[-1]:
+                        _check_key_width(lines(), event)
+                if number_error is None:
+                    number_error = _number_form_error(event)
                 consume_parent_slot()
                 indentation.scalar(event)
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
                 consume_parent_slot()
-                stack.append(
-                    ("map", True) if isinstance(event, MappingStartEvent) else ("seq", False)
-                )
+                if isinstance(event, MappingStartEvent):
+                    stack.append(("map", True))
+                    mark = event.start_mark
+                    measured.append(
+                        not event.flow_style
+                        or lines()[mark.line][mark.column : mark.column + 1] != "{"
+                    )
+                else:
+                    stack.append(("seq", False))
+                    measured.append(False)
                 if len(stack) > MAX_DEPTH:
                     raise PortableInputError("yaml_limit", "YAML nesting exceeds the depth limit")
                 indentation.collection_start(event)
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
+                measured.pop()
                 indentation.collection_end(event)
+        if number_error is not None:
+            raise number_error
         if has_alias:
             raise PortableInputError("yaml_alias", "YAML aliases and anchors are not supported")
         value = yaml.load(text)

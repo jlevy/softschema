@@ -165,9 +165,27 @@ An implicit mapping key must end, with its `:`, on the line where it starts and 
 as in a block mapping; otherwise it is rejected as `yaml_parse_error`. YAML 1.2 sets the
 limit only for block mappings and flow-sequence pairs, and one engine applies it to flow
 mappings too. An explicit key (`? key`) has no limit.
-One difference remains: for a block-mapping key or a flow-sequence pair, one engine
-counts the 1,024 in UTF-16 code units, so a key holding characters outside the Basic
-Multilingual Plane reaches the limit sooner in that runtime.
+For a block-mapping key or a flow-sequence pair the 1,024 is counted in UTF-16 code
+units, as one engine counts it, so 512 characters outside the Basic Multilingual Plane
+reach the limit; in a flow mapping it is counted in characters, as the other engine
+counts it there.
+
+A plain scalar is a number only in the YAML 1.2 core schema’s forms: a decimal integer
+with an optional sign, an unsigned `0o` octal or `0x` hexadecimal integer, a decimal
+fraction or exponent with an optional sign, and `.inf`, `-.inf`, or `.nan`. A plain
+scalar that one engine reads as a number and the other as a string is rejected as
+`yaml_unsupported_scalar`: a `_` separator (`1_000`, `1_0.5`), a `0b` binary integer, a
+signed `0x` or `0o` integer (`-0x10`), and an unsigned exponent after a fraction with no
+integer part (`.5e3`, which one engine reads as a string).
+Neither reading can be reproduced in the other engine, so neither is portable.
+Write the number in core form (`1000`, `0x10`, `0o17`, `500.0`) or quote it to keep the
+string. A quoted scalar is always a string; `1:30`, `yes`, and `on` are strings.
+
+A document may carry `%YAML 1.2` and `%TAG` directives.
+Any other `%YAML` version, and any other directive, is rejected as `yaml_parse_error`:
+under `%YAML 1.1` the engines’ YAML 1.1 schemas read some scalars differently (`08` is a
+string to one and a number to the other), one engine cannot read other versions, and one
+refuses a directive the other ignores.
 
 Raw characters that the host YAML engines read differently are rejected before parsing,
 as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls

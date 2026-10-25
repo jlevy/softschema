@@ -191,6 +191,47 @@ portable_values:
   - { id: flow_mapping_key_colon_on_next_line, text: "value: {\"a\"\n  : 1}", valid: false, code: yaml_parse_error }
   - { id: json_key_colon_on_next_line, text: "{\"a\"\n: 1}", valid: false, code: yaml_parse_error }
   - { id: flow_mapping_multiline_key, text: "value: {a\n  b: 1}", valid: false, code: yaml_parse_error }
+  # For a block-mapping key and a flow-sequence pair, one engine counts the 1,024 in UTF-16
+  # code units, so both do: 512 characters outside the Basic Multilingual Plane reach it.
+  - { id: block_key_astral_at_utf16_limit, generated: long_key, form: block, key_char: "\U0001F600", length: 512, valid: true }
+  - { id: block_key_astral_over_utf16_limit, generated: long_key, form: block, key_char: "\U0001F600", length: 513, valid: false, code: yaml_parse_error }
+  - { id: flow_pair_key_astral_at_utf16_limit, generated: long_key, form: pair, key_char: "\U0001F600", length: 512, valid: true }
+  - { id: flow_pair_key_astral_over_utf16_limit, generated: long_key, form: pair, key_char: "\U0001F600", length: 513, valid: false, code: yaml_parse_error }
+  # A plain scalar one engine reads as a number and the other as a string is refused: ruamel
+  # still takes YAML 1.1 spellings (`_` separators, `0b`, a signed `0x` or `0o`) as numbers,
+  # and reads `.5e3` (an unsigned exponent after a bare fraction) as a string, where the
+  # YAML 1.2 core schema does the reverse. Core-form numbers and quoted strings are unchanged.
+  - { id: integer_with_underscores, text: "value: 1_000", valid: false, code: yaml_unsupported_scalar }
+  - { id: float_with_underscores, text: "value: 1_0.5", valid: false, code: yaml_unsupported_scalar }
+  - { id: binary_integer, text: "value: 0b101", valid: false, code: yaml_unsupported_scalar }
+  - { id: negative_hex_integer, text: "value: -0x10", valid: false, code: yaml_unsupported_scalar }
+  - { id: positive_hex_integer, text: "value: +0x10", valid: false, code: yaml_unsupported_scalar }
+  - { id: negative_octal_integer, text: "value: -0o17", valid: false, code: yaml_unsupported_scalar }
+  - { id: bare_fraction_unsigned_exponent, text: "value: .5e3", valid: false, code: yaml_unsupported_scalar }
+  - { id: sign_and_underscore, text: "value: -_", valid: false, code: yaml_unsupported_scalar }
+  - { id: number_form_key, text: "1_000: x", valid: false, code: yaml_unsupported_scalar }
+  - { id: string_number_form_key, text: ".5e3: x", valid: false, code: yaml_unsupported_scalar }
+  - { id: number_form_in_flow_sequence, text: "value: [1, 0b11]", valid: false, code: yaml_unsupported_scalar }
+  - { id: core_hex_integer, text: "value: 0x10", valid: true, expected: { value: 16 } }
+  - { id: core_octal_integer, text: "value: 0o17", valid: true, expected: { value: 15 } }
+  - { id: leading_zero_decimal, text: "value: 017", valid: true, expected: { value: 17 } }
+  - { id: plain_integer, text: "value: 1000", valid: true, expected: { value: 1000 } }
+  - { id: core_exponent_float, text: "value: 1.5e3", valid: true, expected: { value: 1500 } }
+  - { id: signed_bare_fraction_signed_exponent, text: "value: +.5e-3", valid: true, expected: { value: 0.0005 } }
+  - { id: quoted_underscore_number, text: "value: '1_000'", valid: true, expected: { value: "1_000" } }
+  - { id: double_quoted_binary_number, text: "value: \"0b101\"", valid: true, expected: { value: "0b101" } }
+  - { id: sexagesimal_is_a_string, text: "value: 1:30", valid: true, expected: { value: "1:30" } }
+  - { id: yaml_1_1_boolean_is_a_string, text: "value: yes", valid: true, expected: { value: "yes" } }
+  - { id: plain_negative_infinity, text: "value: -.inf", valid: false, code: number_out_of_range }
+  # Only `%YAML 1.2` and `%TAG` are accepted. Under `%YAML 1.1` the engines' YAML 1.1
+  # schemas disagree (`08` is a string to one and 8 to the other), one engine fails on other
+  # versions, and one refuses an unknown directive the other ignores.
+  - { id: yaml_1_1_directive, text: "%YAML 1.1\n---\nvalue: 08", valid: false, code: yaml_parse_error }
+  - { id: yaml_1_0_directive, text: "%YAML 1.0\n---\nvalue: x", valid: false, code: yaml_parse_error }
+  - { id: yaml_1_3_directive, text: "%YAML 1.3\n---\nvalue: x", valid: false, code: yaml_parse_error }
+  - { id: unknown_directive, text: "%FOO bar\n---\nvalue: x", valid: false, code: yaml_parse_error }
+  - { id: yaml_1_2_directive, text: "%YAML 1.2\n---\nvalue: 08", valid: true, expected: { value: 8 } }
+  - { id: tag_directive, text: "%TAG !e! tag:example.com,2000:\n---\nvalue: x", valid: true, expected: { value: x } }
   - { id: depth_63, generated: deep_sequence, depth: 63, valid: true }
   - { id: depth_64, generated: deep_sequence, depth: 64, valid: false, code: yaml_limit }
   - { id: depth_65, generated: deep_sequence, depth: 65, valid: false, code: yaml_limit }

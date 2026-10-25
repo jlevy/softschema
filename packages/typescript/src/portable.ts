@@ -7,7 +7,17 @@
  */
 import { readFileSync } from "node:fs";
 import { writeFileSync } from "atomically";
-import { isAlias, isCollection, isMap, isPair, isScalar, Parser, parseDocument, visit } from "yaml";
+import {
+  isAlias,
+  isCollection,
+  isMap,
+  isPair,
+  isScalar,
+  Parser,
+  parseDocument,
+  Scalar,
+  visit,
+} from "yaml";
 
 /** Largest integer that survives a round trip through a JS number. */
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
@@ -290,6 +300,98 @@ function checkPlainTabs(text: string): void {
   );
 }
 
+/**
+ * The plain scalars ruamel's YAML 1.2 resolver reads as a float or an int. It still accepts
+ * YAML 1.1 spellings: `_` separators, `0b` binary, signed `0x` and `0o`, and an exponent
+ * after a bare `.5` only when it is signed. Mirrors Python's `_RUAMEL_NUMBER`.
+ */
+const RUAMEL_NUMBER = new RegExp(
+  "^(?:" +
+    [
+      "[-+]?[0-9][0-9_]*\\.[0-9_]*(?:[eE][-+]?[0-9]+)?",
+      "[-+]?[0-9][0-9_]*[eE][-+]?[0-9]+",
+      "[-+]?\\.[0-9_]+(?:[eE][-+][0-9]+)?",
+      "[-+]?\\.(?:inf|Inf|INF)",
+      "\\.(?:nan|NaN|NAN)",
+      "[-+]?0b[0-1_]+",
+      "[-+]?0o?[0-7_]+",
+      "[-+][0-9_]+",
+      "[0-9][0-9_]*",
+      "[-+]?0x[0-9a-fA-F_]+",
+    ].join("|") +
+    ")$",
+  "u",
+);
+
+/** The plain scalars the YAML 1.2 core schema, and so the `yaml` package, reads as numbers. */
+const CORE_NUMBER = new RegExp(
+  "^(?:" +
+    [
+      "[-+]?(?:\\.[0-9]+|[0-9]+(?:\\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?",
+      "[-+]?\\.(?:inf|Inf|INF)",
+      "\\.(?:nan|NaN|NAN)",
+      "0o[0-7]+",
+      "0x[0-9a-fA-F]+",
+    ].join("|") +
+    ")$",
+  "u",
+);
+
+/**
+ * Reject a plain scalar that one engine reads as a number and the other as a string.
+ *
+ * `1_000`, `0b101`, `-0x10` and `1_0.5` are numbers to ruamel and strings here; `.5e3` is
+ * the reverse. Both runtimes would accept the document with different values, and neither
+ * reading can be reproduced in the other engine, so neither is portable. Mirrors Python's
+ * `_check_number_form`.
+ */
+function checkNumberForm(text: string, source: string, offset: number): void {
+  if (!/^[-+.0-9]/u.test(source)) return;
+  if (RUAMEL_NUMBER.test(source) === CORE_NUMBER.test(source)) return;
+  const { line, column } = textPosition(text, offset);
+  throw new PortableInputError(
+    "yaml_unsupported_scalar",
+    `plain scalar \`${source}\` at line ${line}, column ${column} is a number to one YAML ` +
+      "engine and a string to the other; write the number in YAML 1.2 core form " +
+      "(such as 1000, 0x10, 0o17, 1.5e3) or quote it to keep it a string",
+  );
+}
+
+/**
+ * Reject a `%YAML` directive other than `%YAML 1.2`, and any directive but `%TAG`.
+ *
+ * Under `%YAML 1.1` both engines switch to a YAML 1.1 schema, and the two schemas differ:
+ * `08` is a string to ruamel and the number 8 here, and a date is a string there and a
+ * host `Date` here. ruamel fails on `%YAML 1.0` and `1.3`, and it ignores an unknown
+ * directive this engine refuses. Runs before the parse, so the verdict does not depend on
+ * which engine's complaint would come first. Mirrors Python's `_check_directives`.
+ */
+function checkDirectives(text: string): void {
+  if (!/(?:^|[\r\n])%/u.test(text)) return;
+  for (const token of new Parser().parse(text)) {
+    if (token.type !== "directive") continue;
+    const [name = "", version = ""] = token.source.slice(1).split(/[ \t]+/u);
+    const parts = /^([0-9]+)\.([0-9]+)$/u.exec(version);
+    if (
+      name === "TAG" ||
+      (name === "YAML" && parts && Number(parts[1]) === 1 && Number(parts[2]) === 2)
+    ) {
+      continue;
+    }
+    const { line, column } = textPosition(text, token.offset);
+    const where = `line ${line}, column ${column}`;
+    throw new PortableInputError(
+      "yaml_parse_error",
+      name === "YAML"
+        ? `unsupported directive \`%YAML ${version}\` at ${where}: softschema reads YAML 1.2, ` +
+            "and the two YAML engines read a document under another version differently; " +
+            "remove the directive or write `%YAML 1.2`"
+        : `unknown directive \`%${name}\` at ${where}: one YAML engine ignores it and the ` +
+            "other refuses it; remove it",
+    );
+  }
+}
+
 /** The longest implicit key YAML allows, from the key's first character to its `:`. */
 const IMPLICIT_KEY_LIMIT = 1024;
 
@@ -349,6 +451,7 @@ function checkFlowMappingKey(text: string, key: { range?: readonly number[] | nu
 
 export function parsePortableYaml(text: string): unknown {
   checkPortableText(text);
+  checkDirectives(text);
   let document: ReturnType<typeof parseDocument>;
   try {
     document = parseDocument(text, { uniqueKeys: true });
@@ -384,6 +487,16 @@ export function parsePortableYaml(text: string): unknown {
       throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
     }
     if (isPair(node)) {
+      // A key the two engines type differently is reported as that, not as a non-string
+      // key, which is what Python reports for `.5e3: x` (a string key to ruamel).
+      if (
+        isScalar(node.key) &&
+        node.key.type === Scalar.PLAIN &&
+        typeof node.key.source === "string" &&
+        node.key.range
+      ) {
+        checkNumberForm(text, node.key.source, node.key.range[0]);
+      }
       if (!isScalar(node.key) || typeof node.key.value !== "string") {
         throw new PortableInputError("yaml_non_string_key", "mapping keys must be strings");
       }
@@ -405,6 +518,14 @@ export function parsePortableYaml(text: string): unknown {
     }
     if (isScalar(node) && node.tag !== undefined) {
       throw new PortableInputError("yaml_custom_tag", "explicit YAML tags are not supported");
+    }
+    if (
+      isScalar(node) &&
+      node.type === Scalar.PLAIN &&
+      typeof node.source === "string" &&
+      node.range
+    ) {
+      checkNumberForm(text, node.source, node.range[0]);
     }
     if (
       isScalar(node) &&

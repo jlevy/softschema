@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import itertools
 import json
+import math
 import os
+import random
 import re
 from datetime import date, datetime
 from importlib.metadata import version as package_version
@@ -12,6 +15,7 @@ from typing import Any, Literal
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from ruamel.yaml import YAML
+from ruamel.yaml.nodes import ScalarNode
 
 import softschema
 from softschema import (
@@ -31,6 +35,9 @@ from softschema import (
 )
 from softschema import validate as validate_module
 from softschema._portable import (
+    _CORE_NUMBER,  # pyright: ignore[reportPrivateUsage]
+    _RUAMEL_NUMBER,  # pyright: ignore[reportPrivateUsage]
+    MAX_SAFE_INTEGER,
     PortableInputError,
     document_label,
     find_non_portable_character,
@@ -630,6 +637,9 @@ def _portable_vector_text(case: dict[str, Any]) -> str:
     if generated == "long_flow_key":
         key = str(case.get("key_char", "k")) * int(case["length"])
         return f'{{"{key}": 1}}' if case.get("json") else f'value: {{"{key}": 1}}'
+    if generated == "long_key":
+        key = str(case["key_char"]) * int(case["length"])
+        return f"{key}: 1" if case["form"] == "block" else f"value: [{key}: 1]"
     assert generated is None, generated
     return case["text"]
 
@@ -646,6 +656,55 @@ def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
             assert result.values == case["expected"], case["id"]
         if "code" in case:
             assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def _number_like_scalars() -> list[str]:
+    """Short scalars over a numeric alphabet, every one up to three characters and a
+    seeded sample of longer ones, plus the YAML 1.1 and core spellings by name."""
+    alphabet = "0123456789_.+-eExXoObBaAfF:inN"
+    values = {"".join(chars) for n in (1, 2, 3) for chars in itertools.product(alphabet, repeat=n)}
+    rng = random.Random(20261025)
+    while len(values) < 60_000:
+        values.add("".join(rng.choice(alphabet) for _ in range(rng.randint(4, 9))))
+    values.update([".inf", "-.Inf", "+.INF", ".nan", ".NaN", ".NAN", "1_000", "0b101", "-0x10"])
+    return sorted(values)
+
+
+def test_number_forms_match_ruamels_resolver() -> None:
+    """`_RUAMEL_NUMBER` is the set of plain scalars ruamel's YAML 1.2 resolver types as numbers.
+
+    The refusal of non-portable number forms compares it with the core schema, so a ruamel
+    release that changes its resolver must fail here before it can change a verdict.
+    """
+    resolver = YAML(typ="safe", pure=True).resolver
+    numeric = {"tag:yaml.org,2002:int", "tag:yaml.org,2002:float"}
+    for value in _number_like_scalars():
+        resolved = str(resolver.resolve(ScalarNode, value, (True, False))) in numeric
+        assert resolved == (_RUAMEL_NUMBER.fullmatch(value) is not None), value
+
+
+def test_core_number_forms_parse_as_core_numbers() -> None:
+    """Every scalar both patterns call a number reads as the core schema's number."""
+    for value in _number_like_scalars():
+        if _RUAMEL_NUMBER.fullmatch(value) is None or _CORE_NUMBER.fullmatch(value) is None:
+            continue
+        core = _core_value(value)
+        # Infinities, unsafe integers and negative zero are refused in both runtimes.
+        unsafe = isinstance(core, int) and abs(core) > MAX_SAFE_INTEGER
+        if not math.isfinite(core) or unsafe or (core == 0 and value.startswith("-")):
+            continue
+        assert parse_yaml(f"value: {value}")["value"] == core, value
+
+
+def _core_value(value: str) -> float:
+    """What the YAML 1.2 core schema reads a core-form number as."""
+    if value.startswith(("0o", "0x")):
+        return int(value, 0)
+    if value.lstrip("+-").lower() in {".inf", ".nan"}:
+        return math.inf
+    if any(char in value for char in ".eE"):
+        return float(value)
+    return int(value, 10)
 
 
 def test_portable_timestamp_constructor_does_not_change_ruamel_defaults() -> None:
