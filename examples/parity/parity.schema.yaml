@@ -81,6 +81,10 @@ properties:
     pattern: ^[A-Z]+$
     title: Code
     type: string
+  contact:
+    pattern: '@'
+    title: Contact
+    type: string
   count:
     maximum: 100
     minimum: 0
@@ -90,6 +94,10 @@ properties:
     default: true
     title: Enabled
     type: boolean
+  filename:
+    pattern: .*\.md$
+    title: Filename
+    type: string
   history:
     items:
       $ref: '#/$defs/Event'
@@ -128,6 +136,14 @@ properties:
     - type: 'null'
     default: null
     title: Notes
+  pair:
+    maxItems: 2
+    minItems: 2
+    prefixItems:
+    - type: string
+    - type: integer
+    title: Pair
+    type: array
   primary:
     $ref: '#/$defs/Address'
   priority:
@@ -158,6 +174,10 @@ properties:
     - $ref: '#/$defs/Address'
     - type: 'null'
     default: null
+  sku:
+    pattern: ^SKU-.*
+    title: Sku
+    type: string
   step:
     multipleOf: 5
     title: Step
@@ -179,11 +199,15 @@ required:
 - calendar_time
 - channels
 - code
+- contact
 - count
+- filename
 - kind
 - mixed
+- pair
 - primary
 - ratio
+- sku
 - step
 - tags
 - title
@@ -191,4 +215,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 058b039d374c97942e4edb3933922df7faf6d04742847cc05edfe0e74fc4b436
+  schema_sha256: 6fafec02ac14c3c844e36debfd5b827de7380ecfcca247b219ba076b06b2b668

@@ -393,6 +393,151 @@ describe("compile: write mode + build", () => {
     // Annotation values are data, not subschemas: a `type` array inside one is untouched.
     expect(properties.shaped?.examples).toEqual([{ type: ["kept"] }]);
   });
+  test("emits .startsWith(), .endsWith(), and .includes() as plain patterns, as Pydantic does", () => {
+    const compile = (schema: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: schema }), "x:Affix/v1");
+    const field = (schema: z.ZodType) =>
+      (compile(schema).schema.properties as { f: Record<string, unknown> }).f;
+    const sha = (schema: z.ZodType) => compile(schema).sha;
+
+    // The same canonical content and digest as the `.regex()` spelling and a Pydantic
+    // `Field(pattern=...)` mirror: Zod 4.6 adds `format: "starts_with"` and friends.
+    expect(field(z.string().startsWith("ab"))).toEqual({
+      pattern: "^ab.*",
+      title: "F",
+      type: "string",
+    });
+    expect(sha(z.string().startsWith("ab"))).toBe(sha(z.string().regex(/^ab.*/)));
+    expect(field(z.string().endsWith("z"))).toEqual({
+      pattern: ".*z$",
+      title: "F",
+      type: "string",
+    });
+    expect(field(z.string().includes("q"))).toEqual({ pattern: "q", title: "F", type: "string" });
+    expect(field(z.string().startsWith("ab").endsWith("z"))).toEqual({
+      allOf: [{ pattern: "^ab.*" }, { pattern: ".*z$" }],
+      title: "F",
+      type: "string",
+    });
+
+    // A real format written by an earlier check survives the affix check written over it.
+    expect(field(z.email().startsWith("a")).format).toBe("email");
+    expect(field(z.url().endsWith("/")).format).toBe("uri");
+    expect(field(z.string().lowercase().includes("q")).format).toBe("lowercase");
+    expect(field(z.stringFormat("sku", /^[A-Z]+$/).startsWith("A")).format).toBe("sku");
+    expect(field(z.string().regex(/^a/).startsWith("ab")).format).toBeUndefined();
+    expect(field(z.iso.date().startsWith("2"))).toEqual({
+      allOf: [{ pattern: "^2.*" }],
+      format: "date",
+      title: "F",
+      type: "string",
+    });
+
+    // Wrappers copy the corrected node.
+    expect(field(z.string().startsWith("a").nullable().default(null))).toEqual({
+      anyOf: [{ pattern: "^a.*", type: "string" }, { type: "null" }],
+      default: null,
+      title: "F",
+    });
+    expect(field(z.array(z.string().includes("q")).optional())).toEqual({
+      items: { pattern: "q", type: "string" },
+      title: "F",
+      type: "array",
+    });
+    // An authored format is not an affix check's, even with the same spelling.
+    expect(field(z.string().meta({ format: "includes" })).format).toBe("includes");
+  });
+  test("pins Zod's JSON Schema output for constructs the parity fixture does not cover", () => {
+    // Each of these changed schema_sha256 between zod 4.4 and 4.6. Pinning them makes the
+    // next Zod upgrade show any further change here, instead of in a downstream drift check.
+    const compiled = (schema: z.ZodType) => {
+      const { schema: out } = buildCanonicalSchema(z.strictObject({ f: schema }), "x:Pin/v1");
+      return {
+        f: (out.properties as Record<string, unknown>).f,
+        required: out.required,
+      };
+    };
+    const field = (schema: z.ZodType) => compiled(schema).f;
+    const A = z.strictObject({ a: z.string() });
+    const B = z.strictObject({ b: z.int() });
+
+    // Closed tuples: Pydantic's `tuple[str, int]` form (Zod's redundant `items: false` dropped).
+    expect(field(z.tuple([z.string(), z.int()]))).toEqual({
+      maxItems: 2,
+      minItems: 2,
+      prefixItems: [{ type: "string" }, { type: "integer" }],
+      title: "F",
+      type: "array",
+    });
+    expect(field(z.tuple([z.string(), z.int().optional()]))).toEqual({
+      maxItems: 2,
+      minItems: 1,
+      prefixItems: [{ type: "string" }, { type: "integer" }],
+      title: "F",
+      type: "array",
+    });
+    // A rest tuple keeps its rest schema and gains the prefix as minItems.
+    expect(field(z.tuple([z.string()], z.int()))).toEqual({
+      items: { type: "integer" },
+      minItems: 1,
+      prefixItems: [{ type: "string" }],
+      title: "F",
+      type: "array",
+    });
+    // Intersections of inline objects fold into the one object they describe, as a merged
+    // Pydantic model would; an `allOf` of two closed objects validated nothing.
+    const folded = {
+      additionalProperties: false,
+      properties: { a: { title: "A", type: "string" }, b: { title: "B", type: "integer" } },
+      required: ["a", "b"],
+      title: "F",
+      type: "object",
+    };
+    expect(field(z.intersection(A, B))).toEqual(folded);
+    expect(field(A.and(B))).toEqual(folded);
+    // Numeric record keys are constrained as the strings JSON keys are.
+    expect(field(z.record(z.number(), z.string()))).toEqual({
+      additionalProperties: { type: "string" },
+      propertyNames: { pattern: "^-?\\d+(?:\\.\\d+)?$", type: "string" },
+      title: "F",
+      type: "object",
+    });
+    expect(field(z.record(z.int(), z.string()))).toEqual({
+      additionalProperties: { type: "string" },
+      propertyNames: { pattern: "^-?\\d+$", type: "string" },
+      title: "F",
+      type: "object",
+    });
+    // An enum-keyed record with optional values does not require every key.
+    expect(field(z.record(z.enum(["a", "b"]), z.int().optional()))).toEqual({
+      additionalProperties: { type: "integer" },
+      propertyNames: { enum: ["a", "b"], type: "string" },
+      title: "F",
+      type: "object",
+    });
+    // Duplicate and nested-nullable unions collapse to Pydantic's form.
+    expect(field(z.union([z.string(), z.string()]))).toEqual({ title: "F", type: "string" });
+    expect(field(z.string().nullable().nullable())).toEqual({
+      anyOf: [{ type: "string" }, { type: "null" }],
+      title: "F",
+    });
+    // A second `.multipleOf()` is kept instead of dropped.
+    expect(field(z.number().multipleOf(0.5).multipleOf(2))).toEqual({
+      allOf: [{ multipleOf: 2 }],
+      multipleOf: 0.5,
+      title: "F",
+      type: "number",
+    });
+    // `.includes(text, { position })` allows any longer prefix, as String.includes does.
+    expect(field(z.string().includes("q", { position: 2 }))).toEqual({
+      pattern: "^.{2,}q",
+      title: "F",
+      type: "string",
+    });
+    // A `.catch()` or `z.preprocess()` field is required: its declared input type is.
+    expect(compiled(z.string().catch("x")).required).toEqual(["f"]);
+    expect(compiled(z.preprocess((value) => value, z.string())).required).toEqual(["f"]);
+  });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [
       z.iso.datetime(),

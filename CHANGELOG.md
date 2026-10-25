@@ -19,6 +19,10 @@ version number.
   GHSA-333x-w4r6-6crp (scheme injection through an unescaped first-segment colon).
   3.1.9 was published 2026-10-19, inside the 14-day cool-off; it is installed under a
   maintainer-approved exception, pinned exactly.
+  The override applies only to this repository’s own install, for development and CI.
+  npm and Bun ignore the `overrides` of a dependency, and the published package does not
+  bundle `fast-uri`, so a project that installs softschema gets the `fast-uri` its own
+  lockfile resolves for `ajv`; update it to 3.1.9 or later there.
 - **The TypeScript package requires zod `^4.6.6`** (locked at 4.6.6), which closes
   GHSA-mrhx-c7xc-m3w5: validating an oversized array, set, or map against a size bound
   could exhaust memory, because Zod parsed every element before checking the bound.
@@ -33,6 +37,15 @@ version number.
   Python mirror. The published `^4.4.3` range already admitted those zod versions.
   The compiler now expands every `type` array back into `anyOf` branches before
   canonicalization; the committed reference schemas and goldens are unchanged.
+- **TypeScript-compiled schemas match Pydantic again for `.startsWith()`, `.endsWith()`,
+  and `.includes()` under zod 4.6.** Zod 4.6 writes each check’s name (`starts_with`,
+  `ends_with`, `includes`) as the string’s `format`. No JSON Schema vocabulary defines
+  those names and Pydantic never emits them, and the name replaces a real format written
+  by an earlier check: `z.email().startsWith("a")` lost `format: email`. The compiler
+  now removes the three names and restores the earlier format, so each helper compiles
+  to the bare `pattern` that the `.regex()` spelling and a Pydantic `Field(pattern=...)`
+  mirror emit, with the same `schema_sha256` as under zod 4.4. Every other `format` that
+  Zod writes for a string helper zod 4.4 already had is unchanged.
 
 ### Changed
 
@@ -43,12 +56,45 @@ version number.
   review. Until `dependency-audit` is a required check, the `typescript` job repeats the
   audit as its last step so an advisory still blocks merging.
 - **Zod 4.5 and 4.6 semantic behavior applies to TypeScript models.** String `.min()`,
-  `.max()`, and `.length()` count code points rather than UTF-16 units, and a strict
-  object with an unknown key now also reports its other issues; both match Pydantic.
+  `.max()`, and `.length()` count code points rather than UTF-16 units, matching
+  Pydantic. An object-level `.refine()` or `.superRefine()` on a strict object now runs
+  when the input has an unknown key, and reports its issue alongside the unknown-key
+  issue; a Pydantic `model_validator(mode="after")` on an `extra="forbid"` model does
+  not run in that case (refinements are outside `schema_sha256`). Field-level issues
+  were already reported alongside an unknown key.
   `z.iso.datetime()` rejects minute-precision input such as `2020-01-01T06:15Z`, which
   Pydantic accepts (temporal acceptance sets were already allowed to differ).
-  A model using `z.email()` compiles with Zod’s new email `pattern`, so its
-  `schema_sha256` changes; recompile its committed schema.
+- **Zod 4.5 and 4.6 change the compiled schema and `schema_sha256` of TypeScript models
+  that use these constructs; recompile their committed schemas.** `compile --check`
+  reports drift for them after upgrading.
+  `.startsWith()`, `.endsWith()`, and `.includes()` without a position still compile as
+  they did under zod 4.4 (see Fixed).
+  The KitchenSink parity fixture now covers those helpers and closed tuples, and a unit
+  test pins the output of the other constructs below.
+  - `z.tuple([...])` gains `minItems` and `maxItems`, and a rest tuple gains `minItems`.
+    The compiler drops the `items: false` Zod also adds, which `maxItems` already
+    implies, so `z.tuple([z.string(), z.int()])` compiles to the same schema as
+    Pydantic’s `tuple[str, int]`.
+  - `z.intersection(A, B)` and `A.and(B)` of inline objects fold into the one object
+    they describe, the shape a Pydantic model with both sets of fields emits; the old
+    `allOf` of two strict objects accepted no value.
+    A member registered with `.meta({ id })` is a `$ref`, so an intersection with one
+    still emits an `allOf`.
+  - `z.record(z.number(), V)` and `z.record(z.int(), V)` constrain keys with a string
+    `pattern` instead of `propertyNames: {type: number}`, which rejected every non-empty
+    object. Pydantic’s `dict[int, V]` emits no key constraint, so the two still differ.
+  - A record with enum or literal keys and an optional or defaulted value no longer
+    lists every key in `required`.
+  - A union with duplicate members, such as `z.union([z.string(), z.string()])`,
+    collapses to the one member, and `.nullable().nullable()` emits one flat `anyOf`;
+    both now equal Pydantic.
+  - A `.catch()` field and a `z.preprocess()` field are listed in `required`, because
+    their declared input type is required.
+    A Pydantic field with a `BeforeValidator` and no default is required too.
+  - A second `.multipleOf()` is kept in an `allOf` instead of being dropped.
+  - Zod’s built-in patterns for `z.email()`, `z.emoji()`, `z.ulid()`, `z.cidrv6()`, and
+    `z.base64url()` changed, and `.includes(text, { position })` now emits `^.{n,}text`,
+    which matches `String.prototype.includes`.
 
 ## v0.8.1—2026-09-11
 
