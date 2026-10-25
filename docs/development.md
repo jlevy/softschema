@@ -29,7 +29,8 @@ Direct commands:
 
 ```bash
 uv run python devtools/lint.py --check
-uv run pytest
+uv run pytest             # the default run leaves out tests marked `slow`
+uv run pytest -m slow     # the slow tier: corpus and generated-document comparisons
 uv run softschema docs --list
 uv run softschema docs --list --json
 uv run softschema skill --brief
