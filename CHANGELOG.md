@@ -6,6 +6,20 @@ version number.
 
 ## Unreleased
 
+### Security
+
+- **The `fast-uri` override is raised to exactly 3.1.9.** It closes seven advisories
+  against the 3.1.6 pin, a transitive dependency of the TypeScript implementation’s
+  schema validator (`ajv`): GHSA-qw65-cvwx-89v3 (authority injection through an
+  unvalidated port), GHSA-58mr-gqgx-xq4g (host confusion through an unclosed bracket),
+  GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization), GHSA-w74x-v6f9-j3xg
+  (scheme spoofing through percent-encoded scheme decoding), GHSA-wjr9-j795-jxcr (host
+  confusion through unchecked WHATWG host canonicalization), GHSA-xhq7-xmqj-769h
+  (improper path equivalence in relative reference normalization), and
+  GHSA-333x-w4r6-6crp (scheme injection through an unescaped first-segment colon).
+  3.1.9 was published 2026-10-19, inside the 14-day cool-off; it is installed under a
+  maintainer-approved exception, pinned exactly.
+
 ### Changed
 
 - **CI runs the dependency audit as its own `dependency-audit` job.** `bun audit` used
