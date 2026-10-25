@@ -1,7 +1,9 @@
 # Shared Test Vectors
 
-`hardening.yaml` is the sole cross-runtime structured behavior corpus.
-Python and TypeScript tests read it directly.
+`hardening.yaml` is the main cross-runtime structured behavior corpus.
+`validation-execution.yaml` covers validation execution evidence and the pinned engine
+deviations, and `identities.yaml` the resource identity grammar.
+Python and TypeScript tests read all three directly.
 Add a case only when both runtimes promise the same meaning; keep adapter-specific
 filesystem, model, and package behavior in that adapter’s unit tests.
 
@@ -12,6 +14,7 @@ filesystem, model, and package behavior in that adapter’s unit tests.
 | Artifact input classes and portable YAML values | `hardening.yaml` through each validation adapter |
 | Local references, schema failures, format, and patterns | `hardening.yaml` through each structural validator |
 | Canonicalization, enforcement, identity, annotations, `SchemaView`, and digests | `hardening.yaml` through the matching library adapter |
+| Resource identity grammar, in validation and compile | `identities.yaml` through each grammar, validator, and compiler |
 | Pydantic compilation and Python path behavior | Python unit tests |
 | Zod compilation and TypeScript model loading | TypeScript unit tests |
 | CLI output, streams, and exit classes | End-to-end tryscript goldens |

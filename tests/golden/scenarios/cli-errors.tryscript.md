@@ -70,6 +70,29 @@ softschema validate: [..]
 ? 2
 ```
 
+# Test: validate --require with an unknown layer is a usage error (exit 2)
+
+`--require` accepts only `structural` and `semantic`. Both CLIs report the mistake under
+the `softschema validate:` prefix; the wording after it is each argument parser's own
+(argparse prints its usage line first), so the prefix and the exit class are asserted.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --require payload 2>&1
+...
+softschema validate: [..]
+? 2
+```
+
+The flag is judged before the artifact is opened or a model is imported, so the same
+mistake on a file that does not exist still reports the flag, not the missing file.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/does-not-exist.md --require payload 2>&1
+...
+softschema validate: [..]invalid[..]payload[..]
+? 2
+```
+
 # Test: inspect on a missing file is a clean usage error (exit 2)
 
 ```console

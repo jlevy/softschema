@@ -68,6 +68,11 @@ structure should stabilize over time.
 - Treat `soft`, `permissive`, and `enforced` as boundary maturity.
   Start with a named convention, validate the stable fields under authored rules, and
   enforce a bound structural schema when undeclared fields should fail.
+- Read `structural.execution` and `semantic.execution` beside each check’s `ok`. A
+  required check must be `completed` and accepted; `not_run` and `errored` do not
+  establish validity. Declared status alone is no evidence that a validator ran.
+  Older reports without execution fields have unknown execution; revalidate when
+  completed checks are required.
 - Evolve the schema as records and consumers reveal stable fields and constraints.
   Changing the schema or status does not require changing a Markdown body.
 - Date- and timestamp-shaped YAML scalars are portable strings, quoted or unquoted.

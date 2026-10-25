@@ -12,6 +12,7 @@ from softschema.models import (
     SchemaProfile,
     SchemaStatus,
     SchemaWarning,
+    ValidationExecution,
     WarningCode,
     parse_schema_metadata,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "SoftOwner",
     "SoftTier",
     "StructuralResult",
+    "ValidationExecution",
     "ValidationResult",
     "WarningCode",
     "clear_validator_cache",

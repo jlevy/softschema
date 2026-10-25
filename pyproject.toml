@@ -168,7 +168,7 @@ reportPrivateUsage = false
 
 [tool.codespell]
 skip = "uv.lock,bun.lock,*.schema.yaml,*/node_modules/*,*/dist/*,*/resources/*"
-ignore-words-list = "fo,afterall"
+ignore-words-list = "fo,afterall,shttp"
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]

@@ -516,7 +516,7 @@ function inferEnvelope(
   }
 }
 
-interface ValidateOptions {
+interface BindingOptions {
   contract?: string;
   envelope?: string;
   model?: string;
@@ -525,7 +525,11 @@ interface ValidateOptions {
   status?: string;
 }
 
-interface RepairOptions extends ValidateOptions {
+interface ValidateOptions extends BindingOptions {
+  require?: string[];
+}
+
+interface RepairOptions extends BindingOptions {
   dryRun?: boolean;
   check?: boolean;
 }
@@ -540,6 +544,26 @@ function missingContractReason(profile: SchemaProfile): string {
   return profile === "pure-yaml"
     ? "missing --contract because the document root is not a YAML mapping"
     : "missing --contract because the document has no YAML frontmatter";
+}
+
+/** Accumulate repeated `--require` values; `requiredChecksFromOpts` judges them. */
+function collectRequiredCheck(value: string, previous: string[] | undefined): string[] {
+  return [...(previous ?? []), value];
+}
+
+/**
+ * Check the collected `--require` values here rather than in the option parser, so an
+ * unknown layer is reported under the command's own `softschema validate:` prefix, as
+ * `--status` and `--profile` are, instead of Commander's generic `error:` line.
+ */
+function requiredChecksFromOpts(opts: ValidateOptions): ("structural" | "semantic")[] | undefined {
+  if (opts.require === undefined) return undefined;
+  return opts.require.map((value) => {
+    if (value !== "structural" && value !== "semantic") {
+      throw new UsageError(`invalid require: ${value} (expected structural or semantic)`);
+    }
+    return value;
+  });
 }
 
 /** Import `path:export` and confirm the export is a Zod schema before use. */
@@ -579,7 +603,7 @@ async function loadZodModel(spec: string): Promise<z.ZodType> {
  * mode and not the other.
  */
 function inferValidationBinding(
-  opts: ValidateOptions,
+  opts: BindingOptions,
   root: Record<string, unknown> | null,
   profile: SchemaProfile,
 ): Contract {
@@ -661,6 +685,9 @@ function inferRepairBinding(
 
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
+    // Judge the flags before importing a model or opening the file, so a usage mistake
+    // never runs user code first or hides behind an unrelated error, as with argparse.
+    const require = requiredChecksFromOpts(opts);
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
@@ -677,6 +704,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     const result = validateArtifact(path, contract, {
       semanticModel,
       document: read.document,
+      require,
     });
     if (result.outcome === "input_error") {
       throw new Error("pre-parsed CLI validation returned an input error");
@@ -1053,9 +1081,16 @@ export async function main(argv: string[] = process.argv): Promise<number> {
           "(softschema.contract, schema, envelope) needs no flags; flags override the " +
           "document. Never writes; to fix an artifact, use `repair`",
       ),
-  ).action(async (path: string, opts: ValidateOptions) => {
-    exitCode = await runValidate(path, opts);
-  });
+  )
+    .option(
+      "--require <check>",
+      "fail unless this check completed: structural or semantic; repeat for both. Without " +
+        "it a skipped check can still yield a valid result",
+      collectRequiredCheck,
+    )
+    .action(async (path: string, opts: ValidateOptions) => {
+      exitCode = await runValidate(path, opts);
+    });
 
   // `--dry-run` and `--check` both suppress the write and differ in what they assert, the
   // same way they differ elsewhere in this CLI: `skill --install --dry-run` previews and

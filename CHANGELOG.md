@@ -8,6 +8,9 @@ version number.
 
 This is a minor release (0.9.0): the portable YAML rule gains a normative rejection, and
 documents that validated under 0.8.1 can now be refused.
+Validation results now record actual execution independently for structural and semantic
+checks. Declared `status` still selects validation mode; it does not prove a check ran.
+The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
 
 ### Compatibility
 
@@ -119,8 +122,69 @@ TypeScript model using one of the constructs listed under Changed (tuples,
 intersections, records with typed keys, and `z.email()` among them) compiles to a new
 `schema_sha256`; recompile its committed schema.
 
+**Execution evidence and schema refusals.** Python layer-result constructors require an
+explicit keyword-only `execution`; TypeScript layer interfaces require the same field.
+Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit classes, artifact
+metadata, and compiled schema files are unchanged except for the corrected repair-result
+verdicts (see Fixed), the Zod 4.6 model behavior (see Changed), the portable-reading
+changes above, and the schema refusals below, each of which turns an artifact bound to
+such a schema `invalid` (`ok` false, `validate` exit 1, under every status, with or
+without `--require`) until the schema is fixed.
+They affect hand-written or third-party schemas only; schemas written by
+`softschema compile` carry the canonical `$schema` and absolute ids and use none of the
+refused keywords. **Python users** are the ones who change for an unresolvable `$ref` on
+a branch the payload never reaches (TypeScript already refused it; remove or fix the
+reference), for a `$schema` line naming draft-07 or another draft, which Python used to
+accept and validate as 2020-12 (TypeScript already refused it, now under
+`reason: dialect` rather than `compilation`; delete the line or set the 2020-12 URI),
+and for `$recursiveRef`, which Python ignored and TypeScript evaluated (write
+`$dynamicRef`). **Both runtimes** change for the legacy `dependencies` keyword, which
+TypeScript enforced and Python ignored (write `dependentSchemas` or
+`dependentRequired`), for OpenAPI `nullable`, which TypeScript honored and Python
+ignored (write `type: [..., "null"]`), and for any resource identity outside the
+identity grammar, which both now refuse as `reason: resource_identity` and
+`compile --schema-id` refuses too.
+Before, the engines read such identities differently: a relative root `$id` against
+different invented bases; `URN:`, `urn:Ex:…`, an uppercase host, `%7E`, or a dot
+segment, which fast-uri normalizes and Python does not; a whitespace-prefixed id, which
+Python’s `urlsplit` trims; a malformed host such as `http://[::1`, which Python refused
+as `compilation` and TypeScript accepted; and `urn:example` or `urn:dir/item.json`,
+which TypeScript failed to compile.
+Ordinary-looking ids it also refuses: `https://example.com` with no path (write
+`https://example.com/`), an explicit default port as in `https://example.com:443/x`, an
+uppercase `urn:uuid:6E8BC430-…`, a trailing empty `#` as in
+`http://example.com/schema#`, common in draft-07-era schemas, and `s3://` or `gs://`
+ids, since only `http`, `https`, and `file` take `//host`. Write `https://host/path`,
+`file:///path`, `urn:<nid>:<name>` in lowercase, or another `scheme:path`, with no
+fragment. Skip reasons change only for the TypeScript library fix under Fixed.
+Strict serialized-result consumers must accept the new layer fields and remove the
+unreleased aggregate field.
+Old reports without execution fields have **unknown** execution; preserve absence or
+revalidate rather than fabricating evidence.
+See the
+[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
+for downstream adoption and release sequencing.
+
 ### Added
 
+- `structural.execution` and `semantic.execution` on all returned validation records,
+  including CLI JSON and repair results.
+  The public `ValidationExecution` type is `not_run`, `completed`, or `errored`. A
+  completed check may accept or reject; read `ok` and errors for its verdict.
+  Missing or malformed schemas report preparation failure without claiming payload
+  evaluation. Both checks remain visible when a schema accepts and a model rejects.
+- Two advisory warnings when effective mode is `enforced` and structural validation did
+  not complete: `document-enforcement-via-model-only` if semantic validation completed,
+  or `document-enforcement-not-applied` otherwise.
+  Failures before payload extraction do not emit a payload-check shortfall warning.
+- An opt-in requirement for completed checks: `require=` on Python `validate_artifact`,
+  `load_artifact`, and `validate_values`, a `require` option on their TypeScript
+  counterparts, and a repeatable `validate --require structural|semantic` in both CLIs.
+  A required layer that did not complete is not ok and gains a `check_not_completed`
+  error carrying `layer` and `execution`. An otherwise valid result becomes `invalid`,
+  strict reads raise or throw, and `validate` exits 1 for readable invalid artifacts.
+  An unreadable artifact retains the library’s `input_error` outcome and the `validate`
+  command’s exit 2. Without a requirement, results are unchanged.
 - **`repair` escapes a raw character the portable rule rejects.** A U+0085, U+2028,
   U+2029, or control character other than a carriage return inside a single-line scalar
   value is rewritten as a double-quoted scalar carrying the YAML escape, with one
@@ -137,6 +201,49 @@ intersections, records with typed keys, and `z.email()` among them) compiles to 
 
 ### Changed
 
+- Replace the unreleased `enforcement_applied` hierarchy with per-layer execution.
+  TypeScript now reports actual model invocation independently of its optional label.
+- The spec defines execution boundaries, including preparation versus evaluation
+  failures, and the effective status fallback to `soft`.
+- Python schema preparation resolves every `$ref` that evaluation could reach before
+  checking a payload, as Ajv already did while compiling.
+  A schema with an unresolvable local or remote reference on a branch the payload never
+  reaches is now `schema_invalid` (`reason: reference`) with structural `not_run` in
+  both runtimes, instead of a Python-only completed acceptance, so
+  `--require structural` gives one answer.
+  The walk follows the applicators both engines evaluate; a definition nothing
+  references, a `contentSchema` annotation, and a `then` or `else` with no `if` are not
+  checked in raw mode.
+  The remaining engine differences on degenerate schemas are pinned as
+  `engine_deviations` in the shared vectors and listed in the spec.
+- Both runtimes refuse, before either engine runs, a `$schema` other than the canonical
+  Draft 2020-12 URI (with or without a trailing `#`) and the keywords only Ajv honored
+  while jsonschema ignored them: the legacy `dependencies`, the OpenAPI `nullable`, and
+  2019-09’s `$recursiveRef` and `$recursiveAnchor`, each as `schema_invalid` with
+  `reason: dialect`. Write `dependentSchemas` or `dependentRequired`,
+  `type: [..., "null"]`, and `$dynamicRef`/`$dynamicAnchor` instead.
+- Every resource identity (the root `$id`, a nested `$id`, a supplied resource’s `$id`
+  or key, and `softschema compile --schema-id`, which is `schema_id`/`schemaId` in the
+  libraries) follows one grammar, implemented identically in both runtimes, and anything
+  outside it is `schema_invalid` with `reason: resource_identity` before either engine
+  runs (compile exits 2 with the same message).
+  The grammar admits only spellings that neither Python’s `urllib.parse` nor Ajv’s
+  fast-uri rewrites: printable ASCII, no fragment (not even an empty `#`), uppercase
+  `%HH` escapes of reserved or non-ASCII bytes only, a lowercase scheme, `//host` only
+  for `http:`, `https:`, and `file:` (lowercase host or canonical IP address,
+  non-default port, no user information, a path of at least `/`), the opaque
+  `scheme:path` form for every other scheme except those `urllib.parse` writes with
+  `//`, a lowercase `urn:` namespace identifier and a lowercase UUID after `urn:uuid:`,
+  and no `//`, `.`, or `..` path segment, trailing `;`, empty query, or `'` in a query.
+  A nested `$id` may also be a relative path.
+  The spec lists the rules and `tests/vectors/identities.yaml` has a case for each.
+- The TypeScript `validate --require` with an unknown layer reports
+  `softschema validate: invalid require: <value>` with the usual exit 2, the prefix the
+  Python CLI uses, instead of the argument parser’s own line.
+- Checked enforcement accepts nested nullable references to explicitly closed models
+  without adding redundant object closure to their nullable wrappers.
+  Explicit open object policy and rejection of unknown fields remain owned by the
+  referenced model.
 - **CI runs the dependency audit as its own `dependency-audit` job.** `bun audit` used
   to be a step inside the `typescript` job, so a new upstream advisory skipped the
   TypeScript typecheck, tests, build, publint, and golden runs on every PR. The audit
@@ -220,6 +327,26 @@ intersections, records with typed keys, and `z.email()` among them) compiles to 
   Compiled schemas are always written by the pure-Python emitter.
 
 ### Fixed
+
+- Python `repair_and_validate_artifact(..., model=...)` uses the supplied model for both
+  conformance and the final verdict.
+  A model rejection now returns `invalid` after repair rather than validating against
+  the caller’s model-free contract.
+  The caller’s contract is unchanged.
+
+- TypeScript repair results for a missing or invalid-UTF-8 artifact without an inferred
+  contract report `input_error`, matching Python and other library reads.
+  Parse failures remain `invalid`.
+
+- TypeScript `validateArtifact` without a bound schema reports structural
+  `skipped_reason: inferred_via_model` only when the call supplies a `semanticModel`, as
+  Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
+  without a label reports `inferred_via_model`. The CLI output is unchanged because
+  `--model` sets both.
+
+- Python `validate_values(schema=...)` with a schema file that does not exist reports
+  `schema_missing` with the path, as artifact validation does, instead of
+  `schema_invalid` with the operating system’s message.
 
 - **TypeScript-compiled schemas match Pydantic again for nullable fields under zod 4.5
   and later.** Zod 4.5 began rewriting `anyOf: [{type: "string"}, {type: "null"}]`, what

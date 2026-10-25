@@ -19,6 +19,7 @@ import {
   SCHEMA_LIST_KEYWORDS,
 } from "./canonicalize.js";
 import { isMapping } from "./guards.js";
+import { checkRootId } from "./identity.js";
 import { checkContractId } from "./models.js";
 import {
   checkPortableText,
@@ -313,13 +314,8 @@ export function buildCanonicalSchema(
   schemaId?: string,
 ): { schema: Record<string, unknown>; sha: string } {
   checkContractId(contractId);
-  if (schemaId !== undefined) {
-    try {
-      new URL(schemaId);
-    } catch {
-      throw new Error("schemaId must be an absolute URI");
-    }
-  }
+  // The id becomes the root `$id`; refuse one validation would refuse.
+  if (schemaId !== undefined) checkRootId(schemaId);
   const raw = z.toJSONSchema(zodSchema, {
     target: "draft-2020-12",
     io: "input",

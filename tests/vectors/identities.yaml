@@ -1,0 +1,120 @@
+# The resource-identity grammar (`softschema._identity` in Python, `identity.ts` in
+# TypeScript). Each runtime asserts, for every `refuse` entry, the exact rule its grammar
+# reports and, for a root identity, that `compile` refuses it as the `--schema-id` and
+# validation refuses it as the root `$id` with the same `resource_identity` message:
+# `the root $id must <problem>, got <id as JSON>`. Every `accept` entry passes the grammar,
+# compiles as the schema id, and validates. `nested: true` checks the id as a nested `$id`,
+# which may also be a relative path.
+refuse:
+  - {id: "", problem: "not be empty"}
+  - {id: "", problem: "not be empty", nested: true}
+  - {id: " https://example.com/x", problem: "use printable ASCII with no whitespace"}
+  - {id: "https://exa\nmple.com/x", problem: "use printable ASCII with no whitespace"}
+  - {id: "urn:example:b\n", problem: "use printable ASCII with no whitespace"}
+  - {id: "https://example.com/\u00fc", problem: "use printable ASCII with no whitespace"}
+  - {id: "https://example.com/s.json#frag", problem: "not have a fragment, not even an empty #"}
+  - {id: "https://example.com/s.json#", problem: "not have a fragment, not even an empty #"}
+  - {id: "urn:example:b#f", problem: "not have a fragment, not even an empty #"}
+  - {id: "urn:example:a%7Eb", problem: "spell percent-escapes as uppercase %HH and not escape letters, digits, or -._~"}
+  - {id: "https://example.com/%7Euser/x.json", problem: "spell percent-escapes as uppercase %HH and not escape letters, digits, or -._~"}
+  - {id: "urn:example:%41", problem: "spell percent-escapes as uppercase %HH and not escape letters, digits, or -._~"}
+  - {id: "https://example.com/a%2fb", problem: "spell percent-escapes as uppercase %HH and not escape letters, digits, or -._~"}
+  - {id: "https://example.com/%zz", problem: "spell percent-escapes as uppercase %HH and not escape letters, digits, or -._~"}
+  - {id: "schemas/root.json", problem: "be an absolute URI"}
+  - {id: "//example.com/x", problem: "be an absolute URI"}
+  - {id: "URN:example:b", problem: "use a lowercase scheme"}
+  - {id: "HTTPS://example.com/x", problem: "use a lowercase scheme"}
+  - {id: "ftp://example.com/x", problem: "not use a scheme that takes //host, other than http, https, and file"}
+  - {id: "ws://example.com/x", problem: "not use a scheme that takes //host, other than http, https, and file"}
+  - {id: "git+ssh://example.com/x", problem: "not use a scheme that takes //host, other than http, https, and file"}
+  - {id: "ftp:x", problem: "not use a scheme that takes //host, other than http, https, and file"}
+  - {id: "foo://example.com/x", problem: "not use //host with a scheme other than http, https, or file"}
+  - {id: "tag://example.com/x", problem: "not use //host with a scheme other than http, https, or file"}
+  - {id: "https:x", problem: "use the scheme://host/path form for this scheme"}
+  - {id: "http:/x", problem: "use the scheme://host/path form for this scheme"}
+  - {id: "file:x", problem: "use the scheme://host/path form for this scheme"}
+  - {id: "file://localhost/x", problem: "have an empty host, as in file:///path"}
+  - {id: "http://[", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "http://[::1", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://a]b/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "http://[0::1]/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "http://[::ffff:1.2.3.4]/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "http://[fe80::1%25eth0]/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "http://[v1.x]/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://EXAMPLE.com/X", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://user@example.com/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://example.com:443/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://example.com:99999/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://example.com:/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://example.123/x", problem: "have a lowercase host name or a canonical IP address, an optional non-default port, and no user information"}
+  - {id: "https://example.com", problem: "have a path, at least / after the host"}
+  - {id: "tag:", problem: "have a path"}
+  - {id: "tag:/x", problem: "not start the path with / without //host"}
+  - {id: "//example.com/x", problem: "be a relative path, with no // and no colon in its first segment", nested: true}
+  - {id: "1a:b", problem: "be a relative path, with no // and no colon in its first segment", nested: true}
+  - {id: "?q", problem: "have a path", nested: true}
+  - {id: "https://example.com/a?", problem: "not have an empty query"}
+  - {id: "https://example.com/a?'q", problem: "use only URI characters"}
+  - {id: "https://example.com/a{b}", problem: "use only URI characters"}
+  - {id: "tag:example.com,2026:a|b", problem: "use only URI characters"}
+  - {id: "urn:example", problem: "name a lowercase namespace identifier and a name, as in urn:example:name"}
+  - {id: "urn:dir/item.json", problem: "name a lowercase namespace identifier and a name, as in urn:example:name"}
+  - {id: "urn:Example:b", problem: "name a lowercase namespace identifier and a name, as in urn:example:name"}
+  - {id: "urn:example:a&b", problem: "name a lowercase namespace identifier and a name, as in urn:example:name"}
+  - {id: "urn:example:a~b", problem: "name a lowercase namespace identifier and a name, as in urn:example:name"}
+  - {id: "urn:uuid:6E8BC430-9C3A-11D9-9669-0800200C9A66", problem: "follow urn:uuid: with a lowercase UUID"}
+  - {id: "urn:uuid:not-a-uuid", problem: "follow urn:uuid: with a lowercase UUID"}
+  - {id: "https://example.com/a/./b", problem: "not have an empty (//), . or .. path segment"}
+  - {id: "https://example.com/a/../b", problem: "not have an empty (//), . or .. path segment"}
+  - {id: "https://example.com//x", problem: "not have an empty (//), . or .. path segment"}
+  - {id: "urn:example:a/./b", problem: "not have an empty (//), . or .. path segment"}
+  - {id: "../x", problem: "not have an empty (//), . or .. path segment", nested: true}
+  - {id: "./x", problem: "not have an empty (//), . or .. path segment", nested: true}
+  - {id: "a//b", problem: "not have an empty (//), . or .. path segment", nested: true}
+  - {id: "https://example.com/a;", problem: "not end the path with ;"}
+# Every form `softschema compile --schema-id` documents or the vectors use, and the
+# relative paths a nested `$id` may take.
+accept:
+  - {id: "https://example.com/schemas/movie.json"}
+  - {id: "https://example.com/schemas/sample-v1"}
+  - {id: "http://example.com:8080/x"}
+  - {id: "https://1.2.3.4/x"}
+  - {id: "http://[::1]/x"}
+  - {id: "http://[2001:db8::1]/x"}
+  - {id: "https://example.com/a?q=1&r=2"}
+  - {id: "https://example.com/a/"}
+  - {id: "https://example.com/%C3%BC"}
+  - {id: "https://example.com/a%2Fb"}
+  - {id: "file:///tmp/x.json"}
+  - {id: "urn:example:movie-page"}
+  - {id: "urn:example:sample"}
+  - {id: "urn:uuid:6e8bc430-9c3a-11d9-9669-0800200c9a66"}
+  - {id: "urn:isbn:0451450523"}
+  - {id: "urn:ietf:rfc:2648"}
+  - {id: "urn:example:a?+r?=q"}
+  - {id: "tag:example.com,2026:movie"}
+  - {id: "example.research:Experiment/v1"}
+  - {id: "demo:Thing/v1"}
+  - {id: "mailto:a@example.com"}
+  - {id: "data:,x"}
+  - {id: "localhost:8080/x"}
+  - {id: "dir/item.json", nested: true}
+  - {id: "item.json", nested: true}
+  - {id: "/abs/x.json", nested: true}
+  - {id: "base", nested: true}
+  - {id: "a/b/c.json?x=1", nested: true}
+# With several invalid identities, both runtimes quote the same one: supplied resources
+# are checked in code-point order of their keys, then nested ids in code-point order of
+# the ids, never in mapping order (JavaScript iterates integer-like keys first).
+order:
+  - schema:
+      type: object
+      properties:
+        b: {$id: "urn:b", type: string}
+        "1": {$id: "URN:a:b", type: string}
+    message: 'a $id must use a lowercase scheme, got "URN:a:b"'
+  - schema: {$ref: "urn:example:item"}
+    resources:
+      "urn:zz": {type: string}
+      "1": {type: string}
+    message: 'a supplied resource key must be an absolute URI, got "1"'

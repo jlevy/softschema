@@ -412,6 +412,9 @@ It is not required to be an import path or a class name.
   the artifact format and metadata.
   These two paths preserve language-specific or metadata-only workflows; they do not
   provide the cross-language structural guarantee described above.
+  Because the same `status` can accompany different checks, a result must report each
+  check’s actual execution: see
+  [Reporting Validation Execution](#reporting-validation-execution).
 
 ### Rejecting undeclared properties under `enforced`
 
@@ -595,6 +598,8 @@ Supported spellings include:
 - supplied resources keyed by an absolute URI without a fragment.
 
 A supplied resource’s root `$id`, when present, must resolve to its mapping key.
+That `$id`, or the key of a resource without one, follows the resource identity grammar
+in Compiled Schemas, in raw and enforced validation alike.
 All resources are supplied explicitly; neither runtime performs network retrieval.
 Valid `$dynamicRef` and `$dynamicAnchor` schemas are outside this profile.
 Caller-constructed schema graphs must also use a distinct mapping object at every schema
@@ -623,7 +628,7 @@ ones it refuses.
 | `if`/`then`/`else` | Leave branches unchanged; matcher fields must also be unconditionally evaluated at the closure site, while fields declared only in `then` or `else` are admitted only when that branch applies and succeeds |
 | `dependentSchemas` branch declarations | Admit fields only when the trigger is present and the dependent schema succeeds |
 | `not` | Preserve the prohibition; declarations below it do not cause closure |
-| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
+| Supported `$ref` | Keep an implicitly open reusable target unchanged and close each pure structured application site; a pure reference to an explicitly closed target needs no added keyword, including an `anyOf` or `oneOf` wrapper containing only that reference and a null-only branch; inferred closure in the target’s evaluated descendants is allowed only outside context-sensitive composition and without validation siblings on the reference site |
 | Plain structured `items` | Close each element schema independently when no `contains` schema co-describes its elements |
 | `prefixItems` with `items` | Close their structured value schemas independently; they apply to disjoint index ranges |
 | `contains` | Preserve the matcher without inferred closure so enforcement cannot change which elements match; an unclosed structured child below the matcher is unsupported |
@@ -655,7 +660,11 @@ Stable reasons include `dialect`, `pattern`, `reference`, `resource_identity`, a
 `shared_subschema`.
 
 The effective status is resolved by the caller (for example a registry contract or a
-`--status` flag), falling back to the document’s declared `softschema.status`.
+`--status` flag), falling back to the document’s declared `softschema.status`, and to
+`soft` when neither supplies one.
+A result reports the effective status and the document’s declaration separately, so a
+default is never reported as something the author wrote: the declaration is absent for a
+document that made none.
 
 ## Source of Truth
 
@@ -675,6 +684,46 @@ against it. Equivalent Pydantic and Zod sources within softschema’s model-comp
 profile compile to the same canonical content and `schema_sha256`. This guarantee is
 covered by shared conformance fixtures; it does not extend to every feature that either
 model library can express.
+
+A compiled schema is Draft 2020-12. When it carries `$schema`, the value is the
+canonical URI `https://json-schema.org/draft/2020-12/schema`, with or without a trailing
+`#`; any other value, including the `http://` spelling, is refused.
+Every resource identity (the root `$id`, a nested `$id`, a supplied resource’s `$id` or
+key, and the `--schema-id` that `softschema compile` writes as the root `$id`) follows
+one grammar, which admits only spellings that neither engine’s URI library rewrites:
+
+- printable ASCII with no whitespace, and no fragment, not even an empty `#`;
+- percent-escapes written as uppercase `%HH`, never for letters, digits, or `-._~`;
+- a lowercase scheme; only the root `$id` and supplied resources need one, and a nested
+  `$id` may instead be a relative path with no colon in its first segment;
+- `//host` only after `http:`, `https:`, or `file:`, which require it: a lowercase host
+  name, a canonical IPv4 or RFC 5952 IPv6 address, an optional port other than the
+  scheme’s default, no user information, and a path of at least `/`, with `file:` taking
+  an empty host (`file:///path`);
+- no other scheme that is written with `//host` (such as `ftp:`, `ws:`, or `git:`);
+  every other scheme takes the form `scheme:path`, the path not starting with `/`;
+- for `urn:`, a lowercase namespace identifier of one to 32 letters, digits, or hyphens
+  starting with a letter or digit, a colon, and a name of letters, digits, `%HH`, and
+  `_!$'()*+,-./:;=@`, as in `urn:example:name`, and a lowercase UUID after `urn:uuid:`;
+  and
+- no empty (`//`), `.`, or `..` path segment, no path ending in `;`, no empty query, and
+  no `'` in a query.
+
+So `https://example.com/schemas/movie.json`, `urn:example:movie-page`,
+`urn:uuid:6e8bc430-9c3a-11d9-9669-0800200c9a66`, `tag:example.com,2026:movie`, and
+`file:///schemas/movie.json` are identities, and `URN:Example:Movie`,
+`urn:example:a%7Eb`, `https://EXAMPLE.com/x`, `http://[::1`, and
+`https://example.com/s.json#frag` are not.
+`tests/vectors/identities.yaml` has a case for each rule.
+When several identities break the grammar, both runtimes report the same one: the root
+`$id` first, then supplied resources in code-point order of their keys, then nested ids
+in code-point order.
+Keywords that only one engine would honor are refused as well: the legacy `dependencies`
+(write `dependentSchemas` or `dependentRequired`), the OpenAPI `nullable` (write
+`type: [..., "null"]`), and 2019-09’s `$recursiveRef` and `$recursiveAnchor`. Validation
+reports each as `schema_invalid` with `reason: dialect` (`resource_identity` for an
+identity outside the grammar) before either engine runs; see Reporting Validation
+Execution.
 
 ### Release-Level Mapping Across JSON Schema, Pydantic, and Zod
 
@@ -786,6 +835,8 @@ A validator must reject:
 - a model validation failure
 - undeclared payload fields rejected by the `enforced` strictness rule (see Status
   Values)
+- a layer the caller requires that did not complete (`check_not_completed`; see
+  [Required checks](#required-checks))
 
 Validation output is deterministic within each implementation.
 Across implementations, structural error records have the same engine-neutral fields and
@@ -797,6 +848,144 @@ Error-record-set parity is required except for cases explicitly listed in the sh
 `engine_deviations` vectors; each runtime pins its own complete record set for those
 cases so unlisted drift fails.
 
+### Reporting Validation Execution
+
+The artifact’s `softschema.status` declares maturity or mode.
+The result’s `status` reports the effective mode after caller and registry precedence.
+Neither is evidence that a payload check ran.
+A host that requires a particular check supplies a trusted binding and verifies that
+check’s execution and verdict, either by reading the result or by passing the
+requirement to the validator as described in [Required checks](#required-checks).
+Metadata alone cannot satisfy that requirement.
+
+A conforming validator reports an `execution` field on each existing `structural` and
+`semantic` result record, for artifact validation, values validation, and repair:
+
+| Value | Meaning |
+| --- | --- |
+| `not_run` | No payload validator was invoked. This includes absent bindings, failures before payload extraction, and failed schema preparation. Existing errors and skip reasons explain the cause. |
+| `completed` | The validator completed its verdict. `ok: true` is acceptance; `ok: false` with errors is rejection. Both are evidence that the check ran. |
+| `errored` | Payload evaluation began but did not produce a completed verdict. Existing error records describe the failure where the API returns a result. |
+| Key absent | The serialized record predates the `execution` field, so execution is unknown. Readers must not default it to any value or infer it from `ok`, errors, or skip reasons. |
+
+Record execution at the invocation and completion boundaries.
+A schema path, model label, `engine` field, absent skip reason, or successful aggregate
+`outcome` is not execution evidence.
+Structural and semantic checks are independent; both may complete, and a model may
+reject a payload whose schema accepts it.
+A completed structural check establishes only its own verdict’s portability, not the
+reproducibility of additional semantic rules.
+
+A missing or malformed schema that fails preparation reports structural `not_run` and
+its existing schema error.
+An actual semantic validator still runs when supplied.
+Failures before payload extraction report both checks as `not_run`. A skipped layer may
+retain `ok: true` for compatibility; it never establishes payload acceptance.
+
+Schema preparation resolves every `$ref` that payload evaluation could reach before any
+payload is checked, in raw and enforced mode alike.
+Raw-mode reach is the set of applicators both engines evaluate: `properties`,
+`patternProperties`, `additionalProperties`, `propertyNames`, `dependentSchemas`,
+`items`, `prefixItems`, `contains`, `unevaluatedProperties`, `unevaluatedItems`,
+`allOf`, `anyOf`, `oneOf`, `not`, and `if`, `then`, and `else` when `if` appears
+together with `then` or `else`, plus the target of every `$ref` so reached.
+Subschemas that can never apply are left out, as Ajv compiles nothing for them: a
+`contains` whose `minContains` is `0` with no `maxContains` or exceeds `maxContains`,
+`unevaluatedProperties` beside `additionalProperties`, and `unevaluatedItems` beside
+`items` or a `contains` that is not itself left out.
+Annotations such as `contentSchema`, a `then` or `else` with no `if`, and a definition
+that nothing references are not evaluated by either engine, so raw mode does not check
+them.
+A reference that cannot be resolved offline, local or remote, is a `schema_invalid`
+error with `reason: reference` and structural `not_run`, whether or not the payload
+would have reached it, so both runtimes give one verdict and a `--require structural`
+gate gives one answer.
+Preparation also refuses, before either engine runs, a `$schema` other than the
+canonical Draft 2020-12 URI and the keywords only one engine would honor
+(`dependencies`, `nullable`, `$recursiveRef`, `$recursiveAnchor`), each as
+`schema_invalid` with `reason: dialect`, and any resource identity outside the grammar
+in Compiled Schemas, root, nested, or supplied, as `reason: resource_identity`; that
+section lists the portable forms to write instead.
+Normal completed passes and rejections retain the common execution meaning.
+
+Outside that rule the engines keep their own behavior on degenerate schemas, and every
+such difference is pinned in the `engine_deviations` list of
+`tests/vectors/validation-execution.yaml`, where each runtime asserts its own result and
+an unlisted difference is a defect: an `if` with no `then` or `else`, or whose branches
+are schemas Ajv has no rule for, such as `true`, `{}`, or annotations only (jsonschema
+evaluates it, Ajv does not); a subschema left out of reach above that the payload does
+reach (jsonschema evaluates it, Ajv compiled nothing), and `unevaluatedProperties` whose
+evaluation Ajv tracks through `allOf` (the walk models only a sibling
+`additionalProperties`); a `$dynamicRef` with no matching anchor (jsonschema fails to
+resolve it, Ajv falls back to the root schema); a `$ref` whose target is not a schema;
+`$id` and `$ref` as siblings on one node (Ajv cannot compile the pair, while jsonschema
+resolves it); a relative `$id` under a non-hierarchical root such as `urn:` or `tag:`
+(jsonschema keeps the id relative, Ajv joins it onto the root, so references to that
+resource resolve differently); and a reference cycle, which both engines refuse but at
+different stages. `softschema compile` produces none of these shapes.
+
+Unexpected semantic callback exceptions propagate under the existing API exception
+policy. A thrown call has no returned validation report; implementations must not catch
+programmer errors merely to manufacture a completed rejection or acceptance.
+
+When effective mode is `enforced` and structural validation did not complete, emit the
+advisory `document-enforcement-via-model-only` if semantic validation completed, or
+`document-enforcement-not-applied` otherwise.
+This rule applies after both checks and also covers schema preparation failures followed
+by model validation.
+`soft` and `permissive` do not emit these warnings.
+Failures before payload extraction emit no shortfall warning because there is no payload
+verdict to qualify.
+
+The warning does not change `ok`, `outcome`, or CLI exit classes.
+Hosts that require a completed structural check must inspect execution as well as the
+verdict, or require the check.
+Consumers of historical reports without execution fields preserve absence or revalidate.
+This output change introduces no artifact metadata or schema-file format change.
+
+#### Required checks
+
+A caller may name layers that must complete: `structural`, `semantic`, or both.
+The requirement comes from the caller for one validation, never from artifact metadata.
+Reference implementations accept it on artifact validation, strict reads, and values
+validation, and the `validate` command accepts a repeatable
+`--require structural|semantic`.
+
+After both checks run, each required layer is judged by its `execution`:
+
+| Required layer execution | Effect |
+| --- | --- |
+| `completed` | None. The layer keeps its own verdict; a completed rejection is already not ok and gains no further error. |
+| `not_run` or `errored` | The layer’s `ok` becomes `false`, and one error is appended after its existing errors. |
+
+The appended error record has these fields:
+
+| Field | Value |
+| --- | --- |
+| `kind` | `check_not_completed` |
+| `layer` | `structural` or `semantic` |
+| `execution` | The layer’s actual `execution` value |
+| `message` | `required <layer> check did not complete (execution: <execution>)` |
+
+`execution`, `skipped_reason`, warnings, and existing errors keep their values and
+order, so a schema preparation error remains the first structural error.
+The appended record is keyed by `kind`, like every other softschema diagnostic, while
+the errors of a completed semantic check are the semantic validator’s own issue records
+(for example Pydantic’s `type`, `loc`, and `msg`) and carry no `kind`. A consumer that
+reads issue fields from `semantic.errors` must dispatch on `kind` first.
+The two never appear together today, because a layer that did not complete has no issue
+records, but the rule holds regardless.
+`outcome` is recomputed by the usual rule: a result that was `valid` becomes `invalid`,
+and an `input_error` stays one.
+A strict read refuses the artifact, and the `validate` command exits `1`. An unknown
+layer name is a caller error, not a validation result; so is a requirement that is not a
+list of layer names, such as a bare string or a null value.
+Omitting the requirement means none.
+
+Without a requirement, results are identical to those of a validator that does not
+support the option. A metadata-only artifact in effective `enforced` mode therefore
+remains `valid`, while the same run with `--require structural` is `invalid`.
+
 ### Repair
 
 A validator may offer a repair mode that corrects an artifact before judging it, so the
@@ -805,7 +994,10 @@ than discovering the verdict after it has exited.
 
 Repair is one escalating pass: parse, repair the document if it does not parse, conform
 its scalars to the types the contract declares, write once if anything changed, then
-validate.
+validate. Repair takes no requirement for completed checks, so a repaired metadata-only
+artifact in effective `enforced` mode still passes its check; a gate that needs
+completed checks follows the repair check with `validate --require` (see Required
+checks).
 
 #### Reading and checking are separate postures
 

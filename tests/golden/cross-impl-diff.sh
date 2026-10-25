@@ -106,6 +106,8 @@ diff_cmd "generate (missing file, exit 2)"   generate tests/golden/fixtures/does
 diff_cmd "validate (metadata-only, soft stage)" validate tests/golden/fixtures/extra-field-permissive.md
 diff_cmd "validate (enforced overlay rejects extras)" validate tests/golden/fixtures/extra-field-permissive.md --schema tests/golden/fixtures/lenient.schema.yaml --status enforced
 diff_cmd "validate (document-declared enforced)" validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml
+diff_cmd "validate (required checks not completed)" validate tests/golden/fixtures/extra-field-enforced.md --require structural --require semantic
+diff_cmd "validate (required structural completes, rejects)" validate tests/golden/fixtures/extra-field-enforced.md --schema tests/golden/fixtures/lenient.schema.yaml --require structural
 # Composed schemas (issue #41). These are the shapes that newly reach the validator, so
 # they are also where the engines have the most room to disagree: ajv emits one closure
 # error per key where jsonschema emits one per object, and adds an `if` wrapper record
