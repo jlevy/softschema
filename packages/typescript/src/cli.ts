@@ -683,6 +683,9 @@ function inferRepairBinding(
 
 async function runValidate(path: string, opts: ValidateOptions): Promise<number> {
   try {
+    // Judge the flags before importing a model or opening the file, so a usage mistake
+    // never runs user code first or hides behind an unrelated error, as with argparse.
+    const require = requiredChecksFromOpts(opts);
     // Without --model/--schema this is a metadata-only check: frontmatter parses,
     // the softschema: block is well-formed, and the envelope resolves; structural
     // and semantic layers are reported as skipped. Useful from the `soft` stage on.
@@ -699,7 +702,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     const result = validateArtifact(path, contract, {
       semanticModel,
       document: read.document,
-      require: requiredChecksFromOpts(opts),
+      require,
     });
     if (result.outcome === "input_error") {
       throw new Error("pre-parsed CLI validation returned an input error");

@@ -83,6 +83,16 @@ softschema validate: [..]
 ? 2
 ```
 
+The flag is judged before the artifact is opened or a model is imported, so the same
+mistake on a file that does not exist still reports the flag, not the missing file.
+
+```console
+$ $SOFTSCHEMA validate tests/golden/fixtures/does-not-exist.md --require payload 2>&1
+...
+softschema validate: [..]invalid[..]payload[..]
+? 2
+```
+
 # Test: inspect on a missing file is a clean usage error (exit 2)
 
 ```console
