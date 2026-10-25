@@ -312,12 +312,15 @@ a reference lazily and accept a payload that never reaches a dangling one, where
 refuses the schema while compiling; an unresolvable reference is therefore `not_run`
 with `schema_invalid` in both runtimes.
 The walk follows the applicators both engines evaluate (the spec’s reach rule), enters a
-structurally reached `$id` but not a `lookup()` target’s, and skips definitions and
-annotations neither engine evaluates.
-`_check_dialect` refuses the legacy `dependencies` keyword and a non-2020-12 `$schema`
-before either engine runs.
-The engine differences that remain on degenerate schemas are pinned per runtime in the
-`engine_deviations` list of the shared execution vectors.
+structurally reached `$id` but not a `lookup()` target’s, skips definitions and
+annotations neither engine evaluates, and leaves out the subschemas Ajv compiles nothing
+for: an inert or impossible `contains`, `unevaluatedProperties` beside
+`additionalProperties`, and `unevaluatedItems` beside `items` or a compiled `contains`.
+`_check_dialect` refuses, before either engine runs, a `$schema` other than the
+canonical 2020-12 URI and the keywords only Ajv honors (`dependencies`, `nullable`,
+`$recursiveRef`, `$recursiveAnchor`); `_check_root_identity` refuses a relative root
+`$id`. The engine differences that remain on degenerate schemas are pinned per runtime
+in the `engine_deviations` list of the shared execution vectors.
 An error raised during `iter_errors` itself is `errored` with the existing structural
 error. Unexpected semantic callback exceptions propagate, so there is no returned result
 to mark completed. `validate_values`, artifact validation, and repair share these

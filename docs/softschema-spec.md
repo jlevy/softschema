@@ -628,6 +628,16 @@ profile compile to the same canonical content and `schema_sha256`. This guarante
 covered by shared conformance fixtures; it does not extend to every feature that either
 model library can express.
 
+A compiled schema is Draft 2020-12. When it carries `$schema`, the value is the
+canonical URI `https://json-schema.org/draft/2020-12/schema`, with or without a trailing
+`#`; any other value, including the `http://` spelling, is refused.
+A root `$id`, when present, is an absolute URI. Keywords that only one engine would
+honor are refused as well: the legacy `dependencies` (write `dependentSchemas` or
+`dependentRequired`), the OpenAPI `nullable` (write `type: [..., "null"]`), and
+2019-09’s `$recursiveRef` and `$recursiveAnchor`. Validation reports each as
+`schema_invalid` with `reason: dialect` (`resource_identity` for the root `$id`) before
+either engine runs; see Reporting Validation Execution.
+
 ### Release-Level Mapping Across JSON Schema, Pydantic, and Zod
 
 The compiled JSON Schema is the portable boundary.
@@ -792,6 +802,10 @@ Raw-mode reach is the set of applicators both engines evaluate: `properties`,
 `items`, `prefixItems`, `contains`, `unevaluatedProperties`, `unevaluatedItems`,
 `allOf`, `anyOf`, `oneOf`, `not`, and `if`, `then`, and `else` when `if` appears
 together with `then` or `else`, plus the target of every `$ref` so reached.
+Subschemas that can never apply are left out, as Ajv compiles nothing for them: a
+`contains` whose `minContains` is `0` with no `maxContains` or exceeds `maxContains`,
+`unevaluatedProperties` beside `additionalProperties`, and `unevaluatedItems` beside
+`items` or a `contains` that is not itself left out.
 Annotations such as `contentSchema`, a `then` or `else` with no `if`, and a definition
 that nothing references are not evaluated by either engine, so raw mode does not check
 them.
@@ -799,20 +813,26 @@ A reference that cannot be resolved offline, local or remote, is a `schema_inval
 error with `reason: reference` and structural `not_run`, whether or not the payload
 would have reached it, so both runtimes give one verdict and a `--require structural`
 gate gives one answer.
-Preparation also refuses, as `schema_invalid` with `reason: dialect`, a `$schema` that
-names a draft other than 2020-12 and the legacy `dependencies` keyword, because only one
-engine would honor each; write `dependentSchemas` or `dependentRequired` instead.
-Normal completed passes and rejections retain the common execution meaning.
+Preparation also refuses, before either engine runs, a `$schema` other than the
+canonical Draft 2020-12 URI and the keywords only one engine would honor
+(`dependencies`, `nullable`, `$recursiveRef`, `$recursiveAnchor`), each as
+`schema_invalid` with `reason: dialect`, and a relative root `$id` as
+`reason: resource_identity`; the Compiled Schemas section lists the portable forms to
+write instead. Normal completed passes and rejections retain the common execution
+meaning.
 
 Outside that rule the engines keep their own behavior on degenerate schemas, and every
 such difference is pinned in the `engine_deviations` list of
 `tests/vectors/validation-execution.yaml`, where each runtime asserts its own result and
 an unlisted difference is a defect: an `if` with no `then` or `else`, or whose branches
-cannot fail (jsonschema evaluates it, Ajv does not); a `$dynamicRef` with no matching
-anchor (jsonschema fails to resolve it, Ajv falls back to the root schema); a `$ref`
-whose target is not a schema; `$id` and `$ref` as siblings on one node (Ajv cannot
-compile the pair, while jsonschema resolves it); and a reference cycle, which both
-engines refuse but at different stages.
+are schemas Ajv has no rule for, such as `true`, `{}`, or annotations only (jsonschema
+evaluates it, Ajv does not); a subschema left out of reach above that the payload does
+reach (jsonschema evaluates it, Ajv compiled nothing), and `unevaluatedProperties` whose
+evaluation Ajv tracks through `allOf` (the walk models only a sibling
+`additionalProperties`); a `$dynamicRef` with no matching anchor (jsonschema fails to
+resolve it, Ajv falls back to the root schema); a `$ref` whose target is not a schema;
+`$id` and `$ref` as siblings on one node (Ajv cannot compile the pair, while jsonschema
+resolves it); and a reference cycle, which both engines refuse but at different stages.
 `softschema compile` produces none of these shapes.
 
 Unexpected semantic callback exceptions propagate under the existing API exception
