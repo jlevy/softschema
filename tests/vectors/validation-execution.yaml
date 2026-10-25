@@ -574,9 +574,24 @@ engine_deviations:
         name: {type: string}
       additionalProperties: true
       unevaluatedProperties: {$ref: "#/$defs/Missing"}
-    why: >-
-      A sibling `additionalProperties` has evaluated every property, so Ajv compiles
-      nothing for `unevaluatedProperties`; jsonschema still evaluates its subschema.
+    why: &unevaluated_beside_additional_why >-
+      A sibling `additionalProperties`, `true` or `false`, has evaluated every property,
+      so Ajv compiles nothing for `unevaluatedProperties`; jsonschema still evaluates its
+      subschema. To find the evaluated keys, jsonschema descends every instance value into
+      the `unevaluatedProperties` subschema itself, so it resolves that subschema's
+      reference as soon as the payload has one property, whatever `additionalProperties`
+      says and whether or not any property is left unevaluated.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: unevaluated-properties-beside-closed-additional-properties-reached
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      additionalProperties: false
+      unevaluatedProperties: {$ref: "#/$defs/Missing"}
+    why: *unevaluated_beside_additional_why
     python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
     typescript: {execution: completed, ok: true}
   - name: unevaluated-items-beside-contains-reached
@@ -738,6 +753,54 @@ engine_deviations:
       reference, in raw and enforced mode alike, so TypeScript refuses the schema.
     python: {execution: completed, ok: true}
     typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
+  # A relative `$id` under a non-hierarchical root `$id` gets a different id in each
+  # engine: `referencing` joins ids with Python's `urljoin`, which leaves the reference
+  # unchanged under such a base, while Ajv joins it per RFC 3986 with fast-uri. The
+  # enforced profile refuses the relative id in both runtimes as `reference`.
+  - name: urn-root-nested-relative-id
+    values: {name: hello, item: {v: s}}
+    schema:
+      $id: urn:example:root
+      type: object
+      properties:
+        name: {type: string}
+        item: {$ref: "#/$defs/Item"}
+      $defs:
+        Item:
+          $id: dir/item.json
+          properties:
+            v: {$ref: "#/$defs/V"}
+          $defs:
+            V: {type: string}
+    why: >-
+      Python keeps `dir/item.json` as the embedded resource's id, resolves the `$ref`
+      inside it, and completes. Ajv resolves the id to `urn:dir/item.json`, a URN with no
+      namespace identifier, and fast-uri throws `URN without nid cannot be serialized`
+      when Ajv resolves the `$ref` inside that resource, so TypeScript refuses the schema
+      whether or not the payload reaches it.
+    python: {execution: completed, ok: true}
+    typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
+  - name: tag-root-nested-relative-id-absolute-reference
+    values: {name: hello, item: {v: s}}
+    schema:
+      $id: "tag:example.com,2026:root"
+      type: object
+      properties:
+        name: {type: string}
+        item: {$ref: "tag:dir/item.json"}
+      $defs:
+        Item:
+          $id: dir/item.json
+          properties:
+            v: {type: string}
+    why: >-
+      Ajv gives the embedded resource the id `tag:dir/item.json`, so a `$ref` to that URI
+      resolves and TypeScript completes. Python's id for it stays `dir/item.json`, the
+      walk finds no resource at `tag:dir/item.json`, and Python refuses the schema. A
+      local `$ref` inside the resource resolves in both runtimes under `tag:`, where
+      fast-uri has no scheme handler to fail.
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
   - name: reference-cycle
     values: {name: hello}
     schema:

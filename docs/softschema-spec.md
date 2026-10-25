@@ -832,8 +832,10 @@ evaluation Ajv tracks through `allOf` (the walk models only a sibling
 `additionalProperties`); a `$dynamicRef` with no matching anchor (jsonschema fails to
 resolve it, Ajv falls back to the root schema); a `$ref` whose target is not a schema;
 `$id` and `$ref` as siblings on one node (Ajv cannot compile the pair, while jsonschema
-resolves it); and a reference cycle, which both engines refuse but at different stages.
-`softschema compile` produces none of these shapes.
+resolves it); a relative `$id` under a non-hierarchical root such as `urn:` or `tag:`
+(jsonschema keeps the id relative, Ajv joins it onto the root, so references to that
+resource resolve differently); and a reference cycle, which both engines refuse but at
+different stages. `softschema compile` produces none of these shapes.
 
 Unexpected semantic callback exceptions propagate under the existing API exception
 policy. A thrown call has no returned validation report; implementations must not catch
