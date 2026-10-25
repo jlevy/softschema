@@ -32,6 +32,9 @@ export const KitchenSink = z
     ratio: z.number().gt(0).lt(1),
     step: z.int().multipleOf(5),
     code: z.string().min(2).max(8).regex(/^[A-Z]+$/),
+    sku: z.string().startsWith("SKU-"),
+    filename: z.string().endsWith(".md"),
+    contact: z.string().includes("@"),
     active: z.boolean(),
     calendar_date: z.iso.date(),
     calendar_datetime: z.iso.datetime({ offset: true }),
@@ -49,6 +52,7 @@ export const KitchenSink = z
     secondary: Address.nullable().default(null),
     history: z.array(Event).optional(),
     last_event: Event.nullable().default(null),
+    pair: z.tuple([z.string(), z.int()]),
     scores: z.record(z.string(), z.int()).optional(),
     mixed: z.union([z.int(), z.string()]),
     channels: softField(z.array(z.string()).min(1), {
