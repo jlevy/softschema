@@ -45,7 +45,8 @@ The dev group installs ruamel’s optional C extension (`ruamel.yaml.clib`), so 
 reads YAML C-first by default; `test_c_parser.py` compares that with the pure-Python
 parser.
 `SOFTSCHEMA_PURE_YAML=1 uv run pytest` runs the whole suite with the pure parser,
-which CI also does.
+which CI also does. `devtools/yaml_parser_fuzz.py` is the larger differential search
+behind `test_c_parser.py`; rerun it after a ruamel or `ruamel.yaml.clib` bump.
 
 ### Git Hooks (This Repo)
 

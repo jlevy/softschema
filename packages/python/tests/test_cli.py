@@ -8,6 +8,7 @@ from textwrap import dedent
 import pytest
 
 import softschema.cli as cli
+from softschema import yaml_parser_mode
 from softschema.cli import main as softschema_main
 from softschema.models import SchemaProfile
 
@@ -255,6 +256,8 @@ def test_doctor_reports_available_runners_as_json(
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
     assert output["version"] == cli._installed_version()
+    assert output["yaml_parser"] == yaml_parser_mode()
+    assert output["yaml_parser"] in ("c-first", "pure")
     assert output["recommended_invocation"] == "softschema"
     assert output["runners"] == [
         {"name": "softschema", "available": True, "path": "/usr/local/bin/softschema"},
@@ -273,6 +276,7 @@ def test_doctor_text_tells_user_how_to_recover_when_no_runner_exists(
     assert exit_code == 0
     output = capsys.readouterr().out
     assert "softschema version:" in output
+    assert f"yaml parser: {yaml_parser_mode()}" in output
     assert "recommended invocation: unavailable" in output
     assert "Install uv or Node" in output
 

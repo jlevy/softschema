@@ -18,7 +18,12 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 from strif import atomic_write_text
 
-from softschema._portable import PortableInputError, opens_frontmatter_fence, read_utf8
+from softschema._portable import (
+    PortableInputError,
+    opens_frontmatter_fence,
+    read_utf8,
+    yaml_parser_mode,
+)
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
@@ -810,6 +815,7 @@ def _doctor_report() -> dict[str, Any]:
     )
     return {
         "version": _installed_version(),
+        "yaml_parser": yaml_parser_mode(),
         "runners": runners,
         "recommended_invocation": recommended,
     }
@@ -818,6 +824,7 @@ def _doctor_report() -> dict[str, Any]:
 def _doctor_text(report: dict[str, Any]) -> str:
     lines = [
         f"softschema version: {report['version']}",
+        f"yaml parser: {report['yaml_parser']}",
         "available runners:",
     ]
     for runner in report["runners"]:

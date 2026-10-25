@@ -21,12 +21,14 @@ message. Without the extension there is no C parser to compare, and those tests 
 from __future__ import annotations
 
 import io
+import json
 import math
 import os
 import pickle
 import random
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -40,7 +42,6 @@ from softschema import _portable
 from softschema._portable import PortableInputError, parse_yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PRUNED_DIRS = {".git", ".venv", "node_modules", "dist", "attic", "__pycache__"}
 PURE_ENV = "SOFTSCHEMA_PURE_YAML"
 
 C_AVAILABLE = YAML(typ="safe").Parser is not RuamelParser
@@ -210,6 +211,11 @@ EDGE_CASES: dict[str, str] = {
     "root_block_scalar_column_zero_hash": "|\n#x\n",
     "root_block_scalar_after_marker": "--- |\n#x\n",
     "root_block_scalar_after_comment": "# c\n>\n#x\n",
+    "root_block_scalar_after_banner": "#" * 40 + "\n# Title\n" + "#" * 40 + "\n|\n#x\n",
+    "comment_containing_pipe": "# |\na: 1\n",
+    "comment_containing_gt": "#>\na: 1\n",
+    "comment_containing_pipe_text": "# x | y\na: 1\n",
+    "banner_comment": "#" * 40 + "\n# Movie page record\n" + "#" * 40 + "\ntitle: x\n",
     "block_scalar_short_space_line": "a: |\n \n  x\n",
     "block_scalar_short_space_line_folded": "a: >\n  \n   x\n",
     "block_scalar_space_line_with_indicator": "a: |2\n \n   x\n",
@@ -284,12 +290,18 @@ def test_edge_cases_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- Corpus: the repo's own documents and the shared vectors ---------------------------
 
 
-def _repo_files(*suffixes: str) -> Iterator[Path]:
-    for root, dirs, files in os.walk(REPO_ROOT):
-        dirs[:] = sorted(name for name in dirs if name not in PRUNED_DIRS)
-        for name in sorted(files):
-            if name.endswith(suffixes):
-                yield Path(root) / name
+def _repo_files(*suffixes: str) -> list[Path]:
+    """The tracked files with one of ``suffixes``, so the corpus is the same in every checkout."""
+    try:
+        listed = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--", *(f"*{s}" for s in suffixes)],
+            check=True,
+            capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):  # pragma: no cover
+        pytest.skip("the repo corpus needs a git checkout")
+    paths = [REPO_ROOT / name for name in listed.decode("utf-8").split("\0") if name]
+    return [path for path in paths if path.is_file()]
 
 
 def _strings(value: Any) -> Iterator[str]:
@@ -514,6 +526,87 @@ def test_sampled_code_points_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> No
     _assert_reads_as_pure(texts, monkeypatch)
 
 
+# --- The guard runs in linear time --------------------------------------------------------
+
+ADVERSARIAL_GUARD_INPUTS = {
+    "hash_banner": "#" * 5000 + "\na: 1\n",
+    "comment_with_many_hashes": "# see " + ", ".join(f"#{i}" for i in range(2000)) + "\na: 1\n",
+    "many_comment_lines": "## x\n" * 2000 + "a: 1\n",
+    "spaced_hashes": "# " * 2500 + "\na: 1\n",
+    "long_line_of_block_header_comments": "a: '" + "| #" * 20000 + "' \nb: 1\n",
+    "long_line_of_block_headers_before_space_line": "a: '" + "| #" * 20000 + "'\n \nb: 1\n",
+    "many_space_only_lines": "a: |\n \n" + "  x\n \n" * 5000,
+}
+"""Texts on which the first guard regexes backtracked exponentially or quadratically.
+
+A 24-character ``#`` banner cost 1.4 s and doubled with every ``#``; 8,000 ``| #`` on one
+line cost 1.4 s and quadrupled with every doubling. The budget below is generous: each
+of these now takes a few milliseconds.
+"""
+
+_GUARD_TIMING_PROGRAM = """
+import json, sys, time
+from softschema._portable import _needs_pure_parser
+timings = {}
+for name, text in json.load(sys.stdin).items():
+    start = time.perf_counter()
+    routed = _needs_pure_parser(text)
+    timings[name] = (time.perf_counter() - start, routed)
+json.dump(timings, sys.stdout)
+"""
+
+
+def test_the_guard_is_bounded_on_adversarial_inputs() -> None:
+    """Every adversarial text is classified within the budget, in a process that can time out.
+
+    A separate process, because the regexes this pins hung for years on these inputs: a
+    regression must fail the test, not stall the suite.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", _GUARD_TIMING_PROGRAM],
+        input=json.dumps(ADVERSARIAL_GUARD_INPUTS),
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    timings = json.loads(result.stdout)
+    slow = {name: seconds for name, (seconds, _) in timings.items() if seconds > 2.0}
+    assert not slow, slow
+    routed = {name: routed for name, (_, routed) in timings.items()}
+    assert routed == {
+        "hash_banner": False,
+        "comment_with_many_hashes": False,
+        "many_comment_lines": False,
+        "spaced_hashes": False,
+        "long_line_of_block_header_comments": False,
+        "long_line_of_block_headers_before_space_line": True,
+        "many_space_only_lines": True,
+    }
+
+
+def test_the_guard_cost_grows_linearly_with_the_input() -> None:
+    """Ten times the input costs well under a hundred times the time, for each adversarial shape."""
+    shapes = {
+        "hash_banner": lambda n: "#" * n + "\na: 1\n",
+        "comment_lines": lambda n: "## x\n" * n + "a: 1\n",
+        "block_header_comments": lambda n: "a: '" + "| #" * n + "' \nb: 1\n",
+    }
+    for name, shape in shapes.items():
+        small = _time_guard(shape(2000))
+        large = _time_guard(shape(20000))
+        # Timer resolution and scheduling noise dominate the small run, so give it a floor.
+        assert large < 100 * max(small, 0.001), (name, small, large)
+
+
+def _time_guard(text: str) -> float:
+    start = time.perf_counter()
+    _portable._needs_pure_parser(text)
+    return time.perf_counter() - start
+
+
 # --- Which parser runs ---------------------------------------------------------------------
 
 
@@ -574,6 +667,8 @@ C_FIRST = {
     "flow_json_like_mapping": '{"a": 1, "b": [true, null]}  # trailing comment\n',
     "nested_block_scalar_comment_line": "a: |\n  x\n# c\nb: 1\n",
     "ellipsis_and_times": "a: and so on...\nt: 12:30\nu: http://example.com/x\n",
+    "banner_comment": "#" * 40 + "\n# Movie page record\n" + "#" * 40 + "\ntitle: x\n",
+    "comment_with_block_indicator": "# see | and > below\na: |\n  x\n",
 }
 
 
@@ -689,6 +784,33 @@ def test_mode_is_pure_when_the_c_extension_is_absent(monkeypatch: pytest.MonkeyP
 def test_mode_reports_the_c_parser_when_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(PURE_ENV, raising=False)
     assert softschema.yaml_parser_mode() == "c-first"
+
+
+@requires_c
+def test_the_installed_c_parser_is_the_checked_libyaml_build() -> None:
+    """The dev group's clib bundles the libyaml the guards were derived for, so C-first runs."""
+    module = sys.modules[YAML(typ="safe").Parser.__module__]
+    assert _portable._libyaml_version(module) == _portable.CHECKED_LIBYAML_VERSION
+    assert _portable._c_parser_is_checked()
+
+
+@requires_c
+def test_another_libyaml_build_keeps_every_text_on_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_portable, "CHECKED_LIBYAML_VERSION", "0.2.5")
+    assert not _portable._c_parser_is_checked()
+
+
+@requires_c
+def test_an_unchecked_ruamel_release_keeps_every_text_on_pure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_portable, "CHECKED_RUAMEL_VERSIONS", ((9, 0), (9, 1)))
+    assert not _portable._c_parser_is_checked()
+
+
+def test_no_libyaml_version_without_the_extension() -> None:
+    assert _portable._libyaml_version(None) is None
+    assert _portable._libyaml_version(object()) is None
 
 
 # --- The compiled-schema writer does not depend on the extension ----------------------------

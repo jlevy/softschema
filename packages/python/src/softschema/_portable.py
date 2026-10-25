@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import date
 from io import StringIO
@@ -120,6 +121,26 @@ def parse_yaml(text: str) -> Any:
     return value
 
 
+CHECKED_RUAMEL_VERSIONS = ((0, 18), (0, 20))
+"""The ruamel.yaml releases, as a ``[lower, upper)`` range, whose reader, scanner and
+resolver both fast readers were derived from and compared against.
+
+The JSON path's guards encode where ruamel's YAML 1.2 reading can differ from strict
+``json``: its printable set, its line-break set, the 1024-character implicit-key limit.
+The C-first guards encode where libyaml accepts what pure ruamel rejects. A later
+release could move any of those. Outside this range every text takes pure ruamel, which
+costs only speed, instead of keeping a reading that the installed ruamel may no longer
+share. Widen the range only after rerunning ``test_json_fast_path.py``,
+``test_c_parser.py`` and ``devtools/yaml_parser_fuzz.py`` against the new release.
+"""
+
+
+def _ruamel_is_checked(version: tuple[int, ...] = ruamel.yaml.version_info) -> bool:
+    """Whether ``version`` of ruamel.yaml is inside :data:`CHECKED_RUAMEL_VERSIONS`."""
+    lower, upper = CHECKED_RUAMEL_VERSIONS
+    return lower <= tuple(version[:2]) < upper
+
+
 PURE_YAML_ENV = "SOFTSCHEMA_PURE_YAML"
 """Environment variable that, set to anything but empty or ``0``, turns off the C parser.
 
@@ -127,8 +148,36 @@ For diagnosis: results are the same either way, so this only changes speed and w
 parser :func:`yaml_parser_mode` reports. It is read on every parse.
 """
 
-_C_PARSER_AVAILABLE = YAML(typ="safe").Parser is not RuamelParser
-"""Whether ruamel found its optional C extension (``ruamel.yaml.clib``) at import."""
+CHECKED_LIBYAML_VERSION = "0.1.7"
+"""The libyaml build, as ``ruamel.yaml.clib`` reports it, that the C-first guards were
+derived for and searched against.
+
+:func:`_needs_pure_parser` lists the shapes on which this libyaml accepts what pure
+ruamel rejects, or reads a different value. Another libyaml build could add a shape, so
+the C parser is used only when it is this build on a checked ruamel release
+(:data:`CHECKED_RUAMEL_VERSIONS`); :func:`yaml_parser_mode` reports ``"pure"`` otherwise.
+Widen either only after rerunning ``devtools/yaml_parser_fuzz.py`` and
+``test_c_parser.py`` against the new build.
+"""
+
+
+def _c_parser_is_checked() -> bool:
+    """Whether ruamel found a C parser, and it is the build the guards were derived for."""
+    parser = YAML(typ="safe").Parser
+    if parser is RuamelParser or not _ruamel_is_checked():
+        return False
+    return _libyaml_version(sys.modules.get(parser.__module__)) == CHECKED_LIBYAML_VERSION
+
+
+def _libyaml_version(module: Any) -> str | None:
+    """The libyaml version a ``ruamel.yaml.clib`` module reports, or ``None``."""
+    get_version_string = getattr(module, "get_version_string", None)
+    version = get_version_string() if callable(get_version_string) else None
+    return version if isinstance(version, str) else None
+
+
+_C_PARSER_AVAILABLE = _c_parser_is_checked()
+"""Whether :func:`parse_yaml` may use ruamel's C extension (``ruamel.yaml.clib``) at all."""
 
 
 def yaml_parser_mode() -> Literal["c-first", "pure"]:
@@ -168,18 +217,50 @@ characters; libyaml rejects a longer one too. The pattern starts at the ``#`` so
 search skips ahead to each one.
 """
 
-_BLOCK_SPACE_LINE = re.compile(r"[|>][-+0-9]*(?: +#[^\r\n]*| *)(?:\r\n?|\n) +(?:\r\n?|\n)")
-"""A block scalar header followed by a line of only spaces.
+_SPACE_ONLY_LINE = re.compile(r"(?:\r\n?|\n)( ++)(?=\r|\n)")
+"""A line of only spaces, which is where a block scalar can read differently (below).
 
-When such a line has fewer spaces than a later leading line, pure ruamel reports "more
-indented follow up line than first in a block scalar"; libyaml reads the scalar.
+Such lines are rare, so the search finds them first and then looks at the line before
+each one. The possessive ``++`` means the engine never retries a shorter run of spaces,
+so the whole search is one pass over the text.
 """
 
-_ROOT_BLOCK_SCALAR = re.compile(r"(?:[ \r\n]|#[^\r\n]*|(?:---|\.\.\.)(?=[ \r\n]|\Z))*[|>]")
+_BLOCK_HEADER_AT_LINE_END = re.compile(r"[|>][-+0-9]{0,2}(?: ++#| *+\Z)")
+"""A block scalar header ending a line: ``|`` or ``>``, up to two indicator characters,
+then only spaces, or a space and a comment.
+
+libyaml rejects a header with more than two indicators, so ``{0,2}`` loses nothing.
+Each ``|`` or ``>`` costs only the spaces after it, never the rest of the line, which
+keeps a line full of ``| #`` linear.
+"""
+
+
+def _block_scalar_before_space_line(text: str) -> bool:
+    """Whether a block scalar header is followed by a line of only spaces.
+
+    When such a line has fewer spaces than a later leading line, pure ruamel reports "more
+    indented follow up line than first in a block scalar"; libyaml reads the scalar.
+    """
+    for match in _SPACE_ONLY_LINE.finditer(text):
+        line_end = match.start()
+        line_start = max(text.rfind("\n", 0, line_end), text.rfind("\r", 0, line_end)) + 1
+        if _BLOCK_HEADER_AT_LINE_END.search(text, line_start, line_end) is not None:
+            return True
+    return False
+
+
+_ROOT_BLOCK_SCALAR = re.compile(r"(?:[ \r\n]++|#[^\r\n]*+|(?:---|\.\.\.)(?=[ \r\n]|\Z))*+[|>]")
 """A document that is a block scalar, after any blank lines, comments and markers.
 
 Its content may start at column zero, where libyaml reads a ``#`` line as a comment and
 pure ruamel as content.
+
+Every quantifier is possessive (``++``, ``*+``): a run of whitespace, a comment to the
+end of its line, or a marker is consumed once and never split. Without that, the
+pattern's nested repetition tried every way of splitting each comment line before
+failing on an ordinary document, which doubled the cost with every ``#`` in a leading
+banner comment. One consequence: a ``|`` or ``>`` inside a comment is part of the
+comment, as it should be, and no longer routes the text to pure ruamel.
 """
 
 _FLOW_VALUE_COLON = re.compile(r":(?<=[ \r\n\"']:)(?![ \r\n])")
@@ -218,8 +299,12 @@ def _needs_pure_parser(text: str) -> bool:
     ``%YAML 1.1`` when values are resolved, so ``yes`` would stay a string and ``017``
     an integer seventeen.
 
-    Each check is a substring test or a search that skips ahead to a literal character,
-    so the whole guard costs a few percent of a C parse.
+    Each check is a substring test or a single pass over the text: the regexes either
+    start at a literal character and skip ahead between candidates, or use possessive
+    quantifiers so that nothing is rescanned, and the space-line check looks at the rare
+    lines of only spaces first. The cost is linear in the text and a few percent of a C
+    parse; ``test_c_parser.py`` pins it on adversarial inputs such as a long ``#`` banner
+    and a line of thousands of ``| #``.
     """
     if "\t" in text:
         return True
@@ -229,7 +314,7 @@ def _needs_pure_parser(text: str) -> bool:
         return True
     if _BLOCK_HEADER_COMMENT.search(text) is not None:
         return True
-    if (" \n" in text or " \r" in text) and _BLOCK_SPACE_LINE.search(text) is not None:
+    if (" \n" in text or " \r" in text) and _block_scalar_before_space_line(text):
         return True
     if _FLOW_VALUE_COLON.search(text) is not None:
         return True
@@ -361,23 +446,6 @@ def _check_value(root: Any) -> None:
 
 _NOT_JSON: Any = object()
 """What :func:`_parse_json_subset` returns for a text it leaves to ruamel."""
-
-CHECKED_RUAMEL_VERSIONS = ((0, 18), (0, 20))
-"""The ruamel.yaml releases, as a ``[lower, upper)`` range, whose reader, scanner and
-resolver the JSON path's guards were derived from and compared against.
-
-The guards encode where ruamel's YAML 1.2 reading can differ from strict ``json``: its
-printable set, its line-break set, the 1024-character implicit-key limit. A later release
-could move any of those. Outside this range every text takes the ruamel path, which costs
-only speed, instead of keeping a reading that the installed ruamel may no longer share.
-Widen the range only after rerunning ``test_json_fast_path.py`` against the new release.
-"""
-
-
-def _ruamel_is_checked(version: tuple[int, ...] = ruamel.yaml.version_info) -> bool:
-    """Whether ``version`` of ruamel.yaml is inside :data:`CHECKED_RUAMEL_VERSIONS`."""
-    lower, upper = CHECKED_RUAMEL_VERSIONS
-    return lower <= tuple(version[:2]) < upper
 
 
 def _json_path_enabled(version: tuple[int, ...]) -> bool:
