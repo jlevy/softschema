@@ -43,6 +43,7 @@ Common commands:
 uv sync --all-extras
 uv run python devtools/lint.py --check
 uv run pytest
+uv run pytest -m slow
 uv build
 uv run softschema docs --list
 uv run softschema docs --list --json
