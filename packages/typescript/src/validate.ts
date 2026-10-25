@@ -159,8 +159,8 @@ function readFrontmatterDoc(path: string): ParsedDocument {
  * the document in error messages.
  *
  * Lines are split on `"\n"` alone, with a trailing `"\r"` dropped, the same rule
- * `splitFrontmatter` and the Python reader apply. U+2028, U+2029 and U+0085 are content to
- * the YAML engines and so stay inside their scalar here.
+ * `splitFrontmatter` and the Python reader apply. U+2028, U+2029 and U+0085 stay inside
+ * their line here, so the portable preflight sees them and rejects them as raw text.
  */
 export function parseFrontmatterText(text: string, source = "<text>"): ParsedDocument {
   const lines = text.split(/\r?\n/);

@@ -31,6 +31,7 @@ from softschema import (
 )
 from softschema import validate as validate_module
 from softschema._portable import PortableInputError, parse_yaml
+from softschema.validate import parse_frontmatter_text
 
 
 class SampleModel(BaseModel):
@@ -616,6 +617,21 @@ def test_shared_frontmatter_vectors(tmp_path: Path) -> None:
         assert result.ok, case["id"]
         if "expected" in case:
             assert result.values == case["expected"], case["id"]
+
+
+def test_frontmatter_reader_keeps_unicode_separators_inside_their_line() -> None:
+    """The fence scan splits on ``"\\n"`` alone, so the portable preflight sees a raw separator.
+
+    With ``str.splitlines()`` the U+2028 below would end a line, the block would be rejoined
+    with a real newline, and the scalar would parse as the folded value ``"x y"`` where
+    TypeScript rejects the document. The shared vectors cannot carry this case, because the
+    frontmatter vectors are all expected to validate; the golden corpus pins the CLI side.
+    """
+    with pytest.raises(PortableInputError) as excinfo:
+        parse_frontmatter_text("---\na: x\u2028y\n---\nbody\n", source="doc.md")
+    assert excinfo.value.code == "yaml_parse_error"
+    assert "#x2028 at line 1, column 5" in str(excinfo.value)
+    assert str(excinfo.value).startswith("`doc.md`: ")
 
 
 def test_shared_artifact_input_vectors(tmp_path: Path) -> None:

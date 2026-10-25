@@ -1070,10 +1070,11 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
 
     Lines are split on ``"\n"`` alone, with a trailing ``"\r"`` dropped, the same rule
     :func:`split_frontmatter` and the TypeScript reader apply. ``str.splitlines()`` would
-    also break on U+2028, U+2029, U+0085, form feed and the ASCII separators, which the
-    YAML engines treat as content; a scalar containing one would then be cut into lines
-    the engine cannot parse, and the two runtimes would reach different verdicts on the
-    same file.
+    also break on U+2028, U+2029, U+0085, form feed and the ASCII separators. The portable
+    preflight rejects every one of those as raw text; splitting on them would rejoin the
+    block with real newlines, hide them from that check, and let a scalar that TypeScript
+    rejects parse here as a folded multi-line value, so the two runtimes would reach
+    different verdicts on the same file.
     """
     lines = [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
     if not lines or lines[0].rstrip() != "---":

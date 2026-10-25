@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import date
 from io import StringIO
@@ -98,8 +99,50 @@ def read_utf8(path: Path) -> str:
     return text[1:] if text.startswith(BOM) else text
 
 
+_NON_PORTABLE_CHARACTER = re.compile(
+    "[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+)
+"""A raw character the two YAML engines read differently.
+
+The class is YAML 1.2 ``c-printable`` with the three Unicode line separators taken out.
+ruamel rejects everything outside ``c-printable`` (its ``Reader.NON_PRINTABLE``) and the
+``yaml`` package reads it as content; for U+0085, U+2028 and U+2029 ruamel follows YAML
+1.1 and treats them as line breaks, folding a NEL in a flow scalar to a space and breaking
+a block scalar or a comment into a parse error, while the ``yaml`` package again reads
+them as content. Neither reading can be reproduced in the other engine, so the portable
+rule is to accept none of them raw. Every one of them can be written as a double-quoted
+escape (``"\\f"``, ``"\\x7f"``, ``"\\N"``, ``"\\L"``, ``"\\P"``), which both engines decode
+identically. Keep this class identical to ``NON_PORTABLE_CHARACTER`` in ``portable.ts``.
+"""
+
+
+def check_portable_text(text: str) -> None:
+    """Reject the first raw character in ``text`` that the engines would read differently.
+
+    Runs before the engine sees the text, on the whole YAML text the reader was handed:
+    the frontmatter block or the entire pure-yaml document, comments and keys included.
+    The line and column are counted within that text, as the engines count them. Raising
+    here, with one message in both runtimes, is what keeps a mis-decoded cp1252 ellipsis
+    (which arrives as U+0085) from silently becoming a space in one runtime and staying a
+    character in the other.
+    """
+    match = _NON_PORTABLE_CHARACTER.search(text)
+    if match is None:
+        return
+    index = match.start()
+    line = text.count("\n", 0, index) + 1
+    column = index - (text.rfind("\n", 0, index) + 1) + 1
+    raise PortableInputError(
+        "yaml_parse_error",
+        f"unacceptable character #x{ord(match.group()):04x} at line {line}, column {column}: "
+        "non-printable and line separator characters are not allowed as raw text; "
+        "write one as a double-quoted escape",
+    )
+
+
 def parse_yaml(text: str) -> Any:
     """Parse YAML with the existing library after a representation preflight."""
+    check_portable_text(text)
     yaml = YAML(typ="safe")
     yaml.Constructor = _PortableConstructor
     stack: list[tuple[str, bool]] = []

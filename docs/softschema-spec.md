@@ -139,6 +139,21 @@ Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative
 duplicate keys, aliases, anchors, merge keys, explicit tags, non-string keys, lone
 surrogates, and non-finite numbers are rejected.
 
+Raw characters that the host YAML engines read differently are rejected before parsing,
+as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls
+other than tab, line feed, and carriage return; DEL; the C1 controls; U+FFFE and U+FFFF)
+and the line separators U+0085, U+2028, and U+2029. One engine rejects the first group
+and treats the second as YAML 1.1 line breaks, folding a next-line character in a flow
+scalar to a space and breaking a block scalar or a comment; the other reads all of them
+as content. Neither reading can be reproduced in the other engine, so neither is
+portable. The check covers the whole YAML text the reader is handed, the frontmatter
+block or the entire pure-yaml document, comments and keys included; the Markdown body of
+a frontmatter-md artifact is not checked.
+Any of these characters may be written as an escape inside a double-quoted scalar
+(`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`, `"\u2028"`), which both engines decode
+identically. The diagnostic names the character and its line and column within that YAML
+text.
+
 Date- and timestamp-shaped plain scalars without an explicit tag decode as strings.
 A conforming implementation must preserve the decoded scalar content rather than
 construct or canonicalize a host-language date or timestamp value.

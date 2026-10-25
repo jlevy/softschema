@@ -51,6 +51,21 @@ version number.
   Both readers now split on `\n` alone and drop a trailing `\r`, the rule the repair
   fence scan already used.
 
+- **Raw control and line-separator characters are a portable input error in both
+  runtimes.** The two YAML engines read them differently: ruamel rejects every character
+  outside YAML 1.2 `c-printable` (form feed, vertical tab, the ASCII separators, DEL,
+  the C1 controls) and treats U+0085, U+2028, and U+2029 as YAML 1.1 line breaks,
+  folding a NEL in a flow scalar to a space and breaking a block scalar or a comment
+  into a parse error, while the `yaml` package reads all of them as content.
+  So a form feed in a frontmatter scalar failed Python `validate` and passed TypeScript,
+  and a mis-decoded cp1252 ellipsis (U+0085) silently became a space in Python and
+  stayed a character in TypeScript.
+  Both runtimes now reject any of these characters as raw text anywhere in the YAML they
+  read (the frontmatter block or the pure-yaml document, comments and keys included)
+  with one `yaml_parse_error` message naming the character, line, and column; written as
+  a double-quoted escape (`"\f"`, `"\N"`, `"\L"`), every one of them decodes identically
+  in both. The spec records the rule under Portable YAML Values.
+
 ### Security
 
 - **The `fast-uri` override is raised to 3.1.9.** It closes seven advisories against

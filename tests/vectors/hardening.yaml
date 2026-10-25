@@ -19,22 +19,15 @@ frontmatter:
       ---
       body
     expected: { notes: "first line\n---\nmore text\n", count: 3 }
-  # U+2028, U+2029 and U+0085 are not line breaks to the fence scan: both readers split on
-  # "\n" alone. Python's `str.splitlines()` breaks on all three and would cut the scalar
-  # into lines the engine cannot parse, so the two runtimes would reach different verdicts
-  # on the same file. A case without `expected` asserts the verdict alone.
-  - id: unicode_line_separators_in_scalar
-    text: "---\nmovie:\n  notes: line separator paragraph\n  count: 3\n---\nbody\n"
-    expected: { notes: "line separator paragraph", count: 3 }
-  - id: unicode_line_separators_in_quoted_scalar
-    text: "---\nmovie:\n  notes: \"a b c\"\n---\nbody\n"
-    expected: { notes: "a b c" }
-  # U+0085 is what a cp1252 ellipsis becomes when agent output is mis-decoded, so it is the
-  # separator most likely to be met. Both engines read it, but they disagree on the value:
-  # ruamel folds it into a space (a YAML 1.1 line break) and the `yaml` package keeps it as
-  # content (YAML 1.2), so only the verdict is shared here.
-  - id: next_line_in_scalar
-    text: "---\nmovie:\n  notes: before\u0085after\n  count: 3\n---\nbody\n"
+  # U+0085, U+2028 and U+2029 may appear only as double-quoted escapes (`\N`, `\L`, `\P`),
+  # which both engines decode to the same characters; raw, the portable preflight rejects
+  # them (see `portable_values`). The fence scan must not split on them either: both readers
+  # split on "\n" alone. Python's `str.splitlines()` would cut a raw one out of its line and
+  # rejoin the block with real newlines, hiding it from the preflight and folding the scalar
+  # into a multi-line value where TypeScript rejects the file.
+  - id: escaped_line_separators_in_scalar
+    text: "---\nmovie:\n  notes: \"line\\Lseparator\\Pparagraph\\Nnext\"\n  count: 3\n---\nbody\n"
+    expected: { notes: "line\u2028separator\u2029paragraph\u0085next", count: 3 }
 
 portable_values:
   - id: plain_values
@@ -67,6 +60,21 @@ portable_values:
   - { id: custom_tag, text: "value: !thing hello", valid: false, code: yaml_custom_tag }
   - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
   - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
+  # Raw characters the two engines read differently are rejected before parsing, in both
+  # runtimes: everything outside YAML 1.2 `c-printable` (ruamel rejects these itself; the
+  # `yaml` package reads them as content), plus U+0085, U+2028 and U+2029, which ruamel
+  # treats as YAML 1.1 line breaks (a NEL folds to a space in a flow scalar, and any of the
+  # three breaks a block scalar or a comment) and the `yaml` package treats as content.
+  # Written as double-quoted escapes they decode identically, so that is the portable form.
+  - { id: raw_form_feed, text: "value: a\fb", valid: false, code: yaml_parse_error }
+  - { id: raw_vertical_tab_in_comment, text: "value: 1 # note\vmore", valid: false, code: yaml_parse_error }
+  - { id: raw_delete_in_key, text: "a\x7fb: 1", valid: false, code: yaml_parse_error }
+  - { id: raw_next_line, text: "value: before\x85after", valid: false, code: yaml_parse_error }
+  - { id: raw_next_line_in_quoted_scalar, text: "value: \"before\x85after\"", valid: false, code: yaml_parse_error }
+  - { id: raw_line_separator, text: "value: a\u2028b", valid: false, code: yaml_parse_error }
+  - { id: raw_paragraph_separator_in_block_scalar, text: "value: |\n  a\u2029b\n", valid: false, code: yaml_parse_error }
+  - { id: escaped_control_characters, text: "value: \"a\\fb\\vc\\x7fd\"", valid: true, expected: { value: "a\fb\vc\x7fd" } }
+  - { id: escaped_line_separators, text: "value: \"a\\Nb\\Lc\\Pd\"", valid: true, expected: { value: "a\x85b\u2028c\u2029d" } }
   - { id: negative_zero, text: "value: -0.0", valid: false, code: number_negative_zero }
   - { id: depth_63, generated: deep_sequence, depth: 63, valid: true }
   - { id: depth_64, generated: deep_sequence, depth: 64, valid: false, code: yaml_limit }

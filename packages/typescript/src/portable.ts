@@ -65,7 +65,51 @@ export function readUtf8(path: string): string {
   return text.startsWith(BOM) ? text.slice(1) : text;
 }
 
+/**
+ * A raw character the two YAML engines read differently.
+ *
+ * The class is YAML 1.2 `c-printable` with the three Unicode line separators taken out.
+ * ruamel rejects everything outside `c-printable` (its `Reader.NON_PRINTABLE`) and the
+ * `yaml` package reads it as content; for U+0085, U+2028 and U+2029 ruamel follows YAML
+ * 1.1 and treats them as line breaks, folding a NEL in a flow scalar to a space and
+ * breaking a block scalar or a comment into a parse error, while the `yaml` package again
+ * reads them as content. Neither reading can be reproduced in the other engine, so the
+ * portable rule is to accept none of them raw. Every one of them can be written as a
+ * double-quoted escape (`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`), which both engines
+ * decode identically. Keep this class identical to `_NON_PORTABLE_CHARACTER` in
+ * `_portable.py`.
+ */
+const NON_PORTABLE_CHARACTER =
+  /[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]/u;
+
+/**
+ * Reject the first raw character in `text` that the engines would read differently.
+ *
+ * Runs before the engine sees the text, on the whole YAML text the reader was handed: the
+ * frontmatter block or the entire pure-yaml document, comments and keys included. The line
+ * and column are counted within that text, in code points, as the engines count them.
+ * Raising here, with one message in both runtimes, is what keeps a mis-decoded cp1252
+ * ellipsis (which arrives as U+0085) from silently becoming a space in one runtime and
+ * staying a character in the other. Mirrors the Python `check_portable_text`.
+ */
+export function checkPortableText(text: string): void {
+  const match = NON_PORTABLE_CHARACTER.exec(text);
+  if (match === null) return;
+  const before = text.slice(0, match.index);
+  const lineStart = before.lastIndexOf("\n") + 1;
+  const line = (before.match(/\n/g)?.length ?? 0) + 1;
+  const column = [...before.slice(lineStart)].length + 1;
+  const codePoint = (match[0].codePointAt(0) ?? 0).toString(16).padStart(4, "0");
+  throw new PortableInputError(
+    "yaml_parse_error",
+    `unacceptable character #x${codePoint} at line ${line}, column ${column}: ` +
+      "non-printable and line separator characters are not allowed as raw text; " +
+      "write one as a double-quoted escape",
+  );
+}
+
 export function parsePortableYaml(text: string): unknown {
+  checkPortableText(text);
   let document: ReturnType<typeof parseDocument>;
   try {
     document = parseDocument(text, { uniqueKeys: true });
