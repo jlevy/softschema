@@ -216,6 +216,34 @@ def test_pipeline_unrepairable_document_matches_plain_validate(tmp_path: Path) -
     assert _read(path) == "---\nthing: [unclosed\n---\nBody.\n"
 
 
+def test_round_trip_emitter_leaves_other_round_trip_instances_alone() -> None:
+    """``round_trip_yaml`` pins how a null is spelled, for its own instances only.
+
+    Regression guard: the null representer was registered through the instance, and
+    ``add_representer`` is a classmethod, so the registration landed on ruamel's shared
+    ``RoundTripRepresenter``. After one repair, every plain ``YAML(typ="rt")`` in the
+    process — a host application's own emitter included — wrote ``null`` where ruamel
+    writes nothing. The shared class, and a stock emitter built after softschema ran, must
+    both come out unchanged.
+    """
+    from io import StringIO
+
+    from ruamel.yaml.representer import RoundTripRepresenter
+
+    from softschema._portable import dump_round_trip, round_trip_yaml
+
+    document = {"kept": None, "items": [None, 1]}
+    yaml = round_trip_yaml()
+    assert "null" in dump_round_trip(yaml, document)
+
+    # ruamel spells a nested null as an empty value; only softschema's emitter says `null`.
+    buffer = StringIO()
+    YAML(typ="rt").dump(document, buffer)
+    assert "null" not in buffer.getvalue()
+    assert RoundTripRepresenter.yaml_representers[type(None)] is RoundTripRepresenter.represent_none
+    assert type(yaml.representer) is not RoundTripRepresenter
+
+
 def test_pipeline_missing_file_is_an_input_error(tmp_path: Path) -> None:
     result = repair_and_validate_artifact(
         tmp_path / "nope.md", contract=Contract(id="test:Thing"), write=True

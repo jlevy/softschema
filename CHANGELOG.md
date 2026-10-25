@@ -6,6 +6,19 @@ version number.
 
 ## Unreleased
 
+### Fixed
+
+- **`repair` no longer changes how other ruamel emitters spell `null`.** The round-trip
+  emitter behind `repair` registered its null representer through a stock
+  `YAML(typ="rt")` instance, and ruamel’s `add_representer` writes to the shared
+  `RoundTripRepresenter` class.
+  After the first repair, every round-trip emitter in the same process — a host
+  application’s own included — wrote `null` where ruamel writes an empty value.
+  The representer now lives on a softschema-private subclass, so nothing outside
+  softschema is touched.
+  Python only: the TypeScript emitter is configured per call and has no shared state to
+  leak.
+
 ### Security
 
 - **The `fast-uri` override is raised to 3.1.9.** It closes seven advisories against

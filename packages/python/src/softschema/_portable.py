@@ -20,6 +20,7 @@ from ruamel.yaml.events import (
     SequenceStartEvent,
 )
 from ruamel.yaml.nodes import ScalarNode
+from ruamel.yaml.representer import RoundTripRepresenter
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 """Largest integer that survives a round trip through a JS number."""
@@ -301,6 +302,24 @@ def _line_end(text: str, start: int) -> tuple[int, int] | None:
     return index, index + 1
 
 
+class _RoundTripRepresenter(RoundTripRepresenter):
+    """Round-trip representer overrides scoped to softschema emitter instances.
+
+    ``add_representer`` is a classmethod that writes into the receiving class's registry.
+    Calling it through a stock ``YAML(typ="rt")`` instance therefore edits ruamel's shared
+    ``RoundTripRepresenter``, and with it every round-trip emitter in the process — a host
+    application's own included, which started spelling its nulls softschema's way after
+    the first repair. A subclass copies the inherited registry on its first registration,
+    so the override stops here.
+    """
+
+
+_RoundTripRepresenter.add_representer(
+    type(None),
+    lambda dumper, _data: dumper.represent_scalar("tag:yaml.org,2002:null", "null"),
+)
+
+
 def round_trip_yaml() -> YAML:
     """A ruamel round-trip parser/emitter that preserves how the author wrote things.
 
@@ -319,13 +338,10 @@ def round_trip_yaml() -> YAML:
     exactly the unasked-for diff round-trip mode exists to prevent.
     """
     yaml = YAML(typ="rt")
+    yaml.Representer = _RoundTripRepresenter
     yaml.preserve_quotes = True
     yaml.width = 4096  # never re-wrap an author's long line
     yaml.indent(mapping=2, sequence=4, offset=2)
-    yaml.representer.add_representer(
-        type(None),
-        lambda dumper, _data: dumper.represent_scalar("tag:yaml.org,2002:null", "null"),
-    )
     return yaml
 
 
