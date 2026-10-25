@@ -43,6 +43,9 @@ dev = [
     "pytest-sugar>=1.1.1",
     "ruff>=0.15.12",
     "rich>=15.0.0",
+    # ruamel's optional C extension, so the suite also runs with the C parser active.
+    # softschema itself never requires it; see `yaml_parser_mode`.
+    "ruamel.yaml.clib>=0.2.15; platform_python_implementation == 'CPython'",
 ]
 
 [tool.uv]
@@ -174,3 +177,10 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["packages/python/tests"]
 pythonpath = ["."]
+# The default run is the inner loop and stays fast. Tests marked `slow` are costly
+# evidence (corpus, generated-document and code-point comparisons that take seconds
+# each); CI runs them in their own step with `uv run pytest -m slow`.
+markers = [
+    "slow: costly evidence excluded from the default run; `uv run pytest -m slow` runs it",
+]
+addopts = "-m 'not slow'"
