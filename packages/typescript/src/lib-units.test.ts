@@ -881,6 +881,51 @@ describe("compile: write mode + build", () => {
       "canonical JSON requires finite numbers; the default at #/properties/f is NaN",
     );
   });
+  test("keeps Zod's output for id'd aliases and wrappers without a transform", () => {
+    // Only a key Zod dropped is restored or settled. These shapes carry no transform, so each
+    // compiles as Zod writes it, though a `$ref` names an entry with the same default.
+    const compiled = (schema: z.ZodType) => {
+      const out = buildCanonicalSchema(z.strictObject({ f: schema }), "x:Alias/v1").schema;
+      return {
+        f: (out.properties as { f: unknown }).f,
+        defs: out.$defs as Record<string, unknown>,
+      };
+    };
+    const R = () => z.string().default("x").meta({ id: "AliasR" });
+    const Rdef = { default: "x", title: "AliasR", type: "string" };
+    const Q = () => R().describe("q").meta({ id: "AliasQ" });
+    const Qdef = { $ref: "#/$defs/AliasR", default: "x", description: "q", type: "string" };
+
+    // A wrapper between the field and its `$ref` keeps the field's own default.
+    expect(compiled(R().optional().default("x"))).toEqual({
+      f: { $ref: "#/$defs/AliasR", default: "x" },
+      defs: { AliasR: Rdef },
+    });
+    // An alias without the default refers on to the entry that carries it.
+    expect(compiled(R().default("x").meta({ id: "AliasP" }).describe("d"))).toEqual({
+      f: { $ref: "#/$defs/AliasP", description: "d" },
+      defs: { AliasP: { $ref: "#/$defs/AliasR" }, AliasR: Rdef },
+    });
+    // An alias that keeps the default keeps it in `$defs`, and the field leaves it out.
+    expect(compiled(Q().describe("d"))).toEqual({
+      f: { $ref: "#/$defs/AliasQ", description: "d" },
+      defs: { AliasQ: Qdef, AliasR: Rdef },
+    });
+    expect(compiled(Q().default("x"))).toEqual({
+      f: { $ref: "#/$defs/AliasQ" },
+      defs: { AliasQ: Qdef, AliasR: Rdef },
+    });
+    // Three levels: the outer alias keeps its default because the one between does not.
+    const C2 = R().default("x").meta({ id: "AliasC1" }).default("x").meta({ id: "AliasC2" });
+    expect(compiled(C2.describe("b"))).toEqual({
+      f: { $ref: "#/$defs/AliasC2", description: "b" },
+      defs: {
+        AliasC1: { $ref: "#/$defs/AliasR" },
+        AliasC2: { $ref: "#/$defs/AliasC1", default: "x" },
+        AliasR: Rdef,
+      },
+    });
+  });
   test("rejects a default or catch value canonical JSON cannot carry, as Python does", () => {
     const compile = (field: z.ZodType) =>
       buildCanonicalSchema(z.strictObject({ f: field }), "x:NonJson/v1");
@@ -921,6 +966,18 @@ describe("compile: write mode + build", () => {
     expect(() => compile(z.number().meta({ default: Number.NaN }))).toThrow(
       "the default at #/properties/f is NaN",
     );
+    // Authored examples are checked the same way, as Python's compiler checks them.
+    expect(() => compile(z.number().meta({ examples: [Number.NaN] }))).toThrow(
+      "canonical JSON requires finite numbers; the examples at #/properties/f is NaN",
+    );
+    expect(() =>
+      compile(
+        z
+          .number()
+          .transform(toNumber)
+          .meta({ examples: [1n] }),
+      ),
+    ).toThrow("canonical JSON cannot represent a BigInt; the examples at #/properties/f is 1n");
     // A Date fallback or restored default is written as its ISO string, as a `.default()`
     // Date already is and as Pydantic writes a datetime default.
     const epoch = new Date(0);

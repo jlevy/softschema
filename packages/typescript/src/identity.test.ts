@@ -74,6 +74,26 @@ describe("resource identity grammar", () => {
     }
   }, 30_000);
 
+  test("a URN reference Ajv cannot serialize is named even beside another malformed one", () => {
+    // Ajv fails on the URN without a namespace identifier. The `http://[::1` reference
+    // visited before it raises a different error and is not the one reported.
+    const reasons = (schema: Record<string, unknown>) =>
+      (validateStructural({}, schema).errors as { reason?: unknown; message?: unknown }[]).map(
+        ({ reason, message }) => ({ reason, message }),
+      );
+    const properties = { b: { $ref: "urn:dir/item.json" }, a: { $ref: "http://[::1" } };
+    expect(reasons({ type: "object", properties })).toEqual([
+      {
+        reason: "reference",
+        message:
+          'reference "urn:dir/item.json" cannot be resolved: URN without nid cannot be serialized',
+      },
+    ]);
+    // A malformed reference that Ajv itself fails on is not reclassified.
+    expect(reasons({ properties: { a: { $ref: "http://[::1" } } })).toEqual([
+      { reason: "compilation", message: 'URI path must start with "/" when authority is present.' },
+    ]);
+  });
   test("with several invalid identities, both runtimes quote the same one", () => {
     for (const { schema, resources, message } of vectors.order) {
       const result = validateStructural("x", structuredClone(schema), { resources });

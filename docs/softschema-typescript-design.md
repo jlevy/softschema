@@ -118,10 +118,18 @@ the Pydantic mirror (`Field(examples=[...])` or `json_schema_extra`) keeps it, s
 override restores those too.
 A schema’s own value wins over one it inherits from a transforming inner type, as it
 does without a transform.
-Zod also omits a field’s default when the `$defs` entry the field references carries the
-same value, and a restored value is left out in the same case.
-The compiler settles that once `$defs` is complete, so an id’d default compiles alike
-whether or not it transforms.
+Only a key Zod dropped is restored: one that is absent, or that holds a value inherited
+from a transforming inner type.
+A key Zod kept is left as Zod wrote it, so a schema without a transform keeps the
+`default` and `examples` Zod writes.
+Zod also leaves a key out of a `$ref` node when the entry the node refers to carries the
+same value, which only the finished `$defs` shows.
+A dropped key on a `$ref` node is therefore settled after compilation: it is left out
+when the first entry along the `$ref` chain that has the key carries the same value.
+Zod compares only the entry a node refers to directly and the entry of the schema it was
+cloned from, so an alias of an id’d default that restates its value can compile
+differently with a transform than without one.
+`test/compile-digests.test.ts` pins both behaviors over a corpus of shapes.
 
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler

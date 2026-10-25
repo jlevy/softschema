@@ -211,17 +211,24 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   A schema’s own value also wins over one it inherits from a transforming inner type, so
   `z.string().transform(f).default("a").default("b")` and its `.catch()` form compile
   with `default: "b"`, as they do without the transform.
-  As Zod does for any default, a field that references a `$defs` entry carrying the same
-  value leaves the value out, so an id’d default compiles alike whether or not it
-  transforms, for `.default()` and `.catch()`. The KitchenSink parity fixture now covers
-  a defaulted transform.
+  Only a value Zod dropped is restored, so a schema without a transform keeps the
+  `default` and `examples` Zod writes.
+  On a field that references a `$defs` entry, a restored value is left out when the
+  first entry along the `$ref` chain that has the key carries the same value, so
+  `X.describe("d")` compiles alike whether or not the id’d `X` transforms.
+  Zod compares only the entry a field refers to directly, so an alias of an id’d default
+  that restates its value, such as `R.optional().default("x")` or
+  `R.default("x").meta({ id })`, can compile differently with a transform than without
+  one; such shapes have no Pydantic mirror.
+  The KitchenSink parity fixture now covers a defaulted transform.
 - **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
   compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
   `default` used to compile to `default: null`, because Zod’s final JSON copy of the
   schema turns non-finite numbers into `null`. It now fails with
   `canonical JSON requires finite numbers` and the schema path of the value, as the
   Python compiler fails on a NaN or infinite default.
-  A BigInt `.catch()` value fails with a named error instead of Zod’s
+  An authored `examples` value is checked the same way.
+  A BigInt `.catch()` value or example fails with a named error instead of Zod’s
   `Error converting schema to JSON.` A `Date` value is still written as its ISO string.
 
 ### Security
@@ -296,7 +303,9 @@ A model with a `.default()` over a transforming schema, or an authored `default`
 the `default` or `examples` that 0.8.1 dropped under zod 4.4 and 4.6 (see Fixed).
 `compile --check` reports drift for such a model; recompile its committed schema.
 The new schema is the one its Pydantic mirror compiles to.
-The fix changes no other compiled schema, and no Python-compiled schema.
+The fix changes no compiled schema without a transform, and no Python-compiled schema.
+A `.catch()` whose value the referenced `$defs` entry already carries is included: it
+compiles to the bare `$ref` Zod writes, without the value beside it.
 
 ### Performance
 
