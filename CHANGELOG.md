@@ -4,6 +4,24 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### Security
+
+- **The `fast-uri` override is raised to 3.1.9.** It closes seven advisories against
+  3.1.6: two high-severity (authority injection through an unvalidated port in
+  serialization, and host confusion through an unclosed bracket in the authority), three
+  moderate (inconsistent host case normalization through percent-encoded octets, scheme
+  spoofing through percent-encoded scheme decoding, and host confusion through unchecked
+  WHATWG host canonicalization), and two low (improper path equivalence in relative
+  reference normalization, and scheme injection through an unescaped first-segment colon
+  in suffix references).
+  The package is a transitive dependency of the TypeScript implementation’s schema
+  validator. The exact pin is a maintainer-approved exception to the normal dependency
+  cool-off: 3.1.9 is the only 3.x release that clears all seven advisories.
+  Refresh application lockfiles so they resolve `fast-uri>=3.1.9`; no softschema API or
+  artifact change is involved.
+
 ## v0.8.1—2026-09-11
 
 A patch release. Python semantic validation returned a result that could not be
