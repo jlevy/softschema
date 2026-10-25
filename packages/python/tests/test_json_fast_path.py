@@ -135,8 +135,6 @@ VALUE_CASES: list[tuple[str, str, Any]] = [
     ("infinity", '{"a": Infinity}', {"a": "Infinity"}),
     ("negative_infinity", '{"a": -Infinity}', {"a": "-Infinity"}),
     ("max_safe_integer", '{"a": 9007199254740991, "b": -9007199254740991}', AS_JSON),
-    # YAML resolves ``-0`` as the integer 0, so it is not a negative zero.
-    ("negative_zero_integer", '{"a": -0}', {"a": 0}),
     ("positive_zero_float", '{"a": 0.0}', {"a": 0.0}),
     ("exponent_float", "[1e5, 1E5, 1e+5, 1.5E-3, -2e2, 0e0]", [1e5, 1e5, 1e5, 1.5e-3, -2e2, 0.0]),
     ("fraction_float", "[1.0, 10.50, 0.1]", [1.0, 10.5, 0.1]),
@@ -218,6 +216,10 @@ ERROR_CASES: list[tuple[str, str, str]] = [
     ("overflowing_float", "[1e400]", "number_out_of_range"),
     ("negative_zero_float", '{"a": -0.0}', "number_negative_zero"),
     ("negative_zero_exponent", "[-0e0]", "number_negative_zero"),
+    # ruamel resolves ``-0`` as the integer 0 and ``json`` reads it so too, but it is
+    # negative zero to the ``yaml`` package, and the spec rejects negative zero.
+    ("negative_zero_integer", '{"a": -0}', "number_negative_zero"),
+    ("negative_zero_integer_in_list", "[1, -0]", "number_negative_zero"),
     ("lone_surrogate_escape", r'{"a": "\ud800"}', "yaml_unsupported_scalar"),
     ("raw_lone_surrogate", '{"a": "\ud800"}', "yaml_parse_error"),
     # A raw U+2028 or U+0085 is a character the two runtimes read differently (JSON and

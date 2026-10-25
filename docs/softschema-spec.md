@@ -135,17 +135,39 @@ not by each rule that inspects them.
 
 YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite
 numbers, lists, and string-keyed mappings.
-Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero,
-duplicate keys, aliases, anchors, merge keys, explicit tags, non-string keys, lone
-surrogates, and non-finite numbers are rejected.
+Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero
+(the integer literal `-0` as well as a float such as `-0.0`), duplicate keys, aliases,
+anchors, merge keys, explicit tags, non-string keys, lone surrogates, and non-finite
+numbers are rejected.
 A surrogate pair written as two `\u` escapes in a double-quoted scalar is the one
 character it encodes, as in JSON; only a surrogate that pairs with nothing is a lone
 surrogate.
 A plain `=` is the string `=`. A raw tab is accepted inside a quoted scalar, a
-block scalar, or a comment, and as spacing inside a flow collection; in a plain scalar
-or as spacing in block context it is rejected as `yaml_parse_error`, because one engine
-refuses it there although YAML 1.2 allows it.
+block scalar’s content, or a comment, and as spacing between the brackets of a flow
+collection; in a plain scalar or as spacing in block context (which includes the rest of
+a block scalar’s header line and whatever follows a closing quote or a flow collection’s
+closing bracket) it is rejected as `yaml_parse_error`, because one engine refuses it
+there although YAML 1.2 allows it.
 Write such a value as a quoted scalar.
+
+Each later line of a flow collection or a quoted scalar that sits in block context must
+be indented with spaces past the block collection that holds it, as YAML 1.2 requires; a
+tab does not count toward that indentation.
+A blank line, and a comment line inside a flow collection, may have any indentation, and
+the closing bracket of the outermost collection may sit at the parent’s own column.
+A flow collection or quoted scalar at the root of a document, as in a JSON document, has
+no required indentation.
+One engine enforces this rule and the other does not, so a line that breaks it is
+rejected as `yaml_parse_error` in both.
+
+An implicit mapping key must end, with its `:`, on the line where it starts and at most
+1,024 characters after its first character (an opening quote counts), in a flow mapping
+as in a block mapping; otherwise it is rejected as `yaml_parse_error`. YAML 1.2 sets the
+limit only for block mappings and flow-sequence pairs, and one engine applies it to flow
+mappings too. An explicit key (`? key`) has no limit.
+One difference remains: for a block-mapping key or a flow-sequence pair, one engine
+counts the 1,024 in UTF-16 code units, so a key holding characters outside the Basic
+Multilingual Plane reaches the limit sooner in that runtime.
 
 Raw characters that the host YAML engines read differently are rejected before parsing,
 as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls

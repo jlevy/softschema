@@ -117,6 +117,35 @@ portable_values:
   - { id: tab_in_block_scalar, text: "value: |\n  a\tb\n", valid: true, expected: { value: "a\tb\n" } }
   - { id: tab_in_comment, text: "value: a # c\td", valid: true, expected: { value: a } }
   - { id: tab_as_flow_spacing, text: "value: [a,\tb]", valid: true, expected: { value: [a, b] } }
+  # Block context resumes after a block scalar header, a closing quote, and a flow
+  # collection's closing bracket, so a tab there is block-context spacing; before the
+  # bracket it is still flow spacing, and inside the header's comment it is comment text.
+  - { id: tab_after_block_scalar_header, text: "value: |\t\n  a\n", valid: false, code: yaml_parse_error }
+  - { id: tab_between_block_scalar_header_and_comment, text: "value: |\t# c\n  a\n", valid: false, code: yaml_parse_error }
+  - { id: tab_in_block_scalar_header_comment, text: "value: |  # c\td\n  a\n", valid: true, expected: { value: "a\n" } }
+  - { id: tab_after_flow_collection, text: "value: [a, b]\t", valid: false, code: yaml_parse_error }
+  - { id: tab_after_flow_collection_before_comment, text: "value: {a: 1}\t# c", valid: false, code: yaml_parse_error }
+  - { id: tab_after_root_flow_collection, text: "{\"value\": 1}\t", valid: false, code: yaml_parse_error }
+  - { id: tab_before_flow_collection_end, text: "value: [a, b\t]", valid: true, expected: { value: [a, b] } }
+  - { id: tab_after_nested_flow_collection, text: "value: [[a]\t, b]", valid: true, expected: { value: [[a], b] } }
+  - { id: tab_after_quoted_scalar, text: "value: \"a\"\t", valid: false, code: yaml_parse_error }
+  # YAML 1.2 requires each later line of a flow collection or quoted scalar in block context
+  # to be indented with spaces past its parent block; one engine enforces this and the other
+  # does not, so both reject such a line. A tab does not count as indentation, a blank or
+  # comment line is exempt, the outermost closing bracket may sit at the parent's column,
+  # and a root flow collection (a JSON document) has no required indentation.
+  - { id: tab_indents_quoted_continuation, text: "value: \"first\n\tsecond\"", valid: false, code: yaml_parse_error }
+  - { id: tab_indents_flow_continuation, text: "value: [a,\n\tb]", valid: false, code: yaml_parse_error }
+  - { id: under_indented_quoted_continuation, text: "outer:\n  value: \"first\n second\"", valid: false, code: yaml_parse_error }
+  - { id: under_indented_single_quoted_continuation, text: "outer:\n  value: 'first\n  second'", valid: false, code: yaml_parse_error }
+  - { id: under_indented_flow_continuation, text: "outer:\n  value: [a,\n b]", valid: false, code: yaml_parse_error }
+  - { id: under_indented_flow_mapping_continuation, text: "- {a: 1,\nb: 2}", valid: false, code: yaml_parse_error }
+  - { id: indented_quoted_continuation, text: "outer:\n  value: \"first\n   \tsecond\"", valid: true, expected: { outer: { value: "first second" } } }
+  - { id: indented_flow_continuation, text: "outer:\n  value: [a,\n   \tb]", valid: true, expected: { outer: { value: [a, b] } } }
+  - { id: flow_end_at_parent_column, text: "outer:\n  value: [a,\n    b\n  ]", valid: true, expected: { outer: { value: [a, b] } } }
+  - { id: flow_comment_line_at_any_indent, text: "outer:\n  value: [a,\n# note\n    b]", valid: true, expected: { outer: { value: [a, b] } } }
+  - { id: blank_line_in_quoted_continuation, text: "outer:\n  value: \"first\n\n    second\"", valid: true, expected: { outer: { value: "first\nsecond" } } }
+  - { id: root_flow_tab_indent, text: "{\"a\": 1,\n\t\"b\": [2,\n\t\t3]}", valid: true, expected: { a: 1, b: [2, 3] } }
   # A plain `=` is the string `=` (YAML 1.2); one engine still resolves it to the YAML 1.1
   # `!!value` key and had no constructor for it.
   - { id: plain_equals, text: "value: =", valid: true, expected: { value: "=" } }
@@ -144,6 +173,24 @@ portable_values:
   - { id: escaped_control_characters, text: "value: \"a\\fb\\vc\\x7fd\"", valid: true, expected: { value: "a\fb\vc\x7fd" } }
   - { id: escaped_line_separators, text: "value: \"a\\Nb\\Lc\\Pd\"", valid: true, expected: { value: "a\x85b\u2028c\u2029d" } }
   - { id: negative_zero, text: "value: -0.0", valid: false, code: number_negative_zero }
+  # `-0` is negative zero to an engine that reads numbers as doubles and plain zero to one
+  # that reads integers exactly; it is rejected as negative zero in both. `-0x0`, `-0o0`,
+  # and `+0` are not negative-zero literals.
+  - { id: negative_zero_integer, text: "value: -0", valid: false, code: number_negative_zero }
+  - { id: negative_zero_integer_padded, text: "value: [-00]", valid: false, code: number_negative_zero }
+  - { id: json_negative_zero_integer, text: '{"value": -0}', valid: false, code: number_negative_zero }
+  - { id: positive_zero_integer, text: "value: +0", valid: true, expected: { value: 0 } }
+  - { id: quoted_negative_zero, text: "value: '-0'", valid: true, expected: { value: "-0" } }
+  # An implicit key's `:` must be on the line the key starts on and at most 1,024 characters
+  # after it, in a flow mapping as in a block mapping (one engine applies the limit only in
+  # block context, as YAML 1.2 does). The distance is counted in characters; the quotes count.
+  - { id: flow_mapping_key_at_limit, generated: long_flow_key, length: 1022, valid: true }
+  - { id: flow_mapping_key_over_limit, generated: long_flow_key, length: 1023, valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_key_astral_at_limit, generated: long_flow_key, length: 1022, key_char: "\U0001F600", valid: true }
+  - { id: json_key_over_limit, generated: long_flow_key, length: 1100, json: true, valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_key_colon_on_next_line, text: "value: {\"a\"\n  : 1}", valid: false, code: yaml_parse_error }
+  - { id: json_key_colon_on_next_line, text: "{\"a\"\n: 1}", valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_multiline_key, text: "value: {a\n  b: 1}", valid: false, code: yaml_parse_error }
   - { id: depth_63, generated: deep_sequence, depth: 63, valid: true }
   - { id: depth_64, generated: deep_sequence, depth: 64, valid: false, code: yaml_limit }
   - { id: depth_65, generated: deep_sequence, depth: 65, valid: false, code: yaml_limit }

@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { writeFileSync } from "atomically";
-import { isAlias, isCollection, isPair, isScalar, Parser, parseDocument, visit } from "yaml";
+import { isAlias, isCollection, isMap, isPair, isScalar, Parser, parseDocument, visit } from "yaml";
 
 /** Largest integer that survives a round trip through a JS number. */
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
@@ -210,22 +210,25 @@ function textPosition(text: string, index: number): { line: number; column: numb
   return { line, column };
 }
 
-/** Token types whose source may hold a raw tab in both engines. */
-const TAB_TOLERANT_TOKENS = new Set([
-  "double-quoted-scalar",
-  "single-quoted-scalar",
-  "block-scalar",
-  "comment",
-]);
+/**
+ * Token types whose own source may hold a raw tab in both engines. A quoted scalar's `end`
+ * (the spacing and comment after its closing quote) is still walked.
+ */
+const TAB_TOLERANT_TOKENS = new Set(["double-quoted-scalar", "single-quoted-scalar", "comment"]);
+
+/** The tokens that close a flow collection, after which block context resumes. */
+const FLOW_END_TOKENS = new Set(["flow-seq-end", "flow-map-end"]);
 
 /**
  * Reject a raw tab where ruamel rejects one: in a plain scalar, or as spacing in block
  * context (after a key's colon, before a comment, at the end of a value, on a blank line,
- * after a sequence dash). YAML 1.2 allows every one of these and the `yaml` package reads
- * them, but ruamel's scanner refuses them all ("found character '\t' that cannot start any
- * token"), so a tab in those places read in one runtime and failed in the other. A tab inside
- * a quoted scalar, a block scalar, or a comment, and a tab as spacing inside a flow
- * collection, is fine for both and is left alone. The check walks the `yaml` CST, which
+ * after a sequence dash, after a block scalar header, after a quoted scalar's closing
+ * quote or a flow collection's closing bracket). YAML 1.2 allows every one of these and the `yaml` package reads them, but
+ * ruamel's scanner refuses them all ("found character '\t' that cannot start any token",
+ * or "expected a comment or a line break" after a block scalar header), so a tab in those
+ * places read in one runtime and failed in the other. A tab inside a quoted scalar, a block
+ * scalar's content, or a comment, and a tab as spacing inside a flow collection (between
+ * its brackets), is fine for both and is left alone. The check walks the `yaml` CST, which
  * keeps the exact source of every token, and runs after the engine parse so an engine error
  * is reported first, as it would be in Python. Tab indentation is already an engine error in
  * both.
@@ -240,21 +243,40 @@ function checkPlainTabs(text: string): void {
       return;
     }
     const token = node as { type?: unknown; offset?: unknown; source?: unknown };
-    if (typeof token.type === "string" && TAB_TOLERANT_TOKENS.has(token.type)) return;
-    const flow = inFlow || token.type === "flow-collection";
+    const record = node as Record<string, unknown>;
+    if (token.type === "block-scalar") {
+      // The content may hold tabs; the header line (`|`, its indicators, the spacing and
+      // comment after them, kept in `props`) is block-context spacing like any other.
+      walk(record.props, inFlow);
+      return;
+    }
+    if (token.type === "flow-collection") {
+      // Only the tokens between the brackets are flow spacing. `end` holds the closing
+      // bracket and then whatever follows it on the line, which is back in the enclosing
+      // context: block context unless this collection sits inside another one.
+      walk(record.start, true);
+      walk(record.items, true);
+      let closed = false;
+      for (const part of Array.isArray(record.end) ? record.end : []) {
+        walk(part, inFlow || !closed);
+        const type = (part as { type?: unknown } | null)?.type;
+        if (typeof type === "string" && FLOW_END_TOKENS.has(type)) closed = true;
+      }
+      return;
+    }
     if (
       typeof token.source === "string" &&
       typeof token.offset === "number" &&
-      !(token.type === "space" && flow)
+      !(typeof token.type === "string" && TAB_TOLERANT_TOKENS.has(token.type)) &&
+      !(token.type === "space" && inFlow)
     ) {
       const at = token.source.indexOf("\t");
       if (at !== -1 && (offender === -1 || token.offset + at < offender)) {
         offender = token.offset + at;
       }
     }
-    const record = node as Record<string, unknown>;
     for (const part of ["start", "key", "sep", "value", "end", "items", "props"]) {
-      if (part in record) walk(record[part], flow);
+      if (part in record) walk(record[part], inFlow);
     }
   };
   for (const document of new Parser().parse(text)) walk(document, false);
@@ -265,6 +287,63 @@ function checkPlainTabs(text: string): void {
     `unacceptable tab character at line ${line}, column ${column}: ` +
       "a raw tab in a plain scalar or as block-context spacing is read by only one YAML engine; " +
       'write the value as a quoted scalar ("\\t")',
+  );
+}
+
+/** The longest implicit key YAML allows, from the key's first character to its `:`. */
+const IMPLICIT_KEY_LIMIT = 1024;
+
+/**
+ * Reject an implicit flow-mapping key that ruamel cannot read: one whose `:` is on a later
+ * line than the key starts, or more than 1,024 characters after it. ruamel applies YAML's
+ * implicit-key rule (one line, at most 1,024 characters) in flow mappings too and reports a
+ * parse error; the `yaml` package applies it only in block mappings and flow-sequence
+ * pairs, as YAML 1.2 does, and read such a key. So `{"<1,100 characters>": 1}` and
+ * `{"a"\n: 1}` passed in one runtime and failed in the other. An explicit key (`? key`) has
+ * no limit in either engine and is left alone. The distance is counted in code points, as
+ * ruamel counts it.
+ */
+function checkFlowMappingKey(text: string, key: { range?: readonly number[] | null }): void {
+  const start = key.range?.[0];
+  const end = key.range?.[1];
+  if (start === undefined || end === undefined) return;
+  let before = start - 1;
+  while (before >= 0 && " \t\r\n".includes(text.charAt(before))) before -= 1;
+  if (text.charAt(before) === "?") return;
+  // Only spacing, line breaks, and comments can sit between a key and its `:`.
+  let colon = end;
+  let lineBreak = false;
+  while (colon < text.length) {
+    const char = text.charAt(colon);
+    if (char === " " || char === "\t") {
+      colon += 1;
+    } else if (char === "\n" || char === "\r") {
+      lineBreak = true;
+      colon += 1;
+    } else if (char === "#") {
+      while (colon < text.length && text.charAt(colon) !== "\n") colon += 1;
+    } else {
+      break;
+    }
+  }
+  if (text.charAt(colon) !== ":") return;
+  for (let at = start; at < end && !lineBreak; at += 1) {
+    const unit = text.charCodeAt(at);
+    if (unit === 0x0a || unit === 0x0d) lineBreak = true;
+  }
+  if (!lineBreak && colon - start <= IMPLICIT_KEY_LIMIT) return;
+  let codePoints = 0;
+  for (let at = start; at < colon; at += 1) {
+    const unit = text.charCodeAt(at);
+    if (unit < 0xdc00 || unit > 0xdfff) codePoints += 1;
+  }
+  if (!lineBreak && codePoints <= IMPLICIT_KEY_LIMIT) return;
+  const { line, column } = textPosition(text, start);
+  throw new PortableInputError(
+    "yaml_parse_error",
+    `implicit flow mapping key at line ${line}, column ${column}: ` +
+      "its ':' must be on the line where the key starts and at most 1024 characters after " +
+      "it, or one YAML engine cannot read it; shorten the key or keep it on one line",
   );
 }
 
@@ -311,6 +390,8 @@ export function parsePortableYaml(text: string): unknown {
       if (node.key.value === "<<") {
         throw new PortableInputError("yaml_merge_key", "YAML merge keys are not supported");
       }
+      const parent = path[path.length - 1];
+      if (isMap(parent) && parent.flow === true) checkFlowMappingKey(text, node.key);
       return;
     }
     if (

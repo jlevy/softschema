@@ -93,9 +93,36 @@ def _construct_value_key_as_string(_constructor: SafeConstructor, node: ScalarNo
     return node.value
 
 
+class _NegativeZero(int):
+    """An integer literal spelled ``-0``: zero to Python, negative zero to JavaScript.
+
+    A JSON or YAML number is a double in the ``yaml`` package, where ``-0`` keeps its sign,
+    and an ``int`` in ruamel, where it cannot. The spec rejects negative zero, so the
+    constructor marks the literal and :func:`_check_value` rejects it exactly where it
+    rejects ``-0.0``. The marked value never leaves this module.
+    """
+
+
+_NEGATIVE_ZERO_INTEGER = re.compile(r"-0+")
+"""The decimal integer literals that are zero with a minus sign (``-0``, ``-00``).
+
+Only the decimal form is negative zero in both engines; the ``yaml`` package reads
+``-0x0``, ``-0o0`` and ``-0_0`` as strings.
+"""
+
+
+def _construct_portable_int(constructor: SafeConstructor, node: ScalarNode) -> int:
+    """Construct an integer, marking a ``-0`` literal for :func:`_check_value`."""
+    value = SafeConstructor.construct_yaml_int(constructor, node)
+    if value == 0 and _NEGATIVE_ZERO_INTEGER.fullmatch(node.value) is not None:
+        return _NegativeZero(0)
+    return value
+
+
 # The first subclass registration copies ruamel's inherited constructor registry.
 _PortableConstructor.add_constructor("tag:yaml.org,2002:timestamp", _construct_timestamp_as_string)
 _PortableConstructor.add_constructor("tag:yaml.org,2002:value", _construct_value_key_as_string)
+_PortableConstructor.add_constructor("tag:yaml.org,2002:int", _construct_portable_int)
 
 
 class PortableInputError(ValueError):
@@ -549,6 +576,127 @@ def _try_c_parser(text: str) -> Any:
         return _C_FAILED
 
 
+_BLANK_AFTER_FIRST = ("", " ", "\t")
+"""What may follow a node's first character for the ``yaml`` package to keep the indent of
+the line before (a block indicator such as ``- `` looks like this)."""
+
+
+class _FlowIndentation:
+    """Reject a flow continuation line in block context that is not indented past its parent.
+
+    YAML 1.2 requires every later line of a flow collection or a quoted scalar that sits
+    in block context to be indented, with spaces, past the block collection holding it,
+    so ``key: [a,\n b]`` under an indented key, or a tab that indents such a line, is not
+    YAML. The ``yaml`` package enforces this ("Missing closing quote", "Flow sequence in
+    block collection must be sufficiently indented") and ruamel does not, so these
+    documents passed in Python and failed in TypeScript. Python now rejects the same
+    lines, mirroring the ``yaml`` lexer's rule rather than the grammar's where the two
+    differ: the required indent is the parent's column plus one, or the column of the
+    line the node starts on when that is less and the node's first character is followed
+    by a non-blank; a blank line, and a comment line inside a flow collection, may have any
+    indent; the outermost closing bracket may sit one column short; a root flow node, as
+    in a JSON document, has no required indent.
+
+    Fed the events of one parse, in order. Only multi-line nodes are examined, so a
+    document without them costs a few comparisons per event.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self._lines: list[str] | None = None
+        self._blocks: list[int] = []
+        """Columns of the open block collections, innermost last."""
+        self._flow_depth = 0
+        self._flow: tuple[int, int] | None = None
+        """Required indent and first line of the open outermost flow collection."""
+        self._quoted: list[tuple[int, int]] = []
+        """First and last lines of the multi-line quoted scalars inside that collection."""
+
+    def collection_start(self, event: MappingStartEvent | SequenceStartEvent) -> None:
+        if self._flow_depth:
+            self._flow_depth += 1
+        elif event.flow_style:
+            self._flow_depth = 1
+            self._flow = (self._required(event.start_mark), event.start_mark.line)
+            self._quoted = []
+        else:
+            self._blocks.append(event.start_mark.column)
+
+    def collection_end(self, event: MappingEndEvent | SequenceEndEvent) -> None:
+        if not self._flow_depth:
+            if self._blocks:
+                self._blocks.pop()
+            return
+        self._flow_depth -= 1
+        if self._flow_depth or self._flow is None:
+            return
+        required, first = self._flow
+        self._flow = None
+        if required and event.end_mark.line > first:
+            self._check_flow(required, first, event.end_mark.line, event.end_mark.column - 1)
+
+    def scalar(self, event: ScalarEvent) -> None:
+        if event.style not in ('"', "'") or event.end_mark.line == event.start_mark.line:
+            return
+        if self._flow_depth:
+            self._quoted.append((event.start_mark.line, event.end_mark.line))
+            return
+        required = self._required(event.start_mark)
+        for number in range(event.start_mark.line + 1, event.end_mark.line + 1):
+            self._check_quoted_line(required, number)
+
+    def _line(self, number: int) -> str:
+        if self._lines is None:
+            self._lines = self._text.split("\n")
+        line = self._lines[number]
+        return line[:-1] if line.endswith("\r") else line
+
+    def _required(self, mark: Any) -> int:
+        if not self._blocks:
+            return 0
+        required = self._blocks[-1] + 1
+        line = self._line(mark.line)
+        column = mark.column
+        if not line[:column].strip(" ") and line[column + 1 : column + 2] not in _BLANK_AFTER_FIRST:
+            required = min(required, column)
+        return required
+
+    def _check_quoted_line(self, required: int, number: int) -> None:
+        line = self._line(number)
+        spaces = len(line) - len(line.lstrip(" "))
+        if spaces < required and spaces < len(line):
+            raise self._error(required, number, spaces)
+
+    def _check_flow(self, required: int, first: int, last: int, closing: int) -> None:
+        quoted = {number for start, stop in self._quoted for number in range(start + 1, stop + 1)}
+        for number in range(first + 1, last + 1):
+            if number in quoted:
+                self._check_quoted_line(required, number)
+                continue
+            line = self._line(number)
+            spaces = len(line) - len(line.lstrip(" "))
+            rest = line[spaces:].lstrip(" \t")
+            if not rest or rest[0] == "#" or spaces >= required:
+                continue
+            if (
+                spaces == required - 1
+                and number == last
+                and rest[0] in "]}"
+                and len(line) - len(rest) == closing
+            ):
+                continue
+            raise self._error(required, number, spaces)
+
+    @staticmethod
+    def _error(required: int, number: int, spaces: int) -> PortableInputError:
+        return PortableInputError(
+            "yaml_parse_error",
+            f"insufficient indentation at line {number + 1}, column {spaces + 1}: a later line "
+            "of a flow collection or quoted scalar in block context must be indented past its "
+            f"parent with spaces (at least {required}), or one YAML engine cannot read it",
+        )
+
+
 def _parse_with(text: str, *, pure: bool) -> Any:
     """Parse YAML after a representation preflight, both through the same parser.
 
@@ -559,6 +707,7 @@ def _parse_with(text: str, *, pure: bool) -> Any:
     yaml.Constructor = _PortableConstructor
     stack: list[tuple[str, bool]] = []
     has_alias = False
+    indentation = _FlowIndentation(text)
 
     def consume_parent_slot() -> None:
         if stack and stack[-1][0] == "map":
@@ -575,6 +724,7 @@ def _parse_with(text: str, *, pure: bool) -> Any:
                 if stack and stack[-1] == ("map", True) and event.value == "<<":
                     raise PortableInputError("yaml_merge_key", "YAML merge keys are not supported")
                 consume_parent_slot()
+                indentation.scalar(event)
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
                 consume_parent_slot()
                 stack.append(
@@ -582,8 +732,10 @@ def _parse_with(text: str, *, pure: bool) -> Any:
                 )
                 if len(stack) > MAX_DEPTH:
                     raise PortableInputError("yaml_limit", "YAML nesting exceeds the depth limit")
+                indentation.collection_start(event)
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
+                indentation.collection_end(event)
         if has_alias:
             raise PortableInputError("yaml_alias", "YAML aliases and anchors are not supported")
         value = yaml.load(text)
@@ -617,6 +769,8 @@ def _check_value(root: Any) -> None:
                 )
             continue
         if isinstance(value, int):
+            if type(value) is _NegativeZero:
+                raise PortableInputError("number_negative_zero", "negative zero is not supported")
             if abs(value) > MAX_SAFE_INTEGER:
                 raise PortableInputError("number_out_of_range", "integer exceeds the safe range")
             continue
@@ -736,6 +890,14 @@ the last break before such a colon is followed only by spaces and tabs.
 
 _JSON_KEY_GAP = re.compile(rf"(?<![ \t])[ \t]{{{_JSON_GAP_LIMIT},}}:")
 
+_JSON_NEGATIVE_ZERO = re.compile(r"-0(?![.eE0-9])")
+"""An integer ``-0``, which ``json`` reads as ``0`` and the spec rejects as negative zero.
+
+Strict JSON spells an integer zero with a minus sign only this way. The pattern also
+matches ``-0`` inside a string, which only costs that text the fast path; ruamel's
+reading marks the literal for :func:`_check_value`.
+"""
+
 
 class _NotPortableJson(Exception):
     """Raised inside a ``json`` hook to hand the whole text to ruamel."""
@@ -812,6 +974,7 @@ def _parse_json_subset(text: str) -> Any:
       (:data:`_JSON_SURROGATE_ESCAPE`);
     - a key separated from its colon by a line break or a long gap
       (:data:`_JSON_KEY_LINE_BREAK`, :data:`_JSON_KEY_GAP`);
+    - an integer ``-0`` (:data:`_JSON_NEGATIVE_ZERO`), which ``json`` reads as ``0``;
     - nesting past :data:`MAX_DEPTH`, which ruamel's preflight reports as ``yaml_limit``.
 
     The tests in ``test_json_fast_path.py`` check each of these against ruamel and
@@ -826,6 +989,8 @@ def _parse_json_subset(text: str) -> Any:
     if "\t" in text[len(text.rstrip(_JSON_WHITESPACE)) :]:
         return _NOT_JSON
     if _json_has_unsafe_character(text) or _JSON_SURROGATE_ESCAPE.search(text):
+        return _NOT_JSON
+    if "-0" in text and _JSON_NEGATIVE_ZERO.search(text):
         return _NOT_JSON
     if _JSON_SPACED_COLON.search(text) and (
         _JSON_KEY_LINE_BREAK.search(text) or _JSON_KEY_GAP.search(text)

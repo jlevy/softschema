@@ -620,16 +620,25 @@ def test_validate_artifact_returns_input_error_for_missing_file_pure_yaml() -> N
     assert result.outcome == "input_error"
 
 
+def _portable_vector_text(case: dict[str, Any]) -> str:
+    """The text of a `portable_values` vector, building the generated ones."""
+    generated = case.get("generated")
+    if generated == "deep_sequence":
+        depth = int(case.get("depth", 1_000))
+        return "value: " + "[" * depth + "0" + "]" * depth
+    if generated == "long_flow_key":
+        key = str(case.get("key_char", "k")) * int(case["length"])
+        return f'{{"{key}": 1}}' if case.get("json") else f'value: {{"{key}": 1}}'
+    assert generated is None, generated
+    return case["text"]
+
+
 def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
     contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
     for case in vectors["portable_values"]:
         path = tmp_path / f"{case['id']}.yaml"
-        depth = int(case.get("depth", 1_000))
-        text = (
-            "value: " + "[" * depth + "0" + "]" * depth if case.get("generated") else case["text"]
-        )
-        path.write_text(text)
+        path.write_text(_portable_vector_text(case), encoding="utf-8")
         result = validate_artifact(path, contract=contract)
         assert result.ok is case["valid"], case["id"]
         if "expected" in case:

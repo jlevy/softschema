@@ -282,6 +282,20 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
   });
 });
 
+/** The text of a `portable_values` vector, building the generated ones. */
+function portableVectorText(item: Record<string, unknown>): string {
+  if (item.generated === "deep_sequence") {
+    const depth = Number(item.depth ?? 1_000);
+    return `value: ${"[".repeat(depth)}0${"]".repeat(depth)}`;
+  }
+  if (item.generated === "long_flow_key") {
+    const key = String(item.key_char ?? "k").repeat(Number(item.length));
+    return item.json === true ? `{"${key}": 1}` : `value: {"${key}": 1}`;
+  }
+  expect(item.generated).toBeUndefined();
+  return String(item.text);
+}
+
 test("shared portable YAML and artifact-input vectors", () => {
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
     string,
@@ -289,11 +303,7 @@ test("shared portable YAML and artifact-input vectors", () => {
   >;
   const portableContract = contract({ profile: "pure-yaml" });
   for (const item of vectors.portable_values ?? []) {
-    const depth = Number(item.depth ?? 1_000);
-    const text =
-      item.generated === "deep_sequence"
-        ? `value: ${"[".repeat(depth)}0${"]".repeat(depth)}`
-        : String(item.text);
+    const text = portableVectorText(item);
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);
     expect(result.ok).toBe(item.valid as boolean);

@@ -42,13 +42,38 @@ rg -l '[\x{85}\x{2028}\x{2029}\x{FFFE}\x{FFFF}\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9
 ```
 
 **Tabs and a plain `=`.** A raw tab inside a plain scalar, or as spacing in block
-context (after a key’s colon, before a comment, at the end of a value, on a blank line),
-was a parse error in Python and content in TypeScript; TypeScript now rejects it too, as
-`yaml_parse_error` with its own message, while a tab inside a quoted scalar, a block
-scalar, or a comment, and as spacing inside a flow collection, is accepted by both.
+context (after a key’s colon, before a comment, at the end of a value, on a blank line,
+after a block scalar header such as `|`, after a closing quote, after a flow
+collection’s closing bracket), was a parse error in Python and content in TypeScript;
+TypeScript now rejects it too, as `yaml_parse_error` with its own message, while a tab
+inside a quoted scalar, a block scalar’s content, or a comment, and as spacing between
+the brackets of a flow collection, is accepted by both.
 Write such a value as a quoted scalar.
 A plain `=` was the YAML 1.1 `!!value` key in Python (a parse error) and the string `=`
 in TypeScript; Python now reads it as the string `=`, as YAML 1.2 does.
+
+**Flow continuation lines.** A later line of a flow collection or a quoted scalar in
+block context that is not indented with spaces past its parent block, such as
+`tags: [a,` followed by a line `<TAB>b]`, or an indented `title: "first` followed by a
+line indented no further than `title`, was read by Python and a parse error in
+TypeScript, as YAML 1.2 makes it.
+Python now rejects it too, as `yaml_parse_error`. A blank line, a comment line inside a
+flow collection, a closing bracket at the parent’s column, and every line of a root flow
+collection (a JSON document indented with tabs) are still accepted by both.
+Indent such a line past its parent with spaces.
+
+**Implicit flow-mapping keys.** A flow-mapping key whose `:` is more than 1,024
+characters after the key starts, or on a later line, such as `{"<1,100 characters>": 1}`
+or `{"a"` followed by a line `: 1}`, was a parse error in Python and read by TypeScript;
+TypeScript now rejects it too, as `yaml_parse_error`. Keys in block mappings and flow
+sequences already behaved alike, except that TypeScript counts their 1,024 in UTF-16
+code units, so a key holding more than 512 characters outside the Basic Multilingual
+Plane still reaches the limit sooner there.
+
+**Integer negative zero.** The integer literal `-0` (also `-00`, and `-0` in JSON text)
+read as `0` in Python and was rejected as `number_negative_zero` in TypeScript; Python
+now rejects it too, as the spec’s negative-zero rule says.
+`+0` and the string `'-0'` are unaffected.
 
 **Fence lines.** A frontmatter delimiter is `---` plus trailing spaces or tabs only.
 Python previously also trimmed U+0085 and U+001C–U+001F, and TypeScript U+FEFF, so a
@@ -277,6 +302,12 @@ intersections, records with typed keys, and `z.email()` among them) compiles to 
 
 - **Tabs in plain scalars and a plain `=` read the same in both runtimes.** See
   Compatibility.
+
+- **A tab after a block scalar header, a closing quote, or a flow collection’s closing
+  bracket, an under-indented flow continuation line, a long or multi-line implicit
+  flow-mapping key, and an integer `-0` get one verdict in both runtimes.** Each was
+  read by one runtime and a parse or value error in the other; see Compatibility.
+  Shared `portable_values` vectors pin every case.
 
 - **Control characters in a filename never reach stderr raw.** A document name in a
   human-readable message is written through one helper per runtime that escapes C0/C1
