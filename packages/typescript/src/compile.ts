@@ -12,7 +12,12 @@ import { existsSync } from "node:fs";
 import { writeFileSync } from "atomically";
 import { stringify as yamlStringify } from "yaml";
 import { z } from "zod";
-import { canonicalizeJsonSchema } from "./canonicalize.js";
+import {
+  canonicalizeJsonSchema,
+  NAME_MAP_KEYWORDS,
+  SCHEMA_KEYWORDS,
+  SCHEMA_LIST_KEYWORDS,
+} from "./canonicalize.js";
 import { isMapping } from "./guards.js";
 import { checkContractId } from "./models.js";
 import { parsePortableYaml, readUtf8 } from "./portable.js";
@@ -81,6 +86,35 @@ function addGeneratedTitles(schema: Record<string, unknown>, contractId: string)
     for (const keyword of ["items", "additionalProperties", "contains"] as const) {
       const child = node[keyword];
       if (isMapping(child)) stack.push(child);
+    }
+  }
+}
+
+/**
+ * Undo Zod's rewrite of a union of bare type branches into a `type` array.
+ *
+ * Since 4.5, `z.toJSONSchema` turns `anyOf: [{ type: "string" }, { type: "null" }]` (what
+ * `.nullable()` and a union of plain primitives emit) into `type: ["string", "null"]`.
+ * The two forms validate identically, but Pydantic emits the `anyOf` form and the shared
+ * canonical profile does not reconcile them, so the rewrite alone changed the canonical
+ * content and schema_sha256 of every model with a nullable field. That rewrite is the only
+ * place Zod produces a `type` array, so expanding each one back into bare `anyOf` branches,
+ * in order, restores the form both compilers emit. Only subschema positions are walked;
+ * `default`, `examples`, `const`, and `enum` values are data and are left alone.
+ */
+function expandTypeArrays(schema: Record<string, unknown>): void {
+  const stack: unknown[] = [schema];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!isMapping(node)) continue;
+    if (Array.isArray(node.type) && node.anyOf === undefined) {
+      node.anyOf = node.type.map((type) => ({ type }));
+      delete node.type;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) stack.push(...Object.values(value));
+      else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) stack.push(...value);
+      else if (SCHEMA_KEYWORDS.has(key)) stack.push(value);
     }
   }
 }
@@ -154,6 +188,7 @@ export function buildCanonicalSchema(
       }
     },
   }) as Record<string, unknown>;
+  expandTypeArrays(raw);
   addGeneratedTitles(raw, contractId);
   const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId, schemaId));
   const sha = schemaSha256(schema);

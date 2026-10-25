@@ -4,6 +4,52 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### Security
+
+- **The `fast-uri` override is raised to exactly 3.1.9.** It closes seven advisories
+  against the 3.1.6 pin, a transitive dependency of the TypeScript implementation’s
+  schema validator (`ajv`): GHSA-qw65-cvwx-89v3 (authority injection through an
+  unvalidated port), GHSA-58mr-gqgx-xq4g (host confusion through an unclosed bracket),
+  GHSA-hrr3-gc8f-f4qj (inconsistent host case normalization), GHSA-w74x-v6f9-j3xg
+  (scheme spoofing through percent-encoded scheme decoding), GHSA-wjr9-j795-jxcr (host
+  confusion through unchecked WHATWG host canonicalization), GHSA-xhq7-xmqj-769h
+  (improper path equivalence in relative reference normalization), and
+  GHSA-333x-w4r6-6crp (scheme injection through an unescaped first-segment colon).
+  3.1.9 was published 2026-10-19, inside the 14-day cool-off; it is installed under a
+  maintainer-approved exception, pinned exactly.
+- **The TypeScript package requires zod `^4.6.6`** (locked at 4.6.6), which closes
+  GHSA-mrhx-c7xc-m3w5: validating an oversized array, set, or map against a size bound
+  could exhaust memory, because Zod parsed every element before checking the bound.
+
+### Fixed
+
+- **TypeScript-compiled schemas match Pydantic again for nullable fields under zod 4.5
+  and later.** Zod 4.5 began rewriting `anyOf: [{type: "string"}, {type: "null"}]`, what
+  `.nullable()` and a union of plain primitives emit, as `type: ["string", "null"]`. The
+  two forms validate identically, but Pydantic emits `anyOf`, so a model with a nullable
+  field compiled to different canonical content and a different `schema_sha256` than its
+  Python mirror. The published `^4.4.3` range already admitted those zod versions.
+  The compiler now expands every `type` array back into `anyOf` branches before
+  canonicalization; the committed reference schemas and goldens are unchanged.
+
+### Changed
+
+- **CI runs the dependency audit as its own `dependency-audit` job.** `bun audit` used
+  to be a step inside the `typescript` job, so a new upstream advisory skipped the
+  TypeScript typecheck, tests, build, publint, and golden runs on every PR. The audit
+  now has its own check, and the TypeScript results always report on the change under
+  review. Until `dependency-audit` is a required check, the `typescript` job repeats the
+  audit as its last step so an advisory still blocks merging.
+- **Zod 4.5 and 4.6 semantic behavior applies to TypeScript models.** String `.min()`,
+  `.max()`, and `.length()` count code points rather than UTF-16 units, and a strict
+  object with an unknown key now also reports its other issues; both match Pydantic.
+  `z.iso.datetime()` rejects minute-precision input such as `2020-01-01T06:15Z`, which
+  Pydantic accepts (temporal acceptance sets were already allowed to differ).
+  A model using `z.email()` compiles with Zod’s new email `pattern`, so its
+  `schema_sha256` changes; recompile its committed schema.
+
 ## v0.8.1—2026-09-11
 
 A patch release. Python semantic validation returned a result that could not be
