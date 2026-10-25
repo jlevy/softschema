@@ -800,6 +800,87 @@ describe("compile: write mode + build", () => {
       default: { name: "leaf" },
     });
   });
+  test("restores an authored default or examples over a transform, as Pydantic keeps them", () => {
+    // In input mode Zod also drops an authored `.meta({ default })` or `.meta({ examples })`
+    // from a schema that transforms. The Pydantic mirror, `Annotated[str, AfterValidator(f),
+    // Field(examples=[...])]` or `Field(json_schema_extra={"default": ...})`, keeps both, and
+    // emits what the field without the validator emits.
+    const compiled = (model: z.ZodType) => buildCanonicalSchema(model, "x:Meta/v1").schema;
+    const field = (schema: z.ZodType) =>
+      (compiled(z.strictObject({ f: schema })).properties as { f: Record<string, unknown> }).f;
+    const same = (text: string) => text;
+    const mapped = () => z.string().transform(same);
+
+    for (const meta of [
+      { examples: ["a", "b"] },
+      { default: "m" },
+      { default: "m", examples: ["a"] },
+    ]) {
+      const plain = field(z.string().meta(meta));
+      expect(field(mapped().meta(meta))).toEqual(plain);
+      expect(field(z.preprocess((value) => value, z.string()).meta(meta))).toEqual(plain);
+      expect(plain).toEqual({ ...meta, title: "F", type: "string" });
+    }
+    // An authored default fills nothing, so the field stays required, as in Pydantic.
+    expect(compiled(z.strictObject({ f: mapped().meta({ default: "m" }) })).required).toEqual([
+      "f",
+    ]);
+    expect(
+      field(
+        mapped()
+          .default("x")
+          .meta({ examples: ["a"] }),
+      ),
+    ).toEqual({
+      default: "x",
+      examples: ["a"],
+      title: "F",
+      type: "string",
+    });
+    const Shape = z.strictObject({ a: z.string().transform(same) });
+    expect(field(Shape.meta({ examples: [{ a: "x" }] })).examples).toEqual([{ a: "x" }]);
+
+    // A node's own value wins over one it inherits from a transforming inner type, as it does
+    // without a transform.
+    const outer = (schema: z.ZodType) => field(schema).default;
+    expect(outer(mapped().default("a").default("b"))).toBe("b");
+    expect(outer(mapped().catch("a").catch("b"))).toBe("b");
+    expect(outer(z.string().default("a").transform(same).default("b"))).toBe("b");
+    expect(outer(mapped().default("x").meta({ default: "m" }))).toBe("m");
+    expect(outer(mapped().prefault("p").meta({ default: "m" }))).toBe("m");
+    expect(outer(mapped().meta({ default: "m" }).default("x"))).toBe("x");
+
+    // An id'd schema compiles to the same shape whether or not it transforms.
+    const ids = {
+      Plain: z.string().meta({ id: "MetaPlain", examples: ["a"], default: "m" }),
+      Mapped: mapped().meta({ id: "MetaMapped", examples: ["a"], default: "m" }),
+    };
+    const shapes = Object.entries(ids).map(([kind, schema]) => {
+      const out = compiled(
+        z.strictObject({
+          d: schema.describe("d"),
+          e: schema.meta({ examples: ["b"] }),
+          n: schema.default("n"),
+          s: schema.default("m"),
+        }),
+      );
+      const entry = (out.$defs as Record<string, unknown>)[`Meta${kind}`];
+      const named = JSON.stringify({ entry, fields: out.properties });
+      return JSON.parse(named.replaceAll(`Meta${kind}`, "Meta")) as { fields: unknown };
+    });
+    expect(shapes[1]).toEqual(shapes[0]);
+    expect(shapes[0]?.fields).toEqual({
+      d: { $ref: "#/$defs/Meta", description: "d" },
+      e: { $ref: "#/$defs/Meta", examples: ["b"] },
+      n: { $ref: "#/$defs/Meta", default: "n" },
+      s: { $ref: "#/$defs/Meta" },
+    });
+
+    // A restored authored default is checked like any other.
+    expect(() => field(z.number().transform(Number).meta({ default: Number.NaN }))).toThrow(
+      "canonical JSON requires finite numbers; the default at #/properties/f is NaN",
+    );
+  });
   test("rejects a default or catch value canonical JSON cannot carry, as Python does", () => {
     const compile = (field: z.ZodType) =>
       buildCanonicalSchema(z.strictObject({ f: field }), "x:NonJson/v1");

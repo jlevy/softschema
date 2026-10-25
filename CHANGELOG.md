@@ -193,16 +193,24 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
   Pydantic cannot default a tuple element.
 - **TypeScript-compiled schemas keep the `default` of a `.default()` over a transform,
-  as Pydantic does.** In input mode zod 4.4 and 4.6 drop the `default` of a schema that
-  transforms, so `z.string().transform(f).default("x")`, a `.default()` over
-  `z.preprocess()` or `.pipe(z.transform(f))`, and an object default whose fields
-  transform compiled without their `default`. The Pydantic mirror,
-  `Annotated[str, AfterValidator(f)] = "x"` (`BeforeValidator` for `z.preprocess()`),
-  keeps it. The compiler now restores the value, including in a record value and in
-  `$defs`, so each such field compiles to the same schema and `schema_sha256` as the
-  plain `.default()` and its Pydantic mirror.
+  and an authored `default` or `examples` on one, as Pydantic does.** In input mode zod
+  4.4 and 4.6 drop the `default` of a schema that transforms, so
+  `z.string().transform(f).default("x")`, a `.default()` over `z.preprocess()` or
+  `.pipe(z.transform(f))`, and an object default whose fields transform compiled without
+  their `default`. The Pydantic mirror, `Annotated[str, AfterValidator(f)] = "x"`
+  (`BeforeValidator` for `z.preprocess()`), keeps it.
+  The compiler now restores the value, including in a record value and in `$defs`, so
+  each such field compiles to the same schema and `schema_sha256` as the plain
+  `.default()` and its Pydantic mirror.
   The value is written as given, because neither Zod nor Pydantic runs the transform on
   a default, and it is checked like every other default (see below).
+  Zod drops an authored `.meta({ default })` or `.meta({ examples })` from a
+  transforming schema the same way, while the Pydantic mirror, an `AfterValidator` field
+  with `Field(examples=[...])` or `Field(json_schema_extra={"default": ...})`, keeps it;
+  the compiler restores those too.
+  A schema’s own value also wins over one it inherits from a transforming inner type, so
+  `z.string().transform(f).default("a").default("b")` and its `.catch()` form compile
+  with `default: "b"`, as they do without the transform.
   As Zod does for any default, a field that references a `$defs` entry carrying the same
   value leaves the value out, so an id’d default compiles alike whether or not it
   transforms, for `.default()` and `.catch()`. The KitchenSink parity fixture now covers
@@ -283,9 +291,9 @@ See the
 for downstream adoption and release sequencing.
 
 Compiled schema files also change for one TypeScript construct.
-A model with a `.default()` over a transforming schema compiles to a new schema and
-`schema_sha256`, because the field gains the `default` that 0.8.1 dropped under zod 4.4
-and 4.6 (see Fixed).
+A model with a `.default()` over a transforming schema, or an authored `default` or
+`examples` on one, compiles to a new schema and `schema_sha256`, because the field gains
+the `default` or `examples` that 0.8.1 dropped under zod 4.4 and 4.6 (see Fixed).
 `compile --check` reports drift for such a model; recompile its committed schema.
 The new schema is the one its Pydantic mirror compiles to.
 The fix changes no other compiled schema, and no Python-compiled schema.

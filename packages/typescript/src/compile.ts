@@ -215,29 +215,35 @@ function jsonDefault(value: unknown, what: string): unknown {
 }
 
 /**
- * Holds a restored default on a `$ref` node until `$defs` is complete. Never emitted:
- * `settleRefDefault` removes it from every node.
+ * Holds the `default` and `examples` a `$ref` node writes until `$defs` is complete. Never
+ * emitted: `settleRefAnnotations` removes it from every node.
  */
-const REF_DEFAULT = "\u0000softschema:ref-default";
+const REF_ANNOTATIONS = "\u0000softschema:ref-annotations";
+
+/** Whether two JSON values are equal as Zod compares them when it deduplicates a key. */
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 /**
- * Settle a default restored on a node that references a `$defs` entry, as Zod settles its
- * own: Zod leaves out the default of such a node when the entry carries the same value.
- * So `X.describe("d")` compiles to a bare `$ref` whether or not `X` transforms, and a
- * different value, or an entry with none, keeps the node's default.
+ * Settle the `default` and `examples` of a node that references a `$defs` entry, as Zod
+ * settles them without a transform: it leaves a key out of such a node when the entry
+ * carries the same value, and otherwise the node's own value wins. So `X.describe("d")`
+ * compiles to a bare `$ref` whether or not `X` transforms.
  */
-function settleRefDefault(node: Record<string, unknown>, defs: unknown): void {
-  if (!(REF_DEFAULT in node)) return;
-  const value = node[REF_DEFAULT];
-  delete node[REF_DEFAULT];
+function settleRefAnnotations(node: Record<string, unknown>, defs: unknown): void {
+  const own = node[REF_ANNOTATIONS];
+  if (!isMapping(own)) return;
+  delete node[REF_ANNOTATIONS];
   const name =
     typeof node.$ref === "string" && node.$ref.startsWith("#/$defs/")
       ? node.$ref.slice("#/$defs/".length).replaceAll("~1", "/").replaceAll("~0", "~")
       : undefined;
   const entry = isMapping(defs) && name !== undefined ? defs[name] : undefined;
-  if (isMapping(entry)) settleRefDefault(entry, defs);
-  if (!isMapping(entry) || JSON.stringify(entry.default) !== JSON.stringify(value)) {
-    node.default = value;
+  if (isMapping(entry)) settleRefAnnotations(entry, defs);
+  for (const [key, value] of Object.entries(own)) {
+    if (isMapping(entry) && key in entry && sameJson(entry[key], value)) delete node[key];
+    else node[key] = value;
   }
 }
 
@@ -341,15 +347,30 @@ export function buildCanonicalSchema(
           `the .catch() value at ${at}`,
         );
       }
-      // Zod writes the value of every `.default()` and `.catch()` as `default`, then drops it
-      // in input mode when the schema transforms: a `.default()` over `.transform()` or
-      // `z.preprocess()` (zod 4.4 and 4.6), and a catch value (since zod 4.6). The Pydantic
-      // mirror, a defaulted field with an `AfterValidator` or `BeforeValidator`, keeps it, so
-      // put it back. Zod also leaves it out of a `$ref` node whose `$defs` entry carries the
-      // same value, which only the finished `$defs` shows, so such a node settles there.
-      if (fillValue !== undefined && !("default" in jsonSchema)) {
-        if ("$ref" in jsonSchema) jsonSchema[REF_DEFAULT] = fillValue;
-        else jsonSchema.default = fillValue;
+      // The node's own `default` and `examples`, as Zod writes them: an authored `.meta()`
+      // value, else the value of its `.default()` or `.catch()`.
+      const meta = z.globalRegistry.get(source);
+      const own: Record<string, unknown> = {};
+      if (meta?.default !== undefined) {
+        own.default = jsonDefault(meta.default, `the default at ${at}`);
+      } else if (fillValue !== undefined) {
+        own.default = fillValue;
+      }
+      if (meta?.examples !== undefined) own.examples = meta.examples;
+      // In input mode Zod drops both keys from a schema that transforms: a `.default()` over
+      // `.transform()` or `z.preprocess()` (zod 4.4 and 4.6), a catch value (since zod 4.6),
+      // and an authored `default` or `examples`. The Pydantic mirror, a field with an
+      // `AfterValidator` or `BeforeValidator` and the same `default` or `Field(examples=...)`,
+      // keeps them, so put them back. A value the node inherits from a transforming inner
+      // type gives way to its own, as without a transform. Zod also leaves a key out of a
+      // `$ref` node whose `$defs` entry carries the same value, which only the finished
+      // `$defs` shows, so such a node settles there.
+      if ("$ref" in jsonSchema) {
+        if (Object.keys(own).length > 0) jsonSchema[REF_ANNOTATIONS] = own;
+      } else {
+        for (const [key, value] of Object.entries(own)) {
+          if (!sameJson(jsonSchema[key], value)) jsonSchema[key] = value;
+        }
       }
       if ("default" in jsonSchema) jsonDefault(jsonSchema.default, `the default at ${at}`);
       // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
@@ -384,7 +405,7 @@ export function buildCanonicalSchema(
     },
   }) as Record<string, unknown>;
   visitSubschemas(raw, (node) => {
-    settleRefDefault(node, raw.$defs);
+    settleRefAnnotations(node, raw.$defs);
     expandTypeArray(node);
     normalizeTuple(node);
     dropStringKeyType(node);
