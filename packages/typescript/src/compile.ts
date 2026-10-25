@@ -91,6 +91,28 @@ function addGeneratedTitles(schema: Record<string, unknown>, contractId: string)
 }
 
 /**
+ * Visit every subschema of a raw JSON Schema, parents before children. Only subschema
+ * positions are walked; `default`, `examples`, `const`, and `enum` values are data and are
+ * never visited.
+ */
+function visitSubschemas(
+  schema: Record<string, unknown>,
+  visit: (node: Record<string, unknown>) => void,
+): void {
+  const stack: unknown[] = [schema];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!isMapping(node)) continue;
+    visit(node);
+    for (const [key, value] of Object.entries(node)) {
+      if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) stack.push(...Object.values(value));
+      else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) stack.push(...value);
+      else if (SCHEMA_KEYWORDS.has(key)) stack.push(value);
+    }
+  }
+}
+
+/**
  * Undo Zod's rewrite of a union of bare type branches into a `type` array.
  *
  * Since 4.5, `z.toJSONSchema` turns `anyOf: [{ type: "string" }, { type: "null" }]` (what
@@ -99,24 +121,127 @@ function addGeneratedTitles(schema: Record<string, unknown>, contractId: string)
  * canonical profile does not reconcile them, so the rewrite alone changed the canonical
  * content and schema_sha256 of every model with a nullable field. That rewrite is the only
  * place Zod produces a `type` array, so expanding each one back into bare `anyOf` branches,
- * in order, restores the form both compilers emit. Only subschema positions are walked;
- * `default`, `examples`, `const`, and `enum` values are data and are left alone.
+ * in order, restores the form both compilers emit.
  */
-function expandTypeArrays(schema: Record<string, unknown>): void {
-  const stack: unknown[] = [schema];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!isMapping(node)) continue;
-    if (Array.isArray(node.type) && node.anyOf === undefined) {
-      node.anyOf = node.type.map((type) => ({ type }));
-      delete node.type;
-    }
-    for (const [key, value] of Object.entries(node)) {
-      if (NAME_MAP_KEYWORDS.has(key) && isMapping(value)) stack.push(...Object.values(value));
-      else if (SCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(value)) stack.push(...value);
-      else if (SCHEMA_KEYWORDS.has(key)) stack.push(value);
-    }
+function expandTypeArray(node: Record<string, unknown>): void {
+  if (Array.isArray(node.type) && node.anyOf === undefined) {
+    node.anyOf = node.type.map((type) => ({ type }));
+    delete node.type;
   }
+}
+
+/**
+ * Rewrite a Zod 4.6 tuple into the form Pydantic's `tuple[...]` emits. Each rewrite
+ * changes no verdict.
+ *
+ * `z.tuple([z.string(), z.int()])` emits `prefixItems`, `items: false`, `minItems: 2`, and
+ * `maxItems: 2`; Pydantic's `tuple[str, int]` emits the same without `items: false`. With
+ * `maxItems` at most the number of `prefixItems`, no array that satisfies `maxItems` has an
+ * element `items` would apply to, so `items: false` is dropped. A rest tuple (`items` is a
+ * schema) keeps it.
+ *
+ * An empty tuple also emits `prefixItems: []`, which constrains nothing and which Pydantic
+ * omits: `z.tuple([])` then matches `tuple[()]`, which also spells out `minItems: 0`, and
+ * `z.tuple([], z.int())` matches `tuple[int, ...]`.
+ */
+function normalizeTuple(node: Record<string, unknown>): void {
+  if (!Array.isArray(node.prefixItems)) return;
+  if (
+    node.items === false &&
+    typeof node.maxItems === "number" &&
+    node.maxItems <= node.prefixItems.length
+  ) {
+    delete node.items;
+  }
+  if (node.prefixItems.length === 0) {
+    delete node.prefixItems;
+    if (node.maxItems === 0) node.minItems ??= 0;
+  }
+}
+
+/**
+ * Drop `type: "string"` from a record's key schema, which Pydantic never emits there.
+ *
+ * Every JSON object key is a string, so the keyword is always satisfied. The shared
+ * canonical profile drops a key schema that is only `{type: "string"}`; this drops the
+ * keyword beside other key constraints. Then `z.record(z.enum(["a", "b"]), V)` emits
+ * `propertyNames: {enum: ["a", "b"]}` as Pydantic's `dict[Literal["a", "b"], V]` does,
+ * and a constrained key such as `z.string().min(2)` matches
+ * `dict[Annotated[str, Field(min_length=2)], V]`.
+ */
+function dropStringKeyType(node: Record<string, unknown>): void {
+  const keys = node.propertyNames;
+  if (isMapping(keys) && keys.type === "string" && Object.keys(keys).length > 1) {
+    delete keys.type;
+  }
+}
+
+/**
+ * Whether an object field or record value fills an absent key through `.catch()`,
+ * possibly behind a `z.preprocess()` transform, which is how Zod 4.6 resolves input
+ * optionality.
+ *
+ * Zod's runtime accepts the missing key and substitutes the catch value. An object
+ * field's Pydantic mirror is a defaulted field, which is not required, and a Pydantic
+ * `dict` never requires its keys. Zod 4.6 still requires the key because the inner type
+ * is required. A tuple element is left alone: Pydantic cannot default one, and its
+ * `tuple[...]` counts every element toward `minItems`, as Zod 4.6 does.
+ */
+function catchesAbsentKey(field: z.core.$ZodType | undefined): boolean {
+  if (field instanceof z.core.$ZodPipe && field._zod.def.in instanceof z.core.$ZodTransform) {
+    return catchesAbsentKey(field._zod.def.out);
+  }
+  return field instanceof z.core.$ZodCatch;
+}
+
+/**
+ * The JSON form of a default value, as Zod writes a `.default()` value: a `Date` becomes
+ * its ISO string. Throws for what canonical JSON cannot carry, as the Python compiler
+ * does. Zod's final JSON copy of the schema would otherwise turn NaN or ±Infinity into
+ * `null` and fail on a BigInt with an error that names no field.
+ */
+function jsonDefault(value: unknown, what: string): unknown {
+  const serialized = JSON.stringify(value, (_key, item: unknown) => {
+    if (typeof item === "number" && !Number.isFinite(item)) {
+      throw new TypeError(`canonical JSON requires finite numbers; ${what} is ${item}`);
+    }
+    if (typeof item === "bigint") {
+      throw new TypeError(`canonical JSON cannot represent a BigInt; ${what} is ${item}n`);
+    }
+    return item;
+  });
+  return serialized === undefined ? undefined : JSON.parse(serialized);
+}
+
+/**
+ * Zod's names for its `.startsWith()`, `.endsWith()`, and `.includes()` string checks.
+ *
+ * Since 4.6, `z.toJSONSchema` writes the name of a string schema's last format-like check
+ * as `format`, and these three now count. They are constraints, not formats: `pattern`
+ * already carries each one, no JSON Schema vocabulary or Pydantic `Field(pattern=...)`
+ * mirror emits them, and the name replaces a real format written by an earlier check, as
+ * in `z.email().startsWith("a")`. Only a format Zod generated is corrected: an authored
+ * `.meta({ format })` is kept whatever its name.
+ */
+const AFFIX_CHECK_FORMATS = new Set(["starts_with", "ends_with", "includes"]);
+
+function isAffixCheck(check: z.core.$ZodCheck<never>): boolean {
+  const def = check._zod.def as Partial<z.core.$ZodCheckStringFormatDef>;
+  return def.check === "string_format" && AFFIX_CHECK_FORMATS.has(def.format ?? "");
+}
+
+/**
+ * The `format` Zod emits for `source` without its affix checks, which is the format Zod
+ * 4.4 emitted for the whole schema. Zod derives it from the remaining checks itself, so its
+ * own spelling rules still apply (`z.url()` is `uri`, `.regex()` sets none).
+ */
+function formatWithoutAffixChecks(source: z.core.$ZodType): string | undefined {
+  const def = source._zod.def;
+  const withoutAffixes = z.core.util.clone(source, {
+    ...def,
+    checks: (def.checks ?? []).filter((check) => !isAffixCheck(check)),
+  });
+  return z.toJSONSchema(withoutAffixes, { target: "draft-2020-12", io: "input" }).format;
 }
 
 function fieldTitle(name: string): string {
@@ -155,10 +280,52 @@ export function buildCanonicalSchema(
     // inline. "inline" extracts by id, not by repetition, matching Pydantic's $defs shape.
     reused: "inline",
     unrepresentable: "throw",
-    // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
-    // validate semantically with an intrinsic regex, but that model-specific constraint
-    // must not leak into the canonical cross-language sidecar.
-    override: ({ zodSchema: source, jsonSchema }) => {
+    // Zod-specific output must not leak into the canonical cross-language sidecar. Zod's
+    // overrides run on a wrapped schema before its wrapper copies the result, so fixing
+    // the node that carries the checks fixes every copy.
+    override: ({ zodSchema: source, jsonSchema, path }) => {
+      if (
+        typeof jsonSchema.format === "string" &&
+        AFFIX_CHECK_FORMATS.has(jsonSchema.format) &&
+        (source._zod.def.checks ?? []).some(isAffixCheck) &&
+        // Metadata is applied after the processor, so an authored format is what was emitted.
+        z.globalRegistry.get(source)?.format === undefined
+      ) {
+        const format = formatWithoutAffixChecks(source);
+        if (format === undefined) delete jsonSchema.format;
+        else jsonSchema.format = format;
+      }
+      if (source instanceof z.core.$ZodObject && Array.isArray(jsonSchema.required)) {
+        const shape = source._zod.def.shape;
+        const required = jsonSchema.required.filter((key) => !catchesAbsentKey(shape[key]));
+        if (required.length > 0) jsonSchema.required = required;
+        else delete jsonSchema.required;
+      }
+      if (source instanceof z.core.$ZodRecord && catchesAbsentKey(source._zod.def.valueType)) {
+        delete jsonSchema.required;
+      }
+      // A default the canonical sidecar cannot carry fails here, as it does in Python. By
+      // now Zod has already turned a `.default()` NaN into `null`, so check the source value.
+      const at = `#/${path.join("/")}`;
+      if (source instanceof z.core.$ZodDefault) {
+        jsonDefault(source._zod.def.defaultValue, `the .default() value at ${at}`);
+      } else if (source instanceof z.core.$ZodPrefault) {
+        jsonDefault(source._zod.def.defaultValue, `the .prefault() value at ${at}`);
+      } else if (source instanceof z.core.$ZodCatch) {
+        const catchValue = jsonDefault(
+          source._zod.def.catchValue(undefined as never),
+          `the .catch() value at ${at}`,
+        );
+        // Zod 4.6 drops the `default` of a transforming schema in input mode, the catch
+        // value included. Zod 4.4 kept it, and so does the Pydantic mirror, a defaulted field
+        // with an `AfterValidator`, so put it back.
+        if (!("default" in jsonSchema) && catchValue !== undefined) {
+          jsonSchema.default = catchValue;
+        }
+      }
+      if ("default" in jsonSchema) jsonDefault(jsonSchema.default, `the default at ${at}`);
+      // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
+      // validate semantically with an intrinsic regex; drop it and keep the format.
       if (
         source instanceof z.ZodISODate ||
         source instanceof z.ZodISODateTime ||
@@ -188,7 +355,11 @@ export function buildCanonicalSchema(
       }
     },
   }) as Record<string, unknown>;
-  expandTypeArrays(raw);
+  visitSubschemas(raw, (node) => {
+    expandTypeArray(node);
+    normalizeTuple(node);
+    dropStringKeyType(node);
+  });
   addGeneratedTitles(raw, contractId);
   const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId, schemaId));
   const sha = schemaSha256(schema);

@@ -53,6 +53,11 @@ class KitchenSink(BaseModel):
     step: int = Field(multiple_of=5)
     # String constraints (minLength / maxLength / pattern).
     code: str = Field(min_length=2, max_length=8, pattern="^[A-Z]+$")
+    # Prefix, suffix, and substring constraints are plain patterns (Zod's `.startsWith()`,
+    # `.endsWith()`, and `.includes()`).
+    sku: str = Field(pattern="^SKU-.*")
+    filename: str = Field(pattern=r".*\.md$")
+    contact: str = Field(pattern="@")
     # Boolean.
     active: bool
     # Semantic temporal strings compile to format annotations.
@@ -81,6 +86,8 @@ class KitchenSink(BaseModel):
     # List of nested objects; Event is reused below, so it lands once in $defs.
     history: list[Event] = Field(default_factory=list)
     last_event: Event | None = None
+    # Fixed-length tuple (prefixItems with minItems and maxItems).
+    pair: tuple[str, int]
     # Mapping with typed values (additionalProperties schema).
     scores: dict[str, int] = Field(default_factory=dict)
     # Non-nullable union.
