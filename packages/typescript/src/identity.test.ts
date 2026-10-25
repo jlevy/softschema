@@ -59,6 +59,9 @@ describe("resource identity grammar", () => {
     }
   });
 
+  // Timeout: each acceptance compiles fresh Ajv validators, about 0.9 s of CPU work at idle
+  // on a 4-core Linux host (Bun 1.4.4). Three parallel `bun test` runs plus `yes` on every
+  // core pushed it to 3.3 s, two-thirds of Bun's 5 s default, so the raise is scoped here.
   test("acceptances pass the grammar, compile as the schema id, and validate", () => {
     for (const { id, nested = false } of vectors.accept) {
       expect(identityProblem(id, !nested)).toBeNull();
@@ -69,7 +72,7 @@ describe("resource identity grammar", () => {
         expect(validateStructural({ name: "n" }, schema).ok).toBe(true);
       }
     }
-  });
+  }, 30_000);
 
   test("with several invalid identities, both runtimes quote the same one", () => {
     for (const { schema, resources, message } of vectors.order) {
