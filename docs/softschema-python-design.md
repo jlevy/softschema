@@ -442,7 +442,9 @@ softschema compile examples.movie_page.model:MoviePage \
 The emitted schema includes:
 
 - `$schema` for JSON Schema 2020-12
-- `$id` only when the separate optional `--schema-id` resource URI is supplied
+- `$id` only when the separate optional `--schema-id` resource URI is supplied; compile
+  refuses an id that validation would refuse as `resource_identity` (relative, or a
+  `urn:` without a namespace identifier) through the same `_check_root_id` helper
 - an `x-softschema` annotation block with `contract` and `schema_sha256` (a
   deterministic SHA-256 over the canonical JSON form of the schema).
   The block is deliberately language-neutral; it carries no `generated_from` provenance,

@@ -42,3 +42,22 @@ $ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract wrong:Movie
 }
 ? 1
 ```
+
+# Test: compile refuses a --schema-id that validation would refuse (exit 2)
+
+`--schema-id` becomes the root `$id`, so compile applies validation’s resource-identity
+rule before writing or checking anything: a relative id and a `urn:` without a
+namespace identifier are refused with exit 2. Both messages are byte-identical across
+implementations, so they are asserted in full on stderr (`!`).
+
+```console
+$ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check --schema-id urn:example
+! softschema compile: a urn: $id must name a namespace identifier, as in urn:example:name, got "urn:example"
+? 2
+```
+
+```console
+$ $SOFTSCHEMA compile examples.movie_page.model:MoviePage --contract example.movies:MoviePage/v1 --out examples/movie_page/movie-page.schema.yaml --check --schema-id schemas/movie.json
+! softschema compile: the root $id must be an absolute URI, got "schemas/movie.json"
+? 2
+```

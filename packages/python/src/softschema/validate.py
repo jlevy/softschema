@@ -14,6 +14,7 @@ public for callers that need a single layer.
 
 from __future__ import annotations
 
+import json
 import re
 from ast import literal_eval
 from collections.abc import Collection, Iterator, Mapping, Sequence
@@ -562,15 +563,32 @@ def _check_root_identity(schema: dict[str, Any]) -> None:
     A relative root ``$id`` has no base to resolve against, so the engines invent one:
     ``referencing`` crawls the document under the relative id and joins nested relative
     ids onto it a second time, while Ajv resolves them once. Refusing the form keeps one
-    verdict; ``softschema compile`` always writes absolute ids. Kept in step with
-    TypeScript's ``checkRootIdentity``.
+    verdict. Kept in step with TypeScript's ``checkRootIdentity``.
     """
     root_id = schema.get("$id")
-    if isinstance(root_id, str) and not urlparse(root_id).scheme:
+    if isinstance(root_id, str):
+        _check_root_id(root_id)
+
+
+def _check_root_id(root_id: str) -> None:
+    """Refuse a root ``$id`` that validation refuses as ``resource_identity``.
+
+    That is a relative one (see :func:`_check_root_identity`) or a ``urn:`` without a
+    namespace identifier (see :func:`_check_urn_identity`). ``compile_model`` applies it
+    to ``schema_id``, so compile never writes a root ``$id`` that validation refuses.
+    Kept in step with TypeScript's ``checkRootId``.
+    """
+    if not urlparse(root_id).scheme:
         raise SchemaGraphError(
             "resource_identity",
-            f"the root $id must be an absolute URI, got {root_id!r}",
+            f"the root $id must be an absolute URI, got {_quoted(root_id)}",
         )
+    _check_urn_identity(root_id, "$id")
+
+
+def _quoted(value: str) -> str:
+    """Quote ``value`` as TypeScript's ``JSON.stringify`` does, so messages match."""
+    return json.dumps(value, ensure_ascii=False)
 
 
 # The name after `urn:`, up to any query or fragment: a namespace identifier of one to 32
@@ -597,7 +615,7 @@ def _check_urn_identity(identity: str, label: str) -> None:
         raise SchemaGraphError(
             "resource_identity",
             f"a urn: {label} must name a namespace identifier, as in urn:example:name, "
-            f"got {identity!r}",
+            f"got {_quoted(identity)}",
         )
 
 

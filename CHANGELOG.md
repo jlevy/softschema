@@ -55,6 +55,9 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   invented bases, is refused as `reason: resource_identity`, and so is a `$id`, root or
   nested, that is a `urn:` without a namespace identifier, such as `urn:example`, which
   Python accepted and Ajv could not serialize.
+  `softschema compile --schema-id` (and `schema_id`/`schemaId` in the libraries) refuses
+  an id either rule would refuse, with the validation message and the usual exit 2, so
+  compile never writes a schema that validation refuses.
   Write `dependentSchemas` or `dependentRequired`, `type: [..., "null"]`,
   `$dynamicRef`/`$dynamicAnchor`, an absolute root `$id`, and a URN as
   `urn:<nid>:<name>`.
@@ -110,9 +113,10 @@ against a different invented base (write an absolute `$id`), and for a `$id`, ro
 nested, that is a `urn:` without a namespace identifier, such as `urn:example` or
 `urn:dir/item.json`, which Python accepted and TypeScript failed to compile as
 `reason: compilation` (write `urn:<nid>:<name>`, such as `urn:example:name`); both now
-refuse it as `reason: resource_identity`. Skip reasons change only for the TypeScript
-library fix above. Strict serialized-result consumers must accept the new layer fields
-and remove the unreleased aggregate field.
+refuse it as `reason: resource_identity`, and `compile --schema-id` refuses it too.
+Skip reasons change only for the TypeScript library fix above.
+Strict serialized-result consumers must accept the new layer fields and remove the
+unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or
 revalidate rather than fabricating evidence.
 See the

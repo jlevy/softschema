@@ -17,6 +17,7 @@ import { isMapping } from "./guards.js";
 import { checkContractId } from "./models.js";
 import { parsePortableYaml, readUtf8 } from "./portable.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
+import { checkRootId } from "./validate.js";
 
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
 
@@ -107,13 +108,8 @@ export function buildCanonicalSchema(
   schemaId?: string,
 ): { schema: Record<string, unknown>; sha: string } {
   checkContractId(contractId);
-  if (schemaId !== undefined) {
-    try {
-      new URL(schemaId);
-    } catch {
-      throw new Error("schemaId must be an absolute URI");
-    }
-  }
+  // The id becomes the root `$id`; refuse one validation would refuse.
+  if (schemaId !== undefined) checkRootId(schemaId);
   const raw = z.toJSONSchema(zodSchema, {
     target: "draft-2020-12",
     io: "input",

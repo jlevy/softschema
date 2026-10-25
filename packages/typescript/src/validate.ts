@@ -558,14 +558,23 @@ const FOREIGN_KEYWORDS: Record<string, string> = {
  * it twice, Ajv once). Kept in step with Python's `_check_root_identity`.
  */
 function checkRootIdentity(schema: Record<string, unknown>): void {
-  const rootId = schema.$id;
-  if (typeof rootId !== "string") return;
+  if (typeof schema.$id === "string") checkRootId(schema.$id);
+}
+
+/**
+ * Refuse a root `$id` that validation refuses as `resource_identity`: a relative one (see
+ * `checkRootIdentity`) or a `urn:` without a namespace identifier (see
+ * `checkUrnIdentity`). `compileSchema` applies it to `schemaId`, so compile never writes
+ * a root `$id` that validation refuses. Kept in step with Python's `_check_root_id`.
+ */
+export function checkRootId(rootId: string): void {
   if (!/^[A-Za-z][A-Za-z0-9+.-]*:/.test(rootId)) {
     throw new SchemaGraphError(
       "resource_identity",
       `the root $id must be an absolute URI, got ${JSON.stringify(rootId)}`,
     );
   }
+  checkUrnIdentity(rootId, "$id");
 }
 
 /**

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from frontmatter_format import new_yaml
 from pydantic import BaseModel
@@ -19,6 +18,7 @@ from strif import atomic_write_text
 from softschema._portable import MAX_SAFE_INTEGER, parse_yaml, read_utf8
 from softschema.canonicalize import canonicalize_json_schema
 from softschema.models import _check_contract_id
+from softschema.validate import _check_root_id
 
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -44,8 +44,9 @@ def compile_model(
 ) -> CompileResult:
     """Compile ``model_cls`` to a compiled JSON Schema YAML file at ``out_path``."""
     _check_contract_id(contract_id)
-    if schema_id is not None and not urlparse(schema_id).scheme:
-        raise ValueError("schema_id must be an absolute URI")
+    if schema_id is not None:
+        # The id becomes the root `$id`; refuse one validation would refuse.
+        _check_root_id(schema_id)
     raw_schema = model_cls.model_json_schema()
     if model_cls.model_config.get("title") is None:
         raw_schema["title"] = _contract_name(contract_id)
