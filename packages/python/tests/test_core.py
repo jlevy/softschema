@@ -614,7 +614,8 @@ def test_shared_frontmatter_vectors(tmp_path: Path) -> None:
         path.write_text(case["text"])
         result = validate_artifact(path, contract=contract)
         assert result.ok, case["id"]
-        assert result.values == case["expected"], case["id"]
+        if "expected" in case:
+            assert result.values == case["expected"], case["id"]
 
 
 def test_shared_artifact_input_vectors(tmp_path: Path) -> None:

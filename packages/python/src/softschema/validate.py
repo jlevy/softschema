@@ -1064,8 +1064,15 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
     just produced, rather than what is still on disk — parses it through exactly this code
     path instead of a second implementation that could disagree with it. ``source`` only
     names the document in error messages.
+
+    Lines are split on ``"\n"`` alone, with a trailing ``"\r"`` dropped, the same rule
+    :func:`split_frontmatter` and the TypeScript reader apply. ``str.splitlines()`` would
+    also break on U+2028, U+2029, U+0085, form feed and the ASCII separators, which the
+    YAML engines treat as content; a scalar containing one would then be cut into lines
+    the engine cannot parse, and the two runtimes would reach different verdicts on the
+    same file.
     """
-    lines = text.splitlines()
+    lines = [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
     if not lines or lines[0].rstrip() != "---":
         return text, None
     end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)

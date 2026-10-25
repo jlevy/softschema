@@ -200,9 +200,9 @@ class FrontmatterSplit:
         text[:metadata_offset] + new_metadata + text[metadata_end:body_offset] + body
 
     That middle slice is the closing fence, kept verbatim rather than re-synthesized.
-    This is the difference from :func:`read_frontmatter_doc`, which splits on
-    ``splitlines()`` and rejoins with ``"\n"``: fine for reading values, lossy for
-    writing the file back.
+    This is the difference from :func:`read_frontmatter_doc`, which splits on ``"\n"``,
+    drops each line's trailing ``"\r"``, and rejoins with ``"\n"``: fine for reading
+    values, lossy for writing the file back.
     """
 
     metadata_text: str
@@ -284,8 +284,8 @@ def _line_end(text: str, start: int) -> tuple[int, int] | None:
     "next line" starts there too, so a caller that keeps scanning stops on the next
     iteration.
 
-    That has to be so, because :func:`read_frontmatter_doc` splits with ``splitlines()``
-    and ``readFrontmatterDoc`` with ``split(/\r?\n/)``, and both keep such a line. A scan
+    That has to be so, because :func:`read_frontmatter_doc` splits on ``"\n"`` and
+    ``readFrontmatterDoc`` with ``split(/\r?\n/)``, and both keep such a line. A scan
     that dropped it would disagree with the reader about where a document's fences are,
     which is the disagreement this module exists to prevent. Concretely, it made
     :func:`split_frontmatter` report "no region to rewrite" for a document ending exactly

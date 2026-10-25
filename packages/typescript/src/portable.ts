@@ -279,7 +279,7 @@ export function opensFrontmatterFence(text: string): boolean {
  * iteration.
  *
  * That has to be so, because `readFrontmatterDoc` splits with `split(/\r?\n/)` and
- * Python's `read_frontmatter_doc` with `splitlines()`, and both keep such a line. A scan
+ * Python's `read_frontmatter_doc` on `"\n"`, and both keep such a line. A scan
  * that dropped it would disagree with the reader about where a document's fences are,
  * which is the disagreement this module exists to prevent. Concretely, it made
  * `splitFrontmatter` report "no region to rewrite" for a document ending exactly at its

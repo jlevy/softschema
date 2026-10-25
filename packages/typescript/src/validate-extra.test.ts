@@ -309,7 +309,9 @@ test("shared frontmatter vectors", () => {
     const path = tmpFile(`${String(item.id)}.md`, String(item.text));
     const result = validateArtifact(path, contract({ envelopeKey: "movie" }));
     expect(result.ok).toBe(true);
-    expect(result.values).toEqual(item.expected as Record<string, unknown>);
+    if ("expected" in item) {
+      expect(result.values).toEqual(item.expected as Record<string, unknown>);
+    }
   }
 });
 
