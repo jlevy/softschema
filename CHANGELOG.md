@@ -14,8 +14,8 @@ version number.
   `RoundTripRepresenter` class.
   After the first repair, every round-trip emitter in the same process — a host
   application’s own included — wrote `null` where ruamel writes an empty value.
-  The representer now lives on a softschema-private subclass, so nothing outside
-  softschema is touched.
+  The representer now lives on a softschema-private subclass, so the repair emitter no
+  longer touches ruamel’s shared classes.
   Python only: the TypeScript emitter is configured per call and has no shared state to
   leak.
 

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import date, datetime
+from importlib.metadata import version as package_version
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +148,43 @@ def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
     out.write_bytes(b"\xff")
     with pytest.raises(ValueError, match="UTF-8"):
         compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+
+
+_FRONTMATTER_FORMAT_VERSION = tuple(
+    int(part) for part in re.findall(r"\d+", package_version("frontmatter-format"))[:3]
+)
+
+
+@pytest.mark.xfail(
+    _FRONTMATTER_FORMAT_VERSION < (0, 4, 1),
+    reason=(
+        "frontmatter-format < 0.4.1 registers new_yaml's representers on ruamel's shared "
+        "SafeRepresenter; 0.4.1 gives each instance a private subclass (softschema's floor "
+        "rises with ss-c9bc)"
+    ),
+    strict=True,
+)
+def test_compile_leaves_ruamels_shared_safe_representer_unchanged(tmp_path: Path) -> None:
+    """``compile`` must not restyle a host's own safe YAML dumps.
+
+    The compile writer comes from ``frontmatter_format.new_yaml``, which registers a
+    ``dict`` and a ``str`` representer. ruamel's ``add_representer`` is a classmethod, so
+    registered on a stock ``YAML(typ="safe")`` those land on the shared ``SafeRepresenter``
+    and every safe emitter in the process writes multi-line strings as block literals and
+    sorts its keys. The shared table, and a stock emitter built afterward, must both come
+    out as ruamel ships them.
+    """
+    from ruamel.yaml.representer import SafeRepresenter
+
+    compile_model(SampleModel, tmp_path / "sample.schema.yaml", contract_id="example:Sample/v1")
+
+    assert SafeRepresenter.yaml_representers[dict] is SafeRepresenter.represent_dict
+    assert SafeRepresenter.yaml_representers[str] is SafeRepresenter.represent_str
+    buffer = StringIO()
+    YAML(typ="safe").dump({"zebra": "two\nlines", "apple": 1}, buffer)
+    # ruamel quotes a multi-line scalar and keeps insertion order; the compile writer
+    # would emit a `|-` block and sort the keys.
+    assert buffer.getvalue() == 'zebra: "two\\nlines"\napple: 1\n'
 
 
 def test_shared_generated_title_vectors(tmp_path: Path) -> None:

@@ -458,12 +458,11 @@ byte-identical
 ? 0
 ```
 
-The pure-yaml profile names the document the same way. It once did not: a `*.yaml`
-artifact that still failed to parse reported the engine's wording alone — `in "<unicode
-string>", line 4` — with no artifact name on either path, while the frontmatter readers
-named theirs. An agent repairing a batch could not tell which file the record was about.
-No binding is passed here, so this is the record `repair` builds itself when it cannot
-rescue a document that declares no legible contract.
+The pure-yaml profile names the document the same way, so an agent repairing a batch can
+tell which file a record is about: the engine's own wording — `in "<unicode string>",
+line 4` — says where in the text it stopped, not which text. No binding is passed here,
+so this is the record `repair` builds itself when it cannot rescue a document that
+declares no legible contract.
 
 ```console
 $ $SOFTSCHEMA repair floor/repair-unrepairable.yaml --check

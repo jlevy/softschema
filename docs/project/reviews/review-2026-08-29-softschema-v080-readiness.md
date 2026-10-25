@@ -14,6 +14,10 @@ author: Claude, with maintainer direction from Joshua Levy
 covered. Not yet released — the version bump, the changelog cut, and the manual e2e
 phases are still open.
 
+**Current status:** released as v0.8.0 on 2026-08-30 (tag `v0.8.0`, PR #53); see the
+[2026-10-25 addendum](#status-addendum--2026-10-25). The text below is left as written
+when the review was made.
+
 ## Decision
 
 Ship the unreleased work as **v0.8.0, a minor**, not a patch.

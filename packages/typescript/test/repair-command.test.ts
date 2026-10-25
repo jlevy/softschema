@@ -5,7 +5,7 @@
  * `repair` is its own command because it answers a different question from `validate` and
  * has the opposite posture toward a document that cannot be read. `validate` is the
  * consuming-side gate and refuses one; `repair` is the producing-side loop and reports one.
- * See docs/project/specs/active/plan-2026-08-30-repair-command.md.
+ * See docs/project/specs/done/plan-2026-08-30-repair-command.md.
  *
  * Kept in step with the Python cases in packages/python/tests/test_cli.py.
  */

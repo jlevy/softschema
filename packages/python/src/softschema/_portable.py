@@ -306,11 +306,11 @@ class _RoundTripRepresenter(RoundTripRepresenter):
     """Round-trip representer overrides scoped to softschema emitter instances.
 
     ``add_representer`` is a classmethod that writes into the receiving class's registry.
-    Calling it through a stock ``YAML(typ="rt")`` instance therefore edits ruamel's shared
+    Called through a stock ``YAML(typ="rt")`` instance, it edits ruamel's shared
     ``RoundTripRepresenter``, and with it every round-trip emitter in the process — a host
-    application's own included, which started spelling its nulls softschema's way after
-    the first repair. A subclass copies the inherited registry on its first registration,
-    so the override stops here.
+    application's own included. A subclass copies the inherited registry on its first
+    registration, so the override never reaches other round-trip emitters in the process:
+    only the instances :func:`round_trip_yaml` builds spell a null as ``null``.
     """
 
 

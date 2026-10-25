@@ -8,13 +8,16 @@ which is per-language by design.
 
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import BaseModel
 from ruamel.yaml import YAML
+from ruamel.yaml.representer import RoundTripRepresenter
 
+from softschema._portable import _RoundTripRepresenter, dump_round_trip, round_trip_yaml
 from softschema.conform import conform_artifact
 from softschema.models import Contract, SchemaProfile
 from softschema.pipeline import repair_and_validate_artifact
@@ -226,12 +229,6 @@ def test_round_trip_emitter_leaves_other_round_trip_instances_alone() -> None:
     writes nothing. The shared class, and a stock emitter built after softschema ran, must
     both come out unchanged.
     """
-    from io import StringIO
-
-    from ruamel.yaml.representer import RoundTripRepresenter
-
-    from softschema._portable import dump_round_trip, round_trip_yaml
-
     document = {"kept": None, "items": [None, 1]}
     yaml = round_trip_yaml()
     assert "null" in dump_round_trip(yaml, document)
@@ -241,7 +238,7 @@ def test_round_trip_emitter_leaves_other_round_trip_instances_alone() -> None:
     YAML(typ="rt").dump(document, buffer)
     assert "null" not in buffer.getvalue()
     assert RoundTripRepresenter.yaml_representers[type(None)] is RoundTripRepresenter.represent_none
-    assert type(yaml.representer) is not RoundTripRepresenter
+    assert type(yaml.representer) is _RoundTripRepresenter
 
 
 def test_pipeline_missing_file_is_an_input_error(tmp_path: Path) -> None:

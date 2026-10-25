@@ -845,7 +845,7 @@ def test_unparsable_frontmatter_names_the_parse_failure(
 # `repair` is its own command because it answers a different question from `validate` and
 # has the opposite posture toward an unreadable document. `validate` is the consuming-side
 # gate and refuses one; `repair` is the producing-side loop and reports one. See
-# docs/project/specs/active/plan-2026-08-30-repair-command.md.
+# docs/project/specs/done/plan-2026-08-30-repair-command.md.
 
 _NEEDS_REPAIR = dedent(
     """
