@@ -229,9 +229,14 @@ def validate_structural(
         validator = _validator_for(schema_yaml_path, strict_extras, resources)
         errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
-        return _schema_invalid("syntax", "compiled schema root must be a mapping")
+        return _schema_invalid(
+            "syntax", f"{document_label(schema_yaml_path)}: compiled schema root must be a mapping"
+        )
     except PortableInputError as exc:
-        return _schema_invalid("syntax", str(exc))
+        # The reader's message says where in the schema text it stopped; the record's
+        # top-level `path` is the artifact, so without the schema's own name an agent
+        # following "line 2, column 22" opens the wrong file.
+        return _schema_invalid("syntax", f"{document_label(schema_yaml_path)}: {exc}")
     except SchemaError as exc:
         return _schema_invalid("dialect", exc.message)
     except Unresolvable as exc:

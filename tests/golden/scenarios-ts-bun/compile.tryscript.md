@@ -18,7 +18,7 @@ $ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --
   "drift": false,
   "drift_diff": null,
   "out_path": "examples/parity/parity.schema.yaml",
-  "schema_sha256": "058b039d374c97942e4edb3933922df7faf6d04742847cc05edfe0e74fc4b436",
+  "schema_sha256": "6db7ff23184cd7ffc2c4747a612691e85be38c5d316df57d840eb6ceda7026fa",
   "schema_yaml": [..]
 }
 ? 0
@@ -32,7 +32,7 @@ $ $SOFTSCHEMA compile packages/typescript/test/fixtures/parity.ts:KitchenSink --
   "drift": true,
   "drift_diff": "committed schema at examples/parity/parity.schema.yaml differs from compile output",
   "out_path": "examples/parity/parity.schema.yaml",
-  "schema_sha256": "b1fc23738f15be4dfce97df0365b6b0f0bec79b813114770ceb1f1d41ec840d9",
+  "schema_sha256": "0ff79ed7faf4717185c2e1d2a274221352b6aa423b120f0b9973f5244c351359",
   "schema_yaml": [..]
 }
 ? 1

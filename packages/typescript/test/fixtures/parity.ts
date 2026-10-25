@@ -45,6 +45,13 @@ export const KitchenSink = z
     notes: z.string().nullable().default(null),
     nickname: z.string().nullable().default("n/a"),
     rank: z.enum(["low", "high"]).nullable().default(null),
+    // Text the compilers must escape: U+0085, U+2028 and U+2029 in a description, a
+    // default, and an enum value. Both writers emit `\N`, `\L` and `\P`, and both readers
+    // read the sidecar back; raw, the portable preflight would reject it.
+    separator: z
+      .enum(["next\u0085line", "line\u2028separator"])
+      .default("next\u0085line")
+      .describe("Carries a next line\u0085a line\u2028and a paragraph\u2029separator."),
     primary: Address,
     secondary: Address.nullable().default(null),
     history: z.array(Event).optional(),

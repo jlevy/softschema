@@ -7,10 +7,10 @@ from datetime import date, datetime
 from importlib.metadata import version as package_version
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from ruamel.yaml import YAML
 
 import softschema
@@ -30,7 +30,12 @@ from softschema import (
     validate_values,
 )
 from softschema import validate as validate_module
-from softschema._portable import PortableInputError, document_label, parse_yaml
+from softschema._portable import (
+    PortableInputError,
+    document_label,
+    find_non_portable_character,
+    parse_yaml,
+)
 from softschema.validate import parse_frontmatter_text, parse_yaml_text
 
 
@@ -146,9 +151,66 @@ def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
         out.read_text().replace("additionalProperties: false", "additionalProperties: 0")
     )
     assert compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True).drift
+    # A committed file the portable reader refuses is drift, not a usage error: `--check`
+    # asks whether the committed output still stands.
     out.write_bytes(b"\xff")
-    with pytest.raises(ValueError, match="UTF-8"):
-        compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+    unreadable = compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+    assert unreadable.drift
+    assert unreadable.drift_diff is not None
+    assert unreadable.drift_diff.startswith(f"committed compiled schema at {out} is not portable")
+    assert "UTF-8" in unreadable.drift_diff
+    out.write_text("description: raw\u0085next\ntype: object\n", encoding="utf-8")
+    raw = compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+    assert raw.drift
+    assert raw.drift_diff is not None
+    assert "#x0085" in raw.drift_diff
+
+
+class SeparatorModel(BaseModel):
+    """Text the compile writer must escape, in every place a schema carries text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["next\u0085line", "line\u2028separator"] = Field(
+        default="next\u0085line",
+        description="Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
+    )
+    odd: str = Field(alias="odd\u0085key", default="c1\x9fcontrol\x7fdel")
+
+
+def test_compile_escapes_every_character_the_reader_rejects(tmp_path: Path) -> None:
+    """The sidecar `compile` writes is one `validate` can read.
+
+    ruamel single-quotes a string holding U+0085, U+2028 or U+2029 with the character raw
+    inside, and the portable preflight then rejects the schema `compile` just wrote, so
+    every document bound to it reported `schema_invalid`. The writer now forces such a
+    string into double-quoted style, where ruamel writes `\\N`, `\\L`, `\\P` and `\\x85`,
+    which both engines decode to the original characters.
+    """
+    out = tmp_path / "separator.schema.yaml"
+    result = compile_model(SeparatorModel, out, contract_id="example:Separator/v1")
+    text = out.read_text(encoding="utf-8")
+    assert find_non_portable_character(text) is None
+    assert '"next\\Nline"' in text
+    assert '"line\\Lseparator"' in text
+    assert "\\Pseparator." in text
+    assert '"odd\\Nkey"' in text
+    assert '"c1\\x9Fcontrol\\x7Fdel"' in text or '"c1\\x9fcontrol\\x7fdel"' in text
+
+    schema = parse_yaml(text)
+    field = schema["properties"]["kind"]
+    assert field["default"] == "next\u0085line"
+    assert field["enum"] == ["next\u0085line", "line\u2028separator"]
+    assert (
+        field["description"]
+        == "Carries a next line\u0085a line\u2028and a paragraph\u2029separator."
+    )
+    assert schema["properties"]["odd\u0085key"]["default"] == "c1\x9fcontrol\x7fdel"
+    assert not compile_model(
+        SeparatorModel, out, contract_id="example:Separator/v1", check_only=True
+    ).drift
+    assert result.schema_sha256 == schema["x-softschema"]["schema_sha256"]
+    assert validate_structural({"kind": "line\u2028separator"}, out).ok
 
 
 _FRONTMATTER_FORMAT_VERSION = tuple(
@@ -1009,3 +1071,16 @@ def test_a_schema_whose_root_is_not_a_mapping_still_reports_syntax(tmp_path: Pat
 
     assert not result.ok
     assert result.errors[0]["kind"] == "schema_invalid"
+    assert result.errors[0]["message"] == f"`{schema}`: compiled schema root must be a mapping"
+
+
+def test_schema_invalid_names_the_schema_file(tmp_path: Path) -> None:
+    """The record's `path` is the artifact, so the schema's own name has to be in the message."""
+    schema = tmp_path / "raw.schema.yaml"
+    schema.write_text("description: raw\u0085next\ntype: object\n", encoding="utf-8")
+
+    result = validate_structural({"name": "ok"}, schema)
+
+    assert result.errors[0]["kind"] == "schema_invalid"
+    assert result.errors[0]["reason"] == "syntax"
+    assert result.errors[0]["message"].startswith(f"`{schema}`: unacceptable character #x0085 ")

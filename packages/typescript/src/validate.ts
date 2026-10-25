@@ -714,12 +714,18 @@ function structuralAgainstSchemaFile(
     compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
     if (err instanceof PortableInputError) {
-      return schemaInvalid("syntax", err.message);
+      // The reader's message says where in the schema text it stopped; the record's
+      // top-level `path` is the artifact, so without the schema's own name an agent
+      // following "line 2, column 22" opens the wrong file.
+      return schemaInvalid("syntax", `${documentLabel(resolved)}: ${err.message}`);
     }
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    return schemaInvalid("syntax", "compiled schema root must be a mapping");
+    return schemaInvalid(
+      "syntax",
+      `${documentLabel(resolved)}: compiled schema root must be a mapping`,
+    );
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }

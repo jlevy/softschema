@@ -145,6 +145,21 @@ export function findNonPortableCharacter(text: string): { char: string; index: n
   return match === null ? null : { char: match[0], index: match.index };
 }
 
+const EVERY_NON_PORTABLE_CHARACTER = new RegExp(NON_PORTABLE_CHARACTER.source, "gu");
+
+/**
+ * Replace every raw character the preflight rejects with its double-quoted escape.
+ *
+ * Only correct for text in which each such character sits inside a double-quoted scalar;
+ * the schema writer arranges that before calling this. The Python writer needs no
+ * counterpart, because ruamel escapes these characters itself once the style is `"`.
+ */
+export function escapeNonPortableCharacters(text: string): string {
+  return findNonPortableCharacter(text) === null
+    ? text
+    : text.replace(EVERY_NON_PORTABLE_CHARACTER, (char) => portableEscape(char));
+}
+
 /**
  * Reject the first raw character in `text` that the engines would read differently.
  *

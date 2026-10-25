@@ -190,7 +190,7 @@ describe("compiled schema invalid root", () => {
     const error = result.structural.errors[0] as Record<string, unknown>;
     expect(result.structural.ok).toBe(false);
     expect(error.kind).toBe("schema_invalid");
-    expect(error.message).toBe("compiled schema root must be a mapping");
+    expect(error.message).toBe(`\`${compiledSchema}\`: compiled schema root must be a mapping`);
     expect(error.reason).toBe("syntax");
   });
 
@@ -202,7 +202,7 @@ describe("compiled schema invalid root", () => {
     const error = result.structural.errors[0] as Record<string, unknown>;
     expect(result.structural.ok).toBe(false);
     expect(error.kind).toBe("schema_invalid");
-    expect(error.message).toBe("compiled schema root must be a mapping");
+    expect(error.message).toBe(`\`${compiledSchema}\`: compiled schema root must be a mapping`);
     expect(error.reason).toBe("syntax");
   });
 
@@ -214,6 +214,19 @@ describe("compiled schema invalid root", () => {
       kind: "schema_invalid",
       reason: "syntax",
     });
+  });
+
+  test("schema_invalid names the schema file", () => {
+    // The record's `path` is the artifact, so the schema's own name has to be in the message.
+    const compiledSchema = tmpFile("raw.schema.yaml", "description: raw\u0085next\ntype: object\n");
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
+    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
+    const error = result.structural.errors[0] as Record<string, unknown>;
+    expect(error.kind).toBe("schema_invalid");
+    expect(error.reason).toBe("syntax");
+    expect(String(error.message)).toStartWith(
+      `\`${compiledSchema}\`: unacceptable character #x0085 `,
+    );
   });
 });
 

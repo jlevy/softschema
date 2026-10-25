@@ -158,6 +158,14 @@ properties:
     - $ref: '#/$defs/Address'
     - type: 'null'
     default: null
+  separator:
+    default: "next\Nline"
+    description: "Carries a next line\Na line\Land a paragraph\Pseparator."
+    enum:
+    - "next\Nline"
+    - "line\Lseparator"
+    title: Separator
+    type: string
   step:
     multipleOf: 5
     title: Step
@@ -191,4 +199,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 058b039d374c97942e4edb3933922df7faf6d04742847cc05edfe0e74fc4b436
+  schema_sha256: 6db7ff23184cd7ffc2c4747a612691e85be38c5d316df57d840eb6ceda7026fa

@@ -74,6 +74,13 @@ class KitchenSink(BaseModel):
     nickname: str | None = "n/a"
     # Optional enum (Literal | None).
     rank: Literal["low", "high"] | None = None
+    # Text the compilers must escape: U+0085, U+2028 and U+2029 in a description, a
+    # default, and an enum value. Both writers emit `\N`, `\L` and `\P`, and both readers
+    # read the sidecar back; raw, the portable preflight would reject it.
+    separator: Literal["next\u0085line", "line\u2028separator"] = Field(
+        default="next\u0085line",
+        description="Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
+    )
     # Required nested object (single-use $ref).
     primary: Address
     # Optional nested object (anyOf [$ref, null]).

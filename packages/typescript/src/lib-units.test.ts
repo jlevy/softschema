@@ -20,7 +20,8 @@ import {
   parseSchemaMetadata,
   SchemaMetadataError,
 } from "./models.js";
-import { validateArtifact } from "./validate.js";
+import { findNonPortableCharacter, parsePortableYaml } from "./portable.js";
+import { validateArtifact, validateStructural } from "./validate.js";
 
 const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
@@ -418,10 +419,57 @@ describe("compile: write mode + build", () => {
       readFileSync(out, "utf8").replace("additionalProperties: false", "additionalProperties: 0"),
     );
     expect(compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true }).drift).toBe(true);
+    // A committed file the portable reader refuses is drift, not a usage error: `--check`
+    // asks whether the committed output still stands.
     writeFileSync(out, Buffer.from([0xff]));
-    expect(() => compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true })).toThrow(
-      "UTF-8",
+    const unreadable = compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true });
+    expect(unreadable.drift).toBe(true);
+    expect(unreadable.driftDiff).toStartWith(`committed compiled schema at ${out} is not portable`);
+    expect(unreadable.driftDiff).toContain("UTF-8");
+    writeFileSync(out, "description: raw\u0085next\ntype: object\n");
+    const raw = compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true });
+    expect(raw.drift).toBe(true);
+    expect(raw.driftDiff).toContain("#x0085");
+  });
+  test("escapes every character the portable reader rejects", () => {
+    // The `yaml` package writes U+0085, U+2028 and U+2029 raw in a plain or double-quoted
+    // scalar, and the portable preflight then rejects the schema `compile` just wrote. The
+    // writer forces such strings (keys included) into double-quoted style and writes the
+    // escapes both engines decode.
+    const Separator = z.strictObject({
+      kind: z
+        .enum(["next\u0085line", "line\u2028separator"])
+        .default("next\u0085line")
+        .describe("Carries a next line\u0085a line\u2028and a paragraph\u2029separator."),
+      "odd\u0085key": z.string().default("c1\x9fcontrol\x7fdel"),
+    });
+    const out = join(mkdtempSync(join(tmpdir(), "softschema-sep-")), "separator.schema.yaml");
+    const result = compileSchema(Separator, out, { contractId: "x:Separator/v1" });
+    const text = readFileSync(out, "utf8");
+    expect(findNonPortableCharacter(text)).toBeNull();
+    expect(text).toContain('"next\\Nline"');
+    expect(text).toContain('"line\\Lseparator"');
+    expect(text).toContain("\\Pseparator.");
+    expect(text).toContain('"odd\\Nkey"');
+    expect(text).toContain('"c1\\x9fcontrol\\x7fdel"');
+
+    const schema = parsePortableYaml(text) as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(schema.properties?.kind).toMatchObject({
+      default: "next\u0085line",
+      enum: ["next\u0085line", "line\u2028separator"],
+      description: "Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
+    });
+    expect(schema.properties?.["odd\u0085key"]?.default).toBe("c1\x9fcontrol\x7fdel");
+    expect(
+      compileSchema(Separator, out, { contractId: "x:Separator/v1", checkOnly: true }).drift,
+    ).toBe(false);
+    expect(result.schemaSha256).toBe(
+      (schema["x-softschema"] as Record<string, unknown>).schema_sha256 as string,
     );
+    expect(validateStructural({ kind: "line\u2028separator" }, schema).ok).toBe(true);
   });
 });
 

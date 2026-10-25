@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { parse as yamlParse } from "yaml";
 import { buildCanonicalSchema } from "../src/compile.js";
+import { parsePortableYaml } from "../src/portable.js";
 import { KitchenSink } from "./fixtures/parity.js";
 
 const REFERENCE = join(import.meta.dir, "../../../examples/parity/parity.schema.yaml");
@@ -21,6 +22,13 @@ describe("KitchenSink cross-language parity", () => {
   test("produces the same schema_sha256 as the committed reference", () => {
     const expected = (committed["x-softschema"] as Record<string, unknown>).schema_sha256;
     expect(sha).toBe(expected as string);
+  });
+
+  test("the committed reference reads back through the portable reader", () => {
+    // The fixture's `separator` field carries U+0085, U+2028 and U+2029, which the Python
+    // writer stores as `\N`, `\L` and `\P`; this is the read that fails when a writer
+    // leaves one of them raw.
+    expect(parsePortableYaml(readFileSync(REFERENCE, "utf8"))).toEqual(schema);
   });
 });
 
