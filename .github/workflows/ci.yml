@@ -119,6 +119,10 @@ jobs:
         os: ["ubuntu-latest"]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
+    env:
+      # The JSON fast path must be on in this job: a C extension that slips into the
+      # environment would otherwise skip the tests that prove it runs, with a green suite.
+      SOFTSCHEMA_REQUIRE_JSON_PATH: "1"
 
     steps:
       - name: Checkout

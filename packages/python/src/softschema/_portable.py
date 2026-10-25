@@ -234,14 +234,21 @@ def _ruamel_is_checked(version: tuple[int, ...] = ruamel.yaml.version_info) -> b
     return lower <= tuple(version[:2]) < upper
 
 
-_JSON_PATH_ENABLED = YAML(typ="safe").Parser is RuamelParser and _ruamel_is_checked()
-"""Whether ruamel parses with its pure-Python parser, the one the JSON path matches, at a
-version the path was checked against.
+def _json_path_enabled(parser_cls: type, version: tuple[int, ...]) -> bool:
+    """Whether the JSON path may run: ruamel parses with its pure-Python parser, the one
+    the path matches, at a release the path was checked against.
 
-With the optional ``ruamel.yaml.clib`` extension installed, ruamel parses through libyaml
-instead, whose edge cases have not been compared with ``json``; every text then takes
-the ruamel path, as it does on a ruamel release outside :data:`CHECKED_RUAMEL_VERSIONS`.
-"""
+    With the optional ``ruamel.yaml.clib`` extension installed, ruamel parses through
+    libyaml instead, whose edge cases have not been compared with ``json``; every text then
+    takes the ruamel path, as it does on a ruamel release outside
+    :data:`CHECKED_RUAMEL_VERSIONS`. A pure function of its two inputs, so the tests can
+    pin each half of the gate.
+    """
+    return parser_cls is RuamelParser and _ruamel_is_checked(version)
+
+
+_JSON_PATH_ENABLED = _json_path_enabled(YAML(typ="safe").Parser, ruamel.yaml.version_info)
+"""Whether this process runs the JSON path; see :func:`_json_path_enabled`."""
 
 _JSON_ROOT = re.compile(r"[ \n\r]*[\[{]")
 """A root JSON array or object, preceded by whitespace that ruamel also skips.
@@ -250,6 +257,13 @@ ruamel skips a tab only inside a flow collection, so a tab before the root is a 
 error although JSON calls it whitespace; :func:`_parse_json_subset` checks the text
 after the root the same way. Space and line breaks are whitespace to both. A scalar
 root is left to ruamel: it is cheap there and rare.
+
+Inside the root, the JSON path admits a raw tab in any gap between tokens, at the start
+of a line included. That rests on one line of ruamel's scanner, ``scan_to_next_token``:
+``white_space = ' \\t' if self.flow_level > 0 else ' '``, so between flow tokens a tab is
+whitespace to ruamel exactly as it is to ``json``. YAML 1.2 itself is stricter about
+tabs, which makes this the most ruamel-specific assumption of the path;
+``test_tabs_between_flow_tokens_are_whitespace_to_ruamel`` pins it by name.
 """
 
 _JSON_WHITESPACE = " \t\n\r"

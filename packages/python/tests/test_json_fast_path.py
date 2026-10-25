@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import subprocess
 from collections.abc import Callable, Iterator
@@ -34,8 +35,15 @@ from softschema._portable import MAX_DEPTH, PortableInputError, parse_yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+REQUIRE_JSON_PATH_ENV = "SOFTSCHEMA_REQUIRE_JSON_PATH"
+"""Set in CI: the JSON path must be on, so the tests that need it fail instead of skipping.
+
+Without it, a C extension that slipped into the environment through a new dependency or
+a lock refresh would turn the path off, skip the five tests that prove a JSON document
+never reaches ruamel, and leave the suite green.
+"""
 requires_json_path = pytest.mark.skipif(
-    not _portable._JSON_PATH_ENABLED,
+    not _portable._JSON_PATH_ENABLED and not os.environ.get(REQUIRE_JSON_PATH_ENV),
     reason="ruamel's C extension or an unchecked ruamel release keeps every text on the ruamel path",
 )
 pure_ruamel_only = pytest.mark.skipif(
@@ -43,7 +51,11 @@ pure_ruamel_only = pytest.mark.skipif(
     reason="libyaml reads this text differently from pure ruamel",
 )
 slow = pytest.mark.slow
-"""Costly evidence, left out of the default run; `uv run pytest -m slow` runs it."""
+"""Costly evidence, left out of the default run; `uv run pytest -m slow` runs it.
+
+The exclusion comes from ``addopts`` in ``pyproject.toml``, so naming one slow test by
+node ID alone deselects it (exit 5): add ``-m slow`` to the command as well.
+"""
 
 
 def _ruamel_path(text: str) -> Any:
@@ -619,6 +631,63 @@ def test_json_path_is_gated_to_the_checked_ruamel_releases(
     assert _portable._ruamel_is_checked(version) is checked
 
 
+class _NotRuamelsParser:
+    """Stands in for libyaml's ``CParser``, which the gate must turn the path off for."""
+
+
+@pytest.mark.parametrize(
+    ("parser_cls", "version", "enabled"),
+    [
+        (RuamelParser, (0, 19, 1), True),
+        (RuamelParser, (0, 18, 0), True),
+        (RuamelParser, (0, 20, 0), False),
+        (RuamelParser, (0, 17, 40), False),
+        (_NotRuamelsParser, (0, 19, 1), False),
+    ],
+)
+def test_the_json_path_gate_needs_the_pure_parser_at_a_checked_release(
+    parser_cls: type, version: tuple[int, ...], enabled: bool
+) -> None:
+    """Both halves of the gate: a C parser or an unchecked release turns the path off."""
+    assert _portable._json_path_enabled(parser_cls, version) is enabled
+
+
+def test_the_gate_is_what_this_process_runs() -> None:
+    assert _portable._JSON_PATH_ENABLED is _portable._json_path_enabled(
+        YAML(typ="safe").Parser, ruamel.yaml.version_info
+    )
+
+
 def test_installed_ruamel_is_a_checked_release() -> None:
-    """The locked ruamel is inside the range, so this suite exercises the JSON path."""
+    """The locked ruamel is inside the range, so this suite exercises the JSON path.
+
+    With ``SOFTSCHEMA_REQUIRE_JSON_PATH`` set, as CI sets it, the path itself must be on:
+    a C extension in the environment then fails here instead of skipping five tests.
+    """
     assert _portable._ruamel_is_checked(), ruamel.yaml.version_info
+    if os.environ.get(REQUIRE_JSON_PATH_ENV):
+        assert _portable._JSON_PATH_ENABLED, (
+            f"{REQUIRE_JSON_PATH_ENV} is set but the JSON path is off: "
+            f"parser {YAML(typ='safe').Parser.__module__}, ruamel {ruamel.yaml.version_info}"
+        )
+
+
+def test_tabs_between_flow_tokens_are_whitespace_to_ruamel() -> None:
+    """The JSON path admits raw tabs in any gap inside the root, as ruamel does.
+
+    ruamel's ``scan_to_next_token`` skips ``' \\t'`` when ``flow_level > 0`` and only
+    ``' '`` otherwise, which is why the JSON path checks tabs only before and after the
+    root. YAML 1.2 is stricter, so this pins the ruamel rule by name: a release that
+    changed it would fail here rather than somewhere in the fuzz.
+    """
+    for text in [
+        '{\n\t"a": 1\n}',
+        '{"a"\t: 1}',
+        '{"a":\t1}',
+        "[1,\t2]",
+        '[\t"x"\t]',
+        '{\t"a"\t:\t[\t1\t]\t}',
+    ]:
+        assert _ruamel_path(text) == json.loads(text), text
+        # Both paths agree, and the JSON path takes the text whenever it is on at all.
+        assert _assert_equivalent(text) is _portable._JSON_PATH_ENABLED, text

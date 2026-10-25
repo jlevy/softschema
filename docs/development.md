@@ -31,6 +31,8 @@ Direct commands:
 uv run python devtools/lint.py --check
 uv run pytest             # the default run leaves out tests marked `slow`
 uv run pytest -m slow     # the slow tier: corpus and generated-document comparisons
+uv run pytest -m slow packages/python/tests/test_json_fast_path.py::test_generated_deep_documents_parse_identically
+                          # one slow test: name it with -m slow too, or addopts deselects it
 uv run softschema docs --list
 uv run softschema docs --list --json
 uv run softschema skill --brief
