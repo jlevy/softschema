@@ -62,6 +62,20 @@ version number.
   A tuple element with a `.catch()` still counts toward `minItems`, as an element of
   Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
   Pydantic cannot default a tuple element.
+- **TypeScript-compiled schemas keep the `default` of a `.default()` over a transform,
+  as Pydantic does.** In input mode zod 4.4 and 4.6 drop the `default` of a schema that
+  transforms, so `z.string().transform(f).default("x")`, a `.default()` over
+  `z.preprocess()` or `.pipe(z.transform(f))`, and an object default whose fields
+  transform compiled without their `default`. The Pydantic mirror,
+  `Annotated[str, AfterValidator(f)] = "x"` (`BeforeValidator` for `z.preprocess()`),
+  keeps it. The compiler now restores the value, including in a record value and in
+  `$defs`, so each such field compiles to the same schema and `schema_sha256` as the
+  plain `.default()` and its Pydantic mirror.
+  The value is written as given, because neither Zod nor Pydantic runs the transform on
+  a default, and it is checked like every other default (see below).
+  A default Zod omits because the `$defs` entry a field references carries the same
+  value stays omitted, for `.default()` and `.catch()` alike.
+  The KitchenSink parity fixture now covers a defaulted transform.
 - **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
   compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
   `default` used to compile to `default: null`, because Zod’s final JSON copy of the
@@ -154,6 +168,15 @@ version number.
   `yaml_parser_mode()` and `softschema doctor` report which parser is active, and
   `SOFTSCHEMA_PURE_YAML=1` turns the C parser off.
   Compiled schemas are always written by the pure-Python emitter.
+
+### Compatibility
+
+A TypeScript model with a `.default()` over a transforming schema compiles to a new
+schema and `schema_sha256`, because the field gains the `default` that 0.8.1 dropped
+under zod 4.4 and 4.6 (see Fixed).
+`compile --check` reports drift for such a model; recompile its committed schema.
+The new schema is the one its Pydantic mirror compiles to.
+The fix changes no other compiled schema, and no Python-compiled schema.
 
 ## v0.8.1—2026-09-11
 

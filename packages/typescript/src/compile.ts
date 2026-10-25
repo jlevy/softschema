@@ -213,6 +213,24 @@ function jsonDefault(value: unknown, what: string): unknown {
   return serialized === undefined ? undefined : JSON.parse(serialized);
 }
 
+/** A `.default()` value that no schema or `$defs` entry carries, for `dropsInputDefault`. */
+const DEFAULT_PROBE = { "softschema:default-probe": true };
+
+/**
+ * Whether Zod's input-mode JSON Schema drops the `default` of a `.default()` or `.catch()`
+ * over `innerType`, which it does when that type transforms (`.transform()`,
+ * `z.preprocess()`, a codec, or any part that does).
+ *
+ * Zod decides this itself: a fresh `.default()` over the same type keeps its probe value
+ * exactly when the type does not transform. Zod also omits a default when a `$defs` entry
+ * the field references already carries the same value; no `$defs` entry carries the probe
+ * value, so that omission is not reported here and is kept.
+ */
+function dropsInputDefault(innerType: z.core.$ZodType): boolean {
+  const probe = z._default(innerType, DEFAULT_PROBE as never);
+  return !("default" in z.toJSONSchema(probe, { target: "draft-2020-12", io: "input" }));
+}
+
 /**
  * Zod's names for its `.startsWith()`, `.endsWith()`, and `.includes()` string checks.
  *
@@ -307,21 +325,30 @@ export function buildCanonicalSchema(
       // A default the canonical sidecar cannot carry fails here, as it does in Python. By
       // now Zod has already turned a `.default()` NaN into `null`, so check the source value.
       const at = `#/${path.join("/")}`;
+      // In input mode Zod drops the `default` of a schema that transforms: a `.default()`
+      // over `.transform()` or `z.preprocess()` (zod 4.4 and 4.6), and a catch value (since
+      // zod 4.6). The Pydantic mirror, a defaulted field with an `AfterValidator` or
+      // `BeforeValidator`, keeps it, so put it back.
+      const restoreDefault = (value: unknown, innerType: z.core.$ZodType) => {
+        if (value !== undefined && !("default" in jsonSchema) && dropsInputDefault(innerType)) {
+          jsonSchema.default = value;
+        }
+      };
       if (source instanceof z.core.$ZodDefault) {
-        jsonDefault(source._zod.def.defaultValue, `the .default() value at ${at}`);
+        restoreDefault(
+          jsonDefault(source._zod.def.defaultValue, `the .default() value at ${at}`),
+          source._zod.def.innerType,
+        );
       } else if (source instanceof z.core.$ZodPrefault) {
         jsonDefault(source._zod.def.defaultValue, `the .prefault() value at ${at}`);
       } else if (source instanceof z.core.$ZodCatch) {
-        const catchValue = jsonDefault(
-          source._zod.def.catchValue(undefined as never),
-          `the .catch() value at ${at}`,
+        restoreDefault(
+          jsonDefault(
+            source._zod.def.catchValue(undefined as never),
+            `the .catch() value at ${at}`,
+          ),
+          source._zod.def.innerType,
         );
-        // Zod 4.6 drops the `default` of a transforming schema in input mode, the catch
-        // value included. Zod 4.4 kept it, and so does the Pydantic mirror, a defaulted field
-        // with an `AfterValidator`, so put it back.
-        if (!("default" in jsonSchema) && catchValue !== undefined) {
-          jsonSchema.default = catchValue;
-        }
       }
       if ("default" in jsonSchema) jsonDefault(jsonSchema.default, `the default at ${at}`);
       // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes

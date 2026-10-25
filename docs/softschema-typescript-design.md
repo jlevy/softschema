@@ -109,6 +109,13 @@ Every `.default()`, `.prefault()`, `.catch()`, and authored `default` value is c
 before Zod’s final JSON copy, which would turn NaN or ±Infinity into `null`: a
 non-finite number or a BigInt fails compilation, as it does in Python.
 
+Zod 4.4 and 4.6 also drop the value of a `.default()` over a type that transforms, as in
+`z.string().transform(f).default("x")` or a `.default()` over `z.preprocess()`. Its
+Pydantic mirror, a defaulted field with an `AfterValidator` or `BeforeValidator`, keeps
+its `default`, so the override restores that value as it does a catch value.
+It restores only what a transform dropped: Zod also omits a field’s default when the
+`$defs` entry the field references carries the same value, and that omission stays.
+
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler
 drops `items: false` whenever `maxItems` is at most the number of `prefixItems`; a rest

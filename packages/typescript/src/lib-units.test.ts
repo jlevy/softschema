@@ -676,6 +676,95 @@ describe("compile: write mode + build", () => {
       type: "array",
     });
   });
+  test("compiles .default() over a transform or pipe as the Pydantic mirror does", () => {
+    // In input mode Zod 4.4 and 4.6 drop the `default` of a schema that transforms. The
+    // Pydantic mirror, `Annotated[str, AfterValidator(f)] = "x"` (or `BeforeValidator` for
+    // `z.preprocess()`), keeps it and emits what the plain `.default("x")` field emits.
+    const compiled = (model: z.ZodType) => buildCanonicalSchema(model, "x:Default/v1").schema;
+    const field = (schema: z.ZodType) =>
+      (compiled(z.strictObject({ f: schema })).properties as { f: Record<string, unknown> }).f;
+    const sha = (schema: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: schema }), "x:Default/v1").sha;
+    const same = (text: string) => text;
+    const plain = sha(z.string().default("x"));
+
+    // `.transform().default()`, also behind a wrapper or with a computed default.
+    expect(
+      sha(
+        z
+          .string()
+          .transform((text) => text)
+          .default("x"),
+      ),
+    ).toBe(plain);
+    expect(sha(z.string().transform(same).default("x").optional())).toBe(plain);
+    expect(
+      sha(
+        z
+          .string()
+          .transform(same)
+          .default(() => "x"),
+      ),
+    ).toBe(plain);
+    expect(sha(z.string().transform(same).default("x").describe("d"))).toBe(
+      sha(z.string().default("x").describe("d")),
+    );
+    // The default fills an absent key without running the transform, in Zod and Pydantic
+    // alike, so it is written as given even when it is not of the input type.
+    const counted = z.string().transform((text) => text.length);
+    expect(z.strictObject({ f: counted.default(0) }).parse({})).toEqual({ f: 0 });
+    expect(field(counted.default(0))).toEqual({ default: 0, title: "F", type: "string" });
+
+    // `.default()` over a pipe that transforms: `z.preprocess()` and `.pipe(z.transform())`.
+    expect(sha(z.preprocess((value) => value, z.string()).default("x"))).toBe(plain);
+    expect(sha(z.string().pipe(z.transform(same)).default("x"))).toBe(plain);
+    expect(sha(z.string().pipe(z.string()).default("x"))).toBe(plain);
+
+    // Inside an object: an object default whose fields transform, inline or in `$defs`
+    // (Pydantic's `f: Inner = Inner(a="x")`), and a transforming field of a `$defs` object.
+    const Transformed = z.strictObject({ a: z.string().transform(same) });
+    expect(sha(Transformed.default({ a: "x" }))).toBe(
+      sha(z.strictObject({ a: z.string() }).default({ a: "x" })),
+    );
+    expect(field(Transformed.meta({ id: "Inner" }).default({ a: "x" }))).toEqual({
+      $ref: "#/$defs/Inner",
+      default: { a: "x" },
+    });
+    const Nested = z
+      .strictObject({ g: z.int().transform(Number).default(0), h: z.int() })
+      .meta({ id: "Nested" });
+    expect((compiled(z.strictObject({ f: Nested })).$defs as { Nested: unknown }).Nested).toEqual({
+      additionalProperties: false,
+      properties: {
+        g: { default: 0, title: "G", type: "integer" },
+        h: { title: "H", type: "integer" },
+      },
+      required: ["h"],
+      title: "Nested",
+      type: "object",
+    });
+
+    // Inside a record: the value keeps its default and requires no key, as
+    // `dict[Literal["a", "b"], Annotated[str, AfterValidator(f), Field(default="x")]]` does.
+    const record = z.record(z.enum(["a", "b"]), z.string().transform(same).default("x"));
+    expect(record.parse({})).toEqual({ a: "x", b: "x" });
+    expect(field(record)).toEqual({
+      additionalProperties: { default: "x", type: "string" },
+      propertyNames: { enum: ["a", "b"] },
+      title: "F",
+      type: "object",
+    });
+    expect(sha(record)).toBe(sha(z.record(z.enum(["a", "b"]), z.string().default("x"))));
+
+    // Only a value a transform dropped comes back. Zod also omits a field's default when the
+    // `$defs` entry it references carries the same value; that stays as Zod writes it, for
+    // `.default()` and `.catch()` alike.
+    const Status = z.enum(["a", "b"]).default("a").meta({ id: "Status" });
+    const Caught = z.enum(["a", "b"]).catch("a").meta({ id: "Caught" });
+    expect(field(Status.describe("d"))).toEqual({ $ref: "#/$defs/Status", description: "d" });
+    expect(field(Caught.describe("d"))).toEqual({ $ref: "#/$defs/Caught", description: "d" });
+    expect(field(Status.default("a"))).toEqual({ $ref: "#/$defs/Status" });
+  });
   test("rejects a default or catch value canonical JSON cannot carry, as Python does", () => {
     const compile = (field: z.ZodType) =>
       buildCanonicalSchema(z.strictObject({ f: field }), "x:NonJson/v1");
@@ -700,6 +789,9 @@ describe("compile: write mode + build", () => {
     expect(() => compile(transformingCatch(1n))).toThrow(
       "canonical JSON cannot represent a BigInt; the .catch() value at #/properties/f is 1n",
     );
+    expect(() => compile(z.number().transform(toNumber).default(Number.NaN))).toThrow(
+      "canonical JSON requires finite numbers; the .default() value at #/properties/f is NaN",
+    );
     // So is every other default, which used to compile to `default: null`.
     expect(() => compile(z.number().catch(Number.NaN))).toThrow(
       "the .catch() value at #/properties/f is NaN",
@@ -713,19 +805,18 @@ describe("compile: write mode + build", () => {
     expect(() => compile(z.number().meta({ default: Number.NaN }))).toThrow(
       "the default at #/properties/f is NaN",
     );
-    // A Date fallback is written as its ISO string, as a `.default()` Date already is and as
-    // Pydantic writes a datetime default.
+    // A Date fallback or restored default is written as its ISO string, as a `.default()`
+    // Date already is and as Pydantic writes a datetime default.
     const epoch = new Date(0);
-    const dateCatch = z
-      .string()
-      .transform((text) => new Date(text))
-      .catch(epoch);
+    const toDate = z.string().transform((text) => new Date(text));
+    const dateCatch = toDate.catch(epoch);
     expect((compile(dateCatch).schema.properties as { f: unknown }).f).toEqual({
       default: "1970-01-01T00:00:00.000Z",
       title: "F",
       type: "string",
     });
     expect(compile(dateCatch).sha).toBe(compile(z.string().default(epoch as never)).sha);
+    expect(compile(toDate.default(epoch)).sha).toBe(compile(dateCatch).sha);
   });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [
