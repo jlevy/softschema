@@ -47,6 +47,16 @@ class SchemaProfile(StrEnum):
     pure_yaml = "pure-yaml"
 
 
+ValidationExecution = Literal["not_run", "completed", "errored"]
+"""Actual progress of one payload validator, independent of its verdict.
+
+``not_run`` means no payload evaluation started, including failed preparation.
+``completed`` means evaluation returned a verdict; the check's ``ok`` says whether it
+accepted the payload. ``errored`` means evaluation started but produced no verdict.
+An exception that propagates instead of returning a result carries no execution claim.
+"""
+
+
 class SchemaMetadata(BaseModel):
     """Optional document-level ``softschema:`` metadata.
 
@@ -103,6 +113,8 @@ class WarningCode(StrEnum):
 
     DOCUMENT_CONTRACT_MISMATCH = "document-contract-mismatch"
     DOCUMENT_STATUS_MISMATCH = "document-status-mismatch"
+    DOCUMENT_ENFORCEMENT_NOT_APPLIED = "document-enforcement-not-applied"
+    DOCUMENT_ENFORCEMENT_VIA_MODEL_ONLY = "document-enforcement-via-model-only"
 
 
 class SchemaWarning(BaseModel):

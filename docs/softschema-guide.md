@@ -57,6 +57,16 @@ The status records intended maturity; it does not bind a validator by itself.
 A bound model or schema supplies the rules.
 `soft` and `permissive` apply those authored rules as-is; `enforced` adds checked object
 closure when a structural schema is bound.
+Every result reports `structural.execution` and `semantic.execution` independently:
+`not_run`, `completed`, or `errored`. A completed check can accept or reject; read its
+`ok` and errors for the verdict.
+A model label or schema path alone proves no execution.
+An effective `enforced` mode without a completed structural check emits a warning.
+A valid metadata-only result establishes format and metadata validity, so hosts that
+require payload checks must supply trusted bindings and verify their completed results.
+`validate --require structural` (repeatable, also `semantic`) makes a required check
+that did not complete fail validation.
+See [validation execution](softschema-spec.md#reporting-validation-execution).
 
 The schema itself can evolve throughout this progression.
 A project may add optional fields, types, enums, nested records, and cross-field
@@ -856,8 +866,9 @@ Use this sequence:
    `repair --dry-run` reports what would change and still passes when the result would
    be valid — what an agent asks before committing to a change.
    `repair --check` fails whenever anything would change at all — what a gate runs
-   against an artifact under review, the same shape as `generate --check`. Structural
-   and semantic failures are separate.
+   against an artifact under review, the same shape as `generate --check`; a gate that
+   also needs completed checks follows it with `validate --require`, since repair takes
+   no requirement. Structural and semantic failures are separate.
    For a structural repair, match `kind`, `code`, and `path`; records for missing or
    undeclared properties also include `property`. Do not parse `message`; see
    [Matching on structural error records](softschema-spec.md#matching-on-structural-error-records).

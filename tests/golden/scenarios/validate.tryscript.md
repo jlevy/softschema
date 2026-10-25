@@ -37,6 +37,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --schema examples/mo
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -44,6 +45,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --schema examples/mo
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -122,6 +124,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bad-movie.md --schema examples/movi
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -163,6 +166,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/bad-movie.md --schema examples/movi
         "value": 0
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -212,6 +216,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --schema examples/mo
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "envelope_mismatch"
   },
@@ -229,6 +234,7 @@ $ $SOFTSCHEMA validate examples/movie_page/spirited-away.md --schema examples/mo
         "message": "contract 'example.movies:MoviePage/v1' expects 'nope'"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -268,6 +274,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -275,6 +282,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-permissive.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_schema"
   },

@@ -21,6 +21,7 @@ import {
   type StructuralErrorRecord,
 } from "./errors.js";
 import { isMapping } from "./guards.js";
+import { byCodePoint, checkIdentity, checkRootId } from "./identity.js";
 import {
   type Contract,
   checkContractId,
@@ -33,11 +34,13 @@ import {
   type SchemaProfile,
   type SchemaStatus,
   type SchemaWarning,
+  type ValidationExecution,
 } from "./models.js";
 import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
 
 export interface StructuralResult {
   ok: boolean;
+  execution: ValidationExecution;
   errors: (StructuralErrorRecord | Record<string, unknown>)[];
   engine: string;
   skipped_reason: string | null;
@@ -45,6 +48,7 @@ export interface StructuralResult {
 
 export interface SemanticResult {
   ok: boolean;
+  execution: ValidationExecution;
   errors: Record<string, unknown>[];
   skipped_reason: string | null;
 }
@@ -246,8 +250,10 @@ function buildValidator(
     verbose: true,
     validateFormats: false,
   });
+  checkIdentities(schemaObject, resources);
   for (const document of [schemaObject, ...Object.values(resources)]) {
     checkPatterns(document);
+    checkDialect(document);
     if (!ajv.validateSchema(document)) {
       throw new SchemaGraphError("dialect", `schema is invalid: ${ajv.errorsText(ajv.errors)}`);
     }
@@ -259,7 +265,53 @@ function buildValidator(
   for (const [key, resource] of Object.entries(prepared.resources)) {
     ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
   }
-  return ajv.compile(prepared.root);
+  try {
+    return ajv.compile(prepared.root);
+  } catch (error) {
+    const documents = [prepared.root, ...Object.values(prepared.resources)];
+    throw unserializableReference(ajv, error, documents) ?? error;
+  }
+}
+
+/**
+ * What fast-uri, the URI library Ajv resolves with, throws for a URN with no namespace
+ * identifier, such as `urn:dir/item.json`.
+ */
+const URN_WITHOUT_NID = "URN without nid cannot be serialized";
+
+/**
+ * Report a `$ref` naming a URN that Ajv's URI library cannot serialize, as written or
+ * once resolved (resolution decodes `%7E` to `~`, which a URN cannot hold), as the
+ * unresolvable reference it is, the reason Python's walk gives, not as a compilation
+ * failure. Only a `$ref` whose own value fails is reclassified. A `$id` of that kind
+ * never gets this far (`checkIdentities`), and the same error raised by a relative `$id`
+ * that Ajv joins onto a `urn:` base stays `compilation`.
+ */
+function unserializableReference(
+  ajv: Ajv2020,
+  error: unknown,
+  documents: Record<string, unknown>[],
+): SchemaGraphError | undefined {
+  if (!(error instanceof Error) || error.message !== URN_WITHOUT_NID) return undefined;
+  const { uriResolver } = ajv.opts;
+  for (const document of documents) {
+    for (const node of iterSchemas(document)) {
+      const reference = node.$ref;
+      if (typeof reference !== "string") continue;
+      try {
+        uriResolver.serialize(uriResolver.parse(reference));
+        if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference)) {
+          uriResolver.serialize(uriResolver.parse(uriResolver.resolve(reference, reference)));
+        }
+      } catch {
+        return new SchemaGraphError(
+          "reference",
+          `reference ${JSON.stringify(reference)} cannot be resolved: ${error.message}`,
+        );
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -334,12 +386,14 @@ export function validateStructural(
   schemaObject: Record<string, unknown>,
   options: { strictExtras?: boolean; resources?: Record<string, Record<string, unknown>> } = {},
 ): StructuralResult {
+  let execution: ValidationExecution = "not_run";
   try {
     const validateFn = cachedValidator(
       schemaObject,
       options.strictExtras ?? false,
       options.resources ?? {},
     );
+    execution = "errored";
     const ok = validateFn(values);
     const errors: StructuralErrorRecord[] = ok
       ? []
@@ -349,12 +403,19 @@ export function validateStructural(
           ),
         );
     errors.sort(compareStructuralRecords);
-    return { ok: errors.length === 0, errors, engine: "json_schema", skipped_reason: null };
+    return {
+      ok: errors.length === 0,
+      execution: "completed",
+      errors,
+      engine: "json_schema",
+      skipped_reason: null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof EnforcementUnsupportedError) {
       return {
         ok: false,
+        execution,
         errors: [
           {
             kind: "enforcement_unsupported",
@@ -367,8 +428,8 @@ export function validateStructural(
         skipped_reason: null,
       };
     }
-    if (error instanceof SchemaGraphError) return schemaInvalid(error.reason, message);
-    return schemaInvalid(schemaFailureReason(message), message);
+    if (error instanceof SchemaGraphError) return schemaInvalid(error.reason, message, execution);
+    return schemaInvalid(schemaFailureReason(message), message, execution);
   }
 }
 
@@ -447,6 +508,83 @@ function checkPatterns(schema: Record<string, unknown>): void {
   }
 }
 
+const DIALECT_URIS = new Set([
+  "https://json-schema.org/draft/2020-12/schema",
+  "https://json-schema.org/draft/2020-12/schema#",
+]);
+
+/**
+ * Refuse keywords that only one engine would honor, so one schema cannot get two
+ * verdicts: Ajv's 2020 vocabulary still evaluates the legacy `dependencies` keyword that
+ * jsonschema ignores, and jsonschema validates as 2020-12 whatever `$schema` says while
+ * Ajv refuses another draft. Kept in step with Python's `_check_dialect`.
+ */
+function checkDialect(schema: Record<string, unknown>): void {
+  for (const node of iterSchemas(schema)) {
+    for (const [keyword, remedy] of Object.entries(FOREIGN_KEYWORDS)) {
+      if (keyword in node) {
+        throw new SchemaGraphError(
+          "dialect",
+          `the '${keyword}' keyword is not part of Draft 2020-12 as both engines evaluate it; ${remedy}`,
+        );
+      }
+    }
+    if (
+      "$schema" in node &&
+      !(typeof node.$schema === "string" && DIALECT_URIS.has(node.$schema))
+    ) {
+      throw new SchemaGraphError(
+        "dialect",
+        `compiled schemas use the canonical Draft 2020-12 $schema URI; got ${JSON.stringify(node.$schema)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Keywords Ajv honors that jsonschema's Draft 2020-12 validator ignores, each with the
+ * portable form to write instead. Kept in step with Python's `_FOREIGN_KEYWORDS`.
+ */
+const FOREIGN_KEYWORDS: Record<string, string> = {
+  dependencies: "use dependentSchemas or dependentRequired",
+  nullable: "use type: [..., 'null']",
+  $recursiveRef: "use $dynamicRef",
+  $recursiveAnchor: "use $dynamicAnchor",
+};
+
+/**
+ * Hold every resource identity to the grammar in `identity.ts`. The root `$id` and each
+ * supplied resource's identity (its `$id`, or its key when it has none, since that is
+ * what it is registered under) must be absolute; a nested `$id` may also be a relative
+ * path. A relative root `$id` has no base to resolve against, and any spelling either
+ * engine normalizes would name one resource for one engine and another for the other, so
+ * both are refused before either engine runs. Resources and nested ids are checked in
+ * code-point order of their keys and ids, not in object order: JavaScript iterates
+ * integer-like keys first, so with two invalid identities a walk in object order would
+ * quote a different one than Python. Kept in step with Python's `_check_identities`.
+ */
+function checkIdentities(
+  schema: Record<string, unknown>,
+  resources: Record<string, Record<string, unknown>>,
+): void {
+  if (typeof schema.$id === "string") checkRootId(schema.$id);
+  for (const key of Object.keys(resources).sort(byCodePoint)) {
+    const resource = resources[key] ?? {};
+    if (typeof resource.$id === "string") {
+      checkIdentity(resource.$id, "a supplied resource $id", true);
+    } else {
+      checkIdentity(key, "a supplied resource key", true);
+    }
+  }
+  const nested = new Set<string>();
+  for (const document of [schema, ...Object.values(resources)]) {
+    for (const node of iterSchemas(document)) {
+      if (node !== document && typeof node.$id === "string") nested.add(node.$id);
+    }
+  }
+  for (const identity of [...nested].sort(byCodePoint)) checkIdentity(identity, "a $id", false);
+}
+
 function checkSchemaIdentities(
   schema: Record<string, unknown>,
   resources: Record<string, Record<string, unknown>>,
@@ -469,9 +607,14 @@ function schemaFailureReason(message: string): string {
   return "compilation";
 }
 
-function schemaInvalid(reason: string, message: string): StructuralResult {
+function schemaInvalid(
+  reason: string,
+  message: string,
+  execution: ValidationExecution,
+): StructuralResult {
   return {
     ok: false,
+    execution,
     errors: [{ kind: "schema_invalid", reason, message }],
     engine: "json_schema",
     skipped_reason: null,
@@ -485,7 +628,7 @@ function schemaInvalid(reason: string, message: string): StructuralResult {
  */
 export function validateSemantic(values: unknown, model: z.ZodType): SemanticResult {
   const result = model.safeParse(values);
-  if (result.success) return { ok: true, errors: [], skipped_reason: null };
+  if (result.success) return { ok: true, execution: "completed", errors: [], skipped_reason: null };
   const errors = result.error.issues.map((issue) => {
     // `expected` is what identifies a type disagreement — without it an `invalid_type`
     // issue says only that something was wrong, not what was wanted, and the conform pass
@@ -499,12 +642,15 @@ export function validateSemantic(values: unknown, model: z.ZodType): SemanticRes
       ...(expected === undefined ? {} : { expected }),
     };
   });
-  return { ok: false, errors, skipped_reason: null };
+  return { ok: false, execution: "completed", errors, skipped_reason: null };
 }
 
 /**
  * Validate a pre-extracted values mapping against a model, a schema, or both: the
  * idiomatic mirror of Python `validate_values`. Throws if neither is supplied.
+ *
+ * `require` names layers that must complete; a required layer that did not complete is
+ * not ok and carries a `check_not_completed` error.
  */
 export function validateValues(
   values: unknown,
@@ -513,11 +659,13 @@ export function validateValues(
     schema?: Record<string, unknown>;
     status?: SchemaStatus;
     resources?: Record<string, Record<string, unknown>>;
+    require?: readonly ("structural" | "semantic")[];
   } = {},
 ): ValidationResult {
   if (options.model === undefined && options.schema === undefined) {
     throw new Error("validateValues() requires at least one of model or schema");
   }
+  const required = requiredLayers(options.require);
   let structural: StructuralResult;
   if (options.schema !== undefined) {
     structural = validateStructural(values, options.schema, {
@@ -527,12 +675,109 @@ export function validateValues(
   } else {
     // The semantic model is the requested validator; the structural slot remains an
     // unrequested successful pass so callers can read both result fields uniformly.
-    structural = { ok: true, errors: [], engine: "json_schema", skipped_reason: null };
+    structural = {
+      ok: true,
+      execution: "not_run",
+      errors: [],
+      engine: "json_schema",
+      skipped_reason: null,
+    };
   }
-  const semantic = options.model
+  const semantic: SemanticResult = options.model
     ? validateSemantic(values, options.model)
-    : { ok: true, errors: [], skipped_reason: null };
+    : { ok: true, execution: "not_run", errors: [], skipped_reason: null };
+  return requireCompletedLayers({ structural, semantic }, required);
+}
+
+const CHECK_LAYERS: readonly string[] = ["structural", "semantic"];
+
+/**
+ * The layers a caller requires to complete, rejecting any unknown layer name.
+ *
+ * A bare string is refused rather than iterated, so `require: "structural"` is a clear
+ * caller error instead of a complaint about its letters; so is `null`, since omitting the
+ * option is how a caller asks for no requirement. Kept in step with Python's
+ * `_required_layers`.
+ */
+function requiredLayers(require: readonly string[] | undefined): Set<string> {
+  if (require === undefined) return new Set();
+  if (!Array.isArray(require) || require.some((layer) => typeof layer !== "string")) {
+    throw new TypeError(
+      `require must be a list of layer names such as ["structural"], got ${JSON.stringify(require)}`,
+    );
+  }
+  const required = new Set(require);
+  const unknown = [...required].filter((layer) => !CHECK_LAYERS.includes(layer)).sort();
+  if (unknown.length > 0) {
+    throw new Error(
+      `require accepts only 'structural' and 'semantic', got ${JSON.stringify(unknown)}`,
+    );
+  }
+  return required;
+}
+
+function checkNotCompleted(layer: string, execution: ValidationExecution) {
+  return {
+    kind: "check_not_completed",
+    message: `required ${layer} check did not complete (execution: ${execution})`,
+    layer,
+    execution,
+  };
+}
+
+/**
+ * Fail each required layer whose validator did not complete.
+ *
+ * With no requirement the records are returned as they are. Otherwise a required layer
+ * whose `execution` is not `completed` becomes not ok and gains a `check_not_completed`
+ * error after its existing errors, so an original failure stays first and keeps its
+ * outcome. A completed layer keeps its own verdict, including a rejection. Kept in step
+ * with Python's `_require_completed`.
+ */
+function requireCompletedLayers(result: ValidationResult, required: Set<string>): ValidationResult {
+  if (required.size === 0) return result;
+  let { structural, semantic } = result;
+  if (required.has("structural") && structural.execution !== "completed") {
+    structural = {
+      ...structural,
+      ok: false,
+      errors: [...structural.errors, checkNotCompleted("structural", structural.execution)],
+    };
+  }
+  if (required.has("semantic") && semantic.execution !== "completed") {
+    semantic = {
+      ...semantic,
+      ok: false,
+      errors: [...semantic.errors, checkNotCompleted("semantic", semantic.execution)],
+    };
+  }
   return { structural, semantic };
+}
+
+function requireCompletedArtifact(
+  result: ArtifactValidationResult,
+  required: Set<string>,
+): ArtifactValidationResult {
+  if (required.size === 0) return result;
+  const { structural, semantic } = requireCompletedLayers(result, required);
+  const next = {
+    ...result,
+    outcome: artifactOutcome(structural, semantic),
+    semantic,
+    structural,
+  } as ArtifactValidationResult;
+  Object.defineProperty(next, "ok", { value: structural.ok && semantic.ok, enumerable: false });
+  return next;
+}
+
+/** `valid` when both layers are ok, `input_error` for an unreadable artifact, else `invalid`. */
+function artifactOutcome(
+  structural: StructuralResult,
+  semantic: SemanticResult,
+): ArtifactValidationResult["outcome"] {
+  if (structural.ok && semantic.ok) return "valid";
+  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
+  return inputCodes.has(String(structural.errors[0]?.kind)) ? "input_error" : "invalid";
 }
 
 /**
@@ -553,18 +798,25 @@ export function unreadableArtifactResult(
 ): ArtifactValidationResult {
   const structural: StructuralResult = {
     ok: false,
+    execution: "not_run",
     errors: [{ kind: args.kind, message: args.message }],
     engine: "json_schema",
     skipped_reason: null,
+  };
+  const semantic: SemanticResult = {
+    ok: false,
+    execution: "not_run",
+    errors: [],
+    skipped_reason: args.kind,
   };
   const result = {
     contract: null,
     contract_id: "",
     document_metadata: null,
-    outcome: "invalid",
+    outcome: artifactOutcome(structural, semantic),
     path: docPath,
     profile: args.profile,
-    semantic: { ok: false, errors: [], skipped_reason: args.kind },
+    semantic,
     status: "soft",
     structural,
     values: null,
@@ -586,13 +838,11 @@ function buildResult(args: {
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
-  const firstKind = structural.errors[0]?.kind;
-  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
   const result = {
     contract: contractToOutput(contract),
     contract_id: contract.id,
     document_metadata: metadataToOutput(args.metadata),
-    outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
+    outcome: artifactOutcome(structural, semantic),
     path: args.docPath,
     profile: contract.profile,
     semantic,
@@ -626,11 +876,12 @@ function failure(
     values: null,
     structural: {
       ok: false,
+      execution: "not_run",
       errors: [structuralError(kind, message, extra)],
       engine: "json_schema",
       skipped_reason: null,
     },
-    semantic: { ok: false, errors: [], skipped_reason: kind },
+    semantic: { ok: false, execution: "not_run", errors: [], skipped_reason: kind },
     warnings,
   });
 }
@@ -646,12 +897,12 @@ function structuralAgainstSchemaFile(
     compiledSchema = parsePortableYaml(readUtf8(resolved));
   } catch (err) {
     if (err instanceof PortableInputError) {
-      return schemaInvalid("syntax", err.message);
+      return schemaInvalid("syntax", err.message, "not_run");
     }
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    return schemaInvalid("syntax", "compiled schema root must be a mapping");
+    return schemaInvalid("syntax", "compiled schema root must be a mapping", "not_run");
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }
@@ -702,19 +953,27 @@ function resolveMetadataSchema(
   return { path: resolved, error: null };
 }
 
+/**
+ * Resolve the bound schema and retain the structural engine's actual progress.
+ *
+ * Without a bound schema, the skip reason follows whether a semantic validator was
+ * supplied to this call. `contract.model` is only a label and never selects it.
+ */
 function structuralForValues(
   contract: Contract,
   values: unknown,
   docPath: string,
   metadata: SchemaMetadata | null,
+  hasSemanticModel: boolean,
 ): StructuralResult {
-  // Schema precedence (host over document): a caller/registry schemaPath, then
-  // the document's own softschema.schema binding, then none.
+  // Host schema binding takes precedence over the document's relative schema binding.
+  const strictExtras = contract.status === "enforced";
   if (contract.schemaPath !== null) {
     const resolved = resolveSchemaPath(contract.schemaPath, docPath);
     if (resolved === null) {
       return {
         ok: false,
+        execution: "not_run",
         errors: [
           structuralError("schema_missing", `compiled schema not found: ${contract.schemaPath}`, {
             path: contract.schemaPath,
@@ -724,7 +983,7 @@ function structuralForValues(
         skipped_reason: null,
       };
     }
-    return structuralAgainstSchemaFile(resolved, values, contract.status === "enforced");
+    return structuralAgainstSchemaFile(resolved, values, strictExtras);
   }
   const metadataSchema = metadata?.schema ?? null;
   if (metadataSchema !== null) {
@@ -732,21 +991,43 @@ function structuralForValues(
     if (bound.path === null) {
       return {
         ok: false,
-        errors: [
-          structuralError("schema_missing", bound.error ?? "", {
-            path: metadataSchema,
-          }),
-        ],
+        execution: "not_run",
+        errors: [structuralError("schema_missing", bound.error ?? "", { path: metadataSchema })],
         engine: "json_schema",
         skipped_reason: null,
       };
     }
-    return structuralAgainstSchemaFile(bound.path, values, contract.status === "enforced");
+    return structuralAgainstSchemaFile(bound.path, values, strictExtras);
   }
-  if (contract.model !== null) {
-    return { ok: true, errors: [], engine: "json_schema", skipped_reason: "inferred_via_model" };
+  return {
+    ok: true,
+    execution: "not_run",
+    errors: [],
+    engine: "json_schema",
+    skipped_reason: hasSemanticModel ? "inferred_via_model" : "no_schema",
+  };
+}
+
+/** Warn about an effective enforced mode without a completed structural check. */
+function enforcementShortfall(
+  status: SchemaStatus,
+  structural: StructuralResult,
+  semantic: SemanticResult,
+): SchemaWarning | null {
+  if (status !== "enforced" || structural.execution === "completed") return null;
+  if (semantic.execution === "completed") {
+    return warning(
+      "document-enforcement-via-model-only",
+      "status is 'enforced' but structural validation did not complete; " +
+        "semantic validation completed with a source model, which does not provide " +
+        "a cross-language structural guarantee",
+    );
   }
-  return { ok: true, errors: [], engine: "json_schema", skipped_reason: "no_schema" };
+  return warning(
+    "document-enforcement-not-applied",
+    "status is 'enforced' but neither structural nor semantic validation completed; " +
+      "the result does not establish payload validity",
+  );
 }
 
 function validateExtracted(
@@ -757,12 +1038,27 @@ function validateExtracted(
   warnings: SchemaWarning[],
   semanticModel: z.ZodType | undefined,
 ): ArtifactValidationResult {
-  const structural = structuralForValues(contract, values, docPath, metadata);
+  const structural = structuralForValues(
+    contract,
+    values,
+    docPath,
+    metadata,
+    semanticModel !== undefined,
+  );
   const semantic: SemanticResult =
     semanticModel !== undefined
       ? validateSemantic(values, semanticModel)
-      : { ok: true, errors: [], skipped_reason: "no_semantic_model" };
-  return buildResult({ docPath, contract, metadata, values, structural, semantic, warnings });
+      : { ok: true, execution: "not_run", errors: [], skipped_reason: "no_semantic_model" };
+  const shortfall = enforcementShortfall(contract.status, structural, semantic);
+  return buildResult({
+    docPath,
+    contract,
+    metadata,
+    values,
+    structural,
+    semantic,
+    warnings: shortfall === null ? warnings : [...warnings, shortfall],
+  });
 }
 
 /** Multiple top-level payload candidates; the envelope must be designated. */
@@ -878,8 +1174,9 @@ export class ArtifactInvalidError extends Error {
  * throws `ArtifactInvalidError` instead, with the whole result attached.
  *
  * Returns the payload mapping — the envelope's contents, or the document root for a
- * pure-yaml artifact without one — never `null`. Kept in step with Python's
- * `load_artifact`.
+ * pure-yaml artifact without one — never `null`. `require` has the same meaning as in
+ * `validateArtifact`, so a required check that did not complete throws. Kept in step with
+ * Python's `load_artifact`.
  */
 export function loadArtifact(
   docPath: string,
@@ -888,6 +1185,7 @@ export function loadArtifact(
     semanticModel?: z.ZodType;
     metadataMode?: MetadataMode;
     document?: ParsedDocument;
+    require?: readonly ("structural" | "semantic")[];
   } = {},
 ): Record<string, unknown> {
   const result = validateArtifact(docPath, contract, options);
@@ -910,7 +1208,23 @@ export function validateArtifact(
      * The CLI passes what it parsed for binding inference so the file is read once.
      */
     document?: ParsedDocument;
+    /**
+     * Layers the caller needs to have completed. A required layer whose `execution` is
+     * not `completed` becomes not ok with a `check_not_completed` error, so a
+     * metadata-only or skipped check cannot produce a `valid` outcome. Omitted, nothing
+     * is required and every result is unchanged.
+     */
+    require?: readonly ("structural" | "semantic")[];
   } = {},
+): ArtifactValidationResult {
+  const required = requiredLayers(options.require);
+  return requireCompletedArtifact(validateBoundArtifact(docPath, contract, options), required);
+}
+
+function validateBoundArtifact(
+  docPath: string,
+  contract: Contract,
+  options: { semanticModel?: z.ZodType; metadataMode?: MetadataMode; document?: ParsedDocument },
 ): ArtifactValidationResult {
   checkContractId(contract.id);
   const warnings: SchemaWarning[] = [];

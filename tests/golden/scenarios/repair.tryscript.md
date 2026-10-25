@@ -109,6 +109,7 @@ $ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -116,6 +117,7 @@ $ $SOFTSCHEMA repair rescue/repair-unquoted-colon.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -185,6 +187,7 @@ $ $SOFTSCHEMA repair drift/repair-scalar-drift.md
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -192,6 +195,7 @@ $ $SOFTSCHEMA repair drift/repair-scalar-drift.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -248,6 +252,7 @@ $ $SOFTSCHEMA repair twice/repair-unquoted-colon.md > /dev/null && cp twice/repa
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -255,6 +260,7 @@ $ $SOFTSCHEMA repair twice/repair-unquoted-colon.md > /dev/null && cp twice/repa
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -302,6 +308,7 @@ $ $SOFTSCHEMA repair valid/repair-already-valid.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -309,6 +316,7 @@ $ $SOFTSCHEMA repair valid/repair-already-valid.md
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -357,6 +365,7 @@ $ $SOFTSCHEMA repair missing/repair-missing-required.md
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -381,6 +390,7 @@ $ $SOFTSCHEMA repair missing/repair-missing-required.md
         }
       }
     ],
+    "execution": "completed",
     "ok": false,
     "skipped_reason": null
   },
@@ -427,6 +437,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "yaml_parse_error"
   },
@@ -439,6 +450,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
         "message": [..]
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -492,6 +504,7 @@ $ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -499,6 +512,7 @@ $ $SOFTSCHEMA repair check/repair-unquoted-colon.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -543,6 +557,7 @@ $ $SOFTSCHEMA repair check-clean/repair-already-valid.md --check
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -550,6 +565,7 @@ $ $SOFTSCHEMA repair check-clean/repair-already-valid.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -608,6 +624,7 @@ $ $SOFTSCHEMA repair pure/repair-pure.yaml
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -615,6 +632,7 @@ $ $SOFTSCHEMA repair pure/repair-pure.yaml
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -685,6 +703,7 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
   "repairs": [],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": "yaml_parse_error"
   },
@@ -697,6 +716,7 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
         "message": "Delimiter `---` for end of frontmatter not found: `repair-unterminated-fence.md`"
       }
     ],
+    "execution": "not_run",
     "ok": false,
     "skipped_reason": null
   },
@@ -761,6 +781,7 @@ $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -768,6 +789,7 @@ $ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -785,8 +807,8 @@ bytes are still a newline and the closing `---`, with nothing after it: repair r
 the metadata region and did not normalize the file's ending.
 
 ```console
-$ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md > /dev/null && tail -c 4 repair-ends-at-fence.md | od -c | head -1
-0000000  \n   -   -   -
+$ cd fence && $SOFTSCHEMA repair repair-ends-at-fence.md > /dev/null && tail -c 4 repair-ends-at-fence.md | od -An -tx1 | xargs
+0a 2d 2d 2d
 ? 0
 ```
 
@@ -848,6 +870,7 @@ $ cd bom && $SOFTSCHEMA repair repair-bom.md --check
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -855,6 +878,7 @@ $ cd bom && $SOFTSCHEMA repair repair-bom.md --check
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },
@@ -890,6 +914,47 @@ byte-identical
 ? 0
 ```
 
+# Journey: a missing file has an input error with no invented contract
+
+`repair` reports a missing artifact as a result at exit `1`. Neither validation layer
+ran, and the absent file supplied no contract. Filesystem message wording varies by
+runtime, so the record pins its kind and outcome while eliding only that message.
+
+```console
+$ $SOFTSCHEMA repair absent/does-not-exist.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "input_error",
+  "path": "absent/does-not-exist.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "artifact_unreadable"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "artifact_unreadable",
+        "message": [..]
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
 With the mark gone and the scalar quoted, the consuming-side gate opens on the artifact
 that arrived with three extra bytes.
 
@@ -901,8 +966,8 @@ $ cd bom && $SOFTSCHEMA validate repair-bom.md | grep -E '"(outcome|contract_id)
 ```
 
 ```console
-$ cd bom && head -c 3 repair-bom.md | od -c | head -1
-0000000   -   -   -
+$ cd bom && head -c 3 repair-bom.md | od -An -tx1 | xargs
+2d 2d 2d
 ? 0
 ```
 
@@ -951,6 +1016,7 @@ $ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
   ],
   "semantic": {
     "errors": [],
+    "execution": "not_run",
     "ok": true,
     "skipped_reason": "no_semantic_model"
   },
@@ -958,6 +1024,7 @@ $ cd dry && $SOFTSCHEMA repair repair-unquoted-colon.md --dry-run
   "structural": {
     "engine": "json_schema",
     "errors": [],
+    "execution": "completed",
     "ok": true,
     "skipped_reason": null
   },

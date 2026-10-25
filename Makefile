@@ -36,7 +36,7 @@ install:
 	cd packages/typescript && bun install --frozen-lockfile
 
 # Install the lefthook-managed git hooks (pre-commit: flowmark + ruff + biome).
-# Run once after cloning. Bypass a hook for an emergency commit with --no-verify.
+# Run once after cloning; commits must pass the configured hooks.
 hooks-install: install
 	npx --no-install lefthook install
 

@@ -145,6 +145,62 @@ structural:
     value: Ada
     valid: false
     code: schema_invalid
+  # A resource is identified by its $id, or by its key when it has none; a urn: identity
+  # must name a namespace identifier in either place.
+  - id: urn_resource_id_without_namespace
+    schema: { $ref: "urn:example:item" }
+    resources:
+      "urn:example:item": { $id: "urn:example", type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: urn_resource_key_without_namespace
+    schema: { $ref: "urn:example" }
+    resources:
+      "urn:example": { type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: urn_resource_key_with_namespace
+    schema: { $ref: "urn:example:item" }
+    resources:
+      "urn:example:item": { type: string }
+    value: Ada
+    valid: true
+  # A resource identity in a spelling fast-uri normalizes would be registered under one
+  # URI by Ajv and another by Python; the identity grammar refuses it in either place.
+  - id: uppercase_host_resource_key
+    schema: { $ref: "https://EXAMPLE.com/X" }
+    resources:
+      "https://EXAMPLE.com/X": { type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: escaped_unreserved_resource_key
+    schema: { $ref: "https://example.com/%7Euser/x.json" }
+    resources:
+      "https://example.com/%7Euser/x.json": { type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: uppercase_scheme_resource_id
+    schema: { $ref: "urn:example:b" }
+    resources:
+      "urn:example:b": { $id: "URN:example:b", type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: https_resource_key
+    schema: { $ref: "https://example.com/schemas/name.json" }
+    resources:
+      "https://example.com/schemas/name.json": { type: string }
+    value: Ada
+    valid: true
 
 canonicalization:
   - id: preserve_empty_default
@@ -447,6 +503,136 @@ enforcement_semantics:
     value: { company_facts: { brands: [{ name: Acme }] } }
     raw: valid
     enforced: valid
+  - id: nested_nullable_references_to_closed_generated_models
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+          default: null
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+              default: null
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original } } }
+    raw: valid
+    enforced: valid
+  - id: nested_nullable_closed_models_accept_null
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: null } }
+    raw: valid
+    enforced: valid
+  - id: nested_nullable_closed_models_reject_unknown_properties
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original, extra: 1 } } }
+    raw: invalid
+    enforced: invalid
+  - id: nested_nullable_oneof_preserves_explicit_open_policy
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              oneOf:
+                - { type: "null", description: No failure }
+                - { $ref: "#/$defs/Failure", title: Failure }
+              default: null
+        Failure:
+          type: object
+          additionalProperties: true
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original, extra: 1 } } }
+    raw: valid
+    enforced: valid
+  - id: nullable_wrapper_validation_siblings_still_require_safety_analysis
+    schema:
+      type: object
+      additionalProperties: false
+      properties:
+        omissions:
+          anyOf:
+            - { $ref: "#/$defs/Omissions" }
+            - { type: "null" }
+      $defs:
+        Omissions:
+          type: object
+          additionalProperties: false
+          properties:
+            failure:
+              anyOf:
+                - { $ref: "#/$defs/Failure" }
+                - { type: "null" }
+              properties: { message: { type: string } }
+        Failure:
+          type: object
+          additionalProperties: false
+          properties: { message: { type: string } }
+    value: { omissions: { failure: { message: original } } }
+    raw: valid
+    enforced: unsupported
+    reason: composition_reference_context
   - id: pattern_only_object
     schema:
       type: object
