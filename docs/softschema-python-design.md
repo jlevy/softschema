@@ -255,6 +255,9 @@ Both paths finish with the same portable-value check, so values, types, key orde
 error codes and messages do not depend on which one ran.
 With ruamel’s C extension installed every text stays on the ruamel path, because
 libyaml’s edge cases have not been compared.
+The guards were derived from ruamel’s reader, scanner and resolver at 0.18 and 0.19
+(`CHECKED_RUAMEL_VERSIONS`), so a later ruamel release also turns the path off until the
+comparison is rerun; that costs only speed.
 
 ruamel.yaml normally constructs implicit date- and timestamp-shaped scalars as Python
 `date` and `datetime` objects.

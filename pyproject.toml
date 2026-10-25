@@ -174,3 +174,10 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["packages/python/tests"]
 pythonpath = ["."]
+# The default run is the inner loop and stays fast. Tests marked `slow` are costly
+# evidence (corpus, generated-document and code-point comparisons that take seconds
+# each); CI runs them in their own step with `uv run pytest -m slow`.
+markers = [
+    "slow: costly evidence excluded from the default run; `uv run pytest -m slow` runs it",
+]
+addopts = "-m 'not slow'"

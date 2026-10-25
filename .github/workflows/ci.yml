@@ -153,6 +153,10 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+      # Tests marked `slow` are excluded from the default run (see pyproject.toml).
+      - name: Run slow tests
+        run: uv run pytest -m slow
+
       - name: Build package
         run: uv build
 

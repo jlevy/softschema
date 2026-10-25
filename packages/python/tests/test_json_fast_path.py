@@ -17,25 +17,33 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import random
+import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import ruamel.yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.parser import Parser as RuamelParser
 from ruamel.yaml.reader import Reader
 
 from softschema import _portable, read_yaml_doc
 from softschema._portable import MAX_DEPTH, PortableInputError, parse_yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PRUNED_DIRS = {".git", ".venv", "node_modules", "dist", "attic", "__pycache__"}
 
 requires_json_path = pytest.mark.skipif(
     not _portable._JSON_PATH_ENABLED,
-    reason="ruamel's C extension is installed, so every text stays on the ruamel path",
+    reason="ruamel's C extension or an unchecked ruamel release keeps every text on the ruamel path",
 )
+pure_ruamel_only = pytest.mark.skipif(
+    YAML(typ="safe").Parser is not RuamelParser,
+    reason="libyaml reads this text differently from pure ruamel",
+)
+slow = pytest.mark.slow
+"""Costly evidence, left out of the default run; `uv run pytest -m slow` runs it."""
 
 
 def _ruamel_path(text: str) -> Any:
@@ -214,8 +222,22 @@ ERROR_CASES: list[tuple[str, str, str]] = [
 ]
 
 
+PURE_RUAMEL_ONLY = {"lone_surrogate_escape", "surrogate_pair_escape", "trailing_tab"}
+"""Pinned errors that describe pure ruamel only.
+
+libyaml refuses an escaped surrogate outright, joins an escaped pair into one character,
+and accepts a trailing tab, so with the C extension installed these three read differently.
+"""
+
+
 @pytest.mark.parametrize(
-    ("text", "code"), [c[1:] for c in ERROR_CASES], ids=[c[0] for c in ERROR_CASES]
+    ("text", "code"),
+    [
+        pytest.param(
+            *case[1:], id=case[0], marks=[pure_ruamel_only] if case[0] in PURE_RUAMEL_ONLY else []
+        )
+        for case in ERROR_CASES
+    ],
 )
 def test_pinned_error(text: str, code: str) -> None:
     with pytest.raises(PortableInputError) as raised:
@@ -234,16 +256,26 @@ def test_pinned_inputs_parse_identically(text: str) -> None:
 # --- Equivalence over a corpus -----------------------------------------------------------
 
 
-def _repo_files(*suffixes: str) -> Iterator[Path]:
-    for root, dirs, files in os.walk(REPO_ROOT):
-        dirs[:] = sorted(name for name in dirs if name not in PRUNED_DIRS)
-        for name in sorted(files):
-            if name.endswith(suffixes):
-                yield Path(root) / name
+def _repo_files(*suffixes: str) -> list[Path]:
+    """The tracked files with one of ``suffixes``, so the corpus is the same in every checkout.
+
+    A walk of the working tree would also read ignored and untracked files, whose number
+    and content differ from one checkout to the next.
+    """
+    try:
+        listed = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--", *(f"*{s}" for s in suffixes)],
+            check=True,
+            capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):  # pragma: no cover
+        pytest.skip("the repo corpus needs a git checkout")
+    paths = [REPO_ROOT / name for name in listed.decode("utf-8").split("\0") if name]
+    return [path for path in paths if path.is_file()]
 
 
 def test_every_repo_json_file_parses_identically() -> None:
-    paths = list(_repo_files(".json"))
+    paths = _repo_files(".json")
     assert paths, "the corpus found no JSON files"
     for path in paths:
         _assert_equivalent(path.read_text(encoding="utf-8"))
@@ -268,6 +300,7 @@ JSON_SPELLINGS: list[Callable[[Any], str]] = [
 ]
 
 
+@slow
 @requires_json_path
 def test_repo_yaml_documents_respelled_as_json_parse_identically() -> None:
     """Every parseable YAML document in the repo, in each common JSON spelling."""
@@ -415,6 +448,7 @@ class _Generator:
         return text
 
 
+@slow
 @requires_json_path
 def test_generated_documents_parse_identically() -> None:
     rng = random.Random(20261024)
@@ -435,6 +469,7 @@ def test_generated_documents_parse_identically() -> None:
     assert slow > 500, slow
 
 
+@slow
 def test_generated_deep_documents_parse_identically() -> None:
     for depth in (1, MAX_DEPTH - 1, MAX_DEPTH, MAX_DEPTH + 1, 2 * MAX_DEPTH, 600):
         _assert_equivalent(_nest(depth))
@@ -454,6 +489,7 @@ SAMPLED_CODE_POINTS = [
 ]
 
 
+@slow
 @pytest.mark.parametrize(
     "template", ['{{"k": "{c}"}}', '{{"{c}": 1}}', '["a{c}b"]', "[1,{c}2]", '{{"k"{c}: 1}}']
 )
@@ -462,6 +498,7 @@ def test_each_sampled_character_parses_identically(template: str) -> None:
         _assert_equivalent(template.format(c=chr(code)))
 
 
+@slow
 def test_raw_character_guard_covers_every_character_ruamel_rejects() -> None:
     """Exhaustive over Unicode: ruamel's unreadable characters and line breaks fall back.
 
@@ -562,3 +599,26 @@ def test_every_disagreement_shape_takes_the_ruamel_path(text: str) -> None:
 def test_c_parser_keeps_every_text_on_the_ruamel_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_portable, "_JSON_PATH_ENABLED", False)
     assert _portable._parse_json_subset('{"a": [1, 2.5, "x"]}') is _portable._NOT_JSON
+
+
+@pytest.mark.parametrize(
+    ("version", "checked"),
+    [
+        ((0, 17, 40), False),
+        ((0, 18, 0), True),
+        ((0, 18, 17), True),
+        ((0, 19, 1), True),
+        ((0, 20, 0), False),
+        ((1, 0, 0), False),
+    ],
+)
+def test_json_path_is_gated_to_the_checked_ruamel_releases(
+    version: tuple[int, ...], checked: bool
+) -> None:
+    """A ruamel release the guards were not derived from keeps every text on ruamel."""
+    assert _portable._ruamel_is_checked(version) is checked
+
+
+def test_installed_ruamel_is_a_checked_release() -> None:
+    """The locked ruamel is inside the range, so this suite exercises the JSON path."""
+    assert _portable._ruamel_is_checked(), ruamel.yaml.version_info

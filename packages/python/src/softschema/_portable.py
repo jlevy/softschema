@@ -11,6 +11,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
+import ruamel.yaml
 from ruamel.yaml import YAML, YAMLError
 from ruamel.yaml.constructor import SafeConstructor
 from ruamel.yaml.events import (
@@ -215,12 +216,31 @@ def _check_value(root: Any) -> None:
 _NOT_JSON: Any = object()
 """What :func:`_parse_json_subset` returns for a text it leaves to ruamel."""
 
-_JSON_PATH_ENABLED = YAML(typ="safe").Parser is RuamelParser
-"""Whether ruamel parses with its pure-Python parser, the one the JSON path matches.
+CHECKED_RUAMEL_VERSIONS = ((0, 18), (0, 20))
+"""The ruamel.yaml releases, as a ``[lower, upper)`` range, whose reader, scanner and
+resolver the JSON path's guards were derived from and compared against.
+
+The guards encode where ruamel's YAML 1.2 reading can differ from strict ``json``: its
+printable set, its line-break set, the 1024-character implicit-key limit. A later release
+could move any of those. Outside this range every text takes the ruamel path, which costs
+only speed, instead of keeping a reading that the installed ruamel may no longer share.
+Widen the range only after rerunning ``test_json_fast_path.py`` against the new release.
+"""
+
+
+def _ruamel_is_checked(version: tuple[int, ...] = ruamel.yaml.version_info) -> bool:
+    """Whether ``version`` of ruamel.yaml is inside :data:`CHECKED_RUAMEL_VERSIONS`."""
+    lower, upper = CHECKED_RUAMEL_VERSIONS
+    return lower <= tuple(version[:2]) < upper
+
+
+_JSON_PATH_ENABLED = YAML(typ="safe").Parser is RuamelParser and _ruamel_is_checked()
+"""Whether ruamel parses with its pure-Python parser, the one the JSON path matches, at a
+version the path was checked against.
 
 With the optional ``ruamel.yaml.clib`` extension installed, ruamel parses through libyaml
 instead, whose edge cases have not been compared with ``json``; every text then takes
-the ruamel path.
+the ruamel path, as it does on a ruamel release outside :data:`CHECKED_RUAMEL_VERSIONS`.
 """
 
 _JSON_ROOT = re.compile(r"[ \n\r]*[\[{]")

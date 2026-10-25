@@ -50,6 +50,15 @@ version number.
   A model using `z.email()` compiles with Zod’s new email `pattern`, so its
   `schema_sha256` changes; recompile its committed schema.
 
+### Performance
+
+- **A strict JSON document is parsed with `json`** when ruamel would read it
+  identically, so a large `.json` artifact validates many times faster.
+  YAML input, and every text on which JSON and YAML 1.2 can disagree, keeps the ruamel
+  path, so values, types, key order and error codes do not change.
+  The path runs only with ruamel’s pure-Python parser at a release the guards were
+  checked against (0.18 and 0.19).
+
 ## v0.8.1—2026-09-11
 
 A patch release. Python semantic validation returned a result that could not be
