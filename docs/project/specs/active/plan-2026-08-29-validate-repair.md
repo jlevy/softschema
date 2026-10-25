@@ -13,7 +13,7 @@ author: Claude Code, with maintainer direction from Joshua Levy
 **Superseded in part, 2026-08-30:** the CLI surface described below —
 `validate --repair` and `validate --check-repair` — was replaced before release by the
 `repair` command, with `--dry-run` and `--check`. See
-[plan-2026-08-30-repair-command.md](plan-2026-08-30-repair-command.md).
+[plan-2026-08-30-repair-command.md](../done/plan-2026-08-30-repair-command.md).
 Everything else here still holds: the escalating pass, the two corrections in scope, the
 conformance guarantees, and the record surface are unchanged.
 This document is left as written; it records what was true when the feature was
