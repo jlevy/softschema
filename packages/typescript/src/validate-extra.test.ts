@@ -5,9 +5,12 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { Contract } from "./models.js";
+import { documentLabel } from "./portable.js";
 import { softFieldMeta } from "./softField.js";
 import {
   clearValidatorCache,
+  parseFrontmatterText,
+  parseYamlText,
   readFrontmatterDoc,
   validateArtifact,
   validateSemantic,
@@ -313,6 +316,47 @@ test("shared frontmatter vectors", () => {
       expect(result.values).toEqual(item.expected as Record<string, unknown>);
     }
   }
+});
+
+test("shared fence scan vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.fence_scan ?? []) {
+    const path = tmpFile(`${String(item.id)}.md`, String(item.text));
+    const result = validateArtifact(path, contract({ envelopeKey: "movie" }));
+    const structural = result.structural as { errors: { kind: string }[] };
+    expect(result.ok).toBe(false);
+    expect(structural.errors[0]?.kind).toBe(item.code as string);
+  }
+});
+
+test("frontmatter messages count lines from the top of the file", () => {
+  // The engines and the preflight count within the block they were handed; the reader
+  // shifts every `line N, column M` by the opening fence. A pure-yaml document has no
+  // fence and is unchanged.
+  expect(() => parseFrontmatterText("---\na: x\u2028y\n---\nbody\n", "doc.md")).toThrow(
+    /^`doc\.md`: unacceptable character #x2028 at line 2, column 5: .*write it as "\\L" inside a double-quoted scalar$/u,
+  );
+  expect(() => parseFrontmatterText("---\nmovie:\n  notes: [\n---\nbody\n", "doc.md")).toThrow(
+    /line 3, column 11/u,
+  );
+  expect(() => parseYamlText("a: x\u2028y\n", "doc.yaml")).toThrow(/at line 1, column 5/u);
+});
+
+test("documentLabel escapes terminal controls in a filename", () => {
+  const name = "evil\x1b]0;PWNED\x07\x1b[2K\rsoftschema validate: ok\nx\x85y.yaml";
+  expect(documentLabel(name)).toBe(
+    "`evil#x001b]0;PWNED#x0007#x001b[2K#x000dsoftschema validate: ok#x000ax#x0085y.yaml`",
+  );
+  expect(documentLabel("plain/doc.md")).toBe("`plain/doc.md`");
+  const path = tmpFile("bad\x1b[2K.yaml", "value: [\n");
+  const result = validateArtifact(path, contract({ profile: "pure-yaml" }));
+  const structural = result.structural as { errors: { message: string }[] };
+  const message = structural.errors[0]?.message ?? "";
+  expect(message).toContain("#x001b");
+  expect(message).not.toContain("\x1b");
 });
 
 test("shared structural vectors", () => {

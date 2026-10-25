@@ -18,7 +18,12 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 from strif import atomic_write_text
 
-from softschema._portable import PortableInputError, opens_frontmatter_fence, read_utf8
+from softschema._portable import (
+    PortableInputError,
+    document_label,
+    opens_frontmatter_fence,
+    read_utf8,
+)
 from softschema.compile import compile_model
 from softschema.errors import canonical_number
 from softschema.generate import regenerate
@@ -550,8 +555,8 @@ def _repair_failure_message(
     if repaired.error_message:
         return repaired.error_message
     if profile is SchemaProfile.pure_yaml:
-        return f"`{path}`: the document root is not a YAML mapping"
-    return f"`{path}`: the document has no YAML frontmatter"
+        return f"{document_label(path)}: the document root is not a YAML mapping"
+    return f"{document_label(path)}: the document has no YAML frontmatter"
 
 
 def _detect_profile(path: Path) -> SchemaProfile:

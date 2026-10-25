@@ -120,7 +120,8 @@ The two YAML engines read U+0085 differently: ruamel treats it as a YAML 1.1 lin
 and folds it to a space inside a flow scalar, the `yaml` package reads it as content. It
 is what a cp1252 ellipsis becomes when agent output is mis-decoded, so it is the character
 most likely to arrive. Both runtimes reject it before parsing, with one message, so this
-line is asserted in full. The line and column are counted within the frontmatter block.
+line is asserted in full. The line and column count from the top of the file: the reader
+adds the opening fence to the block-relative position the engines and the preflight report.
 
 This journey also pins the Python fence scan: splitting the block with `str.splitlines()`
 would cut the U+0085 out of its line, rejoin the block with a real newline, and let the
@@ -129,7 +130,7 @@ the file.
 
 ```console
 $ $SOFTSCHEMA validate tests/golden/fixtures/next-line.md --contract example.movies:MoviePage/v1 --envelope movie 2>&1
-softschema validate: `tests/golden/fixtures/next-line.md`: unacceptable character #x0085 at line 3, column 24: non-printable and line separator characters are not allowed as raw text; write one as a double-quoted escape
+softschema validate: `tests/golden/fixtures/next-line.md`: unacceptable character #x0085 at line 4, column 24: non-printable and line separator characters are not allowed as raw text; write it as "\N" inside a double-quoted scalar
 ? 2
 ```
 
@@ -142,6 +143,6 @@ both.
 
 ```console
 $ $SOFTSCHEMA validate tests/golden/fixtures/control-character.md --contract example.movies:MoviePage/v1 --envelope movie 2>&1
-softschema validate: `tests/golden/fixtures/control-character.md`: unacceptable character #x000c at line 3, column 11: non-printable and line separator characters are not allowed as raw text; write one as a double-quoted escape
+softschema validate: `tests/golden/fixtures/control-character.md`: unacceptable character #x000c at line 4, column 11: non-printable and line separator characters are not allowed as raw text; write it as "\f" inside a double-quoted scalar
 ? 2
 ```

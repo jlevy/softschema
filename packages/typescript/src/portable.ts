@@ -58,53 +58,138 @@ export function readUtf8(path: string): string {
     text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new PortableInputError("invalid_utf8", `\`${path}\`: input is not valid UTF-8`);
+      throw new PortableInputError(
+        "invalid_utf8",
+        `${documentLabel(path)}: input is not valid UTF-8`,
+      );
     }
     throw error;
   }
   return text.startsWith(BOM) ? text.slice(1) : text;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are the subject
+const CONTROL_CHARACTER = /[\x00-\x1f\x7f-\x9f]/gu;
+
+/**
+ * The backticked document name every message that names a document begins with.
+ *
+ * C0 and C1 control characters and DEL in the name are written as `#xHHHH`, the notation
+ * the preflight uses for a rejected character. A path is untrusted input like the artifact
+ * it names: a filename carrying an escape sequence would otherwise reach stderr raw, where
+ * a terminal acts on it (an OSC title or clipboard write, a line cleared and overwritten, a
+ * forged second diagnostic line). JSON output escapes the string on its own, so only the
+ * human-readable channel needed this. Keep the rule identical to `document_label` in
+ * `_portable.py`.
+ */
+export function documentLabel(path: string): string {
+  const name = path.replace(
+    CONTROL_CHARACTER,
+    (char) => `#x${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+  return `\`${name}\``;
+}
+
 /**
  * A raw character the two YAML engines read differently.
  *
- * The class is YAML 1.2 `c-printable` with the three Unicode line separators taken out.
- * ruamel rejects everything outside `c-printable` (its `Reader.NON_PRINTABLE`) and the
- * `yaml` package reads it as content; for U+0085, U+2028 and U+2029 ruamel follows YAML
- * 1.1 and treats them as line breaks, folding a NEL in a flow scalar to a space and
- * breaking a block scalar or a comment into a parse error, while the `yaml` package again
- * reads them as content. Neither reading can be reproduced in the other engine, so the
- * portable rule is to accept none of them raw. Every one of them can be written as a
- * double-quoted escape (`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`), which both engines
- * decode identically. Keep this class identical to `_NON_PORTABLE_CHARACTER` in
- * `_portable.py`.
+ * The class is YAML 1.2 `c-printable` with the three Unicode line separators taken out,
+ * plus a carriage return that does not begin a `\r\n` sequence. ruamel rejects everything
+ * outside `c-printable` (its `Reader.NON_PRINTABLE`) and the `yaml` package reads it as
+ * content; for U+0085, U+2028 and U+2029 ruamel follows YAML 1.1 and treats them as line
+ * breaks, folding a NEL in a flow scalar to a space and breaking a block scalar or a
+ * comment into a parse error, while the `yaml` package again reads them as content. A lone
+ * carriage return is the same shape: a YAML line break for ruamel, so a CR-only document
+ * is many lines and a CR inside a flow scalar folds to a space, while the `yaml` package
+ * reads it as content and sees one long line. Neither reading can be reproduced in the
+ * other engine, so the portable rule is to accept none of them raw. Every one of them can
+ * be written as a double-quoted escape (`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`,
+ * `"\r"`), which both engines decode identically. Keep this class identical to
+ * `_NON_PORTABLE_CHARACTER` in `_portable.py`.
  */
 const NON_PORTABLE_CHARACTER =
-  /[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]/u;
+  /[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]|\r(?!\n)/u;
+
+const NAMED_ESCAPES = new Map<number, string>([
+  [0x00, "\\0"],
+  [0x07, "\\a"],
+  [0x08, "\\b"],
+  [0x0b, "\\v"],
+  [0x0c, "\\f"],
+  [0x0d, "\\r"],
+  [0x1b, "\\e"],
+  [0x85, "\\N"],
+  [0x2028, "\\L"],
+  [0x2029, "\\P"],
+]);
+
+/**
+ * The double-quoted YAML escape for one character, as both engines decode it.
+ *
+ * YAML 1.2 names the common controls and the three line separators; everything else takes
+ * the fixed-width `\xHH`, `\uHHHH` or `\UHHHHHHHH` form. Used in the preflight message and
+ * by `repair` when it rewrites a rejected character. Mirrors the Python `portable_escape`.
+ */
+export function portableEscape(char: string): string {
+  const code = char.codePointAt(0) ?? 0;
+  const named = NAMED_ESCAPES.get(code);
+  if (named !== undefined) return named;
+  if (code <= 0xff) return `\\x${code.toString(16).padStart(2, "0")}`;
+  if (code <= 0xffff) return `\\u${code.toString(16).padStart(4, "0")}`;
+  return `\\U${code.toString(16).padStart(8, "0")}`;
+}
+
+/** The first raw character in `text` that `checkPortableText` rejects, with its index. */
+export function findNonPortableCharacter(text: string): { char: string; index: number } | null {
+  const match = NON_PORTABLE_CHARACTER.exec(text);
+  return match === null ? null : { char: match[0], index: match.index };
+}
 
 /**
  * Reject the first raw character in `text` that the engines would read differently.
  *
  * Runs before the engine sees the text, on the whole YAML text the reader was handed: the
  * frontmatter block or the entire pure-yaml document, comments and keys included. The line
- * and column are counted within that text, in code points, as the engines count them.
+ * and column are counted within that text, in code points, as the engines count them; the
+ * frontmatter reader adds the fence offset so the message names a line of the file.
  * Raising here, with one message in both runtimes, is what keeps a mis-decoded cp1252
  * ellipsis (which arrives as U+0085) from silently becoming a space in one runtime and
  * staying a character in the other. Mirrors the Python `check_portable_text`.
+ *
+ * The position is counted with index loops rather than `match`/spread: on the error path
+ * those would materialize every newline and every code point of the offending line, a
+ * several-fold memory amplification on a large single-line input that a library host
+ * validating untrusted uploads would pay at the worst moment.
  */
 export function checkPortableText(text: string): void {
   const match = NON_PORTABLE_CHARACTER.exec(text);
   if (match === null) return;
-  const before = text.slice(0, match.index);
-  const lineStart = before.lastIndexOf("\n") + 1;
-  const line = (before.match(/\n/g)?.length ?? 0) + 1;
-  const column = [...before.slice(lineStart)].length + 1;
-  const codePoint = (match[0].codePointAt(0) ?? 0).toString(16).padStart(4, "0");
+  let line = 1;
+  let lineStart = 0;
+  for (
+    let at = text.indexOf("\n");
+    at !== -1 && at < match.index;
+    at = text.indexOf("\n", at + 1)
+  ) {
+    line += 1;
+    lineStart = at + 1;
+  }
+  let column = 1;
+  for (let at = lineStart; at < match.index; at += 1) {
+    const unit = text.charCodeAt(at);
+    if (unit >= 0xd800 && unit <= 0xdbff) at += 1;
+    column += 1;
+  }
+  const char = match[0];
+  const codePoint = (char.codePointAt(0) ?? 0).toString(16).padStart(4, "0");
+  const advice =
+    char === "\r"
+      ? 'end lines with "\\n", or write it as "\\r" inside a double-quoted scalar'
+      : `write it as "${portableEscape(char)}" inside a double-quoted scalar`;
   throw new PortableInputError(
     "yaml_parse_error",
     `unacceptable character #x${codePoint} at line ${line}, column ${column}: ` +
-      "non-printable and line separator characters are not allowed as raw text; " +
-      "write one as a double-quoted escape",
+      `non-printable and line separator characters are not allowed as raw text; ${advice}`,
   );
 }
 
@@ -279,17 +364,17 @@ export function splitFrontmatter(text: string): FrontmatterSplit | null {
   // Scan by offset rather than by `split()`, because the offsets are the whole point: a
   // `\r\n` document must keep its `\r\n` body byte-for-byte.
   const first = lineEnd(text, 0);
-  if (first === null || text.slice(0, first.contentEnd).trimEnd() !== "---") return null;
+  if (first === null || !isFenceLine(text.slice(0, first.contentEnd))) return null;
   const metadataOffset = first.next;
   let cursor = metadataOffset;
   while (cursor < text.length) {
     const line = lineEnd(text, cursor);
     if (line === null) break; // unreachable: the loop guard guarantees a line remains
-    if (text.slice(cursor, line.contentEnd).trimEnd() === "---") {
+    if (isFenceLine(text.slice(cursor, line.contentEnd))) {
       const metadataText = text.slice(metadataOffset, cursor);
       // An empty block (end fence on the very next line) is the portable
       // no_frontmatter case, the same as the reader's `end === 1`.
-      if (metadataText.trim() === "") return null;
+      if (/^[ \t\r\n]*$/u.test(metadataText)) return null;
       return { metadataText, metadataOffset, metadataEnd: cursor, bodyOffset: line.next };
     }
     cursor = line.next;
@@ -312,7 +397,24 @@ export function splitFrontmatter(text: string): FrontmatterSplit | null {
  */
 export function opensFrontmatterFence(text: string): boolean {
   const first = lineEnd(text, 0);
-  return first !== null && text.slice(0, first.contentEnd).trimEnd() === "---";
+  return first !== null && isFenceLine(text.slice(0, first.contentEnd));
+}
+
+/**
+ * Whether one line, given without its `\n`, is a frontmatter `---` fence.
+ *
+ * The spec allows `---` plus optional trailing whitespace, and *whitespace* here is the
+ * ASCII blank set, space and tab, after a trailing `\r` is dropped. This is spelled out
+ * because the two hosts' default trims disagree: `String.prototype.trimEnd()` strips U+FEFF,
+ * which Python's `str.rstrip()` keeps, and `rstrip()` strips U+0085 and U+001C–U+001F,
+ * which `trimEnd()` keeps. A fence line is never handed to the preflight (it is outside the
+ * YAML block), so the fence scan is the one place such a character decides a verdict; with
+ * the default trims a `---` followed by U+0085 opened a fence in Python and no fence in
+ * TypeScript. Keep this identical to `is_fence_line` in `_portable.py`.
+ */
+export function isFenceLine(line: string): boolean {
+  const content = line.endsWith("\r") ? line.slice(0, -1) : line;
+  return content.replace(/[ \t]+$/u, "") === "---";
 }
 
 /**

@@ -28,7 +28,13 @@ from referencing import Registry, Resource
 from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
-from softschema._portable import PortableInputError, parse_yaml, read_utf8
+from softschema._portable import (
+    PortableInputError,
+    document_label,
+    is_fence_line,
+    parse_yaml,
+    read_utf8,
+)
 from softschema.enforcement import (
     EnforcementUnsupportedError,
     SchemaGraphError,
@@ -576,7 +582,7 @@ def _validate_frontmatter_artifact(
             doc_path,
             contract,
             "no_frontmatter",
-            f"`{doc_path}`: the document has no YAML frontmatter",
+            f"{document_label(doc_path)}: the document has no YAML frontmatter",
         )
     if not isinstance(frontmatter, dict):
         return _artifact_failure(
@@ -1077,21 +1083,24 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
     different verdicts on the same file.
     """
     lines = [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
-    if not lines or lines[0].rstrip() != "---":
+    if not lines or not is_fence_line(lines[0]):
         return text, None
-    end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)
+    end = next((index for index, line in enumerate(lines[1:], 1) if is_fence_line(line)), -1)
     if end < 0:
         raise PortableInputError(
-            "yaml_parse_error", f"`{source}`: Delimiter `---` for end of frontmatter not found"
+            "yaml_parse_error",
+            f"{document_label(source)}: Delimiter `---` for end of frontmatter not found",
         )
     if end == 1:
         return "\n".join(lines[2:]), None
     raw = "\n".join(lines[1:end])
-    value = _parse_document_yaml(raw, source)
+    # The block starts on file line 2: one fence line precedes it.
+    value = _parse_document_yaml(raw, source, fence_lines=1)
     if not isinstance(value, dict):
         raise PortableInputError(
             "yaml_parse_error",
-            f"`{source}`: Expected YAML metadata to be a dict, got {type(value).__name__}",
+            f"{document_label(source)}: Expected YAML metadata to be a dict, "
+            f"got {type(value).__name__}",
         )
     return "\n".join(lines[end + 1 :]), value
 
@@ -1115,20 +1124,40 @@ def parse_yaml_text(text: str, *, source: str = "<text>") -> Any:
     return _parse_document_yaml(text, source)
 
 
-def _parse_document_yaml(text: str, source: str) -> Any:
+_LINE_AND_COLUMN = re.compile(r"\bline (\d+), column (\d+)\b")
+_RUAMEL_LINE_NOTE = re.compile(r"\(line: (\d+)\)")
+
+
+def _parse_document_yaml(text: str, source: str, *, fence_lines: int = 0) -> Any:
     """:func:`parse_yaml`, with the document named in any failure it raises.
 
     The engine says where in the text it stopped, not which text: ruamel reports
     ``in "<unicode string>"`` and the ``yaml`` package nothing at all. An agent repairing
     a batch of artifacts cannot act on a line number alone, so both readers put the
     document first, in the backticked-prefix form every softschema message that names a
-    document uses. The code
-    is kept as is; only the message changes.
+    document uses. The code is kept as is; only the message changes.
+
+    ``fence_lines`` is how many lines of the file precede ``text``: one for a frontmatter
+    block, whose first line is file line 2. The engines and the preflight count lines
+    within the text they were handed, so every ``line N, column M`` in the message is
+    shifted by that many lines and names a line of the file the agent will open. Both
+    engines and the preflight write the position in that one form (ruamel adds a
+    zero-based ``(line: N)`` after its caret), which is why the rewrite can be this narrow.
     """
     try:
         return parse_yaml(text)
     except PortableInputError as exc:
-        raise PortableInputError(exc.code, f"`{source}`: {exc}") from exc
+        message = str(exc)
+        if fence_lines:
+            message = _LINE_AND_COLUMN.sub(
+                lambda match: f"line {int(match.group(1)) + fence_lines}, column {match.group(2)}",
+                message,
+            )
+            # ruamel also writes the zero-based line of its caret as ``(line: N)``.
+            message = _RUAMEL_LINE_NOTE.sub(
+                lambda match: f"(line: {int(match.group(1)) + fence_lines})", message
+            )
+        raise PortableInputError(exc.code, f"{document_label(source)}: {message}") from exc
 
 
 def portable_artifact_kind(code: str) -> str:

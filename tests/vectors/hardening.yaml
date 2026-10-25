@@ -28,6 +28,43 @@ frontmatter:
   - id: escaped_line_separators_in_scalar
     text: "---\nmovie:\n  notes: \"line\\Lseparator\\Pparagraph\\Nnext\"\n  count: 3\n---\nbody\n"
     expected: { notes: "line\u2028separator\u2029paragraph\u0085next", count: 3 }
+  # A fence is `---` plus optional trailing spaces or tabs (and a CRLF document's `\r`).
+  - id: fence_with_trailing_blanks
+    text: "--- \t\nmovie:\n  title: Spirited Away\n  count: 3\n---\t \nbody\n"
+    expected: { title: Spirited Away, count: 3 }
+  - id: crlf_document
+    text: "---\r\nmovie:\r\n  title: Spirited Away\r\n  count: 3\r\n---\r\nbody\r\n"
+    expected: { title: Spirited Away, count: 3 }
+
+# Frontmatter-md documents the fence scan must refuse identically. Only space and tab are
+# trimmed before a line is compared with `---`: the hosts' default trims disagree
+# (`str.rstrip()` strips U+0085 and U+001C-U+001F, `trimEnd()` strips U+FEFF), and a fence
+# line is never seen by the preflight, so with the default trims a `---` followed by U+0085
+# opened a fence in one runtime and no fence in the other. Each case names the record `kind`
+# both runtimes report under a frontmatter-md contract.
+fence_scan:
+  - id: opening_fence_next_line
+    text: "---\u0085\nmovie:\n  title: x\n---\nbody\n"
+    code: no_frontmatter
+  - id: opening_fence_bom
+    text: "---\ufeff\nmovie:\n  title: x\n---\nbody\n"
+    code: no_frontmatter
+  - id: opening_fence_file_separator
+    text: "---\u001c\nmovie:\n  title: x\n---\nbody\n"
+    code: no_frontmatter
+  # The line is not a fence, so the block runs to the end of the file.
+  - id: closing_fence_next_line
+    text: "---\nmovie:\n  title: x\n---\u0085\nbody\n"
+    code: yaml_parse_error
+  # The line is not a fence, so it is part of the block, where the preflight rejects it.
+  - id: closing_fence_next_line_then_real_fence
+    text: "---\nmovie:\n  title: x\n---\u0085\nextra: 1\n---\nbody\n"
+    code: yaml_parse_error
+  # A block holding only a rejected character is not empty: `strip()` would drop a NEL and
+  # call the block empty (no_frontmatter) where `trim()` keeps it and the preflight rejects it.
+  - id: block_of_one_next_line
+    text: "---\n\u0085\n---\nbody\n"
+    code: yaml_parse_error
 
 portable_values:
   - id: plain_values
@@ -58,6 +95,15 @@ portable_values:
     valid: false
     code: yaml_merge_key
   - { id: custom_tag, text: "value: !thing hello", valid: false, code: yaml_custom_tag }
+  # A lone carriage return is a YAML line break for ruamel and content for the `yaml`
+  # package, so a CR-only document is two keys in one runtime and a parse error in the
+  # other, and a CR inside a flow scalar is a space in one and a character in the other.
+  # Raw, it is rejected like U+0085; `\r\n` passes, and the escape `"\r"` decodes identically.
+  - { id: lone_cr_between_keys, text: "value: 1\rother: 2", valid: false, code: yaml_parse_error }
+  - { id: lone_cr_in_flow_scalar, text: "value: \"a\rb\"", valid: false, code: yaml_parse_error }
+  - { id: lone_cr_in_block_scalar, text: "value: |\n  a\rb\n", valid: false, code: yaml_parse_error }
+  - { id: crlf_line_endings, text: "value: 1\r\nother: 2\r\n", valid: true, expected: { value: 1, other: 2 } }
+  - { id: escaped_cr, text: "value: \"a\\rb\"", valid: true, expected: { value: "a\rb" } }
   - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
   - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
   # Raw characters the two engines read differently are rejected before parsing, in both

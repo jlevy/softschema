@@ -30,8 +30,8 @@ from softschema import (
     validate_values,
 )
 from softschema import validate as validate_module
-from softschema._portable import PortableInputError, parse_yaml
-from softschema.validate import parse_frontmatter_text
+from softschema._portable import PortableInputError, document_label, parse_yaml
+from softschema.validate import parse_frontmatter_text, parse_yaml_text
 
 
 class SampleModel(BaseModel):
@@ -630,8 +630,60 @@ def test_frontmatter_reader_keeps_unicode_separators_inside_their_line() -> None
     with pytest.raises(PortableInputError) as excinfo:
         parse_frontmatter_text("---\na: x\u2028y\n---\nbody\n", source="doc.md")
     assert excinfo.value.code == "yaml_parse_error"
-    assert "#x2028 at line 1, column 5" in str(excinfo.value)
+    # Line 2 of the file: the reader adds the fence line to the block-relative position.
+    assert "#x2028 at line 2, column 5" in str(excinfo.value)
+    assert str(excinfo.value).endswith('write it as "\\L" inside a double-quoted scalar')
     assert str(excinfo.value).startswith("`doc.md`: ")
+
+
+def test_frontmatter_messages_count_lines_from_the_top_of_the_file() -> None:
+    """Every ``line N, column M`` in a frontmatter message names a line of the file.
+
+    The engines and the preflight count within the block they were handed, which put the
+    reported line one above the real one for every frontmatter-md document. The reader
+    shifts them by the opening fence; a pure-yaml document has no fence and is unchanged.
+    """
+    with pytest.raises(PortableInputError) as engine:
+        parse_frontmatter_text("---\nmovie:\n  notes: [\n---\nbody\n", source="doc.md")
+    assert "line 3, column 11" in str(engine.value)
+    assert "line 2, column" not in str(engine.value)
+    with pytest.raises(PortableInputError) as pure:
+        parse_yaml_text("a: x\u2028y\n", source="doc.yaml")
+    assert "#x2028 at line 1, column 5" in str(pure.value)
+
+
+def test_shared_fence_scan_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Movie/v1", envelope_key="movie")
+    for case in vectors["fence_scan"]:
+        path = tmp_path / f"{case['id']}.md"
+        path.write_text(case["text"], newline="")
+        result = validate_artifact(path, contract=contract)
+        assert result.ok is False, case["id"]
+        assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_document_label_escapes_terminal_controls(tmp_path: Path) -> None:
+    """A control character in a filename never reaches stderr raw.
+
+    The OSC title write, the clear-line-and-overwrite, and the forged second line below are
+    what a hostile filename in a third-party corpus would do to a terminal; each byte comes
+    back as ``#xHHHH``, and the human-readable diagnostic carries no raw control at all.
+    """
+    name = "evil\x1b]0;PWNED\x07\x1b[2K\rsoftschema validate: ok\nx\x85y.yaml"
+    assert (
+        document_label(name)
+        == "`evil#x001b]0;PWNED#x0007#x001b[2K#x000dsoftschema validate: ok#x000ax#x0085y.yaml`"
+    )
+    assert document_label(Path("plain/doc.md")) == "`plain/doc.md`"
+    path = tmp_path / "bad\x1b[2K.yaml"
+    path.write_text("value: [\n")
+    result = validate_artifact(
+        path, contract=Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
+    )
+    message = result.structural.errors[0]["message"]
+    assert "#x001b" in message
+    assert "\x1b" not in message
 
 
 def test_shared_artifact_input_vectors(tmp_path: Path) -> None:

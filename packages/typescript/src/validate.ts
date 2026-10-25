@@ -34,7 +34,13 @@ import {
   type SchemaStatus,
   type SchemaWarning,
 } from "./models.js";
-import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
+import {
+  documentLabel,
+  isFenceLine,
+  PortableInputError,
+  parsePortableYaml,
+  readUtf8,
+} from "./portable.js";
 
 export interface StructuralResult {
   ok: boolean;
@@ -111,16 +117,18 @@ export interface ParsedDocument {
  */
 export class YamlParseError extends Error {}
 
-function parseYaml(text: string, source: string): unknown {
+function parseYaml(text: string, source: string, fenceLines = 0): unknown {
   try {
     return parsePortableYaml(text);
   } catch (err) {
     if (err instanceof PortableInputError) {
-      throw new YamlParseError(nameSource(err.message, source), { cause: err });
+      throw new YamlParseError(nameSource(err.message, source, fenceLines), { cause: err });
     }
-    throw new YamlParseError(nameSource((err as Error).message, source));
+    throw new YamlParseError(nameSource((err as Error).message, source, fenceLines));
   }
 }
+
+const LINE_AND_COLUMN = /\bline (\d+), column (\d+)\b/gu;
 
 /**
  * A parse failure's message with the document named first.
@@ -129,11 +137,25 @@ function parseYaml(text: string, source: string): unknown {
  * a line and column and ruamel an anonymous `"<unicode string>"`. An agent repairing a
  * batch of artifacts cannot act on a line number alone, so both readers put the document
  * first, in the backticked-prefix form every softschema message that names a document
- * uses. Mirrors the Python
- * `_parse_document_yaml`.
+ * uses. Mirrors the Python `_parse_document_yaml`.
+ *
+ * `fenceLines` is how many lines of the file precede the text that was parsed: one for a
+ * frontmatter block, whose first line is file line 2. The engines and the preflight count
+ * lines within the text they were handed, so every `line N, column M` in the message is
+ * shifted by that many lines and names a line of the file the agent will open. Both engines
+ * and the preflight write the position in that one form, which is why the rewrite can be
+ * this narrow.
  */
-function nameSource(message: string, source: string): string {
-  return `\`${source}\`: ${message}`;
+function nameSource(message: string, source: string, fenceLines = 0): string {
+  const shifted =
+    fenceLines === 0
+      ? message
+      : message.replace(
+          LINE_AND_COLUMN,
+          (_match, line: string, column: string) =>
+            `line ${Number(line) + fenceLines}, column ${column}`,
+        );
+  return `${documentLabel(source)}: ${shifted}`;
 }
 
 /**
@@ -164,26 +186,29 @@ function readFrontmatterDoc(path: string): ParsedDocument {
  */
 export function parseFrontmatterText(text: string, source = "<text>"): ParsedDocument {
   const lines = text.split(/\r?\n/);
-  if (lines[0]?.trimEnd() !== "---") return { hasFence: false, value: null };
+  if (lines[0] === undefined || !isFenceLine(lines[0])) return { hasFence: false, value: null };
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trimEnd() === "---") {
+    if (isFenceLine(lines[i] ?? "")) {
       end = i;
       break;
     }
   }
   if (end === -1) {
-    throw new YamlParseError(`\`${source}\`: Delimiter \`---\` for end of frontmatter not found`);
+    throw new YamlParseError(
+      `${documentLabel(source)}: Delimiter \`---\` for end of frontmatter not found`,
+    );
   }
   // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
-  const parsed = parseYaml(lines.slice(1, end).join("\n"), source);
+  // The block starts on file line 2: one fence line precedes it.
+  const parsed = parseYaml(lines.slice(1, end).join("\n"), source, 1);
   if (!isMapping(parsed)) {
     // Reject the same non-mapping values as Python: a whitespace-only block (YAML
     // `null`), a list, or a bare scalar. Use the portable type names from the shared
     // error contract.
     throw new YamlParseError(
-      `\`${source}\`: Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}`,
+      `${documentLabel(source)}: Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}`,
     );
   }
   return { hasFence: true, value: parsed };
@@ -1083,7 +1108,7 @@ export function validateArtifact(
       contract,
       null,
       "no_frontmatter",
-      `\`${docPath}\`: the document has no YAML frontmatter`,
+      `${documentLabel(docPath)}: the document has no YAML frontmatter`,
     );
   }
   if (!isMapping(frontmatter)) {

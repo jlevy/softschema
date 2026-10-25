@@ -39,6 +39,7 @@ def test_shared_hardening_vectors_are_readable() -> None:
     assert list(vectors) == [
         "artifact_input",
         "frontmatter",
+        "fence_scan",
         "portable_values",
         "structural",
         "canonicalization",

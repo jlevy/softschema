@@ -95,25 +95,84 @@ def read_utf8(path: Path) -> str:
     try:
         text = path.read_bytes().decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise PortableInputError("invalid_utf8", f"`{path}`: input is not valid UTF-8") from exc
+        raise PortableInputError(
+            "invalid_utf8", f"{document_label(path)}: input is not valid UTF-8"
+        ) from exc
     return text[1:] if text.startswith(BOM) else text
 
 
+_CONTROL_CHARACTER = re.compile("[\x00-\x1f\x7f-\x9f]")
+
+
+def document_label(path: Path | str) -> str:
+    """The backticked document name every message that names a document begins with.
+
+    C0 and C1 control characters and DEL in the name are written as ``#xHHHH``, the
+    notation the preflight uses for a rejected character. A path is untrusted input like
+    the artifact it names: a filename carrying an escape sequence would otherwise reach
+    stderr raw, where a terminal acts on it (an OSC title or clipboard write, a line
+    cleared and overwritten, a forged second diagnostic line). JSON output escapes the
+    string on its own, so only the human-readable channel needed this. Keep the rule
+    identical to ``documentLabel`` in ``portable.ts``.
+    """
+    name = _CONTROL_CHARACTER.sub(lambda match: f"#x{ord(match.group()):04x}", str(path))
+    return f"`{name}`"
+
+
 _NON_PORTABLE_CHARACTER = re.compile(
-    "[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+    "[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]|\r(?!\n)"
 )
 """A raw character the two YAML engines read differently.
 
-The class is YAML 1.2 ``c-printable`` with the three Unicode line separators taken out.
-ruamel rejects everything outside ``c-printable`` (its ``Reader.NON_PRINTABLE``) and the
-``yaml`` package reads it as content; for U+0085, U+2028 and U+2029 ruamel follows YAML
-1.1 and treats them as line breaks, folding a NEL in a flow scalar to a space and breaking
-a block scalar or a comment into a parse error, while the ``yaml`` package again reads
-them as content. Neither reading can be reproduced in the other engine, so the portable
-rule is to accept none of them raw. Every one of them can be written as a double-quoted
-escape (``"\\f"``, ``"\\x7f"``, ``"\\N"``, ``"\\L"``, ``"\\P"``), which both engines decode
-identically. Keep this class identical to ``NON_PORTABLE_CHARACTER`` in ``portable.ts``.
+The class is YAML 1.2 ``c-printable`` with the three Unicode line separators taken out,
+plus a carriage return that does not begin a ``\\r\\n`` sequence. ruamel rejects
+everything outside ``c-printable`` (its ``Reader.NON_PRINTABLE``) and the ``yaml``
+package reads it as content; for U+0085, U+2028 and U+2029 ruamel follows YAML 1.1 and
+treats them as line breaks, folding a NEL in a flow scalar to a space and breaking a
+block scalar or a comment into a parse error, while the ``yaml`` package again reads them
+as content. A lone carriage return is the same shape: a YAML line break for ruamel, so a
+CR-only document is many lines and a CR inside a flow scalar folds to a space, while the
+``yaml`` package reads it as content and sees one long line. Neither reading can be
+reproduced in the other engine, so the portable rule is to accept none of them raw. Every
+one of them can be written as a double-quoted escape (``"\\f"``, ``"\\x7f"``, ``"\\N"``,
+``"\\L"``, ``"\\P"``, ``"\\r"``), which both engines decode identically. Keep this class
+identical to ``NON_PORTABLE_CHARACTER`` in ``portable.ts``.
 """
+
+_NAMED_ESCAPES = {
+    0x00: "\\0",
+    0x07: "\\a",
+    0x08: "\\b",
+    0x0B: "\\v",
+    0x0C: "\\f",
+    0x0D: "\\r",
+    0x1B: "\\e",
+    0x85: "\\N",
+    0x2028: "\\L",
+    0x2029: "\\P",
+}
+
+
+def portable_escape(char: str) -> str:
+    """The double-quoted YAML escape for one character, as both engines decode it.
+
+    YAML 1.2 names the common controls and the three line separators; everything else
+    takes the fixed-width ``\\xHH``, ``\\uHHHH`` or ``\\UHHHHHHHH`` form. Used in the
+    preflight message and by ``repair`` when it rewrites a rejected character.
+    """
+    code = ord(char)
+    if code in _NAMED_ESCAPES:
+        return _NAMED_ESCAPES[code]
+    if code <= 0xFF:
+        return f"\\x{code:02x}"
+    if code <= 0xFFFF:
+        return f"\\u{code:04x}"
+    return f"\\U{code:08x}"
+
+
+def find_non_portable_character(text: str) -> re.Match[str] | None:
+    """The first raw character in ``text`` that :func:`check_portable_text` rejects."""
+    return _NON_PORTABLE_CHARACTER.search(text)
 
 
 def check_portable_text(text: str) -> None:
@@ -121,10 +180,11 @@ def check_portable_text(text: str) -> None:
 
     Runs before the engine sees the text, on the whole YAML text the reader was handed:
     the frontmatter block or the entire pure-yaml document, comments and keys included.
-    The line and column are counted within that text, as the engines count them. Raising
-    here, with one message in both runtimes, is what keeps a mis-decoded cp1252 ellipsis
-    (which arrives as U+0085) from silently becoming a space in one runtime and staying a
-    character in the other.
+    The line and column are counted within that text, as the engines count them; the
+    frontmatter reader adds the fence offset so the message names a line of the file.
+    Raising here, with one message in both runtimes, is what keeps a mis-decoded cp1252
+    ellipsis (which arrives as U+0085) from silently becoming a space in one runtime and
+    staying a character in the other.
     """
     match = _NON_PORTABLE_CHARACTER.search(text)
     if match is None:
@@ -132,11 +192,16 @@ def check_portable_text(text: str) -> None:
     index = match.start()
     line = text.count("\n", 0, index) + 1
     column = index - (text.rfind("\n", 0, index) + 1) + 1
+    char = match.group()
+    advice = (
+        'end lines with "\\n", or write it as "\\r" inside a double-quoted scalar'
+        if char == "\r"
+        else f'write it as "{portable_escape(char)}" inside a double-quoted scalar'
+    )
     raise PortableInputError(
         "yaml_parse_error",
-        f"unacceptable character #x{ord(match.group()):04x} at line {line}, column {column}: "
-        "non-printable and line separator characters are not allowed as raw text; "
-        "write one as a double-quoted escape",
+        f"unacceptable character #x{ord(char):04x} at line {line}, column {column}: "
+        f"non-printable and line separator characters are not allowed as raw text; {advice}",
     )
 
 
@@ -280,7 +345,7 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
     splitting identically.
     """
     first = _line_end(text, 0)
-    if first is None or text[: first[0]].rstrip() != "---":
+    if first is None or not is_fence_line(text[: first[0]]):
         return None
     metadata_offset = first[1]
     cursor = metadata_offset
@@ -288,11 +353,11 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
         line = _line_end(text, cursor)
         if line is None:
             break  # unreachable: the loop guard guarantees a line remains
-        if text[cursor : line[0]].rstrip() == "---":
+        if is_fence_line(text[cursor : line[0]]):
             metadata_text = text[metadata_offset:cursor]
             # An empty block (end fence on the very next line) is the portable
             # no_frontmatter case, the same as the reader's ``end == 1``.
-            if not metadata_text.strip():
+            if not metadata_text.strip(" \t\r\n"):
                 return None
             return FrontmatterSplit(
                 metadata_text=metadata_text,
@@ -317,7 +382,24 @@ def opens_frontmatter_fence(text: str) -> bool:
     whether or not it closes it, exactly as :func:`read_frontmatter_doc` treats it.
     """
     first = _line_end(text, 0)
-    return first is not None and text[: first[0]].rstrip() == "---"
+    return first is not None and is_fence_line(text[: first[0]])
+
+
+def is_fence_line(line: str) -> bool:
+    """Whether one line, given without its ``\\n``, is a frontmatter ``---`` fence.
+
+    The spec allows ``---`` plus optional trailing whitespace, and *whitespace* here is
+    the ASCII blank set, space and tab, after a trailing ``\\r`` is dropped. This is spelled
+    out because the two hosts' default trims disagree: ``str.rstrip()`` strips U+0085 and
+    U+001C through U+001F, which ``String.prototype.trimEnd()`` keeps, and ``trimEnd()`` strips
+    U+FEFF, which ``rstrip()`` keeps. A fence line is never handed to the preflight (it is
+    outside the YAML block), so the fence scan is the one place such a character decides a
+    verdict; with the default trims a ``---`` followed by U+0085 opened a fence in Python
+    and no fence in TypeScript. Keep this identical to ``isFenceLine`` in ``portable.ts``.
+    """
+    if line.endswith("\r"):
+        line = line[:-1]
+    return line.rstrip(" \t") == "---"
 
 
 def _line_end(text: str, start: int) -> tuple[int, int] | None:

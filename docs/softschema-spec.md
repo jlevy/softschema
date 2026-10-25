@@ -141,18 +141,24 @@ surrogates, and non-finite numbers are rejected.
 
 Raw characters that the host YAML engines read differently are rejected before parsing,
 as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls
-other than tab, line feed, and carriage return; DEL; the C1 controls; U+FFFE and U+FFFF)
-and the line separators U+0085, U+2028, and U+2029. One engine rejects the first group
-and treats the second as YAML 1.1 line breaks, folding a next-line character in a flow
-scalar to a space and breaking a block scalar or a comment; the other reads all of them
-as content. Neither reading can be reproduced in the other engine, so neither is
-portable. The check covers the whole YAML text the reader is handed, the frontmatter
-block or the entire pure-yaml document, comments and keys included; the Markdown body of
-a frontmatter-md artifact is not checked.
+other than tab, line feed, and carriage return; DEL; the C1 controls; U+FFFE and
+U+FFFF), the line separators U+0085, U+2028, and U+2029, and a carriage return that does
+not begin a `\r\n` sequence.
+One engine rejects the first group and treats the second and third as YAML 1.1 line
+breaks, folding a next-line character or a lone carriage return in a flow scalar to a
+space and breaking a block scalar or a comment; the other reads all of them as content.
+Neither reading can be reproduced in the other engine, so neither is portable.
+The check covers the whole YAML text the reader is handed, the frontmatter block or the
+entire pure-yaml document, comments and keys included, and every compiled schema file
+the implementation reads, whether written as YAML or as JSON; the Markdown body of a
+frontmatter-md artifact is not checked.
+An implementation that writes YAML (a schema compiler, a repair pass) must therefore
+never emit one of these characters raw.
 Any of these characters may be written as an escape inside a double-quoted scalar
-(`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`, `"\u2028"`), which both engines decode
-identically. The diagnostic names the character and its line and column within that YAML
-text.
+(`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`, `"\r"`, `"\u2028"`), which both engines
+decode identically. The diagnostic names the character, the escape to write it as, and
+its line and column; for a frontmatter-md artifact the line counts from the top of the
+file, as every line number in a frontmatter diagnostic does.
 
 Date- and timestamp-shaped plain scalars without an explicit tag decode as strings.
 A conforming implementation must preserve the decoded scalar content rather than
@@ -185,7 +191,11 @@ root decoded by a host YAML library directly may validate in one implementation 
 rejected by another reading the same file.
 
 For `frontmatter-md`, the opening and closing delimiters begin at column one and contain
-`---` plus optional trailing whitespace.
+`---` plus optional trailing spaces or tabs (and the `\r` of a CRLF line ending).
+No other trailing character is trimmed: the hosts’ default whitespace sets differ (one
+strips U+0085, the other U+FEFF), and a delimiter line is outside the YAML text the
+preflight checks, so a wider trim would let one such character open a fence in one
+implementation and not the other.
 An indented `---` is YAML content, so a block scalar may contain it without ending
 frontmatter.
 

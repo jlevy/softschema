@@ -32,6 +32,7 @@ test("shared hardening vectors are readable", () => {
   expect(Object.keys(vectors)).toEqual([
     "artifact_input",
     "frontmatter",
+    "fence_scan",
     "portable_values",
     "structural",
     "canonicalization",

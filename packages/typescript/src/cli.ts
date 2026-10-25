@@ -27,7 +27,7 @@ import {
   parseSchemaMetadata,
   type SchemaProfile,
 } from "./models.js";
-import { opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
+import { documentLabel, opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
 import { type RepairResult, repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
 import { stableStringify } from "./settings.js";
@@ -780,8 +780,8 @@ function repairFailureMessage(
   if (parseError !== null) return parseError.message;
   if (repaired.errorMessage) return repaired.errorMessage;
   return profile === "pure-yaml"
-    ? `\`${path}\`: the document root is not a YAML mapping`
-    : `\`${path}\`: the document has no YAML frontmatter`;
+    ? `${documentLabel(path)}: the document root is not a YAML mapping`
+    : `${documentLabel(path)}: the document has no YAML frontmatter`;
 }
 
 /**
