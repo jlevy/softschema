@@ -13,15 +13,15 @@ import { isMapping } from "./guards.js";
 
 type Json = unknown;
 
-const NAME_MAP_KEYWORDS = new Set([
+export const NAME_MAP_KEYWORDS = new Set([
   "properties",
   "$defs",
   "definitions",
   "patternProperties",
   "dependentSchemas",
 ]);
-const SCHEMA_LIST_KEYWORDS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
-const SCHEMA_KEYWORDS = new Set([
+export const SCHEMA_LIST_KEYWORDS = new Set(["anyOf", "oneOf", "allOf", "prefixItems"]);
+export const SCHEMA_KEYWORDS = new Set([
   "items",
   "additionalProperties",
   "unevaluatedProperties",
