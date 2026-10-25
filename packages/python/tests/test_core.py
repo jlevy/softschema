@@ -153,6 +153,19 @@ def test_compile_separates_optional_schema_id_and_reserves_metadata(tmp_path: Pa
         compile_model(ReservedModel, out, contract_id="example:Reserved/v1")
 
 
+def test_unreadable_schema_names_the_file_once(tmp_path: Path) -> None:
+    """A compiled schema the reader refuses is named once, by decoding or by parsing."""
+    schema = tmp_path / "bad.schema.yaml"
+    schema.write_bytes(b"\xff")
+    result = validate_structural({}, schema)
+    assert result.errors[0]["kind"] == "schema_invalid"
+    assert result.errors[0]["message"] == f"{document_label(schema)}: input is not valid UTF-8"
+    schema.write_text("type: object\ndescription: raw\u0085next\n", encoding="utf-8")
+    message = validate_structural({}, schema).errors[0]["message"]
+    assert message.startswith(f"{document_label(schema)}: unacceptable character #x0085")
+    assert message.count(str(schema)) == 1
+
+
 def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
     compile_model(SampleModel, out, contract_id="example:Sample/v1")
@@ -166,13 +179,17 @@ def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
     unreadable = compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
     assert unreadable.drift
     assert unreadable.drift_diff is not None
-    assert unreadable.drift_diff.startswith(f"committed compiled schema at {out} is not portable")
-    assert "UTF-8" in unreadable.drift_diff
+    # The file is named once, by the reader, whichever step refused it.
+    assert unreadable.drift_diff == (
+        f"committed compiled schema is not portable YAML: {document_label(out)}: "
+        "input is not valid UTF-8"
+    )
     out.write_text("description: raw\u0085next\ntype: object\n", encoding="utf-8")
     raw = compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
     assert raw.drift
     assert raw.drift_diff is not None
     assert "#x0085" in raw.drift_diff
+    assert raw.drift_diff.count(str(out)) == 1
 
 
 class SeparatorModel(BaseModel):
@@ -636,10 +653,17 @@ def _portable_vector_text(case: dict[str, Any]) -> str:
         return "value: " + "[" * depth + "0" + "]" * depth
     if generated == "long_flow_key":
         key = str(case.get("key_char", "k")) * int(case["length"])
+        if case.get("explicit_comment"):
+            return f'value: {{? # note\n  "{key}": 1}}'
         return f'{{"{key}": 1}}' if case.get("json") else f'value: {{"{key}": 1}}'
     if generated == "long_key":
         key = str(case["key_char"]) * int(case["length"])
-        return f"{key}: 1" if case["form"] == "block" else f"value: [{key}: 1]"
+        forms = {
+            "block": f"{key}: 1",
+            "pair": f"value: [{key}: 1]",
+            "explicit_pair": f"value: [? {key} : 1]",
+        }
+        return forms[case["form"]]
     assert generated is None, generated
     return case["text"]
 
@@ -654,6 +678,9 @@ def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
         assert result.ok is case["valid"], case["id"]
         if "expected" in case:
             assert result.values == case["expected"], case["id"]
+        # Every refusal names its kind, so the two runtimes are held to the same one; a
+        # vector cannot pass on the verdict alone.
+        assert case["valid"] or "code" in case, case["id"]
         if "code" in case:
             assert result.structural.errors[0]["kind"] == case["code"], case["id"]
 

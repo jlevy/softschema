@@ -33,6 +33,7 @@ from softschema._portable import (
     PortableInputError,
     document_label,
     is_fence_line,
+    named_parse_error,
     parse_yaml,
     read_utf8,
 )
@@ -279,14 +280,24 @@ def _validator_for(
     strict_extras: bool,
     resources: Mapping[str, dict[str, Any]] | None,
 ) -> Draft202012Validator:
-    """Return a validator, reusing a cached one when it is safe to do so."""
+    """Return a validator, reusing a cached one when it is safe to do so.
+
+    A schema the reader refuses raises :class:`PortableInputError` naming the schema file
+    once: :func:`read_utf8` names it in a decoding failure, and a parse failure is named
+    here. The reader's message says where in the schema text it stopped; the record's
+    top-level ``path`` is the artifact, so without the schema's own name an agent following
+    "line 2, column 22" would open the wrong file.
+    """
     schema_text = read_utf8(schema_yaml_path)
-    if resources:
-        # `resources` is a plain mapping of dicts, so it is neither hashable
-        # nor cheap to fingerprint. Registry-backed validation is the rare
-        # path; build it fresh rather than risk a wrong cache key.
-        return _build_validator(schema_text, strict_extras, resources)
-    return _cached_validator(schema_text, strict_extras)
+    try:
+        if resources:
+            # `resources` is a plain mapping of dicts, so it is neither hashable
+            # nor cheap to fingerprint. Registry-backed validation is the rare
+            # path; build it fresh rather than risk a wrong cache key.
+            return _build_validator(schema_text, strict_extras, resources)
+        return _cached_validator(schema_text, strict_extras)
+    except PortableInputError as exc:
+        raise named_parse_error(schema_yaml_path, exc) from exc
 
 
 def validate_structural(
@@ -328,10 +339,8 @@ def validate_structural(
             ],
         )
     except PortableInputError as exc:
-        # The reader's message says where in the schema text it stopped; the record's
-        # top-level `path` is the artifact, so without the schema's own name an agent
-        # following "line 2, column 22" opens the wrong file.
-        return _schema_invalid("syntax", f"{document_label(schema_yaml_path)}: {exc}", execution)
+        # Already names the schema file, once (see `_validator_for`).
+        return _schema_invalid("syntax", str(exc), execution)
     except SchemaError as exc:
         return _schema_invalid("dialect", exc.message, execution)
     except Unresolvable as exc:

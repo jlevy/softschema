@@ -165,6 +165,26 @@ def read_utf8(path: Path) -> str:
     return text[1:] if text.startswith(BOM) else text
 
 
+def named_parse_error(path: Path | str, exc: PortableInputError) -> PortableInputError:
+    """``exc`` from parsing the text of ``path``, with the file named first.
+
+    :func:`read_utf8` names the file in a decoding failure itself, and the parser, which
+    sees only text, names nothing. A caller that reads a file by path labels a parse
+    failure here and reports either error's message as it stands, so the name appears
+    exactly once.
+    """
+    return PortableInputError(exc.code, f"{document_label(path)}: {exc}")
+
+
+def read_yaml_file(path: Path) -> Any:
+    """Read and parse one YAML file, naming the file once in any failure."""
+    text = read_utf8(path)
+    try:
+        return parse_yaml(text)
+    except PortableInputError as exc:
+        raise named_parse_error(path, exc) from exc
+
+
 _CONTROL_CHARACTER = re.compile("[\x00-\x1f\x7f-\x9f]")
 
 
@@ -613,6 +633,11 @@ class _FlowIndentation:
         self._quoted: list[tuple[int, int]] = []
         """First and last lines of the multi-line quoted scalars inside that collection."""
 
+    @property
+    def in_flow(self) -> bool:
+        """Whether the next event is inside a flow collection."""
+        return self._flow_depth > 0
+
     def collection_start(self, event: MappingStartEvent | SequenceStartEvent) -> None:
         if self._flow_depth:
             self._flow_depth += 1
@@ -806,6 +831,80 @@ def _check_directives(text: str, yaml: YAML) -> None:
         return
 
 
+def _check_glued_comment(text_lines: list[str], mark: Any) -> None:
+    """Reject a ``#`` right after a closing quote or bracket, with no blank before it.
+
+    YAML 1.2 starts a comment only after a blank, and the ``yaml`` package refuses
+    ``"a"#c`` and ``[a]#c``; ruamel reads the ``#`` as a comment there, so ``"a"#: 1`` was
+    the string ``a`` in Python and an error in TypeScript.
+    """
+    if text_lines[mark.line][mark.column : mark.column + 1] == "#":
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"comment at line {mark.line + 1}, column {mark.column + 1} starts right after a "
+            "closing quote or bracket; one YAML engine reads it as a comment and the other "
+            "refuses it; write a space before the `#`",
+        )
+
+
+def _check_flow_scalar(text_lines: list[str], event: ScalarEvent, *, in_mapping: bool) -> None:
+    """Reject a scalar in a flow collection whose indicator characters the engines split.
+
+    ruamel keeps a ``:`` that a non-space follows inside a plain scalar, so in a flow
+    collection ``a:`` before ``,``, ``]`` or ``}`` (and ``a :`` with spaces) is the string
+    ``a:``, where YAML 1.2 and the ``yaml`` package read the colon as a key indicator:
+    ``[a:, b]`` was ``['a:', 'b']`` in Python and ``[{a: null}, 'b']`` in TypeScript, both
+    valid. ruamel reads a ``?`` glued to the next entry (``[?a]``) as an explicit key, which
+    YAML 1.2 makes part of a plain scalar (``'?a'``), and a bare ``-`` as the string ``-``,
+    which the ``yaml`` package refuses, and its reading of a leading ``:`` in a flow mapping
+    varies. Neither reading is portable, so both runtimes refuse the text.
+    """
+    value = event.value
+    mark = event.start_mark
+    where = f"line {mark.line + 1}, column {mark.column + 1}"
+    line = text_lines[mark.line]
+    glued = mark.column and line[mark.column - 1 : mark.column] == "?"
+    # The `?` must be an indicator itself (after a blank, a line start or a flow
+    # indicator), not the end of the previous scalar as in `{a?}`, and the entry must have
+    # text: an implicit empty value has no characters of its own.
+    if (
+        glued
+        and (event.style or value)
+        and (mark.column < 2 or line[mark.column - 2] in " \t,[]{}")
+    ):
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"a `?` directly before the entry at {where} inside a flow collection is a key "
+            "indicator to one YAML engine and part of a plain scalar to the other; write a "
+            "space after it for an explicit key, or quote the value",
+        )
+    if event.style:
+        return
+    if value == "-":
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"a bare `-` at {where} inside a flow collection is a string to one YAML engine "
+            "and an error to the other; quote it",
+        )
+    if in_mapping and value.startswith(":"):
+        # ruamel's reading of a leading `:` in a flow mapping depends on which tokens its
+        # scanner still holds (`{x: :a}` reads, `v: {k: :a}` fails); YAML 1.2 makes it
+        # part of the scalar. In a flow sequence both read `[:a]` as `':a'`.
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"plain scalar `{value}` at {where} starts with ':' inside a flow mapping, which "
+            "the two YAML engines read differently; quote it",
+        )
+    end = event.end_mark
+    if value.endswith(":") and text_lines[end.line][end.column : end.column + 1] in ",[]{}":
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"plain scalar `{value}` at {where} ends with ':' inside a flow collection, which "
+            "one YAML engine reads as part of the scalar and the other as a key indicator; "
+            "quote the value, or write a space and a value after the colon",
+        )
+
+
 _IMPLICIT_KEY_LIMIT = 1024
 """The longest implicit key YAML allows, from the key's first character to its ``:``."""
 
@@ -857,7 +956,10 @@ def _parse_with(text: str, *, pure: bool) -> Any:
     """Per open collection: whether its keys get the UTF-16 width check (a block mapping,
     or a flow-sequence pair, which has no ``{``)."""
     text_lines: list[str] | None = None
-    number_error: PortableInputError | None = None
+    deferred_error: PortableInputError | None = None
+    """The first error the event pass found that the ``yaml`` package reports after its
+    parse (a number form, a collection key): raised once the whole text has parsed, so an
+    engine error elsewhere is reported first in both runtimes."""
     has_alias = False
     indentation = _FlowIndentation(text)
 
@@ -886,18 +988,31 @@ def _parse_with(text: str, *, pure: bool) -> Any:
                         )
                     if measured[-1]:
                         _check_key_width(lines(), event)
-                if number_error is None:
-                    number_error = _number_form_error(event)
+                if indentation.in_flow:
+                    _check_flow_scalar(lines(), event, in_mapping=stack[-1][0] == "map")
+                if event.style in ('"', "'") and "#" in text:
+                    _check_glued_comment(lines(), event.end_mark)
+                if deferred_error is None:
+                    deferred_error = _number_form_error(event)
                 consume_parent_slot()
                 indentation.scalar(event)
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
+                if deferred_error is None and stack and stack[-1] == ("map", True):
+                    # A collection as a key. Construction would fail on it with a bare
+                    # TypeError (an unhashable key), so it is reported here, as the
+                    # non-string key it is.
+                    deferred_error = PortableInputError(
+                        "yaml_non_string_key", "mapping keys must be strings"
+                    )
                 consume_parent_slot()
                 if isinstance(event, MappingStartEvent):
                     stack.append(("map", True))
                     mark = event.start_mark
+                    # A `{` opens a flow mapping, measured in code points as ruamel does;
+                    # a `?` opens an explicit pair, which has no limit in either engine.
                     measured.append(
                         not event.flow_style
-                        or lines()[mark.line][mark.column : mark.column + 1] != "{"
+                        or lines()[mark.line][mark.column : mark.column + 1] not in ("{", "?")
                     )
                 else:
                     stack.append(("seq", False))
@@ -908,9 +1023,11 @@ def _parse_with(text: str, *, pure: bool) -> Any:
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
                 measured.pop()
+                if "#" in text and indentation.in_flow:
+                    _check_glued_comment(lines(), event.end_mark)
                 indentation.collection_end(event)
-        if number_error is not None:
-            raise number_error
+        if deferred_error is not None:
+            raise deferred_error
         if has_alias:
             raise PortableInputError("yaml_alias", "YAML aliases and anchors are not supported")
         value = yaml.load(text)

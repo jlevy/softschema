@@ -181,6 +181,20 @@ Neither reading can be reproduced in the other engine, so neither is portable.
 Write the number in core form (`1000`, `0x10`, `0o17`, `500.0`) or quote it to keep the
 string. A quoted scalar is always a string; `1:30`, `yes`, and `on` are strings.
 
+Inside a flow collection, the engines split on indicator characters glued to a plain
+scalar, so these are rejected as `yaml_parse_error`: a `:` with no space after it before
+`,`, `]`, `}`, `[`, or `{` (`[a:, b]`, `{a:, b}`, `[a :, b]`; one engine keeps the colon
+in the scalar, the other reads a key), and after a quoted key in a flow sequence
+(`["a":1]`); a `?` glued to the entry after it (`[?a]`, read as an explicit key by one
+engine and as the scalar `?a` by the other); a bare `-`; and a plain scalar that starts
+with `:` as a flow mapping’s key or value.
+A `#` right after a closing quote or bracket (`"a"#c`, `[a]#c`) is rejected anywhere:
+one engine reads it as a comment, while YAML 1.2 needs a blank before a comment.
+A space after the `:` or `?`, or quoting the scalar, gives one reading; `[a: b]`,
+`[a:b]`, `[:a]`, `[? a : b]`, and JSON’s `{"a":1}` are unaffected.
+When both engines refuse a document for different reasons (an empty key such as `[:]` or
+`[?]` is a parse error to one and a non-string key to the other), the `kind` may differ.
+
 A document may carry `%YAML 1.2` and `%TAG` directives.
 Any other `%YAML` version, and any other directive, is rejected as `yaml_parse_error`:
 under `%YAML 1.1` the engines’ YAML 1.1 schemas read some scalars differently (`08` is a

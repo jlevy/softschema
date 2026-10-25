@@ -7,6 +7,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
+import { YAMLError } from "yaml";
 import type { z } from "zod";
 import {
   EnforcementUnsupportedError,
@@ -42,6 +43,7 @@ import {
   PortableInputError,
   parsePortableYaml,
   readUtf8,
+  readYamlFile,
 } from "./portable.js";
 
 export interface StructuralResult {
@@ -125,10 +127,14 @@ function parseYaml(text: string, source: string, fenceLines = 0): unknown {
   try {
     return parsePortableYaml(text);
   } catch (err) {
-    if (err instanceof PortableInputError) {
+    // `parsePortableYaml` reports every input failure as `PortableInputError`; the `yaml`
+    // package collects its parse errors on the document rather than throwing them, and a
+    // `YAMLError` is wrapped too in case a release throws one. Anything else is a bug and
+    // must reach the caller's error boundary as itself, not as a verdict on the input.
+    if (err instanceof PortableInputError || err instanceof YAMLError) {
       throw new YamlParseError(nameSource(err.message, source, fenceLines), { cause: err });
     }
-    throw new YamlParseError(nameSource((err as Error).message, source, fenceLines));
+    throw err;
   }
 }
 
@@ -947,14 +953,12 @@ function structuralAgainstSchemaFile(
 ): StructuralResult {
   let compiledSchema: unknown;
   try {
-    compiledSchema = parsePortableYaml(readUtf8(resolved));
+    // The reader's message says where in the schema text it stopped; the record's top-level
+    // `path` is the artifact, so the message names the schema file, once, whichever step
+    // refused it (see `readYamlFile`).
+    compiledSchema = readYamlFile(resolved);
   } catch (err) {
-    if (err instanceof PortableInputError) {
-      // The reader's message says where in the schema text it stopped; the record's
-      // top-level `path` is the artifact, so without the schema's own name an agent
-      // following "line 2, column 22" opens the wrong file.
-      return schemaInvalid("syntax", `${documentLabel(resolved)}: ${err.message}`, "not_run");
-    }
+    if (err instanceof PortableInputError) return schemaInvalid("syntax", err.message, "not_run");
     throw err;
   }
   if (!isMapping(compiledSchema)) {

@@ -23,8 +23,7 @@ from softschema._portable import (
     PortableInputError,
     check_portable_text,
     find_non_portable_character,
-    parse_yaml,
-    read_utf8,
+    read_yaml_file,
 )
 from softschema.canonicalize import canonicalize_json_schema
 from softschema.models import _check_contract_id
@@ -79,13 +78,14 @@ def compile_model(
         # UTF-8, a raw character the preflight rejects) is drift too: `--check` asks
         # whether the committed output still stands, and it does not.
         try:
-            existing = parse_yaml(read_utf8(out_path))
+            existing = read_yaml_file(out_path)
         except PortableInputError as exc:
+            # The message names the file once, whichever step refused it.
             return CompileResult(
                 out_path=out_path,
                 schema_yaml=rendered,
                 drift=True,
-                drift_diff=f"committed compiled schema at {out_path} is not portable YAML: {exc}",
+                drift_diff=f"committed compiled schema is not portable YAML: {exc}",
                 schema_sha256=schema_sha256,
             )
         if _canonical_json(existing) == _canonical_json(schema):

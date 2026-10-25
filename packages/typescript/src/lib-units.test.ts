@@ -20,7 +20,7 @@ import {
   parseSchemaMetadata,
   SchemaMetadataError,
 } from "./models.js";
-import { findNonPortableCharacter, parsePortableYaml } from "./portable.js";
+import { documentLabel, findNonPortableCharacter, parsePortableYaml } from "./portable.js";
 import { validateArtifact, validateStructural } from "./validate.js";
 
 const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
@@ -785,12 +785,15 @@ describe("compile: write mode + build", () => {
     writeFileSync(out, Buffer.from([0xff]));
     const unreadable = compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true });
     expect(unreadable.drift).toBe(true);
-    expect(unreadable.driftDiff).toStartWith(`committed compiled schema at ${out} is not portable`);
-    expect(unreadable.driftDiff).toContain("UTF-8");
+    // The file is named once, by the reader, whichever step refused it.
+    expect(unreadable.driftDiff).toBe(
+      `committed compiled schema is not portable YAML: ${documentLabel(out)}: input is not valid UTF-8`,
+    );
     writeFileSync(out, "description: raw\u0085next\ntype: object\n");
     const raw = compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true });
     expect(raw.drift).toBe(true);
     expect(raw.driftDiff).toContain("#x0085");
+    expect(raw.driftDiff?.split(out).length).toBe(2);
   });
   test("escapes every character the portable reader rejects", () => {
     // The `yaml` package writes U+0085, U+2028 and U+2029 raw in a plain or double-quoted

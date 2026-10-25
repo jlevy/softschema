@@ -84,6 +84,19 @@ A generated sweep of 350,355 number-like plain scalars in block values, sequence
 keys, flow collections, and JSON arrays now finds no number the two runtimes read
 differently.
 
+**Indicators glued to flow scalars.** Inside a flow collection, a `:` with no space
+after it before `,`, `]`, or `}` was part of the scalar in Python and a key indicator in
+TypeScript, silently: `[a:, b]` was `['a:', 'b']` in Python and `[{a: null}, 'b']` in
+TypeScript, and `{a:, b}` and `[a :, b]` differed the same way.
+`[?a]` was an explicit key in Python and the string `?a` in TypeScript.
+A bare `-`, a leading `:` in a flow mapping, `["a":1]`, and a `#` right after a closing
+quote or bracket (`"a"#c`) were read by one runtime and refused by the other.
+Both now reject all of these as `yaml_parse_error`; write a space after the `:` or `?`,
+before the `#`, or quote the scalar.
+A generated sweep of 210,000 flow-collection scalars around `:`, `?`, `-`, `#`, and the
+indicator characters now finds no document the two runtimes read differently, and none
+that one accepts and the other refuses.
+
 **Directives.** `%YAML 1.1` switched both engines to YAML 1.1 schemas that differ (`08`
 was a string in Python and 8 in TypeScript, and a date a string in one and an
 unsupported host value in the other); `%YAML 1.0` and `%YAML 1.3` crashed the Python
@@ -458,6 +471,24 @@ for downstream adoption and release sequencing.
 
 - **A number form only one engine reads as a number is refused in both runtimes**
   instead of reading as a number in one and a string in the other; see Compatibility.
+
+- **A collection used as a mapping key no longer crashes the Python reader.** A key such
+  as `[?]` in `{[?]}` made ruamel’s constructor raise a bare `TypeError` (an unhashable
+  key) that escaped `validate`; it is now `yaml_non_string_key`, as in TypeScript.
+
+- **A raw rejected character right after a backslash in a double-quoted value is left
+  for the author.** `repair` escaped it anyway, writing `"a\\x01b"` for `"a\<U+0001>b"`,
+  which reads as a backslash and the letters `x01`, and reported the document repaired.
+  Such a value is now left unrepaired with its parse error, in both runtimes; after an
+  escaped backslash (`\\`) the character is escaped as before.
+
+- **A schema file is named once in its diagnostic.** An invalid-UTF-8 compiled schema
+  was reported as `` `s.yaml`: `s.yaml`: input is not valid UTF-8 ``, and
+  `compile --check` named the sidecar twice the same way; the reader now names the file
+  once, whichever step refused it.
+
+- **An unexpected exception in the TypeScript YAML reader is no longer reported as a
+  YAML parse error.** It reaches the caller as itself.
 
 - **A `%YAML 1.0` or `%YAML 1.3` directive no longer crashes the Python reader.** ruamel
   raised an `AssertionError` that escaped `validate` as a traceback; the directive is

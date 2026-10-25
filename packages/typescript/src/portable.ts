@@ -78,6 +78,29 @@ export function readUtf8(path: string): string {
   return text.startsWith(BOM) ? text.slice(1) : text;
 }
 
+/**
+ * `error` from parsing the text of `path`, with the file named first.
+ *
+ * `readUtf8` names the file in a decoding failure itself, and the parser, which sees only
+ * text, names nothing. A caller that reads a file by path labels a parse failure here and
+ * reports either error's message as it stands, so the name appears exactly once. Mirrors
+ * Python's `named_parse_error`.
+ */
+export function namedParseError(path: string, error: PortableInputError): PortableInputError {
+  return new PortableInputError(error.code, `${documentLabel(path)}: ${error.message}`);
+}
+
+/** Read and parse one YAML file, naming the file once in any failure. */
+export function readYamlFile(path: string): unknown {
+  const text = readUtf8(path);
+  try {
+    return parsePortableYaml(text);
+  } catch (error) {
+    if (error instanceof PortableInputError) throw namedParseError(path, error);
+    throw error;
+  }
+}
+
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are the subject
 const CONTROL_CHARACTER = /[\x00-\x1f\x7f-\x9f]/gu;
 
@@ -392,6 +415,66 @@ function checkDirectives(text: string): void {
   }
 }
 
+/**
+ * Whether the flow-collection entry whose key starts at `offset` is an explicit `? key`.
+ *
+ * Only called for a key about to be refused, so the extra CST parse costs nothing on a
+ * document that passes.
+ */
+function isExplicitKey(text: string, offset: number): boolean {
+  let explicit = false;
+  const walk = (node: unknown): void => {
+    if (explicit || node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    const key = record.key as { offset?: unknown } | null | undefined;
+    if (
+      key?.offset === offset &&
+      Array.isArray(record.start) &&
+      record.start.some((token) => (token as { type?: unknown }).type === "explicit-key-ind")
+    ) {
+      explicit = true;
+      return;
+    }
+    for (const part of ["start", "key", "sep", "value", "end", "items", "props"]) {
+      if (part in record) walk(record[part]);
+    }
+  };
+  for (const token of new Parser().parse(text)) walk(token);
+  return explicit;
+}
+
+/**
+ * Reject a plain scalar in a flow collection that starts with `?` or `:`, or is a bare `-`.
+ *
+ * YAML 1.2, and this engine, make `?a` and `:a` plain scalars there; ruamel reads a `?`
+ * glued to the entry as an explicit key (`[?a]` is `[{a: null}]` in Python and `['?a']`
+ * here), and its reading of a leading `:` in a flow mapping depends on its scanner state. A bare `-` is a string to ruamel and an error here in a
+ * sequence but a key in a mapping. Neither reading is portable. Mirrors Python's
+ * `_check_flow_scalar`, which also refuses a flow plain scalar ending in `:`; this engine
+ * reads that colon as a key indicator, which `checkFlowMappingKey` refuses.
+ */
+function checkFlowPlainScalar(
+  text: string,
+  source: string,
+  offset: number,
+  inMapping: boolean,
+): void {
+  const first = source.charAt(0);
+  // A leading `:` reads the same (`[:a]` is `[':a']`) as a flow-sequence entry; as a key
+  // or value of a flow mapping, ruamel's reading depends on its scanner state.
+  if (!(first === "?" || (first === ":" && inMapping) || source === "-")) return;
+  const { line, column } = textPosition(text, offset);
+  throw new PortableInputError(
+    "yaml_parse_error",
+    `plain scalar \`${source}\` at line ${line}, column ${column} inside a flow collection ` +
+      "starts with an indicator the two YAML engines read differently; quote it",
+  );
+}
+
 /** The longest implicit key YAML allows, from the key's first character to its `:`. */
 const IMPLICIT_KEY_LIMIT = 1024;
 
@@ -405,13 +488,17 @@ const IMPLICIT_KEY_LIMIT = 1024;
  * no limit in either engine and is left alone. The distance is counted in code points, as
  * ruamel counts it.
  */
-function checkFlowMappingKey(text: string, key: { range?: readonly number[] | null }): void {
+function checkFlowMappingKey(
+  text: string,
+  key: { range?: readonly number[] | null; type?: unknown },
+  mapStart: number | undefined,
+): void {
   const start = key.range?.[0];
   const end = key.range?.[1];
   if (start === undefined || end === undefined) return;
   let before = start - 1;
   while (before >= 0 && " \t\r\n".includes(text.charAt(before))) before -= 1;
-  if (text.charAt(before) === "?") return;
+  const explicit = text.charAt(before) === "?";
   // Only spacing, line breaks, and comments can sit between a key and its `:`.
   let colon = end;
   let lineBreak = false;
@@ -429,6 +516,26 @@ function checkFlowMappingKey(text: string, key: { range?: readonly number[] | nu
     }
   }
   if (text.charAt(colon) !== ":") return;
+  // A `:` with no space after it is part of a plain scalar to ruamel, and in a flow
+  // sequence's implicit pair it is not a value indicator at all, so `[a:, b]` and `{a:, b}`
+  // read differently there and `["a":1]` fails; only a `{…}` key that is not plain, as in
+  // JSON's `{"a":1}`, reads the same in both.
+  const after = text.charAt(colon + 1);
+  if (
+    after !== "" &&
+    !" \t\r\n".includes(after) &&
+    (key.type === Scalar.PLAIN || text.charAt(mapStart ?? -1) !== "{")
+  ) {
+    const { line, column } = textPosition(text, colon);
+    throw new PortableInputError(
+      "yaml_parse_error",
+      `':' at line ${line}, column ${column} has no space after it inside a flow collection, ` +
+        "which one YAML engine reads as a key indicator and the other as part of the scalar " +
+        "or an error; quote the value, or write a space and a value after the colon",
+    );
+  }
+  // An explicit key (`? key`) has no length or line limit in either engine.
+  if (explicit) return;
   for (let at = start; at < end && !lineBreak; at += 1) {
     const unit = text.charCodeAt(at);
     if (unit === 0x0a || unit === 0x0d) lineBreak = true;
@@ -440,6 +547,8 @@ function checkFlowMappingKey(text: string, key: { range?: readonly number[] | nu
     if (unit < 0xdc00 || unit > 0xdfff) codePoints += 1;
   }
   if (!lineBreak && codePoints <= IMPLICIT_KEY_LIMIT) return;
+  // The backward scan above misses a `?` with a comment after it; the CST does not.
+  if (isExplicitKey(text, start)) return;
   const { line, column } = textPosition(text, start);
   throw new PortableInputError(
     "yaml_parse_error",
@@ -504,7 +613,9 @@ export function parsePortableYaml(text: string): unknown {
         throw new PortableInputError("yaml_merge_key", "YAML merge keys are not supported");
       }
       const parent = path[path.length - 1];
-      if (isMap(parent) && parent.flow === true) checkFlowMappingKey(text, node.key);
+      if (isMap(parent) && parent.flow === true) {
+        checkFlowMappingKey(text, node.key, parent.range?.[0]);
+      }
       return;
     }
     if (
@@ -526,6 +637,11 @@ export function parsePortableYaml(text: string): unknown {
       node.range
     ) {
       checkNumberForm(text, node.source, node.range[0]);
+      if (path.some((ancestor) => isCollection(ancestor) && ancestor.flow === true)) {
+        const owner = path[path.length - (isPair(path[path.length - 1]) ? 2 : 1)];
+        const inMapping = isMap(owner) && owner.flow === true;
+        checkFlowPlainScalar(text, node.source, node.range[0], inMapping);
+      }
     }
     if (
       isScalar(node) &&

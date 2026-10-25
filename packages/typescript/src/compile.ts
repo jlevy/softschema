@@ -26,8 +26,7 @@ import {
   escapeNonPortableCharacters,
   findNonPortableCharacter,
   PortableInputError,
-  parsePortableYaml,
-  readUtf8,
+  readYamlFile,
 } from "./portable.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
 
@@ -434,14 +433,15 @@ export function compileSchema(
     // drift too: `--check` asks whether the committed output still stands, and it does not.
     let existing: unknown;
     try {
-      existing = parsePortableYaml(readUtf8(outPath));
+      existing = readYamlFile(outPath);
     } catch (error) {
       if (!(error instanceof PortableInputError)) throw error;
+      // The message names the file once, whichever step refused it.
       return {
         outPath,
         schemaYaml: rendered,
         drift: true,
-        driftDiff: `committed compiled schema at ${outPath} is not portable YAML: ${error.message}`,
+        driftDiff: `committed compiled schema is not portable YAML: ${error.message}`,
         schemaSha256: sha,
       };
     }

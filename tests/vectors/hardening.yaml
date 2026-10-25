@@ -191,12 +191,16 @@ portable_values:
   - { id: flow_mapping_key_colon_on_next_line, text: "value: {\"a\"\n  : 1}", valid: false, code: yaml_parse_error }
   - { id: json_key_colon_on_next_line, text: "{\"a\"\n: 1}", valid: false, code: yaml_parse_error }
   - { id: flow_mapping_multiline_key, text: "value: {a\n  b: 1}", valid: false, code: yaml_parse_error }
+  # An explicit key (`? key`) has no limit in either engine, a comment after the `?`
+  # included.
+  - { id: flow_mapping_explicit_key_after_comment, generated: long_flow_key, length: 1100, explicit_comment: true, valid: true }
   # For a block-mapping key and a flow-sequence pair, one engine counts the 1,024 in UTF-16
   # code units, so both do: 512 characters outside the Basic Multilingual Plane reach it.
   - { id: block_key_astral_at_utf16_limit, generated: long_key, form: block, key_char: "\U0001F600", length: 512, valid: true }
   - { id: block_key_astral_over_utf16_limit, generated: long_key, form: block, key_char: "\U0001F600", length: 513, valid: false, code: yaml_parse_error }
   - { id: flow_pair_key_astral_at_utf16_limit, generated: long_key, form: pair, key_char: "\U0001F600", length: 512, valid: true }
   - { id: flow_pair_key_astral_over_utf16_limit, generated: long_key, form: pair, key_char: "\U0001F600", length: 513, valid: false, code: yaml_parse_error }
+  - { id: flow_pair_explicit_key_astral, generated: long_key, form: explicit_pair, key_char: "\U0001F600", length: 600, valid: true }
   # A plain scalar one engine reads as a number and the other as a string is refused: ruamel
   # still takes YAML 1.1 spellings (`_` separators, `0b`, a signed `0x` or `0o`) as numbers,
   # and reads `.5e3` (an unsigned exponent after a bare fraction) as a string, where the
@@ -223,6 +227,34 @@ portable_values:
   - { id: sexagesimal_is_a_string, text: "value: 1:30", valid: true, expected: { value: "1:30" } }
   - { id: yaml_1_1_boolean_is_a_string, text: "value: yes", valid: true, expected: { value: "yes" } }
   - { id: plain_negative_infinity, text: "value: -.inf", valid: false, code: number_out_of_range }
+  # Inside a flow collection the engines split on indicator characters glued to a plain
+  # scalar: ruamel keeps a `:` that a non-space follows in the scalar (`[a:, b]` was
+  # `['a:', 'b']` to it and `[{a: null}, 'b']` to the other engine), reads a glued `?` as an
+  # explicit key (`[?a]`), reads a bare `-` as a string, varies on a leading `:` in a flow
+  # mapping, and takes a `#` right after a closing quote or bracket as a comment. All are
+  # refused; a space after the `:` or the `?`, or quoting, gives one reading.
+  - { id: flow_plain_colon_before_comma, text: "value: [a:, b]", valid: false, code: yaml_parse_error }
+  - { id: flow_plain_colon_before_end, text: "value: [a:]", valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_key_colon_before_comma, text: "value: {a:, b}", valid: false, code: yaml_parse_error }
+  - { id: flow_spaced_colon_before_comma, text: "value: [a :, b]", valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_value_trailing_colon, text: "value: {k: v:}", valid: false, code: yaml_parse_error }
+  - { id: flow_quoted_key_glued_colon_in_sequence, text: "value: [\"a\":1]", valid: false, code: yaml_parse_error }
+  - { id: flow_glued_question_mark, text: "value: [?a]", valid: false, code: yaml_parse_error }
+  - { id: flow_glued_question_mark_quoted, text: "value: [?\"a\"]", valid: false, code: yaml_parse_error }
+  - { id: flow_bare_dash_entry, text: "value: [-, x]", valid: false, code: yaml_parse_error }
+  - { id: flow_bare_dash_key, text: "value: {-: x}", valid: false, code: yaml_parse_error }
+  - { id: flow_leading_colon_in_mapping, text: "value: {k: :a}", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_quote, text: "value: \"a\"#c", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_bracket, text: "value: [a]#c", valid: false, code: yaml_parse_error }
+  - { id: flow_pair_spaced, text: "value: [a: b]", valid: true, expected: { value: [{ a: b }] } }
+  - { id: flow_colon_inside_plain, text: "value: [a:b]", valid: true, expected: { value: ["a:b"] } }
+  - { id: json_adjacent_colon, text: "{\"a\":1,\"b\":[2]}", valid: true, expected: { a: 1, b: [2] } }
+  - { id: flow_sequence_leading_colon, text: "value: [:a]", valid: true, expected: { value: [":a"] } }
+  - { id: flow_dash_prefixed_entries, text: "value: [-1, -a]", valid: true, expected: { value: [-1, "-a"] } }
+  - { id: flow_explicit_pair, text: "value: [? a : b]", valid: true, expected: { value: [{ a: b }] } }
+  - { id: flow_question_inside_plain, text: "value: [a?b]", valid: true, expected: { value: ["a?b"] } }
+  - { id: comment_after_space, text: "value: \"a\" #c", valid: true, expected: { value: a } }
+  - { id: flow_mapping_key_double_colon, text: "value: {a:: b}", valid: true, expected: { value: { "a:": b } } }
   # Only `%YAML 1.2` and `%TAG` are accepted. Under `%YAML 1.1` the engines' YAML 1.1
   # schemas disagree (`08` is a string to one and 8 to the other), one engine fails on other
   # versions, and one refuses an unknown directive the other ignores.
@@ -1277,6 +1309,26 @@ yaml_repair:
     text: "note: a\fb\x7fc\n"
     repaired: true
     expected_text: "note: \"a\\fb\\x7fc\"\n"
+  # A raw rejected character right after an unescaped backslash is the second half of an
+  # escape the author started (`\` and a raw NEL is a YAML 1.1 escaped line break, `\` and a
+  # raw control character no escape at all). Escaping it too would write `\\` and the
+  # escape's name as text and report success, so the value is left for the author. After an
+  # escaped backslash (`\\`) the character is content and is escaped as usual.
+  - id: next_line_after_open_backslash_is_not_repaired
+    profile: pure-yaml
+    text: "note: \"a\\\u0085b\"\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: control_character_after_open_backslash_is_not_repaired
+    profile: pure-yaml
+    text: "note: \"a\\\x01b\"  # c\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_after_escaped_backslash
+    profile: pure-yaml
+    text: "note: \"a\\\\\u0085b\"\n"
+    repaired: true
+    expected_text: "note: \"a\\\\\\Nb\"\n"
   # A lone carriage return is a line break for YAML 1.2, so what follows it may be another
   # line of the document; escaping it as content would swallow that line. It stays a parse
   # error whose message says to end lines with "\n".

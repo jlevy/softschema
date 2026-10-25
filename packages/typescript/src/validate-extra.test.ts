@@ -227,6 +227,18 @@ describe("compiled schema invalid root", () => {
     expect(String(error.message)).toStartWith(
       `\`${compiledSchema}\`: unacceptable character #x0085 `,
     );
+    expect(String(error.message).split(compiledSchema).length).toBe(2);
+  });
+
+  test("an invalid-UTF-8 compiled schema is named once", () => {
+    const compiledSchema = tmpFile("bad.schema.yaml", "");
+    writeFileSync(compiledSchema, Buffer.from([0xff]));
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
+    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
+    const error = result.structural.errors[0] as Record<string, unknown>;
+    expect(error.kind).toBe("schema_invalid");
+    expect(error.reason).toBe("syntax");
+    expect(error.message).toBe(`\`${compiledSchema}\`: input is not valid UTF-8`);
   });
 });
 
@@ -290,11 +302,17 @@ function portableVectorText(item: Record<string, unknown>): string {
   }
   if (item.generated === "long_flow_key") {
     const key = String(item.key_char ?? "k").repeat(Number(item.length));
+    if (item.explicit_comment === true) return `value: {? # note\n  "${key}": 1}`;
     return item.json === true ? `{"${key}": 1}` : `value: {"${key}": 1}`;
   }
   if (item.generated === "long_key") {
     const key = String(item.key_char).repeat(Number(item.length));
-    return item.form === "block" ? `${key}: 1` : `value: [${key}: 1]`;
+    const forms: Record<string, string> = {
+      block: `${key}: 1`,
+      pair: `value: [${key}: 1]`,
+      explicit_pair: `value: [? ${key} : 1]`,
+    };
+    return forms[String(item.form)] as string;
   }
   expect(item.generated).toBeUndefined();
   return String(item.text);
@@ -314,6 +332,9 @@ test("shared portable YAML and artifact-input vectors", () => {
     if ("expected" in item) {
       expect(result.values).toEqual(item.expected as Record<string, unknown>);
     }
+    // Every refusal names its kind, so the two runtimes are held to the same one; a vector
+    // cannot pass on the verdict alone.
+    if (item.valid !== true) expect(typeof item.code).toBe("string");
     if ("code" in item) {
       const structural = result.structural as { errors: { kind: string }[] };
       expect(structural.errors[0]?.kind).toBe(item.code as string);

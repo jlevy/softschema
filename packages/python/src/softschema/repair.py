@@ -183,6 +183,27 @@ def _is_rejected(char: str) -> bool:
     return find_non_portable_character(char) is not None
 
 
+def _follows_open_escape(body: str) -> bool:
+    """Whether a rejected character in a double-quoted body follows an unescaped backslash.
+
+    There the character is the second half of an escape the author started: ``\\`` and a
+    raw NEL is a YAML 1.1 escaped line break, and ``\\`` and a raw control character is no
+    escape at all. No rewrite keeps a value the text never had, and escaping the character
+    as well would write ``\\\\`` and the escape's name as text while reporting success.
+    The value is left for the author. A backslash that is itself escaped (``\\\\``)
+    does not count.
+    """
+    backslashes = 0
+    for char in body:
+        if char == "\\":
+            backslashes += 1
+            continue
+        if backslashes % 2 and _is_rejected(char):
+            return True
+        backslashes = 0
+    return False
+
+
 def _escape_value(value: str) -> tuple[str, list[str]] | None:
     """Rewrite a single-line value holding a rejected character as a double-quoted scalar.
 
@@ -209,6 +230,8 @@ def _escape_value(value: str) -> tuple[str, list[str]] | None:
         if end is None or not _TRAILING_COMMENT.match(stripped[end + 1 :]):
             return None
         body, rest = stripped[1:end], stripped[end + 1 :]
+        if quote == '"' and _follows_open_escape(body):
+            return None
         if quote == "'":
             body = body.replace("''", "'").replace("\\", "\\\\").replace('"', '\\"')
     else:

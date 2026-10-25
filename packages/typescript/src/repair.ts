@@ -218,6 +218,29 @@ function escapeCharacters(text: string): string {
  * re-expressed with the same content, and in the double-quoted form only the raw
  * characters are replaced, so escapes the author already wrote stay as they are.
  */
+/**
+ * Whether a rejected character in a double-quoted body follows an unescaped backslash.
+ *
+ * There the character is the second half of an escape the author started: `\` and a raw
+ * NEL is a YAML 1.1 escaped line break, and `\` and a raw control character is no escape
+ * at all. No rewrite keeps a value the text never had, and escaping the character as well
+ * would write `\\` and the escape's name as text while reporting success. The value is
+ * left for the author. A backslash that is itself escaped (`\\`) does not count. Mirrors
+ * Python's `_follows_open_escape`.
+ */
+function followsOpenEscape(body: string): boolean {
+  let backslashes = 0;
+  for (const char of body) {
+    if (char === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (backslashes % 2 === 1 && isRejected(char)) return true;
+    backslashes = 0;
+  }
+  return false;
+}
+
 function escapeValue(value: string): { text: string; escaped: string[] } | null {
   if (findNonPortableCharacter(value) === null) return null;
   // A lone carriage return is a line break for YAML 1.2 and for ruamel, so the text after it
@@ -234,6 +257,7 @@ function escapeValue(value: string): { text: string; escaped: string[] } | null 
     if (end === null || !TRAILING_COMMENT.test(stripped.slice(end + 1))) return null;
     body = stripped.slice(1, end);
     rest = stripped.slice(end + 1);
+    if (quote === '"' && followsOpenEscape(body)) return null;
     if (quote === "'") {
       body = body.replaceAll("''", "'").replaceAll("\\", "\\\\").replaceAll('"', '\\"');
     }
