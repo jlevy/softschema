@@ -60,12 +60,26 @@ interface ExecutionCase {
   error_kind?: string;
   error_reason?: string;
 }
+interface DeviationExpectation {
+  execution: ValidationExecution;
+  ok: boolean;
+  error_kind?: string;
+  error_reason?: string;
+}
+interface EngineDeviation {
+  name: string;
+  values: unknown;
+  schema: Record<string, unknown>;
+  why: string;
+  python: DeviationExpectation;
+  typescript: DeviationExpectation;
+}
 const vectors = parse(
   readFileSync(
     new URL("../../../tests/vectors/validation-execution.yaml", import.meta.url),
     "utf8",
   ),
-) as { cases: ExecutionCase[] };
+) as { cases: ExecutionCase[]; engine_deviations: EngineDeviation[] };
 
 describe("actual validation execution", () => {
   // A model label is metadata only, so each vector must hold with and without one.
@@ -117,6 +131,21 @@ describe("actual validation execution", () => {
         expect(first?.reason).toBe(vector.error_reason);
       }
       expect(result).not.toHaveProperty("enforcement_applied");
+    });
+  }
+
+  // Each runtime asserts its own listed result exactly, so a documented difference passes,
+  // drift on either side fails, and an unlisted difference has nothing to pass against.
+  for (const deviation of vectors.engine_deviations) {
+    test(`engine deviation: ${deviation.name}`, () => {
+      const result = validateStructural(deviation.values, structuredClone(deviation.schema));
+      const first = result.errors[0] as Record<string, unknown> | undefined;
+      expect({
+        execution: result.execution,
+        ok: result.ok,
+        error_kind: first?.kind,
+        error_reason: first?.reason,
+      }).toEqual({ error_kind: undefined, error_reason: undefined, ...deviation.typescript });
     });
   }
 

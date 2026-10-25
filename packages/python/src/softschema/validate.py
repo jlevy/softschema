@@ -124,10 +124,12 @@ def _required_layers(require: Collection[str]) -> frozenset[str]:
 
     A bare string is refused rather than iterated, so ``require="structural"`` is a
     clear caller error instead of a complaint about its letters; so is ``None``, since
-    omitting the argument is how a caller asks for no requirement.
+    omitting the argument is how a caller asks for no requirement, and so is a mapping,
+    whose keys would otherwise be read as the layer names (``{"semantic": "structural"}``
+    would require only ``semantic``). Lists, tuples, and sets of layer names are accepted.
     """
     candidate = cast("object", require)  # typed callers are fine; untyped ones pass anything
-    if isinstance(candidate, str) or not isinstance(candidate, Collection):
+    if isinstance(candidate, str | Mapping) or not isinstance(candidate, Collection):
         raise TypeError(
             f"require must be a list of layer names such as ['structural'], got {candidate!r}"
         )
@@ -208,6 +210,7 @@ def _build_validator(
     resource_schemas = dict(resources or {})
     for document in (schema, *resource_schemas.values()):
         _check_patterns(document)
+        _check_dialect(document)
         Draft202012Validator.check_schema(document)
     if strict_extras:
         prepared = prepare_schema_graph(schema, resource_schemas)
@@ -298,6 +301,20 @@ def validate_structural(
         errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
         return _schema_invalid("syntax", "compiled schema root must be a mapping", execution)
+    except FileNotFoundError:
+        # The record artifact validation gives for an unresolvable binding, so a
+        # values-level caller does not see an absent file reported as a broken schema.
+        return StructuralResult(
+            ok=False,
+            execution=execution,
+            errors=[
+                _error(
+                    "schema_missing",
+                    f"compiled schema not found: {schema_yaml_path}",
+                    path=str(schema_yaml_path),
+                )
+            ],
+        )
     except PortableInputError as exc:
         return _schema_invalid("syntax", str(exc), execution)
     except SchemaError as exc:
@@ -485,7 +502,51 @@ def _check_schema_identities(
             seen.add(resource_id)
 
 
-_EVALUATED_SCHEMA_MAPS = frozenset({"properties", "patternProperties", "dependentSchemas"})
+_DIALECT_URIS = frozenset(
+    {
+        "https://json-schema.org/draft/2020-12/schema",
+        "https://json-schema.org/draft/2020-12/schema#",
+    }
+)
+
+
+def _check_dialect(schema: dict[str, Any]) -> None:
+    """Refuse keywords that only one engine would honor.
+
+    Ajv's 2020 vocabulary still evaluates the legacy ``dependencies`` keyword, which
+    jsonschema's Draft 2020-12 validator ignores, and Ajv refuses a ``$schema`` naming
+    another draft while jsonschema validates the document as 2020-12 regardless. Either
+    would let the two runtimes return different verdicts for one schema; refusing the
+    schema up front (``schema_invalid``, ``reason: dialect``) keeps them agreeing. Kept
+    in step with TypeScript's ``checkDialect``.
+    """
+    for node in _iter_schemas(schema):
+        if "dependencies" in node:
+            raise SchemaError(
+                "the legacy 'dependencies' keyword is not part of Draft 2020-12; "
+                "use dependentSchemas or dependentRequired"
+            )
+        dialect = node.get("$schema")
+        if isinstance(dialect, str) and dialect not in _DIALECT_URIS:
+            raise SchemaError(f"compiled schemas use Draft 2020-12; got $schema {dialect!r}")
+
+
+# The applicators both engines evaluate, which is what the reference walk follows. The
+# definition maps are deliberately absent, since neither engine evaluates a definition
+# nothing references, and `if`/`then`/`else` are handled in the walk itself, because they
+# count only together.
+_WALK_MAP_KEYWORDS = frozenset({"properties", "patternProperties", "dependentSchemas"})
+_WALK_SINGLE_KEYWORDS = frozenset(
+    {
+        "additionalProperties",
+        "contains",
+        "items",
+        "not",
+        "propertyNames",
+        "unevaluatedItems",
+        "unevaluatedProperties",
+    }
+)
 
 
 def _check_references(schema: dict[str, Any], registry: Registry[Any]) -> None:
@@ -496,35 +557,55 @@ def _check_references(schema: dict[str, Any], registry: Registry[Any]) -> None:
     exercises would report a completed acceptance, while Ajv, which resolves the same
     references while compiling, reports ``schema_invalid``. Failing here, before any
     payload is checked, keeps both runtimes at ``not_run`` with the same record (see
-    ``unreached-local-reference`` in ``tests/vectors/validation-execution.yaml``). Only
-    subschemas evaluation can reach are walked, so a definition nothing references is
-    left alone, as both engines leave it unevaluated. Raises
-    :class:`referencing.exceptions.Unresolvable`, which :func:`validate_structural`
-    reports as a ``reference`` failure.
+    ``unreached-local-reference`` in ``tests/vectors/validation-execution.yaml``).
+
+    The walk follows what Ajv compiles, which is also the spec's reach rule: the
+    applicators in ``_WALK_MAP_KEYWORDS``, ``_SCHEMA_LISTS`` and
+    ``_WALK_SINGLE_KEYWORDS``, ``then`` and ``else`` only beside an ``if`` and ``if`` only
+    beside a ``then`` or ``else``, plus the target of every ``$ref`` so reached. It skips
+    annotations such as ``contentSchema`` and definitions nothing references, which
+    neither engine evaluates. A lone ``if`` is the one shape jsonschema evaluates and Ajv
+    does not; it is pinned as an engine deviation in the same vector file.
+
+    Base URIs follow jsonschema's own descent: a node reached structurally enters its
+    ``$id`` with ``in_subresource``, while the root and every ``lookup()`` target arrive
+    with a resolver already scoped to them, so entering their ``$id`` again would join a
+    directory-bearing relative id twice (``dir/item.json`` into ``dir/dir/item.json``).
+
+    Raises :class:`referencing.exceptions.Unresolvable`, which
+    :func:`validate_structural` reports as a ``reference`` failure.
     """
     root = Resource.from_contents(schema, default_specification=DRAFT202012)
-    pending: list[tuple[Any, Any]] = [(schema, registry.resolver_with_root(root))]
+    # (node, resolver, entered): `entered` is true when `resolver` is already scoped to
+    # `node`, which holds for the root and for every `lookup()` result.
+    pending: list[tuple[Any, Any, bool]] = [(schema, registry.resolver_with_root(root), True)]
     seen: set[int] = set()
     while pending:
-        node, resolver = pending.pop()
+        node, resolver, entered = pending.pop()
         if not isinstance(node, dict) or id(node) in seen:
             continue
         seen.add(id(node))
-        if node is not schema and isinstance(node.get("$id"), str):
+        if not entered and isinstance(node.get("$id"), str):
             resolver = resolver.in_subresource(
                 Resource.from_contents(node, default_specification=DRAFT202012)
             )
         reference = node.get("$ref")
         if isinstance(reference, str):
             resolved = resolver.lookup(reference)
-            pending.append((resolved.contents, resolved.resolver))
+            pending.append((resolved.contents, resolved.resolver, True))
+        # `if` counts only beside a `then` or `else`, and they count only beside an `if`.
+        single_keywords = set(_WALK_SINGLE_KEYWORDS)
+        if "then" in node or "else" in node:
+            single_keywords.add("if")
+        if "if" in node:
+            single_keywords.update(("then", "else"))
         for key, value in node.items():
-            if key in _EVALUATED_SCHEMA_MAPS and isinstance(value, dict):
-                pending.extend((child, resolver) for child in value.values())
+            if key in _WALK_MAP_KEYWORDS and isinstance(value, dict):
+                pending.extend((child, resolver, False) for child in value.values())
             elif key in _SCHEMA_LISTS and isinstance(value, list):
-                pending.extend((child, resolver) for child in value)
-            elif key in _SCHEMA_SINGLES and isinstance(value, dict):
-                pending.append((value, resolver))
+                pending.extend((child, resolver, False) for child in value)
+            elif key in single_keywords and isinstance(value, dict):
+                pending.append((value, resolver, False))
 
 
 def _schema_failure_reason(error: Exception) -> str:

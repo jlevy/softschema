@@ -130,6 +130,133 @@ cases:
     # Neither engine evaluates a definition nothing references.
     structural: {execution: completed, ok: true, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  # Base URIs: a lookup target arrives with a resolver already scoped to it, so its own
+  # directory-bearing relative $id must not be joined a second time (dir/dir/item.json).
+  - name: nested-relative-id-reference-reached
+    values: {name: hello, item: {x: y}}
+    status: soft
+    schema: &nested_relative_id
+      type: object
+      properties:
+        name: {type: string}
+        item: {$ref: "dir/item.json"}
+      $defs:
+        Item:
+          $id: dir/item.json
+          type: object
+          properties:
+            x: {$ref: "#/$defs/X"}
+          $defs:
+            X: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: nested-relative-id-reference-unreached
+    values: {name: hello}
+    status: soft
+    schema: *nested_relative_id
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: nested-relative-id-reference-rejects
+    values: {name: hello, item: {x: 1}}
+    status: soft
+    schema: *nested_relative_id
+    structural: {execution: completed, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_violation
+  # A resource reached structurally does enter its $id, so its internal reference resolves.
+  - name: embedded-id-resource-internal-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name:
+          $id: https://example.com/name.json
+          $defs:
+            Name: {type: string}
+          allOf: [{$ref: "#/$defs/Name"}]
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  # Reach follows what both engines evaluate: contentSchema is an annotation, and then or
+  # else without if is inert, so a dangling reference there is not checked...
+  - name: content-schema-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string, contentSchema: {$ref: "#/$defs/Missing"}}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: then-without-if-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      then: {$ref: "#/$defs/Missing"}
+      else: {$ref: "#/$defs/Missing"}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  # ...while then beside an if is compiled by both engines even when if does not fire.
+  - name: then-with-if-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      if: {required: [other]}
+      then: {$ref: "#/$defs/Missing"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
+  # Keywords only one engine would honor are refused before either engine runs.
+  - name: legacy-dependencies-keyword
+    values: {name: hello, other: 1}
+    status: soft
+    schema:
+      type: object
+      dependencies:
+        other: {required: [x]}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: draft-07-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: "http://json-schema.org/draft-07/schema#"
+      type: object
+      definitions:
+        Name: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: draft-2020-12-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  # A root that references itself resolves, then recurses without end in both engines
+  # during evaluation: errored, with the overflow reported as a compilation failure.
+  - name: root-self-reference
+    values: {name: hello}
+    status: soft
+    schema: {$ref: "#"}
+    structural: {execution: errored, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: compilation
   # A caller requirement turns a layer that did not complete into a failing record.
   - name: unreached-reference-required-structural
     values: {name: hello}
@@ -191,3 +318,128 @@ cases:
     structural: {execution: not_run, ok: false, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
     error_kind: schema_invalid
+
+# Engine differences on degenerate schemas that the reach rule does not remove. Each
+# runtime asserts its own listed result exactly, so a listed difference passes, drift on
+# either side fails (including drift that makes the engines agree, which is the signal to
+# move the case into `cases`), and an unlisted difference has nothing to pass against.
+# Raw mode; omitted error fields mean the layer reports no error. `softschema compile`
+# produces none of these shapes. Both runtimes exit 1 for every case except where a
+# TypeScript result below is ok.
+engine_deviations:
+  - name: lone-if-dangling-reference
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      if: {$ref: "#/$defs/Missing"}
+    why: >-
+      jsonschema evaluates an `if` with no `then` or `else` and so resolves its reference
+      lazily; Ajv compiles nothing for it. The reach rule follows what both engines
+      evaluate, so the walk does not visit a lone `if`: Python fails during evaluation
+      while TypeScript completes.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: if-with-empty-then-dangling-reference
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      if: {$ref: "#/$defs/Missing"}
+      then: {}
+    why: >-
+      Ajv also ignores an `if` whose `then` and `else` cannot fail (`{}`, `true`, or
+      annotations only), while the reach rule counts any present `then` or `else`, so the
+      walk resolves the reference and Python refuses the schema before evaluation.
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: dynamic-ref-missing-anchor-typed-root
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {$dynamicRef: "#missing"}
+    why: >-
+      jsonschema resolves a `$dynamicRef` like a `$ref` and fails on the missing anchor;
+      Ajv falls back to the root schema, so the property value is checked against the
+      root and rejected as not an object. The enforced profile refuses `$dynamicRef`
+      outright.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: false, error_kind: schema_violation}
+  - name: dynamic-ref-missing-anchor-untyped-root
+    values: {name: hello}
+    schema:
+      properties:
+        name: {$dynamicRef: "#missing"}
+    why: >-
+      The same Ajv fallback as above, but an untyped root accepts the property value, so
+      the verdicts differ, not only the records.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: reference-to-non-schema-location
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {$ref: "#/properties/other/type"}
+        other: {type: string}
+    why: >-
+      The target is the string "string", not a schema. jsonschema fails while evaluating
+      it; Ajv compiles it as an empty schema and accepts.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: compilation}
+    typescript: {execution: completed, ok: true}
+  - name: id-and-ref-siblings
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {$id: "https://example.com/name.json", $ref: "#/$defs/S"}
+      $defs:
+        S: {type: string}
+    why: >-
+      The `$ref` resolves against its sibling `$id`, where `#/$defs/S` does not exist, so
+      the schema is unresolvable in both engines. Python's walk reports the missing
+      pointer; Ajv overflows its stack compiling the node and reports the overflow.
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
+  - name: embedded-id-with-resolvable-ref-sibling
+    values: {name: hello}
+    schema:
+      $id: https://example.com/root.json
+      type: object
+      properties:
+        name: {type: string}
+        item:
+          $id: dir/item.json
+          $ref: "#/$defs/x"
+          $defs:
+            x: {type: string}
+    why: >-
+      Valid Draft 2020-12, and the spec's reference-context rules allow `$id` on a pure
+      `$ref` site, so Python resolves the reference inside the embedded resource and
+      completes. Ajv overflows its stack compiling a node that is both a resource and a
+      reference, in raw and enforced mode alike, so TypeScript refuses the schema.
+    python: {execution: completed, ok: true}
+    typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
+  - name: reference-cycle
+    values: {name: hello}
+    schema:
+      $ref: "#/$defs/A"
+      $defs:
+        A: {$ref: "#/$defs/B"}
+        B: {$ref: "#/$defs/A"}
+    why: >-
+      Every reference resolves, so the walk passes, and both engines then recurse without
+      end: Ajv while compiling (not_run), jsonschema while evaluating (errored).
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: compilation}
+    typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
+  - name: root-dynamic-reference
+    values: {name: hello}
+    schema: {$dynamicRef: "#dynamic"}
+    why: >-
+      Both engines fail during evaluation. jsonschema reports the missing anchor; Ajv
+      falls back to the root, recurses without end, and reports the overflow.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: compilation}

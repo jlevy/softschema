@@ -251,6 +251,7 @@ function buildValidator(
   });
   for (const document of [schemaObject, ...Object.values(resources)]) {
     checkPatterns(document);
+    checkDialect(document);
     if (!ajv.validateSchema(document)) {
       throw new SchemaGraphError("dialect", `schema is invalid: ${ajv.errorsText(ajv.errors)}`);
     }
@@ -455,6 +456,35 @@ function checkPatterns(schema: Record<string, unknown>): void {
       for (const propertyPattern of Object.keys(node.patternProperties)) {
         check(propertyPattern);
       }
+    }
+  }
+}
+
+const DIALECT_URIS = new Set([
+  "https://json-schema.org/draft/2020-12/schema",
+  "https://json-schema.org/draft/2020-12/schema#",
+]);
+
+/**
+ * Refuse keywords that only one engine would honor, so one schema cannot get two
+ * verdicts: Ajv's 2020 vocabulary still evaluates the legacy `dependencies` keyword that
+ * jsonschema ignores, and jsonschema validates as 2020-12 whatever `$schema` says while
+ * Ajv refuses another draft. Kept in step with Python's `_check_dialect`.
+ */
+function checkDialect(schema: Record<string, unknown>): void {
+  for (const node of iterSchemas(schema)) {
+    if ("dependencies" in node) {
+      throw new SchemaGraphError(
+        "dialect",
+        "the legacy 'dependencies' keyword is not part of Draft 2020-12; use dependentSchemas or dependentRequired",
+      );
+    }
+    const dialect = node.$schema;
+    if (typeof dialect === "string" && !DIALECT_URIS.has(dialect)) {
+      throw new SchemaGraphError(
+        "dialect",
+        `compiled schemas use Draft 2020-12; got $schema ${JSON.stringify(dialect)}`,
+      );
     }
   }
 }

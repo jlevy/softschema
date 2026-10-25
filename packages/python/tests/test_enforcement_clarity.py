@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -17,6 +18,7 @@ from softschema.validate import (
     load_artifact,
     unreadable_artifact_result,
     validate_artifact,
+    validate_structural,
     validate_values,
 )
 
@@ -344,3 +346,75 @@ def test_require_rejects_bare_string_and_none(tmp_path: Path) -> None:
         validate_values({"name": "hello"}, model=Sample, require=[1])  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError, match=expected + "'semantic'"):
         load_artifact(doc, contract=contract, require="semantic")  # pyright: ignore[reportArgumentType]
+    # A mapping's keys must not be read as the layer names either.
+    with pytest.raises(TypeError, match=expected + r"\{'semantic': 'structural'\}"):
+        validate_artifact(doc, contract=contract, require={"semantic": "structural"})  # pyright: ignore[reportArgumentType]
+    # Tuples and sets of layer names follow the declared Collection type.
+    assert validate_artifact(doc, contract=contract, require=("semantic",)).outcome == "invalid"
+    assert validate_artifact(doc, contract=contract, require={"semantic"}).outcome == "invalid"
+
+
+class _ExplodingValues(dict[str, Any]):
+    """A payload whose property reads fail once evaluation reaches them."""
+
+    def __getitem__(self, key: str) -> Any:  # pyright: ignore[reportImplicitOverride]
+        raise RuntimeError("payload getter exploded")
+
+
+def test_structural_errored_when_evaluation_raises(tmp_path: Path) -> None:
+    # Evaluation began (preparation succeeded) but returned no verdict, so the layer is
+    # errored, and a requirement reports exactly that execution.
+    schema = tmp_path / "sample.schema.yaml"
+    compile_model(Sample, schema, contract_id="example:Sample/v1")
+    values = _ExplodingValues(name="hello")
+    result = validate_values(values, schema=schema)
+    assert result.structural.execution == "errored"
+    assert not result.structural.ok
+    assert result.structural.errors[0]["kind"] == "schema_invalid"
+    assert "payload getter exploded" in result.structural.errors[0]["message"]
+    required = validate_values(values, schema=schema, require=["structural"])
+    assert required.structural.execution == "errored"
+    assert required.structural.errors[0] == result.structural.errors[0]
+    assert required.structural.errors[-1] == {
+        "kind": "check_not_completed",
+        "message": "required structural check did not complete (execution: errored)",
+        "layer": "structural",
+        "execution": "errored",
+    }
+    assert not required.ok
+
+
+def test_values_schema_path_that_does_not_exist_is_schema_missing(tmp_path: Path) -> None:
+    # The same record artifact validation gives for an unresolvable binding, not a
+    # schema_invalid wrapping the operating system's message.
+    missing = tmp_path / "nope.schema.yaml"
+    result = validate_values({"name": "hello"}, schema=missing, require=["structural"])
+    assert result.structural.execution == "not_run"
+    assert result.structural.errors[0] == {
+        "kind": "schema_missing",
+        "message": f"compiled schema not found: {missing}",
+        "path": str(missing),
+    }
+    assert result.structural.errors[1]["kind"] == "check_not_completed"
+    assert not result.ok
+
+
+def test_documented_execution_engine_deviations(tmp_path: Path) -> None:
+    # Each runtime asserts its own listed result exactly, so a documented difference
+    # passes, drift on either side fails, and an unlisted difference has nothing to pass
+    # against. See the section comment in the vectors.
+    yaml = YAML(typ="safe")
+    for case in yaml.load(VECTORS.read_text())["engine_deviations"]:
+        schema_path = tmp_path / f"{case['name']}.schema.yaml"
+        with schema_path.open("w") as output:
+            yaml.dump(case["schema"], output)
+        result = validate_structural(case["values"], schema_path)
+        first = result.errors[0] if result.errors else {}
+        actual = {
+            "execution": result.execution,
+            "ok": result.ok,
+            "error_kind": first.get("kind"),
+            "error_reason": first.get("reason"),
+        }
+        expected = {"error_kind": None, "error_reason": None, **case["python"]}
+        assert actual == expected, case["name"]
