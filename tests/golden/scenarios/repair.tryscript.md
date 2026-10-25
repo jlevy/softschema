@@ -18,6 +18,8 @@ fixtures:
   - {source: ../fixtures/repair-unrepairable.yaml, dest: floor/repair-unrepairable.yaml}
   - {source: ../fixtures/repair-non-utf8.md, dest: floor/repair-non-utf8.md}
   - {source: ../fixtures/repair-next-line.md, dest: floor/repair-next-line.md}
+  - {source: ../fixtures/no-frontmatter.md, dest: floor/no-frontmatter.md}
+  - {source: ../fixtures/repair-root-list.yaml, dest: floor/repair-root-list.yaml}
   - {source: ../fixtures/repair.schema.yaml, dest: floor/repair.schema.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: dry/repair-unquoted-colon.md}
   - {source: ../fixtures/repair.schema.yaml, dest: dry/repair.schema.yaml}
@@ -622,6 +624,79 @@ softschema validate: `floor/repair-non-utf8.md`: input is not valid UTF-8
 $ cmp original/repair-non-utf8.md floor/repair-non-utf8.md && echo "byte-identical"
 byte-identical
 ? 0
+```
+
+A document that reads but holds no mapping to validate is not a parse failure, and
+`repair` must not call it one. Without `--contract` nothing failed on the way in: the
+fenceless document has no frontmatter region to rewrite and the list-root document parses.
+`validate` reports these as `no_frontmatter` and `yaml_not_mapping` by profile, and so does
+`repair`; after the message unification the two commands print the identical message, so
+one message carrying two `kind`s depending on a flag would break `kind` as the matching key.
+
+```console
+$ $SOFTSCHEMA repair floor/no-frontmatter.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "floor/no-frontmatter.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "no_frontmatter"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "no_frontmatter",
+        "message": "`floor/no-frontmatter.md`: the document has no YAML frontmatter"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ $SOFTSCHEMA repair floor/repair-root-list.yaml --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "floor/repair-root-list.yaml",
+  "profile": "pure-yaml",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "yaml_not_mapping"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "yaml_not_mapping",
+        "message": "YAML root is list, expected mapping"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
 ```
 
 # Journey: `repair --check` reports without writing

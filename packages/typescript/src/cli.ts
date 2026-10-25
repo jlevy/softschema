@@ -25,6 +25,7 @@ import {
   isSchemaStatus,
   metadataToOutput,
   parseSchemaMetadata,
+  pyTypeName,
   type SchemaProfile,
 } from "./models.js";
 import { documentLabel, opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
@@ -728,8 +729,8 @@ async function runRepair(path: string, opts: RepairOptions): Promise<number> {
         stableStringify(
           unreadableArtifactResult(path, {
             profile,
-            kind: repairFailureKind(repaired, parseError),
-            message: repairFailureMessage(repaired, parseError, path, profile),
+            kind: repairFailureKind(repaired, parseError, profile),
+            message: repairFailureMessage(repaired, parseError, path, profile, root),
           }),
         ),
       );
@@ -761,11 +762,27 @@ async function runRepair(path: string, opts: RepairOptions): Promise<number> {
  *
  * Either code goes through the same code-to-kind rule validation applies, so a non-UTF-8
  * file is `artifact_invalid_utf8` at `input_error` here as it is under a contract.
+ *
+ * When neither failed, the document read and simply holds no mapping to validate: a
+ * fenceless or empty-block frontmatter-md document, or a pure-yaml root that is a list or
+ * a scalar. `validate` reports that condition as `no_frontmatter` or `yaml_not_mapping` by
+ * profile, and so does this, or the identical message would carry one `kind` with
+ * `--contract` and another without it.
  */
-function repairFailureKind(repaired: RepairResult, parseError: Error | null): string {
+function repairFailureKind(
+  repaired: RepairResult,
+  parseError: Error | null,
+  profile: SchemaProfile,
+): string {
   if (repaired.errorCode) return portableArtifactKind(repaired.errorCode);
-  if (parseError instanceof PortableInputError) return portableArtifactKind(parseError.code);
-  return "yaml_parse_error";
+  if (parseError !== null) {
+    // The frontmatter reader's own failures (an unterminated fence, a non-mapping block)
+    // arrive as `YamlParseError`, which is the `yaml_parse_error` kind by construction.
+    return parseError instanceof PortableInputError
+      ? portableArtifactKind(parseError.code)
+      : "yaml_parse_error";
+  }
+  return profile === "pure-yaml" ? "yaml_not_mapping" : "no_frontmatter";
 }
 
 function repairFailureMessage(
@@ -773,14 +790,16 @@ function repairFailureMessage(
   parseError: Error | null,
   path: string,
   profile: SchemaProfile,
+  root: unknown,
 ): string {
   // The reader's message comes first because it names the document; repair's own carries
   // the same engine text without it, and is what remains when nothing could be parsed at
-  // all (an unreadable or non-UTF-8 file).
+  // all (an unreadable or non-UTF-8 file). When the document read and holds no mapping,
+  // the message is the one `validate` gives the same condition, word for word.
   if (parseError !== null) return parseError.message;
   if (repaired.errorMessage) return repaired.errorMessage;
   return profile === "pure-yaml"
-    ? `${documentLabel(path)}: the document root is not a YAML mapping`
+    ? `YAML root is ${pyTypeName(root)}, expected mapping`
     : `${documentLabel(path)}: the document has no YAML frontmatter`;
 }
 

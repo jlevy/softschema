@@ -54,8 +54,28 @@ def _construct_timestamp_as_string(_constructor: SafeConstructor, node: ScalarNo
     return node.value
 
 
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
 class _PortableConstructor(SafeConstructor):
     """Safe constructor overrides scoped to softschema parser instances."""
+
+    def construct_scalar(self, node: Any) -> Any:  # pyright: ignore[reportImplicitOverride]
+        """Join a surrogate pair written as two ``\\u`` escapes into the character it encodes.
+
+        ruamel decodes ``"\\ud83d\\ude00"`` to two lone surrogates, where the ``yaml``
+        package, working in UTF-16, reads the one character U+1F600, as JSON does. The
+        two engines must agree on that text, and the JSON reading is the one a producer
+        that serializes with ``ensure_ascii`` relies on. A surrogate that pairs with
+        nothing is left as it is, for :func:`_check_value` to reject as unsupported.
+        """
+        value = super().construct_scalar(node)
+        if isinstance(value, str) and _SURROGATE.search(value):
+            try:
+                return value.encode("utf-16-le", "surrogatepass").decode("utf-16-le")
+            except UnicodeDecodeError:
+                return value
+        return value
 
 
 # The first subclass registration copies ruamel's inherited constructor registry.

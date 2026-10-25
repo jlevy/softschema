@@ -114,6 +114,29 @@ describe("the repair command", () => {
     }
   });
 
+  test("a document with no mapping to validate gets validate's kind, not a parse error", async () => {
+    // Nothing failed on the way in: the document read and simply holds no mapping. The
+    // fallback used to say `yaml_parse_error` where the same message under `--contract`
+    // carried `no_frontmatter` or `yaml_not_mapping`; `kind` is the matching key.
+    for (const [name, text, kind] of [
+      ["fenceless.md", "# Title\n\nJust a body.\n", "no_frontmatter"],
+      ["empty-block.md", "---\n---\n# Title\n", "no_frontmatter"],
+      ["root-list.yaml", "- not\n- a mapping\n", "yaml_not_mapping"],
+      ["root-scalar.yaml", "just a string\n", "yaml_not_mapping"],
+    ] as const) {
+      const path = write(name, text);
+      stdout = "";
+      expect(await main(argv("repair", path, "--check"))).toBe(1);
+      const repaired = JSON.parse(stdout).structural.errors[0];
+      stdout = "";
+      expect(await main(argv("validate", path, "--contract", "test.detect:Doc/v1"))).toBe(1);
+      const validated = JSON.parse(stdout).structural.errors[0];
+      expect(repaired.kind).toBe(kind);
+      expect(validated.kind).toBe(kind);
+      expect(repaired.message).toBe(validated.message);
+    }
+  });
+
   test("--dry-run and --check are mutually exclusive", async () => {
     const path = write("doc.md", NEEDS_REPAIR);
     expect(await main(argv("repair", path, "--dry-run", "--check"))).toBe(2);

@@ -138,6 +138,9 @@ numbers, lists, and string-keyed mappings.
 Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero,
 duplicate keys, aliases, anchors, merge keys, explicit tags, non-string keys, lone
 surrogates, and non-finite numbers are rejected.
+A surrogate pair written as two `\u` escapes in a double-quoted scalar is the one
+character it encodes, as in JSON; only a surrogate that pairs with nothing is a lone
+surrogate.
 
 Raw characters that the host YAML engines read differently are rejected before parsing,
 as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls

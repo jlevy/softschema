@@ -104,6 +104,12 @@ portable_values:
   - { id: lone_cr_in_block_scalar, text: "value: |\n  a\rb\n", valid: false, code: yaml_parse_error }
   - { id: crlf_line_endings, text: "value: 1\r\nother: 2\r\n", valid: true, expected: { value: 1, other: 2 } }
   - { id: escaped_cr, text: "value: \"a\\rb\"", valid: true, expected: { value: "a\rb" } }
+  # Two `\u` escapes forming a surrogate pair are the one character they encode, as in
+  # JSON; one engine works in UTF-16 and reads them so natively, the other is made to agree.
+  # A surrogate that pairs with nothing stays a lone surrogate and is rejected.
+  - { id: escaped_surrogate_pair, text: "value: \"a\\ud83d\\ude00b\"", valid: true, expected: { value: "a😀b" } }
+  - { id: escaped_lone_surrogate, text: "value: \"a\\ud83db\"", valid: false, code: yaml_unsupported_scalar }
+  - { id: escaped_reversed_surrogates, text: "value: \"\\ude00\\ud83d\"", valid: false, code: yaml_unsupported_scalar }
   - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
   - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
   # Raw characters the two engines read differently are rejected before parsing, in both

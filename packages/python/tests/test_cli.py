@@ -840,6 +840,38 @@ def test_unparsable_frontmatter_names_the_parse_failure(
     assert "flow sequence" in record["message"] or "expected" in record["message"]
 
 
+@pytest.mark.parametrize(
+    ("name", "text", "kind"),
+    [
+        ("fenceless.md", "# Title\n\nJust a body.\n", "no_frontmatter"),
+        ("empty-block.md", "---\n---\n# Title\n", "no_frontmatter"),
+        ("root-list.yaml", "- not\n- a mapping\n", "yaml_not_mapping"),
+        ("root-scalar.yaml", "just a string\n", "yaml_not_mapping"),
+    ],
+)
+def test_contractless_repair_reports_a_mapping_less_document_like_validate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], name: str, text: str, kind: str
+) -> None:
+    """One message, one ``kind``: ``repair`` without ``--contract`` agrees with ``validate``.
+
+    Nothing failed on the way in — the document read and simply holds no mapping — so the
+    fallback used to say ``yaml_parse_error`` where the same message under ``--contract``
+    carried ``no_frontmatter`` or ``yaml_not_mapping``. ``kind`` is the matching key, so
+    the two commands have to agree on it.
+    """
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+
+    assert softschema_main(["repair", str(path), "--check"]) == 1
+    repaired = json.loads(capsys.readouterr().out)["structural"]["errors"][0]
+    assert softschema_main(["validate", str(path), "--contract", "test.detect:Doc/v1"]) == 1
+    validated = json.loads(capsys.readouterr().out)["structural"]["errors"][0]
+
+    assert repaired["kind"] == kind
+    assert validated["kind"] == kind
+    assert repaired["message"] == validated["message"]
+
+
 # --- The `repair` command --------------------------------------------------------------
 #
 # `repair` is its own command because it answers a different question from `validate` and
