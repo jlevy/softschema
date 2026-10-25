@@ -15,7 +15,15 @@ interface IdentityVector {
 }
 const vectors = parse(
   readFileSync(join(import.meta.dir, "../../../tests/vectors/identities.yaml"), "utf8"),
-) as { refuse: IdentityVector[]; accept: IdentityVector[] };
+) as {
+  refuse: IdentityVector[];
+  accept: IdentityVector[];
+  order: {
+    schema: Record<string, unknown>;
+    resources?: Record<string, Record<string, unknown>>;
+    message: string;
+  }[];
+};
 const ROOT = "https://example.com/root.json";
 const Named = z.object({ name: z.string() });
 
@@ -60,6 +68,13 @@ describe("resource identity grammar", () => {
         expect(schema.$id).toBe(id);
         expect(validateStructural({ name: "n" }, schema).ok).toBe(true);
       }
+    }
+  });
+
+  test("with several invalid identities, both runtimes quote the same one", () => {
+    for (const { schema, resources, message } of vectors.order) {
+      const result = validateStructural("x", structuredClone(schema), { resources });
+      expect(result.errors[0]).toMatchObject({ reason: "resource_identity", message });
     }
   });
 });

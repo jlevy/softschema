@@ -103,3 +103,18 @@ accept:
   - {id: "/abs/x.json", nested: true}
   - {id: "base", nested: true}
   - {id: "a/b/c.json?x=1", nested: true}
+# With several invalid identities, both runtimes quote the same one: supplied resources
+# are checked in code-point order of their keys, then nested ids in code-point order of
+# the ids, never in mapping order (JavaScript iterates integer-like keys first).
+order:
+  - schema:
+      type: object
+      properties:
+        b: {$id: "urn:b", type: string}
+        "1": {$id: "URN:a:b", type: string}
+    message: 'a $id must use a lowercase scheme, got "URN:a:b"'
+  - schema: {$ref: "urn:example:item"}
+    resources:
+      "urn:zz": {type: string}
+      "1": {type: string}
+    message: 'a supplied resource key must be an absolute URI, got "1"'

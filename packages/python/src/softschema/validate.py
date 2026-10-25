@@ -559,22 +559,28 @@ def _check_identities(schema: dict[str, Any], resources: Mapping[str, dict[str, 
     ``$id`` may also be a relative path. A relative root ``$id`` has no base to resolve
     against, and any spelling either engine normalizes would name one resource for one
     engine and another for the other, so both are refused before either engine runs.
+    Resources and nested ids are checked in code-point order of their keys and ids, not
+    in mapping order: JavaScript iterates integer-like keys first, so with two invalid
+    identities a walk in mapping order would quote a different one in each runtime.
     Kept in step with TypeScript's ``checkIdentities``.
     """
     root_id = schema.get("$id")
     if isinstance(root_id, str):
         check_root_id(root_id)
-    for key, resource in resources.items():
-        resource_id = resource.get("$id")
+    for key in sorted(resources):
+        resource_id = resources[key].get("$id")
         if isinstance(resource_id, str):
             check_identity(resource_id, "a supplied resource $id", absolute=True)
         else:
             check_identity(key, "a supplied resource key", absolute=True)
+    nested: set[str] = set()
     for document in (schema, *resources.values()):
         for node in _iter_schemas(document):
             identity = node.get("$id")
             if node is not document and isinstance(identity, str):
-                check_identity(identity, "a $id", absolute=False)
+                nested.add(identity)
+    for identity in sorted(nested):
+        check_identity(identity, "a $id", absolute=False)
 
 
 def _contains_is_inert(node: dict[str, Any]) -> bool:

@@ -60,13 +60,13 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   outside it is `schema_invalid` with `reason: resource_identity` before either engine
   runs (compile exits 2 with the same message).
   The grammar admits only spellings that neither Python’s `urllib.parse` nor Ajv’s
-  fast-uri rewrites: printable ASCII, no fragment, uppercase `%HH` escapes of reserved
-  or non-ASCII bytes only, a lowercase scheme, `//host` only for `http:`, `https:`, and
-  `file:` (lowercase host or canonical IP address, non-default port, no user
-  information, a path of at least `/`), the opaque `scheme:path` form for every other
-  scheme except those `urllib.parse` writes with `//`, a lowercase `urn:` namespace
-  identifier and a lowercase UUID after `urn:uuid:`, and no `//`, `.`, or `..` path
-  segment, trailing `;`, empty query, or `'` in a query.
+  fast-uri rewrites: printable ASCII, no fragment (not even an empty `#`), uppercase
+  `%HH` escapes of reserved or non-ASCII bytes only, a lowercase scheme, `//host` only
+  for `http:`, `https:`, and `file:` (lowercase host or canonical IP address,
+  non-default port, no user information, a path of at least `/`), the opaque
+  `scheme:path` form for every other scheme except those `urllib.parse` writes with
+  `//`, a lowercase `urn:` namespace identifier and a lowercase UUID after `urn:uuid:`,
+  and no `//`, `.`, or `..` path segment, trailing `;`, empty query, or `'` in a query.
   A nested `$id` may also be a relative path.
   The spec lists the rules and `tests/vectors/identities.yaml` has a case for each.
 - The TypeScript `validate --require` with an unknown layer reports
@@ -252,9 +252,13 @@ segment, which fast-uri normalizes and Python does not; a whitespace-prefixed id
 Python’s `urlsplit` trims; a malformed host such as `http://[::1`, which Python refused
 as `compilation` and TypeScript accepted; and `urn:example` or `urn:dir/item.json`,
 which TypeScript failed to compile.
-Write `https://host/path`, `file:///path`, `urn:<nid>:<name>` in lowercase, or another
-`scheme:path`, with no fragment.
-Skip reasons change only for the TypeScript library fix above.
+Ordinary-looking ids it also refuses: `https://example.com` with no path (write
+`https://example.com/`), an explicit default port as in `https://example.com:443/x`, an
+uppercase `urn:uuid:6E8BC430-…`, a trailing empty `#` as in
+`http://example.com/schema#`, common in draft-07-era schemas, and `s3://` or `gs://`
+ids, since only `http`, `https`, and `file` take `//host`. Write `https://host/path`,
+`file:///path`, `urn:<nid>:<name>` in lowercase, or another `scheme:path`, with no
+fragment. Skip reasons change only for the TypeScript library fix above.
 Strict serialized-result consumers must accept the new layer fields and remove the
 unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or

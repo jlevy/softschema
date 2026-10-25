@@ -242,6 +242,20 @@ export function checkIdentity(identity: string, label: string, absolute: boolean
   }
 }
 
+/**
+ * Order strings by code point, as Python compares them. The default `sort` compares UTF-16
+ * code units, which orders a character above U+FFFF before U+E000 through U+FFFF.
+ */
+export function byCodePoint(left: string, right: string): number {
+  const a = [...left];
+  const b = [...right];
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    const difference = (a[index]?.codePointAt(0) ?? 0) - (b[index]?.codePointAt(0) ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return a.length - b.length;
+}
+
 /** Check a root `$id`, which must be absolute; `compileSchema` uses it too. */
 export function checkRootId(rootId: string): void {
   checkIdentity(rootId, "the root $id", true);

@@ -660,6 +660,9 @@ So `https://example.com/schemas/movie.json`, `urn:example:movie-page`,
 `urn:example:a%7Eb`, `https://EXAMPLE.com/x`, `http://[::1`, and
 `https://example.com/s.json#frag` are not.
 `tests/vectors/identities.yaml` has a case for each rule.
+When several identities break the grammar, both runtimes report the same one: the root
+`$id` first, then supplied resources in code-point order of their keys, then nested ids
+in code-point order.
 Keywords that only one engine would honor are refused as well: the legacy `dependencies`
 (write `dependentSchemas` or `dependentRequired`), the OpenAPI `nullable` (write
 `type: [..., "null"]`), and 2019-09’s `$recursiveRef` and `$recursiveAnchor`. Validation

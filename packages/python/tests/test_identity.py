@@ -68,3 +68,12 @@ def test_identity_grammar_acceptances(tmp_path: Path) -> None:
             compile_model(Named, out, contract_id="example:Named/v1", schema_id=identity)
             assert parse_yaml(out.read_text())["$id"] == identity
             assert validate_structural({"name": "n"}, out).ok, identity
+
+
+def test_identity_check_order_is_the_same_in_both_runtimes(tmp_path: Path) -> None:
+    for case in _vectors()["order"]:
+        path = tmp_path / "order.schema.json"
+        path.write_text(json.dumps(case["schema"]))
+        result = validate_structural("x", path, resources=case.get("resources"))
+        assert result.errors[0]["reason"] == "resource_identity"
+        assert result.errors[0]["message"] == case["message"]

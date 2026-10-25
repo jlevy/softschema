@@ -21,7 +21,7 @@ import {
   type StructuralErrorRecord,
 } from "./errors.js";
 import { isMapping } from "./guards.js";
-import { checkIdentity, checkRootId } from "./identity.js";
+import { byCodePoint, checkIdentity, checkRootId } from "./identity.js";
 import {
   type Contract,
   checkContractId,
@@ -558,28 +558,31 @@ const FOREIGN_KEYWORDS: Record<string, string> = {
  * what it is registered under) must be absolute; a nested `$id` may also be a relative
  * path. A relative root `$id` has no base to resolve against, and any spelling either
  * engine normalizes would name one resource for one engine and another for the other, so
- * both are refused before either engine runs. Kept in step with Python's
- * `_check_identities`.
+ * both are refused before either engine runs. Resources and nested ids are checked in
+ * code-point order of their keys and ids, not in object order: JavaScript iterates
+ * integer-like keys first, so with two invalid identities a walk in object order would
+ * quote a different one than Python. Kept in step with Python's `_check_identities`.
  */
 function checkIdentities(
   schema: Record<string, unknown>,
   resources: Record<string, Record<string, unknown>>,
 ): void {
   if (typeof schema.$id === "string") checkRootId(schema.$id);
-  for (const [key, resource] of Object.entries(resources)) {
+  for (const key of Object.keys(resources).sort(byCodePoint)) {
+    const resource = resources[key] ?? {};
     if (typeof resource.$id === "string") {
       checkIdentity(resource.$id, "a supplied resource $id", true);
     } else {
       checkIdentity(key, "a supplied resource key", true);
     }
   }
+  const nested = new Set<string>();
   for (const document of [schema, ...Object.values(resources)]) {
     for (const node of iterSchemas(document)) {
-      if (node !== document && typeof node.$id === "string") {
-        checkIdentity(node.$id, "a $id", false);
-      }
+      if (node !== document && typeof node.$id === "string") nested.add(node.$id);
     }
   }
+  for (const identity of [...nested].sort(byCodePoint)) checkIdentity(identity, "a $id", false);
 }
 
 function checkSchemaIdentities(
