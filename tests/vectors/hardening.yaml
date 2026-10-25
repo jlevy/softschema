@@ -946,6 +946,54 @@ yaml_repair:
     text: "thing: [unclosed\n"
     repaired: false
     code: yaml_parse_error
+  # A raw character the portable preflight rejects, inside a single-line value, is rewritten
+  # as the double-quoted escape both engines decode to the same character. The character is
+  # never replaced by a guess at what was meant; the record makes it visible instead.
+  - id: next_line_in_plain_value
+    profile: frontmatter-md
+    text: "---\nthing:\n  notes: Hayao Miyazaki\u0085 Studio Ghibli\n---\nBody.\n"
+    repaired: true
+    expected_text: "---\nthing:\n  notes: \"Hayao Miyazaki\\N Studio Ghibli\"\n---\nBody.\n"
+  - id: line_separator_in_single_quoted_value
+    profile: pure-yaml
+    text: "note: 'it''s\u2028here'\n"
+    repaired: true
+    expected_text: "note: \"it's\\Lhere\"\n"
+  # Only the raw characters change inside a double-quoted value; the author's own escapes
+  # and the trailing comment stay as written.
+  - id: next_line_in_double_quoted_value_with_comment
+    profile: pure-yaml
+    text: "note: \"a\u0085b\\tc\"  # keep me\n"
+    repaired: true
+    expected_text: "note: \"a\\Nb\\tc\"  # keep me\n"
+  - id: control_characters_in_plain_value
+    profile: pure-yaml
+    text: "note: a\fb\x7fc\rd\n"
+    repaired: true
+    expected_text: "note: \"a\\fb\\x7fc\\rd\"\n"
+  # A plain value that also carries structure gets one record: the escape rule already
+  # produces a double-quoted scalar.
+  - id: next_line_beside_unquoted_colon
+    profile: pure-yaml
+    text: "summary: Note: actually\u0085Q1\n"
+    repaired: true
+    expected_text: "summary: \"Note: actually\\NQ1\"\n"
+  # Keys, comments and block scalars have no exact rewrite and stay parse errors.
+  - id: next_line_in_key
+    profile: pure-yaml
+    text: "no\u0085te: x\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_comment
+    profile: pure-yaml
+    text: "# a\u0085comment\nnote: x\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar
+    profile: pure-yaml
+    text: "note: |\n  sub: a\u0085b\nother: 1\n"
+    repaired: false
+    code: yaml_parse_error
 
 # Type conform, structural source only. The semantic source (Pydantic `string_type` /
 # Zod `invalid_type`) is per-language by design and lives in each adapter's own tests.
@@ -958,6 +1006,16 @@ schema_conform:
     envelope: thing
     changed: true
     expected_text: "---\nthing:\n  name: '1850'\n---\nB.\n"
+  # A retyped scalar beside an escaped U+0085: the round-trip emitter must write the
+  # neighbour's escape back as `\N`, not as the raw character the reader rejects. One
+  # emitter escapes it on its own; the other has to be made to, or the pass undoes the
+  # escape and fails its own write guard.
+  - id: integer_name_beside_escaped_next_line
+    schema: { type: object, properties: { name: { type: string } } }
+    text: "---\nthing:\n  name: 1850\n  note: \"a\\Nb\"\n---\nB.\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  name: '1850'\n  note: \"a\\Nb\"\n---\nB.\n"
   # Lossless: the text comes from the scalar as written, not from `str()` of the parsed
   # value, so a notation the author chose survives being retyped.
   - id: float_notation

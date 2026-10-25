@@ -91,11 +91,16 @@ structure should stabilize over time.
   untrusted input). Run `$SS validate --help` for exact syntax.
 - **Check your own artifact before you finish, with `$SS repair`.** After writing a
   contract-bearing artifact, run it on that file.
-  It fixes the two mistakes a model makes writing YAML by hand — an unquoted `: ` inside
-  a value, and a scalar like `1850` that reads as a number where the contract wants a
+  It fixes the three mistakes a model makes writing YAML by hand — an unquoted `: `
+  inside a value, a raw character both YAML engines cannot read the same way (a
+  mis-decoded ellipsis arriving as U+0085, a line separator, a control character), which
+  it rewrites as a double-quoted escape such as `"\N"` without guessing at what was
+  meant, and a scalar like `1850` that reads as a number where the contract wants a
   string — writes the file, and reports the verdict.
-  Anything it does not fix, such as a missing field or a key that is a near-miss for the
-  declared one, is yours to correct: it reports those and never guesses at them.
+  Such a character in a key, a comment, or a block scalar is reported as a parse error
+  naming its line and the escape to write; it is never written raw in the YAML. Anything
+  it does not fix, such as a missing field or a key that is a near-miss for the declared
+  one, is yours to correct: it reports those and never guesses at them.
   A document it cannot read at all comes back as a record naming why, which is what a
   truncated write leaves behind.
   Add `--dry-run` to see what would change without writing, or `--check` to fail

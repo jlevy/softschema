@@ -34,8 +34,10 @@
  */
 import type { SchemaProfile } from "./models.js";
 import {
+  findNonPortableCharacter,
   PortableInputError,
   parsePortableYaml,
+  portableEscape,
   readUtf8,
   splitFrontmatter,
   writeArtifactText,
@@ -54,7 +56,21 @@ export type { RepairRecord };
 export const REPAIR_KIND = "repair_applied";
 
 /** `code` for the one repair this module performs. */
+/** `code` for a plain scalar quoted because YAML read structure in it. */
 const YAML_QUOTED_SCALAR = "yaml_quoted_scalar";
+
+/**
+ * `code` for a value rewritten as a double-quoted scalar to escape a rejected character.
+ *
+ * The portable preflight refuses a raw U+0085, U+2028, U+2029, control character or lone
+ * carriage return anywhere in the YAML text. Inside a single-line value the fix is
+ * mechanical and meaning-preserving: a serializer would have written the escape, and the
+ * decoded value is exactly what YAML 1.2 gives the raw text. The character itself is never
+ * replaced by a guess at what was meant (a mis-decoded ellipsis stays a U+0085, now visible
+ * in the record); and a rejected character in a key, a comment or a block scalar has no
+ * such rewrite, so those stay parse errors.
+ */
+const YAML_ESCAPED_CHARACTER = "yaml_escaped_character";
 
 /**
  * Portable violations that are not authoring slips. Quoting a scalar cannot fix any of
@@ -85,7 +101,19 @@ const NOT_REPAIRABLE = new Set([
  * ASCII set, so a non-ASCII key is left unrepaired identically on both sides; the shared
  * vectors lock this in.
  */
-const MAPPING_LINE = /^(?<indent>[ \t]*)(?<key>[A-Za-z0-9_.-]+): (?<value>.+)$/;
+// `[^\n]` rather than `.`: in JavaScript `.` also stops at U+2028, U+2029 and `\r`, which
+// Python's `.` does not, and a line holding one of those is exactly what the escaping rule
+// below must be able to see.
+const MAPPING_LINE = /^(?<indent>[ \t]*)(?<key>[A-Za-z0-9_.-]+): (?<value>[^\n]+)$/;
+
+/**
+ * A line that opens a block scalar (`key: |`, `key: >-`, `- |2`, with an optional comment):
+ * its content is every following line indented deeper than the opener, and the escaping
+ * rule must not touch those lines even when one happens to look like `key: value`.
+ */
+const BLOCK_SCALAR_OPENER =
+  /^(?<indent>[ \t]*)(?:[A-Za-z0-9_.-]+:|-)[ \t]+[|>][-+0-9]*[ \t]*(?:#[^\n]*)?$/;
+const TRAILING_COMMENT = /^[ \t]*(?:#[^\n]*)?$/;
 
 /**
  * What one repair attempt did.
@@ -115,8 +143,99 @@ function result(partial: Partial<RepairResult>): RepairResult {
   };
 }
 
-function record(path: (string | number)[], message: string): RepairRecord {
-  return { kind: REPAIR_KIND, code: YAML_QUOTED_SCALAR, path, message };
+function record(
+  path: (string | number)[],
+  message: string,
+  code: string = YAML_QUOTED_SCALAR,
+): RepairRecord {
+  return { kind: REPAIR_KIND, code, path, message };
+}
+
+function indentOf(line: string): number {
+  return line.length - line.replace(/^[ \t]+/u, "").length;
+}
+
+/**
+ * Index of the quote that closes the scalar opened at `text[0]`, or null.
+ *
+ * Inside double quotes a backslash escapes the next character; inside single quotes the
+ * only escape is a doubled quote.
+ */
+function closingQuote(text: string, quote: string): number | null {
+  let index = 1;
+  while (index < text.length) {
+    const char = text[index];
+    if (quote === '"' && char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === quote) {
+      if (quote === "'" && text[index + 1] === "'") {
+        index += 2;
+        continue;
+      }
+      return index;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function isRejected(char: string): boolean {
+  return findNonPortableCharacter(char) !== null;
+}
+
+function escapeCharacters(text: string): string {
+  return [...text].map((char) => (isRejected(char) ? portableEscape(char) : char)).join("");
+}
+
+/**
+ * Rewrite a single-line value holding a rejected character as a double-quoted scalar.
+ *
+ * Returns the new value text and the characters escaped, or null when the value has nothing
+ * to escape or is not one of the three shapes this rule can rewrite exactly: a plain
+ * scalar, a complete single-quoted scalar, or a complete double-quoted scalar, each
+ * optionally followed by a comment. Whitespace before a comment is kept as written. The
+ * decoded value is unchanged in every case: the plain and single-quoted forms are
+ * re-expressed with the same content, and in the double-quoted form only the raw
+ * characters are replaced, so escapes the author already wrote stay as they are.
+ */
+function escapeValue(value: string): { text: string; escaped: string[] } | null {
+  if (findNonPortableCharacter(value) === null) return null;
+  // Only ASCII blanks are trimmed, the same set Python's `strip(" \t")` takes.
+  const stripped = value.replace(/^[ \t]+/u, "").replace(/[ \t]+$/u, "");
+  let body: string;
+  let rest: string;
+  const quote = stripped[0];
+  if (quote === '"' || quote === "'") {
+    const end = closingQuote(stripped, quote);
+    if (end === null || !TRAILING_COMMENT.test(stripped.slice(end + 1))) return null;
+    body = stripped.slice(1, end);
+    rest = stripped.slice(end + 1);
+    if (quote === "'") {
+      body = body.replaceAll("''", "'").replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+    }
+  } else {
+    const comment = /([ \t]+#[^\n]*)$/u.exec(stripped);
+    body = comment ? stripped.slice(0, comment.index) : stripped;
+    rest = comment ? (comment[1] as string) : "";
+    body = body.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  }
+  const escaped = [...new Set([...body].filter(isRejected))].sort(
+    (a, b) => (a.codePointAt(0) ?? 0) - (b.codePointAt(0) ?? 0),
+  );
+  if (escaped.length === 0) return null; // the rejected character sits in the comment
+  return { text: `"${escapeCharacters(body)}"${rest}`, escaped };
+}
+
+function escapeDetail(key: string, escaped: string[]): string {
+  const listed = escaped
+    .map(
+      (char) =>
+        `#x${(char.codePointAt(0) ?? 0).toString(16).padStart(4, "0")} as "${portableEscape(char)}"`,
+    )
+    .join(", ");
+  return `escaped ${listed} in the value of '${key}'`;
 }
 
 /**
@@ -196,13 +315,38 @@ export function repairYamlText(text: string): RepairResult {
 
   const repairedLines: string[] = [];
   const records: RepairRecord[] = [];
+  let blockIndent: number | null = null;
   for (const line of text.split("\n")) {
+    if (blockIndent !== null) {
+      // Inside a block scalar: content runs while lines are blank or indented deeper than
+      // the opener. The escaping rule leaves it alone, whatever it looks like.
+      if (line.replace(/[ \t]+/gu, "") === "" || indentOf(line) > blockIndent) {
+        repairedLines.push(line);
+        continue;
+      }
+      blockIndent = null;
+    }
+    if (BLOCK_SCALAR_OPENER.test(line)) {
+      blockIndent = indentOf(line);
+      repairedLines.push(line);
+      continue;
+    }
     const match = MAPPING_LINE.exec(line);
     const groups = match?.groups;
-    if (groups && valueNeedsQuoting(groups.value as string)) {
-      repairedLines.push(`${groups.indent}${groups.key}: ${quoteValue(groups.value as string)}`);
-      records.push(record([groups.key as string], `quoted the value of '${groups.key}'`));
-      continue;
+    if (groups) {
+      const key = groups.key as string;
+      const value = groups.value as string;
+      const escaped = escapeValue(value);
+      if (escaped !== null) {
+        repairedLines.push(`${groups.indent}${key}: ${escaped.text}`);
+        records.push(record([key], escapeDetail(key, escaped.escaped), YAML_ESCAPED_CHARACTER));
+        continue;
+      }
+      if (valueNeedsQuoting(value)) {
+        repairedLines.push(`${groups.indent}${key}: ${quoteValue(value)}`);
+        records.push(record([key], `quoted the value of '${key}'`));
+        continue;
+      }
     }
     repairedLines.push(line);
   }

@@ -17,7 +17,12 @@ from pydantic import BaseModel
 from ruamel.yaml import YAML
 from ruamel.yaml.representer import RoundTripRepresenter
 
-from softschema._portable import _RoundTripRepresenter, dump_round_trip, round_trip_yaml
+from softschema._portable import (
+    _RoundTripRepresenter,
+    dump_round_trip,
+    parse_yaml,
+    round_trip_yaml,
+)
 from softschema.conform import conform_artifact
 from softschema.models import Contract, SchemaProfile
 from softschema.pipeline import repair_and_validate_artifact
@@ -99,6 +104,27 @@ def test_conform_never_folds_a_raw_next_line_character(tmp_path: Path) -> None:
     assert result.changed is False
     assert result.skipped_reason == "unparsable"
     assert _read(path) == original
+
+
+def test_escaping_a_rejected_character_is_recorded_per_value(tmp_path: Path) -> None:
+    """One ``yaml_escaped_character`` record per value, naming every character and its escape."""
+    path = tmp_path / "a.yaml"
+    _write(path, "note: a\u0085b\u2028c\u0085x\nplain: fine\n")
+
+    result = repair_artifact(path, profile=SchemaProfile.pure_yaml, write=True)
+
+    assert result.changed is True
+    assert result.records == [
+        {
+            "kind": "repair_applied",
+            "code": "yaml_escaped_character",
+            "path": ["note"],
+            "message": 'escaped #x0085 as "\\N", #x2028 as "\\L" in the value of \'note\'',
+        }
+    ]
+    assert _read(path) == 'note: "a\\Nb\\Lc\\Nx"\nplain: fine\n'
+    # The escaped document decodes to the characters as they arrived; nothing was guessed.
+    assert parse_yaml(_read(path)) == {"note": "a\u0085b\u2028c\u0085x", "plain": "fine"}
 
 
 def test_repair_is_idempotent(tmp_path: Path) -> None:

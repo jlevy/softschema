@@ -465,13 +465,18 @@ byte-identical
 ? 0
 ```
 
-A raw U+0085 beside a conformable scalar is the case where the two passes once disagreed:
-the parse fails, so repair leaves the file alone, but the conform pass loaded the block
-through a round-trip loader that never ran the portable preflight. In Python that loader
-folds the character to a space, so with `--schema` naming a contract that wanted `name` as
-a string, the pass retyped `007`, wrote the folded text back with no record of the fold,
-and reported `valid` for a file `validate` rejects. Conform now runs the preflight before
-it loads, in both runtimes: the result is the parse failure, and the bytes are untouched.
+A raw U+0085 beside a conformable scalar is the case where the two passes once disagreed.
+The character is what a cp1252 ellipsis becomes when agent output is mis-decoded, and the
+parse fails on it in both runtimes. Python's conform pass then loaded the block through a
+round-trip loader that never ran the portable preflight; ruamel folds the character to a
+space, so with `--schema` naming a contract that wanted `name` as a string, the pass retyped
+`007`, wrote the folded text back with no record of the fold, and reported `valid` for a
+file `validate` rejects. Two things changed. Conform runs the preflight before it loads, in
+both runtimes, so a fold can never be written. And `repair` now has a rule for this
+character: a rejected character inside a single-line value is rewritten as the double-quoted
+escape both engines decode to the same character, with a record naming it. The escape keeps
+the U+0085 exactly as it arrived, visible, rather than guessing at the ellipsis the author
+meant; the conform pass then retypes `007`, and the file carries both changes.
 
 ```console
 $ $SOFTSCHEMA repair floor/repair-next-line.md --contract test.repair:Doc/v1 --schema floor/repair.schema.yaml --envelope data
@@ -486,38 +491,61 @@ $ $SOFTSCHEMA repair floor/repair-next-line.md --contract test.repair:Doc/v1 --s
   },
   "contract_id": "test.repair:Doc/v1",
   "document_metadata": null,
-  "outcome": "invalid",
+  "outcome": "valid",
   "path": "floor/repair-next-line.md",
   "profile": "frontmatter-md",
-  "repairs": [],
+  "repairs": [
+    {
+      "code": "yaml_escaped_character",
+      "kind": "repair_applied",
+      "message": "escaped #x0085 as \"\\N\" in the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    },
+    {
+      "code": "scalar_conformed",
+      "kind": "conform_applied",
+      "message": "conformed 7 to the string '007'",
+      "path": [
+        "name"
+      ]
+    }
+  ],
   "semantic": {
     "errors": [],
-    "ok": false,
-    "skipped_reason": "yaml_parse_error"
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
   },
   "status": "soft",
   "structural": {
     "engine": "json_schema",
-    "errors": [
-      {
-        "kind": "yaml_parse_error",
-        "message": "`floor/repair-next-line.md`: unacceptable character #x0085 at line 4, column 26: non-printable and line separator characters are not allowed as raw text; write it as \"\\N\" inside a double-quoted scalar"
-      }
-    ],
-    "ok": false,
+    "errors": [],
+    "ok": true,
     "skipped_reason": null
   },
-  "values": null,
+  "values": {
+    "name": "007",
+    "summary": "Hayao Miyazaki Studio Ghibli"
+  },
   "warnings": []
 }
-? 1
+? 0
 ```
 
 ```console
-$ diff original/repair-next-line.md floor/repair-next-line.md && echo "byte-identical"
-byte-identical
+$ cat floor/repair-next-line.md
+---
+data:
+  name: '007'
+  summary: "Hayao Miyazaki\N Studio Ghibli"
+---
+Body prose stays put.
 ? 0
 ```
+
+The same character in a key, a comment, or a block scalar has no exact rewrite, so it stays
+the parse error `validate` reports, naming the line and the escape to write.
 
 The pure-yaml profile names the document the same way, so an agent repairing a batch can
 tell which file a record is about: the engine's own wording — `in "<unicode string>",

@@ -816,12 +816,22 @@ Exit classes: `0` valid, `1` invalid (or, under `--check`, something would chang
 the command could not run — bad options, a path that does not exist, or an artifact the
 reading posture refused.
 
-Exactly two corrections are in scope, and both restore what a serializer would have
+Exactly three corrections are in scope, and all restore what a serializer would have
 done:
 
 - **Quoting a plain scalar** whose text YAML would otherwise read as structure, so a
   document that does not parse becomes one that does.
   This needs no schema and runs first.
+- **Escaping a raw character the portable rule rejects** (a next line, line or paragraph
+  separator, a control character, a lone carriage return) inside a single-line value:
+  the value is rewritten as a double-quoted scalar carrying the YAML escape (`"\N"`,
+  `"\L"`, `"\P"`, `"\f"`, `"\xHH"`), so its decoded content is exactly what YAML 1.2
+  gives the raw text, and the record names the character and its escape.
+  The character is never replaced by a guess at what was meant: a mis-decoded ellipsis
+  stays a U+0085, now visible.
+  A rejected character in a key, a comment, or a block scalar has no such rewrite and
+  remains a parse error.
+  This also needs no schema and runs with the quoting pass.
 - **Retyping a scalar as a string** where the contract declares `type: string` and the
   value arrived as another scalar.
   The replacement text is the scalar as written, so a notation the author chose (`1.10`,
@@ -833,6 +843,9 @@ one is not renamed, an explicit null is not stringified, and a value a union alr
 admits is not rewritten.
 A parse failure that quoting cannot fix — an alias, a merge key, an explicit tag — keeps
 its original error code, because each is a choice the author made rather than a slip.
+
+The repair records carry `kind: repair_applied` with a `code` naming the correction:
+`yaml_quoted_scalar`, `yaml_escaped_character`, or `scalar_conformed`.
 
 A conforming implementation must leave an artifact that needs no repair byte-identical,
 must produce the same bytes when repair is applied twice, and must never write a value

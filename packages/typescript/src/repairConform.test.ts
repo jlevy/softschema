@@ -15,6 +15,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { conformArtifact } from "./conform.js";
 import type { Contract, SchemaProfile } from "./models.js";
+import { parsePortableYaml } from "./portable.js";
 import { repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
 import { validateArtifact } from "./validate.js";
@@ -121,6 +122,29 @@ describe("filesystem boundary", () => {
     expect(result.changed).toBe(false);
     expect(result.skipped_reason).toBe("unparsable");
     expect(readFileSync(path, "utf8")).toBe(original);
+  });
+
+  test("escaping a rejected character is recorded per value", () => {
+    const path = join(scratch(), "a.yaml");
+    writeFileSync(path, "note: a\u0085b\u2028c\u0085x\nplain: fine\n");
+
+    const result = repairArtifact(path, { profile: "pure-yaml", write: true });
+
+    expect(result.changed).toBe(true);
+    expect(result.records).toEqual([
+      {
+        kind: "repair_applied",
+        code: "yaml_escaped_character",
+        path: ["note"],
+        message: `escaped #x0085 as "\\N", #x2028 as "\\L" in the value of 'note'`,
+      },
+    ]);
+    expect(readFileSync(path, "utf8")).toBe('note: "a\\Nb\\Lc\\Nx"\nplain: fine\n');
+    // The escaped document decodes to the characters as they arrived; nothing was guessed.
+    expect(parsePortableYaml(readFileSync(path, "utf8"))).toEqual({
+      note: "a\u0085b\u2028c\u0085x",
+      plain: "fine",
+    });
   });
 
   test("repair is idempotent", () => {

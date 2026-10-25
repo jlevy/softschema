@@ -481,15 +481,25 @@ export function parseRoundTrip(text: string): ReturnType<typeof parseDocument> {
  * an author's `'single'` into `"double"` — a whole-file restyling diff around a
  * one-scalar fix. Without it both regressions appear together, and only the second one
  * is visible in a golden transcript.
+ *
+ * The output is passed through `escapeNonPortableCharacters`, because the `yaml` emitter
+ * writes a U+0085, U+2028 or U+2029 raw inside a double-quoted scalar where ruamel writes
+ * `\N`, `\L` or `\P`. The region this document came from passed the portable preflight,
+ * so every such character in it was written as an escape inside a double-quoted scalar,
+ * and the emitter keeps that scalar double-quoted; the textual re-escape is therefore
+ * exact, and without it a conform pass that retyped one scalar undid the escape beside it
+ * and failed its own write guard.
  */
 export function dumpRoundTrip(document: ReturnType<typeof parseDocument>): string {
-  return document.toString({
-    lineWidth: 0,
-    indent: 2,
-    indentSeq: true,
-    nullStr: "null",
-    singleQuote: true,
-  });
+  return escapeNonPortableCharacters(
+    document.toString({
+      lineWidth: 0,
+      indent: 2,
+      indentSeq: true,
+      nullStr: "null",
+      singleQuote: true,
+    }),
+  );
 }
 
 /**
