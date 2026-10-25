@@ -58,7 +58,8 @@ export interface RepairAndValidateOptions {
  *
  * `write: false` is the check mode: everything is computed and reported, and the file is
  * not touched. That is what a gate runs when it wants to know whether an artifact *would*
- * be repaired without mutating one under review.
+ * be repaired without mutating one under review. Repair takes no `require`; a gate that
+ * also needs completed checks follows it with `validateArtifact` and its `require` option.
  *
  * The returned result carries a `repairs` list describing every change. It is the field
  * that distinguishes "was already valid" from "was repaired into validity"; an exit code

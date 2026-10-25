@@ -196,6 +196,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     _add_binding_args(validate_parser)
+    validate_parser.add_argument(
+        "--require",
+        action="append",
+        choices=("structural", "semantic"),
+        default=[],
+        help=(
+            "Fail unless this check completed; repeat for both. Without it a skipped "
+            "check can still yield a valid result."
+        ),
+    )
     validate_parser.set_defaults(func=_validate_cmd)
 
     repair_parser = subparsers.add_parser(
@@ -452,7 +462,9 @@ def _validate_cmd(args: argparse.Namespace) -> int:
         status=status,
         profile=read.profile,
     )
-    result = validate_artifact(args.path, contract=contract, document=read.document)
+    result = validate_artifact(
+        args.path, contract=contract, document=read.document, require=args.require
+    )
     if result.outcome == "input_error":
         raise RuntimeError("pre-parsed CLI validation returned an input error")
     print(_json(result))
