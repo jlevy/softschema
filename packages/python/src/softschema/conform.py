@@ -61,6 +61,7 @@ from pydantic import BaseModel, ValidationError
 
 from softschema._portable import (
     PortableInputError,
+    check_portable_text,
     dump_round_trip,
     parse_yaml,
     round_trip_yaml,
@@ -297,6 +298,11 @@ def conform_artifact(
 
     yaml = round_trip_yaml()
     try:
+        # The round-trip loader never runs the portable preflight, and ruamel folds a raw
+        # U+0085 in a flow scalar to a space. Without this check a document `validate`
+        # rejects was loaded, conformed, and written back with the fold and no record of
+        # it; the write guard below did not catch that, because the character was gone.
+        check_portable_text(region)
         document = yaml.load(region)
     except Exception:
         return ConformResult(changed=False, text=text, skipped_reason="unparsable")

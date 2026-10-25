@@ -102,6 +102,27 @@ describe("schema conform vectors", () => {
 });
 
 describe("filesystem boundary", () => {
+  test("conform never loads a region the portable reader rejects", () => {
+    // The round-trip parser never runs the preflight. The `yaml` package reads a raw U+0085
+    // as content, so this guard is what keeps the TypeScript pass on the same rule as the
+    // Python one, where ruamel folded the character to a space and wrote the fold back.
+    const dir = scratch();
+    const path = join(dir, "artifact.md");
+    const original =
+      "---\ndata:\n  name: 007\n  summary: Hayao Miyazaki\u0085 Studio Ghibli\n---\nBody.\n";
+    writeFileSync(path, original);
+
+    const result = conformArtifact(path, {
+      schema: { type: "object", properties: { name: { type: "string" } } },
+      envelopeKey: "data",
+      write: true,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.skipped_reason).toBe("unparsable");
+    expect(readFileSync(path, "utf8")).toBe(original);
+  });
+
   test("repair is idempotent", () => {
     const path = join(scratch(), "a.md");
     writeFileSync(path, "---\nthing:\n  summary: Note: actually Q1\n---\nBody.\n");

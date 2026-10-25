@@ -38,6 +38,7 @@ import type { z } from "zod";
 import { pyRepr } from "./errors.js";
 import type { SchemaProfile } from "./models.js";
 import {
+  checkPortableText,
   dumpRoundTrip,
   PortableInputError,
   parsePortableYaml,
@@ -229,6 +230,16 @@ export function conformArtifact(path: string, options: ConformOptions = {}): Con
     suffix = normalized.slice(split.metadataEnd);
   }
 
+  // The round-trip parser never runs the portable preflight. The `yaml` package reads a
+  // raw U+0085 as content, so this guard changes no verdict here on its own; it is what
+  // keeps the two conform passes on one rule, since ruamel folds the same character to
+  // a space and Python's pass once wrote that fold back with no record of it.
+  try {
+    checkPortableText(region);
+  } catch (error) {
+    if (error instanceof PortableInputError) return outcome({ text, skipped_reason: "unparsable" });
+    throw error;
+  }
   const document = parseRoundTrip(region);
   if (document.errors.length > 0) {
     // A document that does not parse is the repair pass's problem, not this one's.
