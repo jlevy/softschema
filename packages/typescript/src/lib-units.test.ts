@@ -444,8 +444,16 @@ describe("compile: write mode + build", () => {
       title: "F",
       type: "array",
     });
-    // An authored format is not an affix check's, even with the same spelling.
+    // Only a format Zod generated is corrected: an authored one survives even when it is
+    // spelled like an affix check and sits on a string with one, before or after it.
     expect(field(z.string().meta({ format: "includes" })).format).toBe("includes");
+    expect(field(z.string().startsWith("a").meta({ format: "includes" })).format).toBe("includes");
+    expect(field(z.string().meta({ format: "ends_with" }).startsWith("a")).format).toBe(
+      "ends_with",
+    );
+    expect(field(z.string().startsWith("a").meta({ format: "date" }).describe("d")).format).toBe(
+      "date",
+    );
   });
   test("pins Zod's JSON Schema output for constructs the parity fixture does not cover", () => {
     // Each of these changed schema_sha256 between zod 4.4 and 4.6. Pinning them makes the
@@ -484,6 +492,23 @@ describe("compile: write mode + build", () => {
       title: "F",
       type: "array",
     });
+    // Empty tuples drop `prefixItems: []`: Pydantic's `tuple[()]` and `tuple[int, ...]`.
+    expect(field(z.tuple([]))).toEqual({ maxItems: 0, minItems: 0, title: "F", type: "array" });
+    // Zod's types require a prefix element beside a rest schema; its runtime does not.
+    const emptyRest = (z.tuple as (items: z.ZodType[], rest: z.ZodType) => z.ZodType)([], z.int());
+    expect(field(emptyRest)).toEqual(field(z.array(z.int())));
+    expect(field(emptyRest)).toEqual({
+      items: { type: "integer" },
+      title: "F",
+      type: "array",
+    });
+    // An empty array bound is not a tuple and keeps Pydantic's `list` form.
+    expect(field(z.array(z.int()).max(0))).toEqual({
+      items: { type: "integer" },
+      maxItems: 0,
+      title: "F",
+      type: "array",
+    });
     // Intersections of inline objects fold into the one object they describe, as a merged
     // Pydantic model would; an `allOf` of two closed objects validated nothing.
     const folded = {
@@ -495,23 +520,44 @@ describe("compile: write mode + build", () => {
     };
     expect(field(z.intersection(A, B))).toEqual(folded);
     expect(field(A.and(B))).toEqual(folded);
-    // Numeric record keys are constrained as the strings JSON keys are.
+    // Numeric record keys are constrained as the strings JSON keys are. Pydantic's
+    // `dict[int, V]` emits no key constraint; matching it would drop one Zod enforces.
     expect(field(z.record(z.number(), z.string()))).toEqual({
       additionalProperties: { type: "string" },
-      propertyNames: { pattern: "^-?\\d+(?:\\.\\d+)?$", type: "string" },
+      propertyNames: { pattern: "^-?\\d+(?:\\.\\d+)?$" },
       title: "F",
       type: "object",
     });
     expect(field(z.record(z.int(), z.string()))).toEqual({
       additionalProperties: { type: "string" },
-      propertyNames: { pattern: "^-?\\d+$", type: "string" },
+      propertyNames: { pattern: "^-?\\d+$" },
       title: "F",
       type: "object",
     });
-    // An enum-keyed record with optional values does not require every key.
+    // A key schema carries no `type: "string"`: an enum-keyed record with optional values
+    // is Pydantic's `dict[Literal["a", "b"], int]`, a literal key `dict[Literal["a"], int]`,
+    // and a constrained key `dict[Annotated[str, Field(min_length=2)], int]`.
     expect(field(z.record(z.enum(["a", "b"]), z.int().optional()))).toEqual({
       additionalProperties: { type: "integer" },
-      propertyNames: { enum: ["a", "b"], type: "string" },
+      propertyNames: { enum: ["a", "b"] },
+      title: "F",
+      type: "object",
+    });
+    expect(field(z.record(z.literal("a"), z.int().optional()))).toEqual({
+      additionalProperties: { type: "integer" },
+      propertyNames: { const: "a" },
+      title: "F",
+      type: "object",
+    });
+    expect(field(z.record(z.string().min(2), z.int()))).toEqual({
+      additionalProperties: { type: "integer" },
+      propertyNames: { minLength: 2 },
+      title: "F",
+      type: "object",
+    });
+    // A plain string key keeps no key schema at all.
+    expect(field(z.record(z.string(), z.int()))).toEqual({
+      additionalProperties: { type: "integer" },
       title: "F",
       type: "object",
     });
@@ -534,9 +580,36 @@ describe("compile: write mode + build", () => {
       title: "F",
       type: "string",
     });
-    // A `.catch()` or `z.preprocess()` field is required: its declared input type is.
-    expect(compiled(z.string().catch("x")).required).toEqual(["f"]);
+    // A `z.preprocess()` field is required, as a Pydantic `BeforeValidator` field is.
     expect(compiled(z.preprocess((value) => value, z.string())).required).toEqual(["f"]);
+  });
+  test("compiles a .catch() field as the defaulted field Pydantic and Zod 4.4 emit", () => {
+    // Zod's runtime fills an absent key with the catch value, and the Pydantic mirror is
+    // `f: str = "x"`; Zod 4.6 lists the field in `required` anyway.
+    const sha = (field: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: field }), "x:Catch/v1").sha;
+    const compiled = (model: z.ZodType) => buildCanonicalSchema(model, "x:Catch/v1").schema;
+
+    expect(z.strictObject({ f: z.string().catch("x") }).safeParse({}).success).toBe(true);
+    expect(compiled(z.strictObject({ f: z.string().catch("x") })).required).toBeUndefined();
+    expect(sha(z.string().catch("x"))).toBe(sha(z.string().default("x")));
+    expect(sha(z.string().catch("x").describe("d"))).toBe(
+      sha(z.string().default("x").describe("d")),
+    );
+    expect(sha(z.preprocess((value) => value, z.string().catch("x")))).toBe(
+      sha(z.string().default("x")),
+    );
+    // Other keys stay required, and a nested or `$defs` object is corrected too.
+    expect(
+      compiled(z.strictObject({ f: z.string().catch("x"), g: z.int(), h: z.int().optional() }))
+        .required,
+    ).toEqual(["g"]);
+    const Inner = z.strictObject({ g: z.int().catch(0), h: z.int() }).meta({ id: "Inner" });
+    const defs = compiled(z.strictObject({ f: Inner })).$defs as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(defs.Inner?.required).toEqual(["h"]);
   });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [

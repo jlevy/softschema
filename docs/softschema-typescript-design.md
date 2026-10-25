@@ -93,12 +93,21 @@ Those names are not formats: the emitted `pattern` already carries each constrai
 The `toJSONSchema` override removes the name and restores the format Zod derives from
 the schema’s other checks, which leaves the `pattern`-only form a Pydantic
 `Field(pattern=...)` emits.
-Every other string `format` is left as Zod writes it.
+An authored `.meta({ format })` is kept whatever its name, and every other string
+`format` is left as Zod writes it.
+
+Zod 4.6 lists a `.catch()` field in `required`, because its inner type is required,
+although Zod’s runtime fills an absent key with the catch value.
+Its Pydantic mirror is a defaulted field, so the override removes such a field from an
+object’s `required`, including behind a `z.preprocess()` transform.
 
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler
 drops `items: false` whenever `maxItems` is at most the number of `prefixItems`; a rest
 tuple keeps its `items` schema.
+An empty tuple also drops `prefixItems: []`, and `z.tuple([])` spells out `minItems: 0`,
+matching `tuple[()]`. The compiler also drops `type: "string"` from a record’s key
+schema, which every JSON key satisfies and Pydantic never emits there.
 
 Zod ISO datetime options such as offset, local-time, and precision affect semantic
 validation but are not represented in the canonical sidecar or `schema_sha256`. The

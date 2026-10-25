@@ -131,24 +131,64 @@ function expandTypeArray(node: Record<string, unknown>): void {
 }
 
 /**
- * Drop the `items: false` Zod 4.6 adds to a closed tuple when `maxItems` already forbids
- * every element past `prefixItems`.
+ * Rewrite a Zod 4.6 tuple into the form Pydantic's `tuple[...]` emits. Each rewrite
+ * changes no verdict.
  *
  * `z.tuple([z.string(), z.int()])` emits `prefixItems`, `items: false`, `minItems: 2`, and
  * `maxItems: 2`; Pydantic's `tuple[str, int]` emits the same without `items: false`. With
  * `maxItems` at most the number of `prefixItems`, no array that satisfies `maxItems` has an
- * element `items` would apply to, so removing it changes no verdict and restores the form
- * both compilers emit. A rest tuple (`items` is a schema) is left alone.
+ * element `items` would apply to, so `items: false` is dropped. A rest tuple (`items` is a
+ * schema) keeps it.
+ *
+ * An empty tuple also emits `prefixItems: []`, which constrains nothing and which Pydantic
+ * omits: `z.tuple([])` then matches `tuple[()]`, which also spells out `minItems: 0`, and
+ * `z.tuple([], z.int())` matches `tuple[int, ...]`.
  */
-function dropRedundantTupleClosure(node: Record<string, unknown>): void {
+function normalizeTuple(node: Record<string, unknown>): void {
+  if (!Array.isArray(node.prefixItems)) return;
   if (
     node.items === false &&
-    Array.isArray(node.prefixItems) &&
     typeof node.maxItems === "number" &&
     node.maxItems <= node.prefixItems.length
   ) {
     delete node.items;
   }
+  if (node.prefixItems.length === 0) {
+    delete node.prefixItems;
+    if (node.maxItems === 0) node.minItems ??= 0;
+  }
+}
+
+/**
+ * Drop `type: "string"` from a record's key schema, which Pydantic never emits there.
+ *
+ * Every JSON object key is a string, so the keyword is always satisfied. The shared
+ * canonical profile drops a key schema that is only `{type: "string"}`; this drops the
+ * keyword beside other key constraints. Then `z.record(z.enum(["a", "b"]), V)` emits
+ * `propertyNames: {enum: ["a", "b"]}` as Pydantic's `dict[Literal["a", "b"], V]` does,
+ * and a constrained key such as `z.string().min(2)` matches
+ * `dict[Annotated[str, Field(min_length=2)], V]`.
+ */
+function dropStringKeyType(node: Record<string, unknown>): void {
+  const keys = node.propertyNames;
+  if (isMapping(keys) && keys.type === "string" && Object.keys(keys).length > 1) {
+    delete keys.type;
+  }
+}
+
+/**
+ * Whether an object field fills an absent key through `.catch()`, possibly behind a
+ * `z.preprocess()` transform, which is how Zod 4.6 resolves a field's input optionality.
+ *
+ * Zod's runtime accepts the missing key and substitutes the catch value, and the field's
+ * Pydantic mirror is a defaulted field, which is not required. Zod 4.6 still lists the
+ * field in `required` because the inner type is required; Zod 4.4 did not.
+ */
+function catchesAbsentKey(field: z.core.$ZodType | undefined): boolean {
+  if (field instanceof z.core.$ZodPipe && field._zod.def.in instanceof z.core.$ZodTransform) {
+    return catchesAbsentKey(field._zod.def.out);
+  }
+  return field instanceof z.core.$ZodCatch;
 }
 
 /**
@@ -158,8 +198,8 @@ function dropRedundantTupleClosure(node: Record<string, unknown>): void {
  * as `format`, and these three now count. They are constraints, not formats: `pattern`
  * already carries each one, no JSON Schema vocabulary or Pydantic `Field(pattern=...)`
  * mirror emits them, and the name replaces a real format written by an earlier check, as
- * in `z.email().startsWith("a")`. Every other format Zod writes for a string helper that
- * Zod 4.4 also had is the one Zod 4.4 wrote, so only these three are corrected.
+ * in `z.email().startsWith("a")`. Only a format Zod generated is corrected: an authored
+ * `.meta({ format })` is kept whatever its name.
  */
 const AFFIX_CHECK_FORMATS = new Set(["starts_with", "ends_with", "includes"]);
 
@@ -225,11 +265,19 @@ export function buildCanonicalSchema(
       if (
         typeof jsonSchema.format === "string" &&
         AFFIX_CHECK_FORMATS.has(jsonSchema.format) &&
-        (source._zod.def.checks ?? []).some(isAffixCheck)
+        (source._zod.def.checks ?? []).some(isAffixCheck) &&
+        // Metadata is applied after the processor, so an authored format is what was emitted.
+        z.globalRegistry.get(source)?.format === undefined
       ) {
         const format = formatWithoutAffixChecks(source);
         if (format === undefined) delete jsonSchema.format;
         else jsonSchema.format = format;
+      }
+      if (source instanceof z.core.$ZodObject && Array.isArray(jsonSchema.required)) {
+        const shape = source._zod.def.shape;
+        const required = jsonSchema.required.filter((key) => !catchesAbsentKey(shape[key]));
+        if (required.length > 0) jsonSchema.required = required;
+        else delete jsonSchema.required;
       }
       // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
       // validate semantically with an intrinsic regex; drop it and keep the format.
@@ -264,7 +312,8 @@ export function buildCanonicalSchema(
   }) as Record<string, unknown>;
   visitSubschemas(raw, (node) => {
     expandTypeArray(node);
-    dropRedundantTupleClosure(node);
+    normalizeTuple(node);
+    dropStringKeyType(node);
   });
   addGeneratedTitles(raw, contractId);
   const schema = canonicalizeJsonSchema(augmentSchema(raw, contractId, schemaId));

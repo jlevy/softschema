@@ -44,8 +44,17 @@ version number.
   by an earlier check: `z.email().startsWith("a")` lost `format: email`. The compiler
   now removes the three names and restores the earlier format, so each helper compiles
   to the bare `pattern` that the `.regex()` spelling and a Pydantic `Field(pattern=...)`
-  mirror emit, with the same `schema_sha256` as under zod 4.4. Every other `format` that
-  Zod writes for a string helper zod 4.4 already had is unchanged.
+  mirror emit, with the same `schema_sha256` as under zod 4.4. Only a format Zod
+  generated is corrected: an authored `.meta({ format })` is kept whatever its name.
+  Each other string helper zod 4.4 already had, used alone, emits the same `format` as
+  under zod 4.4.
+- **TypeScript-compiled schemas match Pydantic again for `.catch()` fields under zod
+  4.6.** Zod 4.6 lists a `.catch()` field in `required` because its inner type is
+  required, although Zod’s runtime fills an absent key with the catch value and the
+  field’s Pydantic mirror, `f: str = "x"`, is not required.
+  The compiler removes such a field from `required` again, including behind
+  `z.preprocess()` and in `$defs`, so it compiles as under zod 4.4, with the same
+  `schema_sha256` as the `.default()` spelling and the Pydantic mirror.
 
 ### Changed
 
@@ -68,37 +77,51 @@ version number.
   were already reported alongside an unknown key.
   `z.iso.datetime()` rejects minute-precision input such as `2020-01-01T06:15Z`, which
   Pydantic accepts (temporal acceptance sets were already allowed to differ).
-- **Zod 4.5 and 4.6 change the compiled schema and `schema_sha256` of TypeScript models
-  that use these constructs; recompile their committed schemas.** `compile --check`
-  reports drift for them after upgrading.
-  `.startsWith()`, `.endsWith()`, and `.includes()` without a position still compile as
-  they did under zod 4.4 (see Fixed).
-  The KitchenSink parity fixture now covers those helpers and closed tuples, and a unit
-  test pins the output of the other constructs below.
-  - `z.tuple([...])` gains `minItems` and `maxItems`, and a rest tuple gains `minItems`.
-    The compiler drops the `items: false` Zod also adds, which `maxItems` already
-    implies, so `z.tuple([z.string(), z.int()])` compiles to the same schema as
-    Pydantic’s `tuple[str, int]`.
+- **Zod 4.5 and 4.6, with the compiler’s normalizations of their output, change the
+  compiled schema and `schema_sha256` of TypeScript models that use these constructs;
+  recompile their committed schemas.** `compile --check` reports drift for them after
+  upgrading. `.startsWith()`, `.endsWith()`, `.includes()` without a position, and
+  `.catch()` fields still compile as they did under zod 4.4 (see Fixed).
+  The KitchenSink parity fixture now covers the three helpers and closed tuples, and a
+  unit test pins the output of the other constructs below.
+  - `z.tuple([...])` with elements gains `minItems` and `maxItems`, and a rest tuple
+    gains `minItems`. The compiler drops the `items: false` Zod also adds, which
+    `maxItems` already implies, so `z.tuple([z.string(), z.int()])` compiles to the same
+    schema as Pydantic’s `tuple[str, int]`.
+  - An empty tuple drops `prefixItems: []`, which constrains nothing: `z.tuple([])`
+    compiles to `minItems: 0` and `maxItems: 0` as Pydantic’s `tuple[()]` does, and an
+    empty tuple with a rest schema compiles as `z.array()` of it, Pydantic’s
+    `tuple[int, ...]`.
   - `z.intersection(A, B)` and `A.and(B)` of inline objects fold into the one object
     they describe, the shape a Pydantic model with both sets of fields emits; the old
     `allOf` of two strict objects accepted no value.
     A member registered with `.meta({ id })` is a `$ref`, so an intersection with one
     still emits an `allOf`.
-  - `z.record(z.number(), V)` and `z.record(z.int(), V)` constrain keys with a string
-    `pattern` instead of `propertyNames: {type: number}`, which rejected every non-empty
-    object. Pydantic’s `dict[int, V]` emits no key constraint, so the two still differ.
-  - A record with enum or literal keys and an optional or defaulted value no longer
-    lists every key in `required`.
+  - `z.record(z.number(), V)` and `z.record(z.int(), V)` constrain keys with a `pattern`
+    instead of `propertyNames: {type: number}`, which rejected every non-empty object.
+    Pydantic’s `dict[int, V]` emits no key constraint, so the two still differ; matching
+    it would drop a key constraint Zod enforces.
+  - A record’s key schema no longer carries `type: "string"`, which every JSON key
+    satisfies, so a record with enum, literal, or constrained string keys changes
+    digest. A record with enum or literal keys and an optional or defaulted value also no
+    longer lists every key in `required`. With both changes,
+    `z.record(z.enum(["a", "b"]), V.optional())` equals Pydantic’s
+    `dict[Literal["a", "b"], V]`, and `z.record(z.string().min(2), V)` equals
+    `dict[Annotated[str, Field(min_length=2)], V]`. With required values, an enum-keyed
+    record still requires every key, as Zod’s runtime does and Pydantic’s does not, and
+    a `.regex()` key still differs from Pydantic’s `patternProperties`.
   - A union with duplicate members, such as `z.union([z.string(), z.string()])`,
     collapses to the one member, and `.nullable().nullable()` emits one flat `anyOf`;
     both now equal Pydantic.
-  - A `.catch()` field and a `z.preprocess()` field are listed in `required`, because
-    their declared input type is required.
-    A Pydantic field with a `BeforeValidator` and no default is required too.
+  - A `z.preprocess()` field is listed in `required`, as a Pydantic field with a
+    `BeforeValidator` and no default is.
   - A second `.multipleOf()` is kept in an `allOf` instead of being dropped.
   - Zod’s built-in patterns for `z.email()`, `z.emoji()`, `z.ulid()`, `z.cidrv6()`, and
     `z.base64url()` changed, and `.includes(text, { position })` now emits `^.{n,}text`,
     which matches `String.prototype.includes`.
+  - `z.ipv4()` or `z.ipv6()` followed by another format check takes that check’s format,
+    as every other helper already did: `z.ipv4().lowercase()` emits `format: lowercase`
+    and `z.ipv4().regex(...)` emits none.
 
 ## v0.8.1—2026-09-11
 
