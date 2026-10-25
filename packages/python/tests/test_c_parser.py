@@ -3,7 +3,7 @@
 ``ruamel.yaml.clib`` replaces ruamel's reader, scanner and parser with libyaml, a YAML 1.1
 scanner. Construction and resolution stay in Python, so on ordinary documents the two
 agree, but libyaml rejects some texts pure ruamel reads, accepts some it rejects, reads a
-few differently, and words almost every error differently. ``parse_yaml`` therefore
+few differently, and words most errors differently. ``parse_yaml`` therefore
 tries the C parser first only on texts with none of the shapes where the two disagree,
 and re-reads with pure ruamel on any failure, so pure ruamel stays the definition.
 
