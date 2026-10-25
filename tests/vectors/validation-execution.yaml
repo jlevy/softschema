@@ -118,6 +118,19 @@ cases:
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
     error_kind: schema_invalid
     error_reason: reference
+  # A URN with no namespace identifier cannot be resolved: jsonschema finds no resource
+  # for it, and Ajv's URI library cannot serialize it.
+  - name: malformed-urn-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {$ref: "urn:dir/item.json"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
   - name: unreferenced-definition-dangling-reference
     values: {name: hello}
     status: soft
@@ -367,6 +380,58 @@ cases:
     status: soft
     schema:
       $schema: 12
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  # Unhashable values must be refused by type, not by a failed set lookup.
+  - name: array-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: []
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: mapping-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: {}
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: nested-mapping-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {$schema: {}, type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: null-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: null
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: boolean-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: true
       type: object
     structural: {execution: not_run, ok: false, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}

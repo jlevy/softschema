@@ -264,7 +264,48 @@ function buildValidator(
   for (const [key, resource] of Object.entries(prepared.resources)) {
     ajv.addSchema(resource, typeof resource.$id === "string" ? resource.$id : key);
   }
-  return ajv.compile(prepared.root);
+  try {
+    return ajv.compile(prepared.root);
+  } catch (error) {
+    const documents = [prepared.root, ...Object.values(prepared.resources)];
+    throw unserializableReference(ajv, error, documents) ?? error;
+  }
+}
+
+/**
+ * What fast-uri, the URI library Ajv resolves with, throws for a URN with no namespace
+ * identifier, such as `urn:dir/item.json`.
+ */
+const URN_WITHOUT_NID = "URN without nid cannot be serialized";
+
+/**
+ * Report a `$ref` naming a URN that Ajv's URI library cannot serialize as the
+ * unresolvable reference it is, the reason Python's walk gives, not as a compilation
+ * failure. Only a `$ref` whose own value fails is reclassified: the same error raised by
+ * a root `$id`, or by a relative reference joined onto such an id, stays `compilation`.
+ */
+function unserializableReference(
+  ajv: Ajv2020,
+  error: unknown,
+  documents: Record<string, unknown>[],
+): SchemaGraphError | undefined {
+  if (!(error instanceof Error) || error.message !== URN_WITHOUT_NID) return undefined;
+  const { uriResolver } = ajv.opts;
+  for (const document of documents) {
+    for (const node of iterSchemas(document)) {
+      const reference = node.$ref;
+      if (typeof reference !== "string") continue;
+      try {
+        uriResolver.serialize(uriResolver.parse(reference));
+      } catch {
+        return new SchemaGraphError(
+          "reference",
+          `reference ${JSON.stringify(reference)} cannot be resolved: ${error.message}`,
+        );
+      }
+    }
+  }
+  return undefined;
 }
 
 /**

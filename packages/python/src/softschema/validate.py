@@ -541,11 +541,14 @@ def _check_dialect(schema: dict[str, Any]) -> None:
                     f"the {keyword!r} keyword is not part of Draft 2020-12 as both engines "
                     f"evaluate it; {remedy}"
                 )
-        if "$schema" in node and node["$schema"] not in _DIALECT_URIS:
-            raise SchemaError(
-                "compiled schemas use the canonical Draft 2020-12 $schema URI; "
-                f"got {node['$schema']!r}"
-            )
+        if "$schema" in node:
+            dialect = node["$schema"]
+            # Check the type first: a list or mapping is unhashable, so a bare set lookup
+            # would raise TypeError and be reported as a compilation failure instead.
+            if not isinstance(dialect, str) or dialect not in _DIALECT_URIS:
+                raise SchemaError(
+                    f"compiled schemas use the canonical Draft 2020-12 $schema URI; got {dialect!r}"
+                )
 
 
 def _check_root_identity(schema: dict[str, Any]) -> None:
