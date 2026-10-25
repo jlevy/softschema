@@ -77,6 +77,12 @@ structure should stabilize over time.
 - Date- and timestamp-shaped YAML scalars are portable strings, quoted or unquoted.
   JSON Schema `format` is annotation-only; use a semantic model or an explicit
   structural assertion when date validity matters.
+- Write YAML as printable text.
+  A raw control character, a lone carriage return, or the line separators U+0085, U+2028
+  and U+2029 anywhere in the YAML (keys and comments included) is a `yaml_parse_error`
+  in both runtimes, because the YAML engines read them differently; write such a
+  character as a double-quoted escape (`"\N"`, `"\L"`, `"\P"`, `"\f"`, `"\xHH"`).
+  `$SS repair` writes that escape for one inside a value.
 - The `softschema:` block is the self-description quartet: `contract` (the payload
   contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
   key), `status` (strictness).

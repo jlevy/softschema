@@ -6,7 +6,135 @@ version number.
 
 ## Unreleased
 
+This is a minor release (0.9.0): the portable YAML rule gains a normative rejection, and
+documents that validated under 0.8.1 can now be refused.
+
+### Compatibility
+
+**Newly rejected input.** Both implementations now reject, as `yaml_parse_error`, any
+raw character outside YAML 1.2 `c-printable` (the C0 controls other than tab, line feed,
+and carriage return; DEL; the C1 controls; U+FFFE and U+FFFF), the line separators
+U+0085, U+2028, and U+2029, and a carriage return that does not begin a `\r\n` sequence,
+anywhere in the YAML text they read: the frontmatter block or the pure-yaml document,
+comments and keys included, and every compiled schema file, YAML or JSON. The Markdown
+body is not checked.
+What changes for each runtime:
+
+- **TypeScript** previously read every one of these characters as content.
+  Any of them in frontmatter or pure-yaml now exits 2 under `validate`.
+- **Python** previously folded a raw U+0085 in a flow scalar to a space and kept a raw
+  U+2028 or U+2029 there; a lone carriage return was a line break.
+  Each is now rejected.
+  The rest of the class was already a ruamel parse error.
+
+Write such a character as an escape inside a double-quoted scalar: `"\N"` for U+0085,
+`"\L"` for U+2028, `"\P"` for U+2029, `"\r"` for a carriage return, `"\f"`, `"\v"`,
+`"\0"`, or `"\xHH"` for a control character.
+Both engines decode every one identically.
+`repair` writes the escape for a character inside a single-line value (see Added); one
+in a key, a comment, or a block scalar is reported with its line and escape and left for
+the author. To find affected files before upgrading:
+
+```bash
+rg -l '[\x{85}\x{2028}\x{2029}\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\r[^\n]'
+```
+
+**Fence lines.** A frontmatter delimiter is `---` plus trailing spaces or tabs only.
+Python previously also trimmed U+0085 and U+001C–U+001F, and TypeScript U+FEFF, so a
+`---` followed by one of those opened a fence in one runtime and not the other; now it
+is a fence in neither.
+
+**Escaped surrogate pairs.** A surrogate pair written as two `\u` escapes
+(`"\ud83d\ude00"`) is the one character it encodes in both runtimes, as in JSON; Python
+previously rejected it as a lone surrogate.
+
+**Message and `kind` changes.** `message` text may change within a minor release, and
+these did; `kind` is the matching key:
+
+- Every `line N, column M` in a frontmatter-md diagnostic now counts from the top of the
+  file (the opening fence is line 1), in the preflight and engine messages alike; it was
+  block-relative. Pure-yaml line numbers are unchanged.
+- The preflight message names the escape to write.
+- A path in a human-readable message (the backticked document name) has C0/C1 controls
+  and DEL written as `#xHHHH`.
+- A `schema_invalid` record whose schema the reader refused, or whose root is not a
+  mapping, now begins with the backticked schema path.
+- `repair` without `--contract` reports a fenceless document, an empty block, or a
+  pure-yaml list or scalar root with validate’s `kind` (`no_frontmatter`,
+  `yaml_not_mapping`) and message; it said `yaml_parse_error`.
+- `compile --check` reports a committed sidecar the portable reader refuses as drift
+  (exit 1, `drift_diff` naming the file) rather than raising a usage error (exit 2).
+
+**New record code.** `repair` emits `repair_applied` records with
+`code: yaml_escaped_character`; a consumer matching repair codes exhaustively should add
+it.
+
+**Compiled schemas.** `compile` output changes only for a model whose text carries one
+of the rejected characters: such strings are now double-quoted with escapes, and the
+sidecar reads back in both runtimes.
+`schema_sha256` is computed over canonical JSON and is unchanged for every schema.
+
+### Added
+
+- **`repair` escapes a raw character the portable rule rejects.** A U+0085, U+2028,
+  U+2029, control character, or lone carriage return inside a single-line value is
+  rewritten as a double-quoted scalar carrying the YAML escape, with one
+  `yaml_escaped_character` record per value naming each character and its escape.
+  The decoded value is exactly what YAML 1.2 gives the raw text; no character is
+  replaced by a guess at what was meant (a mis-decoded cp1252 ellipsis stays a visible
+  U+0085). Plain, single-quoted, and double-quoted values are handled, trailing comments
+  and the author’s own escapes are kept.
+  A rejected character in a key, a comment, or a block scalar stays a parse error.
+  Both implementations.
+
 ### Fixed
+
+- **`compile` writes schemas the portable reader accepts.** Both writers emitted U+0085,
+  U+2028, and U+2029 raw (ruamel single-quoted, the `yaml` package plain or
+  double-quoted), so a model whose description, default, or enum value carried one
+  produced a sidecar every later read refused as `schema_invalid`. Each writer now
+  forces such a string (keys included) into double-quoted style and writes the escape
+  both engines decode; `compile` runs the reader’s preflight on its own output; and
+  `compile --check` reports an unreadable committed sidecar as drift.
+  The cross-language parity fixture carries these characters in a description, a
+  default, and an enum value.
+
+- **Conform never folds a raw U+0085.** The conform pass loaded the YAML region through
+  the round-trip loader, which skipped the preflight; ruamel folds the character to a
+  space, so Python `repair --contract … --schema …` on a document `validate` rejects
+  retyped a scalar beside the fold, wrote the folded text with no record of it, and
+  reported `valid`. Conform now runs the preflight before loading, in both runtimes.
+  The TypeScript round-trip emitter also re-escapes these characters on output, so a
+  retype beside an escaped `\N` no longer undoes the escape.
+
+- **Fence lines trim one explicit set.** See Compatibility; six `fence_scan` vectors pin
+  the agreement.
+
+- **Control characters in a filename never reach stderr raw.** A document name in a
+  human-readable message is written through one helper per runtime that escapes C0/C1
+  controls and DEL as `#xHHHH`, so a hostile filename in a third-party corpus cannot
+  drive the terminal (an OSC title or clipboard write, a cleared and overwritten line, a
+  forged second diagnostic).
+  JSON output already escaped them.
+
+- **The TypeScript preflight’s error path no longer materializes the input** to count
+  the line and column (about 4x peak memory on a large single-line input); it counts
+  with index loops, as Python does.
+
+- **Diagnostics are easier to act on.** Frontmatter line numbers count from the top of
+  the file, the preflight message names the escape, and a `schema_invalid` message names
+  the schema file (the record’s `path` is the artifact).
+
+- **`repair` without `--contract` uses validate’s kinds** for a document that reads but
+  holds no mapping; see Compatibility.
+
+- **A surrogate pair written as two `\u` escapes decodes to one character in Python**,
+  as it already did in TypeScript and as JSON reads it.
+
+- **The sdist no longer ships `AGENTS.md`.** The file carries repository policy for
+  agents working in this repository, not package documentation; a consumer vendoring the
+  sdist tree would otherwise place it inside their own repository.
+  The wheel and npm package never included it.
 
 - **`repair` no longer changes how other ruamel emitters spell `null`.** The round-trip
   emitter behind `repair` registered its null representer through a stock

@@ -77,6 +77,12 @@ structure should stabilize over time.
 - Date- and timestamp-shaped YAML scalars are portable strings, quoted or unquoted.
   JSON Schema `format` is annotation-only; use a semantic model or an explicit
   structural assertion when date validity matters.
+- Write YAML as printable text.
+  A raw control character, a lone carriage return, or the line separators U+0085, U+2028
+  and U+2029 anywhere in the YAML (keys and comments included) is a `yaml_parse_error`
+  in both runtimes, because the YAML engines read them differently; write such a
+  character as a double-quoted escape (`"\N"`, `"\L"`, `"\P"`, `"\f"`, `"\xHH"`).
+  `$SS repair` writes that escape for one inside a value.
 - The `softschema:` block is the self-description quartet: `contract` (the payload
   contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
   key), `status` (strictness).
@@ -102,9 +108,9 @@ structure should stabilize over time.
   meant, and a scalar like `1850` that reads as a number where the contract wants a
   string — writes the file, and reports the verdict.
   Such a character in a key, a comment, or a block scalar is reported as a parse error
-  naming its line and the escape to write; it is never written raw in the YAML.
-  Anything it does not fix, such as a missing field or a key that is a near-miss for the
-  declared one, is yours to correct: it reports those and never guesses at them.
+  naming its line and the escape to write; it is never written raw in the YAML. Anything
+  it does not fix, such as a missing field or a key that is a near-miss for the declared
+  one, is yours to correct: it reports those and never guesses at them.
   A document it cannot read at all comes back as a record naming why, which is what a
   truncated write leaves behind.
   Add `--dry-run` to see what would change without writing, or `--check` to fail
