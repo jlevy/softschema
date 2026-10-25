@@ -194,6 +194,10 @@ properties:
     pattern: ^SKU-.*
     title: Sku
     type: string
+  slug:
+    default: none
+    title: Slug
+    type: string
   step:
     multipleOf: 5
     title: Step
@@ -231,4 +235,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: eb42fd756915b663235574b8becc406b19c3dfea2f1fd49d2a6712c76dcb2c7e
+  schema_sha256: 98785013248fe2bd601e662afa831339453f73dc81ca8153ea1eea45dd20d3b7

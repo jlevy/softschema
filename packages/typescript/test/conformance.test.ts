@@ -30,6 +30,12 @@ describe("KitchenSink cross-language parity", () => {
     // leaves one of them raw.
     expect(parsePortableYaml(readFileSync(REFERENCE, "utf8"))).toEqual(schema);
   });
+
+  test("the defaulted transform runs as its AfterValidator mirror does", () => {
+    // The transform is not in the schema; the default fills an absent key without it.
+    expect(KitchenSink.shape.slug.parse("Spirited-Away")).toBe("spirited-away");
+    expect(KitchenSink.shape.slug.parse(undefined)).toBe("none");
+  });
 });
 
 test("shared hardening vectors are readable", () => {

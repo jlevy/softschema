@@ -362,7 +362,10 @@ function unserializableReference(
         if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference)) {
           uriResolver.serialize(uriResolver.parse(uriResolver.resolve(reference, reference)));
         }
-      } catch {
+      } catch (caught) {
+        // Another malformed `$ref` raises a different error; it is not the one Ajv failed
+        // on, so keep looking for the URN that is.
+        if (!(caught instanceof Error) || caught.message !== URN_WITHOUT_NID) continue;
         return new SchemaGraphError(
           "reference",
           `reference ${JSON.stringify(reference)} cannot be resolved: ${error.message}`,
