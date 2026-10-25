@@ -13,11 +13,16 @@ matrix in the plan spec for how Pydantic and Zod outputs are normalized to agree
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from softschema import SoftField
+
+
+def _lowercase(value: str) -> str:
+    """Normalize a string after validation (Zod's `.transform()`)."""
+    return value.lower()
 
 
 class Address(BaseModel):
@@ -71,6 +76,9 @@ class KitchenSink(BaseModel):
     priority: int = 1
     label: str = "none"
     enabled: bool = True
+    # A default over a transform: the validator is not part of the schema, and the default
+    # is kept (Zod's `.transform().default()`).
+    slug: Annotated[str, AfterValidator(_lowercase)] = "none"
     # List of scalars with a minimum length.
     tags: list[str] = Field(min_length=1)
     # Optional + nullable (no default after canonicalization).

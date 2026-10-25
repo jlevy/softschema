@@ -22,6 +22,12 @@ describe("KitchenSink cross-language parity", () => {
     const expected = (committed["x-softschema"] as Record<string, unknown>).schema_sha256;
     expect(sha).toBe(expected as string);
   });
+
+  test("the defaulted transform runs as its AfterValidator mirror does", () => {
+    // The transform is not in the schema; the default fills an absent key without it.
+    expect(KitchenSink.shape.slug.parse("Spirited-Away")).toBe("spirited-away");
+    expect(KitchenSink.shape.slug.parse(undefined)).toBe("none");
+  });
 });
 
 test("shared hardening vectors are readable", () => {

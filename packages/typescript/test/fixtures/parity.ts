@@ -44,6 +44,10 @@ export const KitchenSink = z
     priority: z.int().default(1),
     label: z.string().default("none"),
     enabled: z.boolean().default(true),
+    slug: z
+      .string()
+      .transform((text) => text.toLowerCase())
+      .default("none"),
     tags: z.array(z.string()).min(1),
     notes: z.string().nullable().default(null),
     nickname: z.string().nullable().default("n/a"),

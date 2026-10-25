@@ -109,6 +109,30 @@ Every `.default()`, `.prefault()`, `.catch()`, and authored `default` value is c
 before Zod’s final JSON copy, which would turn NaN or ±Infinity into `null`: a
 non-finite number or a BigInt fails compilation, as it does in Python.
 
+Zod 4.4 and 4.6 also drop the value of a `.default()` over a type that transforms, as in
+`z.string().transform(f).default("x")` or a `.default()` over `z.preprocess()`. Its
+Pydantic mirror, a defaulted field with an `AfterValidator` or `BeforeValidator`, keeps
+its `default`, so the override restores that value as it does a catch value.
+Zod drops an authored `.meta({ default })` or `.meta({ examples })` the same way, and
+the Pydantic mirror (`Field(examples=[...])` or `json_schema_extra`) keeps it, so the
+override restores those too.
+A schema’s own value wins over one it inherits from a transforming inner type, as it
+does without a transform.
+Only a key Zod dropped is restored: one that is absent, or that holds a value inherited
+from a transforming inner type.
+A key Zod kept is left as Zod wrote it, so a schema without a transform keeps the
+`default` and `examples` Zod writes.
+Zod also leaves a key out of a `$ref` node when the entry the node refers to carries the
+same value, which only the finished `$defs` shows.
+A dropped key on a `$ref` node is therefore settled after compilation: it is left out
+when the first entry along the `$ref` chain that has the key carries the same value.
+Zod compares only the entry a node refers to directly and the entry of the schema it was
+cloned from. So where it writes a `default` or `examples` beside a `$ref` whose chain
+already carries the same value (an alias, a wrapper between the field and its `$ref`, or
+a second `.describe()` or `.meta()` clone), the transforming twin leaves that value out.
+The two validate alike, and such shapes have no Pydantic mirror.
+`test/compile-digests.test.ts` pins both behaviors over a corpus of shapes.
+
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler
 drops `items: false` whenever `maxItems` is at most the number of `prefixItems`; a rest
