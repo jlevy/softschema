@@ -3,14 +3,18 @@ type: is
 id: is-01m18spt3f6ybddjjxqc1e4c4j
 title: "PR #52 review F1: --repair and validate still disagree on exit class when --contract is supplied"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@vm
 labels: []
 dependencies: []
 parent_id: is-01m18sp5xn5a5kpxza57ts9mbm
+hold: null
+hold_until: null
 created_at: 2026-08-30T07:38:54.446Z
-updated_at: 2026-08-30T07:38:54.446Z
+updated_at: 2026-10-25T06:04:17.987Z
+started_at: 2026-10-25T06:04:17.987Z
 ---
 For the same unreadable file:
   validate f.md --contract t:M/v1                -> exit 2, no stdout

@@ -3,15 +3,19 @@ type: is
 id: is-01m184vk6ayjkkpjp9d7ncgnfh
 title: Open the PR for the repair end-to-end fix
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/reviews/review-2026-08-30-validate-repair-e2e.md
 labels: []
 dependencies: []
 parent_id: is-01m184s19wd17m979jyyh4fzez
 created_at: 2026-08-30T01:34:31.114Z
-updated_at: 2026-08-30T01:53:11.624Z
+updated_at: 2026-10-25T06:13:05.871Z
+closed_at: 2026-10-25T06:13:05.871Z
+close_reason: "Done: that PR is #52, merged 2026-08-30T01:54Z; released in v0.8.0."
+resolution: null
+duplicate_of: null
 ---
 Open the pull request from `claude/release-readiness-review-0pfteg` once every sibling
 is closed and the full local sweep is green.

@@ -3,9 +3,9 @@ type: is
 id: is-01m184s19wd17m979jyyh4fzez
 title: End-to-end validation of validate --repair
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 11
+version: 13
 spec_path: docs/project/reviews/review-2026-08-30-validate-repair-e2e.md
 labels: []
 dependencies: []
@@ -21,7 +21,11 @@ child_order_hints:
   - is-01m184vk6ayjkkpjp9d7ncgnfh
   - is-01m184zv333e0hf9wf6n3b0gbt
 created_at: 2026-08-30T01:33:07.260Z
-updated_at: 2026-08-30T01:36:50.275Z
+updated_at: 2026-10-25T06:15:58.681Z
+closed_at: 2026-10-25T06:13:06.238Z
+close_reason: "Shipped in v0.8.0 via PR #52 (c92d32f, b70010a, 12ef4ed); evidence in review-2026-08-30-validate-repair-e2e.md; all children closed."
+resolution: null
+duplicate_of: null
 ---
 Close the loop on the `validate --repair` feature before v0.8.0 ships: fix the defect
 that end-to-end agent testing found, prove the fix with automated cases, and leave a
@@ -31,7 +35,7 @@ runbook that reproduces the whole exercise against a real low-thinking model.
 
 `--repair` exists so a producing agent can run the same check its consumer will run.
 End-to-end testing drove Gemini 2.5 Flash at `thinkingBudget: 0` over a form contract
-loosely borrowed from the GTIA v2 `prelim-scan-terms` form in `finterm-ai/trading`,
+loosely borrowed from a downstream pipeline's prelim-scan form,
 feeding the agent only a prose runbook and a template so drift arose naturally.
 
 Two halves of the feature came out well and need no change:

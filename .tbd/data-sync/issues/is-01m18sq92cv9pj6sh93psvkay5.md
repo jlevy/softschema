@@ -3,14 +3,18 @@ type: is
 id: is-01m18sq92cv9pj6sh93psvkay5
 title: "PR #52 review F5: repair path does not name the file for a pure-yaml artifact that still fails to parse"
 kind: bug
-status: open
+status: in_progress
 priority: 3
-version: 3
+version: 4
+delegate: claude-code@vm
 labels: []
 dependencies: []
 parent_id: is-01m18sp5xn5a5kpxza57ts9mbm
+hold: null
+hold_until: null
 created_at: 2026-08-30T07:39:09.771Z
-updated_at: 2026-08-30T07:42:47.747Z
+updated_at: 2026-10-25T06:04:17.991Z
+started_at: 2026-10-25T06:04:17.991Z
 ---
 _parse_after_repair threads 'source' into parse_frontmatter_text but not parse_yaml_text, which takes no such parameter. Same asymmetry in TypeScript (parseYamlText).
 

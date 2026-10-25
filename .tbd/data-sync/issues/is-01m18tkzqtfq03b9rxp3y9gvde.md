@@ -3,9 +3,9 @@ type: is
 id: is-01m18tkzqtfq03b9rxp3y9gvde
 title: "[epic] Cut the v0.8.0 release"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 5
+version: 6
 labels: []
 dependencies: []
 child_order_hints:
@@ -14,7 +14,11 @@ child_order_hints:
   - is-01m18tmekhg694svqeavjs20sd
   - is-01m18tmexsyfvna9mfce7ztnvj
 created_at: 2026-08-30T07:54:50.490Z
-updated_at: 2026-08-30T07:55:06.040Z
+updated_at: 2026-10-25T06:13:05.062Z
+closed_at: 2026-10-25T06:13:05.062Z
+close_reason: "v0.8.0 released (PR #53, tag v0.8.0, PyPI+npm 2026-08-30); v0.8.1 followed (PR #56/#58)."
+resolution: null
+duplicate_of: null
 ---
 Everything for v0.8.0 is verified and green; this epic covers the mechanical release cut. Evidence: docs/project/reviews/review-2026-08-29-softschema-v080-readiness.md, Status Addendum 2026-08-30.
 

@@ -5,7 +5,7 @@ title: Decide fate of docs/softschema-design.md (delete, tombstone, or keep)
 kind: task
 status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/reviews/review-2026-05-26-softschema-docs-design.md
 labels: []
 dependencies:
@@ -13,14 +13,14 @@ dependencies:
     target: is-01kshb7m8fb7a0bcegmqp2c1vj
 parent_id: is-01kshb5636qx5g9ha5xaa6b5qb
 created_at: 2026-05-26T05:12:24.907Z
-updated_at: 2026-05-26T05:53:10.290Z
+updated_at: 2026-10-25T06:15:57.157Z
 closed_at: 2026-05-26T05:53:10.285Z
 close_reason: completed
 ---
 The active public-readiness plan (line 122) says: 'For now, do not add a standalone language-neutral docs/softschema-design.md. The durable public docs are the guide and spec.' The file was nevertheless created (and recently trimmed from ~1041 to ~853 lines).
 
 Options:
-(a) Delete the file. Extract any unique still-useful rationale into the active plan first. Recommended by the review and consistent with both the public-readiness plan and the trading-adoption plan.
+(a) Delete the file. Extract any unique still-useful rationale into the active plan first. Recommended by the review and consistent with both the public-readiness plan and the downstream consumer's adoption plan.
 (b) Replace with a short tombstone pointing to guide, spec, python-design, and active plan. Preserves a breadcrumb but adds noise to the docs/ root.
 (c) Keep it, and update the public-readiness plan to allow it.
 

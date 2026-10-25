@@ -4,8 +4,8 @@ id: is-01m0tenataem0p1w6xmrynypvt
 title: "Address PR #44 checked-enforcement review"
 kind: epic
 status: open
-priority: 1
-version: 28
+priority: 3
+version: 29
 labels:
   - pr-review
   - enforcement
@@ -30,7 +30,7 @@ child_order_hints:
   - is-01m0vk84h0dvy7640g1t5abf5k
   - is-01m0vk84tbj6s9w2g1k3fpcgxn
 created_at: 2026-08-24T17:56:29.631Z
-updated_at: 2026-08-25T04:35:54.826Z
+updated_at: 2026-10-25T06:13:30.451Z
 closed_at: null
 close_reason: null
 resolution: null
@@ -40,6 +40,4 @@ Address every S1-S7 finding from the holistic review comment on PR #44 plus the 
 
 ## Notes
 
-Reopened: Follow-up documentation clarification requested after rollout explanation
-
-Reopened: Additional cross-runtime contract questions identified after the documentation clarification.
+Review findings S1-S8 and all task children shipped (PR #44 merged, v0.7.0). Kept open only as the container for the P3 future features ss-3k67 and ss-vw22; not a release blocker.

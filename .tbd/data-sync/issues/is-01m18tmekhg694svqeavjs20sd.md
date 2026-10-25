@@ -3,16 +3,20 @@ type: is
 id: is-01m18tmekhg694svqeavjs20sd
 title: "Run release e2e phases 2-4: clean-environment installs and the quickstart as written"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies:
   - type: blocks
     target: is-01m18tmexsyfvna9mfce7ztnvj
 parent_id: is-01m18tkzqtfq03b9rxp3y9gvde
 created_at: 2026-08-30T07:55:05.713Z
-updated_at: 2026-08-30T07:55:15.324Z
+updated_at: 2026-10-25T06:13:04.353Z
+closed_at: 2026-10-25T06:13:04.353Z
+close_reason: "Done for v0.8.0: PR #53 body records phases 2-4; repeated for v0.8.1 in docs/project/reviews/review-2026-09-11-softschema-v081-release.md."
+resolution: null
+duplicate_of: null
 ---
 CI covers phase 1 and artifact smoke; it does not cover these. From the v0.8.0 readiness review's checklist:
 - clean-environment install of the built wheel (uvx softschema@<version>) and the npm tarball (npx -y softschema@<version>)
