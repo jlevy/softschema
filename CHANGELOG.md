@@ -124,6 +124,23 @@ and a model using `z.email()` compiles to a new `schema_sha256`; see Changed.
   A model using `z.email()` compiles with Zod’s new email `pattern`, so its
   `schema_sha256` changes; recompile its committed schema.
 
+### Performance
+
+- **A strict JSON document is parsed with `json`** when ruamel would read it
+  identically, so a large `.json` artifact validates many times faster.
+  YAML input, and every text on which JSON and YAML 1.2 can disagree, keeps the ruamel
+  path, so values, types, key order and error codes do not change.
+  The path runs only at a ruamel release the guards were checked against (0.18 and
+  0.19).
+- **YAML is parsed by ruamel’s optional C extension where it reads exactly as the
+  pure-Python parser**, several times faster, when `ruamel.yaml.clib` is installed and
+  is the libyaml build softschema was checked against.
+  Every other text, and every text libyaml fails on, is read by the pure parser, so
+  values and errors do not change.
+  `yaml_parser_mode()` and `softschema doctor` report which parser is active, and
+  `SOFTSCHEMA_PURE_YAML=1` turns the C parser off.
+  Compiled schemas are always written by the pure-Python emitter.
+
 ### Fixed
 
 - **TypeScript-compiled schemas match Pydantic again for nullable fields under zod 4.5
