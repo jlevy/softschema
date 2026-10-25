@@ -93,6 +93,12 @@ bun run publint     # lint the publishable package layout (run after build)
 bun audit           # dependency advisories against the committed bun.lock
 ```
 
+`bun test` never reads or writes `dist/` or `resources/`. The tests that run the built
+package build a private copy under `node_modules/.cache/` and remove it afterward, so
+the suite gives the same result whether or not you have built, and it is safe to run
+beside the golden runner, `cross-impl-diff.sh`, or another build.
+Those read `dist/`, so run `bun run build` before them.
+
 CI runs `bun audit` in its own `dependency-audit` job, separate from the `typescript`
 job (typecheck, lint, tests, build, publint, and the TypeScript golden runs), so a new
 upstream advisory shows up as a dependency-policy failure rather than as a skipped test

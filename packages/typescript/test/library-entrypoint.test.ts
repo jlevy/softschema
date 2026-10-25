@@ -11,24 +11,21 @@
  *     exposing its API.
  *
  * Every check runs the built output in a fresh Node process (not Bun), matching how a
- * published consumer loads the package. The build runs in `beforeAll` so the test is
- * self-contained regardless of run order.
+ * published consumer loads the package. The file builds a private copy of the package
+ * (see `built-package.ts`), so the test is self-contained regardless of run order and
+ * never rewrites the shared `dist/`.
  */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { SPAWN_TEST_TIMEOUT_MS, usePrivateBuild } from "./built-package.js";
 
-const PACKAGE_ROOT = resolve(import.meta.dir, "..");
-const INDEX = join(PACKAGE_ROOT, "dist", "index.js");
-const CLI = join(PACKAGE_ROOT, "dist", "cli.js");
-
-beforeAll(() => {
-  const build = spawnSync("bun", ["run", "build"], { cwd: PACKAGE_ROOT, encoding: "utf8" });
-  if (build.status !== 0) throw new Error(`build failed: ${build.stderr}`);
-}, 120_000);
+setDefaultTimeout(SPAWN_TEST_TIMEOUT_MS);
+const builtRoot = usePrivateBuild();
+const dist = (file: string) => join(builtRoot(), "dist", file);
 
 interface RunResult {
   status: number | null;
@@ -47,8 +44,8 @@ function runConsumer(body: string): RunResult {
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
-const indexUrl = () => pathToFileURL(INDEX).href;
-const cliUrl = () => pathToFileURL(CLI).href;
+const indexUrl = () => pathToFileURL(dist("index.js")).href;
+const cliUrl = () => pathToFileURL(dist("cli.js")).href;
 
 describe("library entrypoint (issue #16)", () => {
   test("named import of validateArtifact and parseSchemaMetadata resolves to callables", () => {
@@ -109,7 +106,7 @@ describe("library entrypoint (issue #16)", () => {
   });
 
   test("type declarations expose the public ESM consumer surface", () => {
-    const dts = readFileSync(join(PACKAGE_ROOT, "dist", "index.d.ts"), "utf8");
+    const dts = readFileSync(dist("index.d.ts"), "utf8");
     for (const sym of [
       "validateArtifact",
       "parseSchemaMetadata",

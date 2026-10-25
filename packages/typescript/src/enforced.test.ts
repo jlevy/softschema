@@ -419,6 +419,11 @@ test("documented engine deviations", () => {
   }
 });
 
+// Timeout: every vector compiles fresh Ajv validators, so this test does 1.4-1.8 s of CPU
+// work at idle on a 4-core Linux host (Bun 1.4.4). Three parallel `bun test` runs plus
+// `yes` on every core pushed it to as much as 7.3 s, past Bun's 5 s default in 12 of 18
+// measured runs; no other test in this file exceeded 0.81 s under that load, so the raise
+// is scoped here.
 test("shared enforcement semantics", () => {
   // Raw-versus-enforced verdicts are the primary oracle. Unsupported shapes must fail
   // explicitly instead of silently returning an under- or over-enforced verdict.
@@ -474,7 +479,7 @@ test("shared enforcement semantics", () => {
       expect(actual, item.id as string).toEqual(item.errors);
     }
   }
-});
+}, 30_000);
 
 test("multiple undeclared keys preserve field identity", () => {
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
