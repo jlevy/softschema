@@ -39,8 +39,9 @@ REQUIRE_JSON_PATH_ENV = "SOFTSCHEMA_REQUIRE_JSON_PATH"
 """Set in CI: the JSON path must be on, so the tests that need it fail instead of skipping.
 
 Without it, a C extension that slipped into the environment through a new dependency or
-a lock refresh would turn the path off, skip the five tests that prove a JSON document
-never reaches ruamel, and leave the suite green.
+a lock refresh would turn the path off, skip the five tests that need the path (three of
+them prove a JSON document never reaches ruamel; the other two are the slow corpus and
+generated comparisons), and leave the suite green.
 """
 requires_json_path = pytest.mark.skipif(
     not _portable._JSON_PATH_ENABLED and not os.environ.get(REQUIRE_JSON_PATH_ENV),
@@ -662,7 +663,8 @@ def test_installed_ruamel_is_a_checked_release() -> None:
     """The locked ruamel is inside the range, so this suite exercises the JSON path.
 
     With ``SOFTSCHEMA_REQUIRE_JSON_PATH`` set, as CI sets it, the path itself must be on:
-    a C extension in the environment then fails here instead of skipping five tests.
+    a C extension in the environment then fails here, and the tests that need the path
+    fail instead of skipping.
     """
     assert _portable._ruamel_is_checked(), ruamel.yaml.version_info
     if os.environ.get(REQUIRE_JSON_PATH_ENV):
