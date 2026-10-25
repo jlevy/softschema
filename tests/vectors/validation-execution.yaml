@@ -318,15 +318,296 @@ cases:
     structural: {execution: not_run, ok: false, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
     error_kind: schema_invalid
+  # Keywords only Ajv would honor are refused in both runtimes before either engine runs.
+  - name: nullable-keyword
+    values: {name: null}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string, nullable: true}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: property-named-nullable
+    values: {nullable: true}
+    status: soft
+    schema:
+      type: object
+      properties:
+        nullable: {type: boolean}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: recursive-ref-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {$recursiveRef: "#"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: recursive-anchor-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $recursiveAnchor: true
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: non-string-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: 12
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  - name: http-2020-12-schema-keyword
+    values: {name: hello}
+    status: soft
+    schema:
+      $schema: "http://json-schema.org/draft/2020-12/schema"
+      type: object
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: dialect
+  # A relative root $id has no base; the engines would invent different ones.
+  - name: relative-root-id
+    values: {item: {v: x}}
+    status: soft
+    schema:
+      $id: schemas/root.json
+      type: object
+      properties:
+        item: {$ref: "#/$defs/Item"}
+      $defs:
+        Item:
+          $id: dir/item.json
+          properties:
+            v: {$ref: "#/$defs/V"}
+          $defs:
+            V: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: absolute-root-id-nested-relative-id
+    values: {item: {v: x}}
+    status: soft
+    schema:
+      $id: https://example.com/schemas/root.json
+      type: object
+      properties:
+        item: {$ref: "#/$defs/Item"}
+      $defs:
+        Item:
+          $id: dir/item.json
+          properties:
+            v: {$ref: "#/$defs/V"}
+          $defs:
+            V: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: urn-root-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: urn:example:root
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  # Subschemas Ajv compiles nothing for are not walked either: an inert contains, and
+  # unevaluatedProperties or unevaluatedItems beside a sibling that evaluates everything.
+  # Unreached, both runtimes complete; reached, jsonschema still evaluates them, which the
+  # engine_deviations list pins.
+  - name: inert-contains-dangling-reference-unreached
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items: {type: array, contains: {$ref: "#/$defs/Missing"}, minContains: 0}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: impossible-contains-dangling-reference-unreached
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items:
+          type: array
+          contains: {$ref: "#/$defs/Missing"}
+          minContains: 2
+          maxContains: 1
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: bounded-contains-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items:
+          type: array
+          contains: {$ref: "#/$defs/Missing"}
+          minContains: 0
+          maxContains: 1
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
+  - name: unevaluated-properties-beside-additional-properties-unreached
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        extra:
+          type: object
+          additionalProperties: true
+          unevaluatedProperties: {$ref: "#/$defs/Missing"}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: unevaluated-properties-alone-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        extra:
+          type: object
+          unevaluatedProperties: {$ref: "#/$defs/Missing"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
+  - name: unevaluated-items-beside-items-dangling-reference
+    values: {name: hello, items: [1]}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items: {type: array, items: {}, unevaluatedItems: {$ref: "#/$defs/Missing"}}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: unevaluated-items-beside-inert-contains-dangling-reference
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items:
+          type: array
+          contains: {type: integer}
+          minContains: 0
+          unevaluatedItems: {$ref: "#/$defs/Missing"}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: reference
 
 # Engine differences on degenerate schemas that the reach rule does not remove. Each
 # runtime asserts its own listed result exactly, so a listed difference passes, drift on
 # either side fails (including drift that makes the engines agree, which is the signal to
 # move the case into `cases`), and an unlisted difference has nothing to pass against.
 # Raw mode; omitted error fields mean the layer reports no error. `softschema compile`
-# produces none of these shapes. Both runtimes exit 1 for every case except where a
-# TypeScript result below is ok.
+# produces none of these shapes. A side whose result is ok exits 0 there; every other
+# side exits 1.
 engine_deviations:
+  # Ajv compiles nothing for a subschema that can never apply; jsonschema evaluates it
+  # whenever the payload reaches it. The walk follows Ajv, so these fail in Python only
+  # during evaluation.
+  - name: inert-contains-dangling-reference-reached
+    values: {name: hello, items: [1]}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items: {type: array, contains: {$ref: "#/$defs/Missing"}, minContains: 0}
+    why: >-
+      `minContains: 0` with no `maxContains` makes `contains` a no-op in Ajv, which
+      compiles nothing for it; jsonschema still evaluates the subschema against each item.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: impossible-contains-dangling-reference-reached
+    values: {name: hello, items: [1]}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items:
+          type: array
+          contains: {$ref: "#/$defs/Missing"}
+          minContains: 2
+          maxContains: 1
+    why: >-
+      `minContains > maxContains` fails every array in Ajv without compiling the
+      subschema; jsonschema evaluates the subschema first.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: false, error_kind: schema_violation}
+  - name: unevaluated-properties-beside-additional-properties-reached
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      additionalProperties: true
+      unevaluatedProperties: {$ref: "#/$defs/Missing"}
+    why: >-
+      A sibling `additionalProperties` has evaluated every property, so Ajv compiles
+      nothing for `unevaluatedProperties`; jsonschema still evaluates its subschema.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: unevaluated-items-beside-contains-reached
+    values: {name: hello, items: [1]}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+        items:
+          type: array
+          contains: {type: integer}
+          unevaluatedItems: {$ref: "#/$defs/Missing"}
+    why: >-
+      A compiled sibling `contains` marks every item evaluated in Ajv, which then compiles
+      nothing for `unevaluatedItems`; jsonschema still evaluates its subschema.
+    python: {execution: errored, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: unevaluated-properties-after-allof-closure
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      allOf: [{additionalProperties: true}]
+      unevaluatedProperties: {$ref: "#/$defs/Missing"}
+    why: >-
+      Ajv tracks evaluated properties through `allOf`, so the member's
+      `additionalProperties` lets it skip `unevaluatedProperties`. The walk models only a
+      sibling `additionalProperties`, follows this subschema, and refuses the schema.
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
   - name: lone-if-dangling-reference
     values: {name: hello}
     schema:
@@ -349,10 +630,44 @@ engine_deviations:
         name: {type: string}
       if: {$ref: "#/$defs/Missing"}
       then: {}
-    why: >-
-      Ajv also ignores an `if` whose `then` and `else` cannot fail (`{}`, `true`, or
-      annotations only), while the reach rule counts any present `then` or `else`, so the
-      walk resolves the reference and Python refuses the schema before evaluation.
+    why: &trivial_branch_why >-
+      Ajv also ignores an `if` whose `then` and `else` are schemas it has no rule for:
+      `true`, `{}`, or a schema holding only annotations or keywords Ajv does not
+      validate. The reach rule counts any present `then` or `else`, so the walk resolves
+      the reference and Python refuses the schema before evaluation.
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: if-with-true-then-dangling-reference
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      if: {$ref: "#/$defs/Missing"}
+      then: true
+    why: *trivial_branch_why
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: if-with-annotation-then-dangling-reference
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      if: {$ref: "#/$defs/Missing"}
+      then: {title: Branch, description: Nothing to validate}
+    why: *trivial_branch_why
+    python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
+    typescript: {execution: completed, ok: true}
+  - name: if-with-annotation-else-dangling-reference
+    values: {name: hello}
+    schema:
+      type: object
+      properties:
+        name: {type: string}
+      if: {$ref: "#/$defs/Missing"}
+      else: {description: Nothing to validate}
+    why: *trivial_branch_why
     python: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: reference}
     typescript: {execution: completed, ok: true}
   - name: dynamic-ref-missing-anchor-typed-root

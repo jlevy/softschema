@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, TypeVar, cast
+from urllib.parse import urlparse
 
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import BaseModel, ValidationError
@@ -208,6 +209,7 @@ def _build_validator(
     if not isinstance(schema, dict):
         raise _SchemaRootNotAMapping
     resource_schemas = dict(resources or {})
+    _check_root_identity(schema)
     for document in (schema, *resource_schemas.values()):
         _check_patterns(document)
         _check_dialect(document)
@@ -510,25 +512,74 @@ _DIALECT_URIS = frozenset(
 )
 
 
+# Keywords Ajv honors that jsonschema's Draft 2020-12 validator ignores, each with the
+# portable form to write instead. Kept in step with TypeScript's `FOREIGN_KEYWORDS`.
+_FOREIGN_KEYWORDS = {
+    "dependencies": "use dependentSchemas or dependentRequired",
+    "nullable": "use type: [..., 'null']",
+    "$recursiveRef": "use $dynamicRef",
+    "$recursiveAnchor": "use $dynamicAnchor",
+}
+
+
 def _check_dialect(schema: dict[str, Any]) -> None:
     """Refuse keywords that only one engine would honor.
 
-    Ajv's 2020 vocabulary still evaluates the legacy ``dependencies`` keyword, which
-    jsonschema's Draft 2020-12 validator ignores, and Ajv refuses a ``$schema`` naming
-    another draft while jsonschema validates the document as 2020-12 regardless. Either
-    would let the two runtimes return different verdicts for one schema; refusing the
-    schema up front (``schema_invalid``, ``reason: dialect``) keeps them agreeing. Kept
-    in step with TypeScript's ``checkDialect``.
+    Ajv's 2020 vocabulary still evaluates the legacy ``dependencies`` keyword, the
+    OpenAPI ``nullable`` keyword, and 2019-09's ``$recursiveRef``/``$recursiveAnchor``,
+    all of which jsonschema's Draft 2020-12 validator ignores, and Ajv refuses a
+    ``$schema`` other than its 2020-12 meta-schema while jsonschema validates the document
+    as 2020-12 regardless. Any of these would let the two runtimes return different
+    verdicts for one schema; refusing the schema up front (``schema_invalid``,
+    ``reason: dialect``) keeps them agreeing. Kept in step with TypeScript's
+    ``checkDialect``.
     """
     for node in _iter_schemas(schema):
-        if "dependencies" in node:
+        for keyword, remedy in _FOREIGN_KEYWORDS.items():
+            if keyword in node:
+                raise SchemaError(
+                    f"the {keyword!r} keyword is not part of Draft 2020-12 as both engines "
+                    f"evaluate it; {remedy}"
+                )
+        if "$schema" in node and node["$schema"] not in _DIALECT_URIS:
             raise SchemaError(
-                "the legacy 'dependencies' keyword is not part of Draft 2020-12; "
-                "use dependentSchemas or dependentRequired"
+                "compiled schemas use the canonical Draft 2020-12 $schema URI; "
+                f"got {node['$schema']!r}"
             )
-        dialect = node.get("$schema")
-        if isinstance(dialect, str) and dialect not in _DIALECT_URIS:
-            raise SchemaError(f"compiled schemas use Draft 2020-12; got $schema {dialect!r}")
+
+
+def _check_root_identity(schema: dict[str, Any]) -> None:
+    """Require an absolute root ``$id``.
+
+    A relative root ``$id`` has no base to resolve against, so the engines invent one:
+    ``referencing`` crawls the document under the relative id and joins nested relative
+    ids onto it a second time, while Ajv resolves them once. Refusing the form keeps one
+    verdict; ``softschema compile`` always writes absolute ids. Kept in step with
+    TypeScript's ``checkRootIdentity``.
+    """
+    root_id = schema.get("$id")
+    if isinstance(root_id, str) and not urlparse(root_id).scheme:
+        raise SchemaGraphError(
+            "resource_identity",
+            f"the root $id must be an absolute URI, got {root_id!r}",
+        )
+
+
+def _contains_is_inert(node: dict[str, Any]) -> bool:
+    """Whether Ajv compiles nothing for this node's ``contains`` subschema.
+
+    Mirrors Ajv's ``contains`` keyword: ``minContains: 0`` with no ``maxContains`` makes
+    the keyword a no-op, and ``minContains > maxContains`` fails every array without
+    looking at the subschema. jsonschema evaluates the subschema in both cases, so a
+    dangling reference inside it is a pinned engine deviation when the payload reaches it.
+    """
+    minimum = node.get("minContains", 1)
+    maximum = node.get("maxContains")
+    if not isinstance(minimum, int | float):
+        return False
+    if maximum is None:
+        return minimum == 0
+    return isinstance(maximum, int | float) and minimum > maximum
 
 
 # The applicators both engines evaluate, which is what the reference walk follows. The
@@ -599,6 +650,18 @@ def _check_references(schema: dict[str, Any], registry: Registry[Any]) -> None:
             single_keywords.add("if")
         if "if" in node:
             single_keywords.update(("then", "else"))
+        # Ajv compiles nothing for a subschema that can never apply: an inert `contains`,
+        # `unevaluatedProperties` once a sibling `additionalProperties` has evaluated
+        # every property, and `unevaluatedItems` once a sibling `items` (or a compiled
+        # `contains`) has evaluated every item. Evaluated-set tracking through `allOf`
+        # or references is not modeled; those subschemas are followed, and the
+        # difference is pinned as an engine deviation.
+        if _contains_is_inert(node):
+            single_keywords.discard("contains")
+        if "additionalProperties" in node:
+            single_keywords.discard("unevaluatedProperties")
+        if "items" in node or ("contains" in node and "contains" in single_keywords):
+            single_keywords.discard("unevaluatedItems")
         for key, value in node.items():
             if key in _WALK_MAP_KEYWORDS and isinstance(value, dict):
                 pending.extend((child, resolver, False) for child in value.values())
