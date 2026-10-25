@@ -101,6 +101,7 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "validate_semantic",
         "validate_structural",
         "validate_values",
+        "yaml_parser_mode",
     }
 
 

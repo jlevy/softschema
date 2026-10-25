@@ -13,6 +13,7 @@ from typing import Any
 
 from frontmatter_format import new_yaml
 from pydantic import BaseModel
+from ruamel.yaml.emitter import Emitter
 from strif import atomic_write_text
 
 from softschema._identity import check_root_id
@@ -170,6 +171,11 @@ def _yaml_dump(schema: dict[str, Any]) -> str:
     # its default empty/None suppression: a schema serializer must never drop a
     # field (e.g. an empty `properties` or a `null` enum member).
     writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
+    # Always ruamel's pure-Python emitter. With the optional C extension installed, a
+    # safe handle otherwise writes through libyaml's emitter, which escapes astral
+    # characters such as emoji and breaks long lines differently, so the compiled bytes,
+    # and every `compile --check`, would depend on what else is installed.
+    writer.Emitter = Emitter
     # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
     # wrapped onto continuation lines; keeps the compiled schema clean and the byte
     # output reproducible across implementations.

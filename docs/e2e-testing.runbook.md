@@ -30,7 +30,7 @@ The automated half of the story runs on every push and PR
 | Check | Where automated |
 | --- | --- |
 | codespell, ruff, basedpyright, doc footers | `build` job (`devtools/lint.py --check`) |
-| Python unit tests (pytest, 3.11–3.14) | `build` job |
+| Python unit tests (pytest, 3.11–3.14), default and `slow` tiers, C-first and with `SOFTSCHEMA_PURE_YAML=1` | `build` job |
 | Python build (`uv build`) | `build` job |
 | TS typecheck, biome, unit tests + coverage gate | `typescript` job |
 | TS build + publint (publishable layout) | `typescript` job |
@@ -56,7 +56,10 @@ Mirror CI from the repo root, in this order (later phases depend on the builds):
 ```bash
 make install        # uv sync + npm install (lefthook) + bun install
 make lint-check     # codespell, ruff, basedpyright, doc footers
-uv run pytest       # Python unit tests
+uv run pytest       # Python unit tests, default tier
+uv run pytest -m slow  # the slow tier (corpus and generated-document comparisons)
+SOFTSCHEMA_PURE_YAML=1 uv run pytest          # both tiers again with the pure-Python
+SOFTSCHEMA_PURE_YAML=1 uv run pytest -m slow  #   YAML parser (`make test` runs all four)
 uv build            # wheel + sdist into dist/ (used by Phase 2)
 
 cd packages/typescript

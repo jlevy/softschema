@@ -240,6 +240,73 @@ boundary has been identified.
 It preflights parser events for limits and unsupported YAML features, then checks the
 constructed result against the JSON-compatible portable domain defined by the spec.
 
+A document whose text is strict JSON is read with the standard library `json` module
+instead, when ruamel is known to read that text to an identical value.
+ruamel without its optional C extension is pure Python, so for a large JSON artifact the
+YAML parse otherwise costs far more than the schema validation itself.
+The JSON path is an optimization, not a second dialect: a JSON document still means what
+YAML 1.2 says it means.
+Every text on which the two can disagree goes to ruamel unchanged: duplicate keys, `NaN`
+and `Infinity` (plain-scalar strings in YAML), a `<<` key, escaped surrogates, raw
+characters ruamel rejects or treats as line breaks, tabs outside the root collection,
+keys past YAML’s 1024-character implicit-key limit or with a line break before their
+colon, and nesting past the depth limit.
+Both paths finish with the same portable-value check, so values, types, key order, and
+error codes and messages do not depend on which one ran.
+The JSON path is compared with pure-Python ruamel, and it stays valid when ruamel’s C
+extension is installed, because the ruamel path then still reads every text as pure
+ruamel does. Its guards were derived from ruamel’s reader, scanner and resolver at 0.18
+and 0.19 (`CHECKED_RUAMEL_VERSIONS`), so a later ruamel release turns the path off until
+the comparison is rerun; that costs only speed.
+
+ruamel’s optional C extension (`ruamel.yaml.clib`) is libyaml, a YAML 1.1 scanner and
+parser; ruamel’s constructor and resolver stay in Python either way.
+softschema uses it when it is installed and is the libyaml build the guards below were
+derived for (`CHECKED_LIBYAML_VERSION`, on a ruamel release inside
+`CHECKED_RUAMEL_VERSIONS`), and pure ruamel stays the definition of every result:
+`yaml_parser_mode()` reports `"c-first"` then, and `"pure"` when the extension is
+absent, is another build, or `SOFTSCHEMA_PURE_YAML` is set to anything but empty or `0`;
+`softschema doctor` reports the same.
+On ordinary documents libyaml reads exactly what pure ruamel reads, several times
+faster. Where the two differ, libyaml usually rejects what pure ruamel accepts (a URL
+inside a flow sequence, a reserved directive) or words the error differently, so any
+exception from the C attempt, including the preflight and the portable-value check,
+discards it and pure ruamel reads the text again.
+The fallback cannot catch the opposite direction, libyaml accepting a text pure ruamel
+rejects or reading a different value, so texts with any shape where that was found go to
+pure ruamel directly: a tab anywhere, NEL, LS, PS or a byte order mark, a line starting
+with `%` (libyaml ignores `%YAML 1.1` when resolving values), a block scalar header with
+a comment and no space or followed by a line of only spaces, a document that is a block
+scalar, a colon after a space, line break or quote and before anything but a space or
+line break (libyaml reads `["a":1]` and `[? a #c` + newline + `:x]` as mappings, YAML
+1.2 does not), and a document end marker (libyaml skips a second `...`). The shapes were
+found by comparing the two parsers over every text of up to four characters, templates,
+generated and mutated documents, and every Basic Multilingual Plane code point, and
+`test_c_parser.py` compares C-first, forced pure, and a process without the extension on
+each of them. The guards run in linear time: each is a substring test or one pass whose
+regex uses possessive quantifiers, and the space-line check visits each line of only
+spaces once and looks back only as far as the line before it, so a block scalar with
+thousands of indented blank lines costs one short step per line.
+`test_c_parser.py` pins the routing of adversarial inputs such as a long `#` banner
+comment, thousands of `| #` on one line and a hundred thousand space-only lines, counts
+the characters the space-line loop hands to `rfind` and the header search (a
+deterministic bound of three per character of text, so the gate cannot flake on a shared
+runner), and times the guard’s growth over a hundredfold input in the `slow` tier, where
+a quadratic would cost a hundred times the linear ratio.
+softschema’s routed list is shorter than the one frontmatter-format uses for the same
+idea, and that is sufficient only because of softschema’s portable domain: the other
+shapes on which libyaml reads a value pure ruamel rejects (`[? ]]`, `&a: 1`, `k: !`) all
+give libyaml a reading with an anchor, a tag or a non-string key, which the event
+preflight (`yaml_alias`, `yaml_custom_tag`) or the portable-value check
+(`yaml_non_string_key`) raises on, so the C attempt falls back.
+If the portable domain ever admits anchors, tags or non-string keys, the routed list
+must grow to cover them.
+The differential search behind the guards is `devtools/yaml_parser_fuzz.py`; rerun it
+after any ruamel or `ruamel.yaml.clib` bump before widening either checked range.
+`compile` writes the schema through ruamel’s pure-Python emitter whether or not the
+extension is installed, because libyaml’s emitter escapes astral characters and breaks
+long lines differently.
+
 ruamel.yaml normally constructs implicit date- and timestamp-shaped scalars as Python
 `date` and `datetime` objects.
 The softschema parser assigns a private `SafeConstructor` subclass that returns the
