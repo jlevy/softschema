@@ -726,8 +726,8 @@ describe("compile: write mode + build", () => {
     expect(sha(Transformed.default({ a: "x" }))).toBe(
       sha(z.strictObject({ a: z.string() }).default({ a: "x" })),
     );
-    expect(field(Transformed.meta({ id: "Inner" }).default({ a: "x" }))).toEqual({
-      $ref: "#/$defs/Inner",
+    expect(field(Transformed.meta({ id: "Defaulted" }).default({ a: "x" }))).toEqual({
+      $ref: "#/$defs/Defaulted",
       default: { a: "x" },
     });
     const Nested = z
@@ -756,14 +756,49 @@ describe("compile: write mode + build", () => {
     });
     expect(sha(record)).toBe(sha(z.record(z.enum(["a", "b"]), z.string().default("x"))));
 
-    // Only a value a transform dropped comes back. Zod also omits a field's default when the
-    // `$defs` entry it references carries the same value; that stays as Zod writes it, for
-    // `.default()` and `.catch()` alike.
-    const Status = z.enum(["a", "b"]).default("a").meta({ id: "Status" });
-    const Caught = z.enum(["a", "b"]).catch("a").meta({ id: "Caught" });
-    expect(field(Status.describe("d"))).toEqual({ $ref: "#/$defs/Status", description: "d" });
-    expect(field(Caught.describe("d"))).toEqual({ $ref: "#/$defs/Caught", description: "d" });
-    expect(field(Status.default("a"))).toEqual({ $ref: "#/$defs/Status" });
+    // Zod also omits a field's default when the `$defs` entry it references carries the same
+    // value. A restored value is settled the same way, so an id'd default compiles alike
+    // whether or not it transforms, for `.default()` and `.catch()`; a different value stays.
+    const ids = (name: string) => ({
+      plain: z
+        .enum(["a", "b"])
+        .default("a")
+        .meta({ id: `${name}Plain` }),
+      transformed: z
+        .enum(["a", "b"])
+        .transform(same)
+        .default("a")
+        .meta({ id: `${name}Mapped` }),
+      caught: z
+        .enum(["a", "b"])
+        .catch("a")
+        .meta({ id: `${name}Caught` }),
+      caughtTransformed: z
+        .enum(["a", "b"])
+        .transform(same)
+        .catch("a")
+        .meta({ id: `${name}CaughtMapped` }),
+    });
+    for (const [kind, schema] of Object.entries(ids("Status"))) {
+      const ref = `#/$defs/${(z.globalRegistry.get(schema) as { id: string }).id}`;
+      expect([kind, field(schema.describe("d"))]).toEqual([kind, { $ref: ref, description: "d" }]);
+      expect([kind, field(schema.default("a" as never))]).toEqual([kind, { $ref: ref }]);
+      expect([kind, field(schema.default("b" as never))]).toEqual([
+        kind,
+        { $ref: ref, default: "b" },
+      ]);
+    }
+    // A reference to the root has no `$defs` entry, so the value stays, as Zod keeps it.
+    const Tree: z.ZodType = z.strictObject({
+      name: z.string().transform(same),
+      get child() {
+        return Tree.default({ name: "leaf" });
+      },
+    });
+    expect((compiled(Tree).properties as { child: unknown }).child).toEqual({
+      $ref: "#",
+      default: { name: "leaf" },
+    });
   });
   test("rejects a default or catch value canonical JSON cannot carry, as Python does", () => {
     const compile = (field: z.ZodType) =>

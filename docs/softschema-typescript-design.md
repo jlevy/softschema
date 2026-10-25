@@ -113,8 +113,10 @@ Zod 4.4 and 4.6 also drop the value of a `.default()` over a type that transform
 `z.string().transform(f).default("x")` or a `.default()` over `z.preprocess()`. Its
 Pydantic mirror, a defaulted field with an `AfterValidator` or `BeforeValidator`, keeps
 its `default`, so the override restores that value as it does a catch value.
-It restores only what a transform dropped: Zod also omits a field’s default when the
-`$defs` entry the field references carries the same value, and that omission stays.
+Zod also omits a field’s default when the `$defs` entry the field references carries the
+same value, and a restored value is left out in the same case.
+The compiler settles that once `$defs` is complete, so an id’d default compiles alike
+whether or not it transforms.
 
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler

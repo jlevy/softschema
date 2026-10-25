@@ -73,9 +73,10 @@ version number.
   plain `.default()` and its Pydantic mirror.
   The value is written as given, because neither Zod nor Pydantic runs the transform on
   a default, and it is checked like every other default (see below).
-  A default Zod omits because the `$defs` entry a field references carries the same
-  value stays omitted, for `.default()` and `.catch()` alike.
-  The KitchenSink parity fixture now covers a defaulted transform.
+  As Zod does for any default, a field that references a `$defs` entry carrying the same
+  value leaves the value out, so an id’d default compiles alike whether or not it
+  transforms, for `.default()` and `.catch()`. The KitchenSink parity fixture now covers
+  a defaulted transform.
 - **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
   compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
   `default` used to compile to `default: null`, because Zod’s final JSON copy of the
