@@ -30,6 +30,7 @@ from softschema.validate import (
     infer_envelope_key,
     parse_frontmatter_text,
     parse_yaml_text,
+    portable_artifact_kind,
     read_frontmatter_doc,
     read_yaml_doc,
     unreadable_artifact_result,
@@ -521,10 +522,15 @@ def _repair_failure_kind(repaired: RepairResult, parse_error: PortableInputError
     diagnosis, and quoting could never have fixed it. Otherwise the reader's code names
     the failure, which is the ordinary case: repair reports success for a document with no
     frontmatter region to rewrite, leaving the reader to say why it cannot be opened.
+
+    Either code goes through the same code-to-kind rule validation applies, so a non-UTF-8
+    file is ``artifact_invalid_utf8`` at ``input_error`` here as it is under a contract.
     """
     if repaired.error_code:
-        return repaired.error_code
-    return parse_error.code if parse_error is not None else "yaml_parse_error"
+        return portable_artifact_kind(repaired.error_code)
+    if parse_error is not None:
+        return portable_artifact_kind(parse_error.code)
+    return "yaml_parse_error"
 
 
 def _repair_failure_message(
@@ -544,8 +550,8 @@ def _repair_failure_message(
     if repaired.error_message:
         return repaired.error_message
     if profile is SchemaProfile.pure_yaml:
-        return f"the document root is not a YAML mapping: `{path}`"
-    return f"the document has no YAML frontmatter: `{path}`"
+        return f"`{path}`: the document root is not a YAML mapping"
+    return f"`{path}`: the document has no YAML frontmatter"
 
 
 def _detect_profile(path: Path) -> SchemaProfile:

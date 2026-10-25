@@ -28,8 +28,28 @@ version number.
   The `validate` diagnostic and the `yaml_parse_error` record now begin with the
   backticked document path, followed by the engine’s message, in both profiles, both
   commands, and both implementations.
-  The record `kind` is unchanged; anything matching the engine’s message from its first
-  character needs its pattern widened.
+  softschema’s own messages that name a document (an unterminated fence, non-mapping
+  frontmatter, a document with no frontmatter or a non-mapping root) use the same
+  backticked prefix, and the non-UTF-8 diagnostic, which named no file, now names it
+  too. The record `kind` is unchanged; anything matching the engine’s message from its
+  first character, or one of softschema’s own messages in full, needs its pattern
+  widened.
+
+- **`repair` reports a non-UTF-8 artifact the way `validate` does.** Without
+  `--contract`, the record `repair` built for a file that is not UTF-8 carried repair’s
+  raw `invalid_utf8` code as its `kind` and the verdict `invalid`, where the same file
+  under `--contract`, and under `validate`, is `artifact_invalid_utf8` at `input_error`.
+  Repair’s error code now goes through the same code-to-kind rule validation applies, in
+  both implementations, and the TypeScript result for a contract-less unreadable
+  document derives its `outcome` from the record kind as Python does.
+
+- **The Python frontmatter reader splits lines the way TypeScript does.** It used
+  `str.splitlines()`, which also breaks on U+2028, U+2029, U+0085, form feed, and the
+  ASCII separators. A frontmatter scalar containing one was cut into lines the YAML
+  engine could not parse, so Python `validate` exited 2 with a parse error where
+  TypeScript read the document and reached the contract verdict.
+  Both readers now split on `\n` alone and drop a trailing `\r`, the rule the repair
+  fence scan already used.
 
 ### Security
 

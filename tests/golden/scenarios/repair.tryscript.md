@@ -16,6 +16,7 @@ fixtures:
   - {source: ../fixtures/repair.schema.yaml, dest: missing/repair.schema.yaml}
   - {source: ../fixtures/repair-unrepairable.md, dest: floor/repair-unrepairable.md}
   - {source: ../fixtures/repair-unrepairable.yaml, dest: floor/repair-unrepairable.yaml}
+  - {source: ../fixtures/repair-non-utf8.md, dest: floor/repair-non-utf8.md}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: dry/repair-unquoted-colon.md}
   - {source: ../fixtures/repair.schema.yaml, dest: dry/repair.schema.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: check/repair-unquoted-colon.md}
@@ -39,6 +40,7 @@ fixtures:
   - {source: ../fixtures/repair-missing-required.md, dest: original/repair-missing-required.md}
   - {source: ../fixtures/repair-unrepairable.md, dest: original/repair-unrepairable.md}
   - {source: ../fixtures/repair-unrepairable.yaml, dest: original/repair-unrepairable.yaml}
+  - {source: ../fixtures/repair-non-utf8.md, dest: original/repair-non-utf8.md}
   - {source: ../fixtures/repair-unterminated-fence.md, dest: original/repair-unterminated-fence.md}
 env:
   NO_COLOR: "1"
@@ -512,6 +514,59 @@ byte-identical
 ? 0
 ```
 
+A file that is not UTF-8 at all sits below even that floor: there is no text to repair.
+Without `--contract`, the record is the one `repair` builds itself, and it is the record
+`validate` gives the identical condition — `artifact_invalid_utf8` at `input_error`, which
+is what tells a gate that the file is not an artifact rather than a failing one. Repair's
+own error code is `invalid_utf8`; the record maps it through the same code-to-kind rule
+validation applies, so the verdict does not depend on whether a contract was named. The
+message is softschema's own, names the file, and is pinned in full.
+
+```console
+$ $SOFTSCHEMA repair floor/repair-non-utf8.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "input_error",
+  "path": "floor/repair-non-utf8.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "artifact_invalid_utf8"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "artifact_invalid_utf8",
+        "message": "`floor/repair-non-utf8.md`: input is not valid UTF-8"
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ $SOFTSCHEMA validate floor/repair-non-utf8.md 2>&1
+softschema validate: `floor/repair-non-utf8.md`: input is not valid UTF-8
+? 2
+```
+
+```console
+$ cmp original/repair-non-utf8.md floor/repair-non-utf8.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
 # Journey: `repair --check` reports without writing
 
 What a gate runs when it wants to know whether an artifact *would* be repaired, without
@@ -722,7 +777,7 @@ the wrong one this journey exists to catch.
 
 ```console
 $ $SOFTSCHEMA validate fence/repair-unterminated-fence.md 2>&1
-softschema validate: Delimiter `---` for end of frontmatter not found: `fence/repair-unterminated-fence.md`
+softschema validate: `fence/repair-unterminated-fence.md`: Delimiter `---` for end of frontmatter not found
 ? 2
 ```
 
@@ -752,7 +807,7 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
     "errors": [
       {
         "kind": "yaml_parse_error",
-        "message": "Delimiter `---` for end of frontmatter not found: `repair-unterminated-fence.md`"
+        "message": "`repair-unterminated-fence.md`: Delimiter `---` for end of frontmatter not found"
       }
     ],
     "ok": false,

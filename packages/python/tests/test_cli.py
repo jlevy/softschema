@@ -968,6 +968,31 @@ def test_repair_reports_an_unreadable_artifact_with_or_without_a_contract(
         assert "--contract" not in record["message"], argv
 
 
+def test_repair_reports_a_non_utf8_artifact_as_the_same_input_error_validation_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `kind` is the documented matching key, and `unreadable_artifact_result` promises the
+    # shape validation uses for the identical condition. Without a contract, repair's raw
+    # `invalid_utf8` code reached the record unmapped, so the same file was
+    # `artifact_invalid_utf8` at `input_error` under `--contract` and `invalid_utf8` at
+    # `invalid` without it.
+    path = tmp_path / "latin1.md"
+    path.write_bytes(b"---\ntitle: na\xefve\n---\nBody.\n")
+    for argv in (
+        ["repair", str(path), "--check"],
+        ["repair", str(path), "--check", "--contract", "test.detect:Doc/v1"],
+    ):
+        assert softschema_main(argv) == 1, argv
+        captured = capsys.readouterr()
+        assert captured.err == "", argv
+        result = json.loads(captured.out)
+        assert result["outcome"] == "input_error", argv
+        record = result["structural"]["errors"][0]
+        assert record["kind"] == "artifact_invalid_utf8", argv
+        assert record["message"] == f"`{path}`: input is not valid UTF-8", argv
+    assert path.read_bytes() == b"---\ntitle: na\xefve\n---\nBody.\n"
+
+
 def test_repair_leaves_an_unreadable_artifact_untouched(tmp_path: Path) -> None:
     path = _detect_case(tmp_path, "unreadable.md", _UNREADABLE)
     before = path.read_bytes()

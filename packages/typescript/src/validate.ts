@@ -128,7 +128,8 @@ function parseYaml(text: string, source: string): unknown {
  * The engine says where in the text it stopped, not which text: the `yaml` package reports
  * a line and column and ruamel an anonymous `"<unicode string>"`. An agent repairing a
  * batch of artifacts cannot act on a line number alone, so both readers put the document
- * first, in the backticked form softschema's own messages already use. Mirrors the Python
+ * first, in the backticked-prefix form every softschema message that names a document
+ * uses. Mirrors the Python
  * `_parse_document_yaml`.
  */
 function nameSource(message: string, source: string): string {
@@ -172,7 +173,7 @@ export function parseFrontmatterText(text: string, source = "<text>"): ParsedDoc
     }
   }
   if (end === -1) {
-    throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${source}\``);
+    throw new YamlParseError(`\`${source}\`: Delimiter \`---\` for end of frontmatter not found`);
   }
   // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
@@ -182,7 +183,7 @@ export function parseFrontmatterText(text: string, source = "<text>"): ParsedDoc
     // `null`), a list, or a bare scalar. Use the portable type names from the shared
     // error contract.
     throw new YamlParseError(
-      `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${source}\``,
+      `\`${source}\`: Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}`,
     );
   }
   return { hasFence: true, value: parsed };
@@ -588,7 +589,7 @@ export function unreadableArtifactResult(
     contract: null,
     contract_id: "",
     document_metadata: null,
-    outcome: "invalid",
+    outcome: outcomeFor(false, args.kind),
     path: docPath,
     profile: args.profile,
     semantic: { ok: false, errors: [], skipped_reason: args.kind },
@@ -602,6 +603,23 @@ export function unreadableArtifactResult(
   return result;
 }
 
+/**
+ * The verdict class a result reports, derived from its first structural record exactly as
+ * Python's `ArtifactValidationResult.__post_init__` derives it: an artifact that could not
+ * be opened or decoded is an `input_error`, not a failing artifact. Every result builder
+ * goes through this one rule, so a record `repair` builds for a contract-less document
+ * lands at the same outcome `validate` gives the identical condition.
+ */
+function outcomeFor(
+  ok: boolean,
+  firstKind: string | undefined,
+): ArtifactValidationResult["outcome"] {
+  if (ok) return "valid";
+  return firstKind === "artifact_unreadable" || firstKind === "artifact_invalid_utf8"
+    ? "input_error"
+    : "invalid";
+}
+
 function buildResult(args: {
   docPath: string;
   contract: Contract;
@@ -613,13 +631,11 @@ function buildResult(args: {
 }): ArtifactValidationResult {
   const { contract, structural, semantic } = args;
   const ok = structural.ok && semantic.ok;
-  const firstKind = structural.errors[0]?.kind;
-  const inputCodes = new Set(["artifact_unreadable", "artifact_invalid_utf8"]);
   const result = {
     contract: contractToOutput(contract),
     contract_id: contract.id,
     document_metadata: metadataToOutput(args.metadata),
-    outcome: ok ? "valid" : inputCodes.has(String(firstKind)) ? "input_error" : "invalid",
+    outcome: outcomeFor(ok, structural.errors[0]?.kind as string | undefined),
     path: args.docPath,
     profile: contract.profile,
     semantic,
@@ -951,7 +967,7 @@ export function validateArtifact(
         raw = readYamlDoc(docPath).value;
       } catch (err) {
         if (err instanceof PortableInputError) {
-          return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+          return failure(docPath, contract, null, portableArtifactKind(err.code), err.message);
         }
         if (
           err instanceof Error &&
@@ -1034,12 +1050,14 @@ export function validateArtifact(
       parsed = readFrontmatterDoc(docPath);
     } catch (err) {
       if (err instanceof PortableInputError) {
-        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+        return failure(docPath, contract, null, portableArtifactKind(err.code), err.message);
       }
       if (err instanceof YamlParseError) {
         const cause = err.cause;
         const kind =
-          cause instanceof PortableInputError ? portableArtifactKind(cause) : "yaml_parse_error";
+          cause instanceof PortableInputError
+            ? portableArtifactKind(cause.code)
+            : "yaml_parse_error";
         return failure(docPath, contract, null, kind, err.message);
       }
       if (
@@ -1060,7 +1078,13 @@ export function validateArtifact(
   }
   const { hasFence, value: frontmatter } = parsed;
   if (!hasFence) {
-    return failure(docPath, contract, null, "no_frontmatter", `no frontmatter in ${docPath}`);
+    return failure(
+      docPath,
+      contract,
+      null,
+      "no_frontmatter",
+      `\`${docPath}\`: the document has no YAML frontmatter`,
+    );
   }
   if (!isMapping(frontmatter)) {
     return failure(
@@ -1135,7 +1159,16 @@ export function validateArtifact(
 
 export { readFrontmatterDoc, readYamlDoc };
 
-function portableArtifactKind(error: PortableInputError): string {
-  if (error.code === "invalid_utf8") return "artifact_invalid_utf8";
-  return error.code;
+/**
+ * The record `kind` for a portable input error `code` raised while reading an artifact.
+ *
+ * The reader's `invalid_utf8` becomes `artifact_invalid_utf8`, the input-error kind that
+ * puts the verdict at `input_error` rather than `invalid`; every other code is already the
+ * kind. One rule for every path that turns a read failure into a record, so `repair` and
+ * `validate` report the identical condition with the same `kind`. Mirrors the Python
+ * `portable_artifact_kind`.
+ */
+export function portableArtifactKind(code: string): string {
+  if (code === "invalid_utf8") return "artifact_invalid_utf8";
+  return code;
 }

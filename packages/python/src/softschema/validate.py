@@ -573,7 +573,10 @@ def _validate_frontmatter_artifact(
             return _artifact_failure(doc_path, contract, kind, str(exc))
     if frontmatter is None:
         return _artifact_failure(
-            doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"
+            doc_path,
+            contract,
+            "no_frontmatter",
+            f"`{doc_path}`: the document has no YAML frontmatter",
         )
     if not isinstance(frontmatter, dict):
         return _artifact_failure(
@@ -1078,7 +1081,7 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
     end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)
     if end < 0:
         raise PortableInputError(
-            "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{source}`"
+            "yaml_parse_error", f"`{source}`: Delimiter `---` for end of frontmatter not found"
         )
     if end == 1:
         return "\n".join(lines[2:]), None
@@ -1087,7 +1090,7 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
     if not isinstance(value, dict):
         raise PortableInputError(
             "yaml_parse_error",
-            f"Expected YAML metadata to be a dict, got {type(value).__name__}: `{source}`",
+            f"`{source}`: Expected YAML metadata to be a dict, got {type(value).__name__}",
         )
     return "\n".join(lines[end + 1 :]), value
 
@@ -1117,7 +1120,8 @@ def _parse_document_yaml(text: str, source: str) -> Any:
     The engine says where in the text it stopped, not which text: ruamel reports
     ``in "<unicode string>"`` and the ``yaml`` package nothing at all. An agent repairing
     a batch of artifacts cannot act on a line number alone, so both readers put the
-    document first, in the backticked form softschema's own messages already use. The code
+    document first, in the backticked-prefix form every softschema message that names a
+    document uses. The code
     is kept as is; only the message changes.
     """
     try:
@@ -1126,12 +1130,23 @@ def _parse_document_yaml(text: str, source: str) -> Any:
         raise PortableInputError(exc.code, f"`{source}`: {exc}") from exc
 
 
+def portable_artifact_kind(code: str) -> str:
+    """The record ``kind`` for a portable input error ``code`` raised while reading an artifact.
+
+    The reader's ``invalid_utf8`` becomes ``artifact_invalid_utf8``, the input-error kind
+    that puts the verdict at ``input_error`` rather than ``invalid``; every other code is
+    already the kind. One rule for every path that turns a read failure into a record, so
+    ``repair`` and ``validate`` report the identical condition with the same ``kind``.
+    """
+    if code == "invalid_utf8":
+        return "artifact_invalid_utf8"
+    return code
+
+
 def _portable_error_kind(error: Exception) -> str:
     if not isinstance(error, PortableInputError):
         return "yaml_parse_error"
-    if error.code == "invalid_utf8":
-        return "artifact_invalid_utf8"
-    return error.code
+    return portable_artifact_kind(error.code)
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

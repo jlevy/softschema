@@ -37,6 +37,7 @@ import {
   type ParsedDocument,
   parseFrontmatterText,
   parseYamlText,
+  portableArtifactKind,
   readFrontmatterDoc,
   readYamlDoc,
   unreadableArtifactResult,
@@ -757,10 +758,13 @@ async function runRepair(path: string, opts: RepairOptions): Promise<number> {
  * diagnosis, and quoting could never have fixed it. Otherwise the reader's code names the
  * failure, which is the ordinary case: repair reports success for a document with no
  * frontmatter region to rewrite, leaving the reader to say why it cannot be opened.
+ *
+ * Either code goes through the same code-to-kind rule validation applies, so a non-UTF-8
+ * file is `artifact_invalid_utf8` at `input_error` here as it is under a contract.
  */
 function repairFailureKind(repaired: RepairResult, parseError: Error | null): string {
-  if (repaired.errorCode) return repaired.errorCode;
-  if (parseError instanceof PortableInputError) return parseError.code;
+  if (repaired.errorCode) return portableArtifactKind(repaired.errorCode);
+  if (parseError instanceof PortableInputError) return portableArtifactKind(parseError.code);
   return "yaml_parse_error";
 }
 
@@ -776,8 +780,8 @@ function repairFailureMessage(
   if (parseError !== null) return parseError.message;
   if (repaired.errorMessage) return repaired.errorMessage;
   return profile === "pure-yaml"
-    ? `the document root is not a YAML mapping: \`${path}\``
-    : `the document has no YAML frontmatter: \`${path}\``;
+    ? `\`${path}\`: the document root is not a YAML mapping`
+    : `\`${path}\`: the document has no YAML frontmatter`;
 }
 
 /**

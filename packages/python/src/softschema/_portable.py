@@ -94,7 +94,7 @@ def read_utf8(path: Path) -> str:
     try:
         text = path.read_bytes().decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise PortableInputError("invalid_utf8", "input is not valid UTF-8") from exc
+        raise PortableInputError("invalid_utf8", f"`{path}`: input is not valid UTF-8") from exc
     return text[1:] if text.startswith(BOM) else text
 
 

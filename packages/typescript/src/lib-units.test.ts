@@ -427,10 +427,11 @@ describe("compile: write mode + build", () => {
 
 describe("validate: frontmatter edge cases (ss-3iz5)", () => {
   test("empty frontmatter (---\\n---) returns no_frontmatter, matching Python fmf_read", () => {
-    const r = validateArtifact(tmp("d.md", "---\n---\nbody\n"), contract());
+    const path = tmp("d.md", "---\n---\nbody\n");
+    const r = validateArtifact(path, contract());
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("no_frontmatter");
-    expect(errors[0]?.message).toContain("no frontmatter in ");
+    expect(errors[0]?.message).toBe(`\`${path}\`: the document has no YAML frontmatter`);
   });
   test("whitespace-only frontmatter returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\n   \n---\nbody\n");
@@ -438,7 +439,7 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
-      `Expected YAML metadata to be a dict, got NoneType: \`${path}\``,
+      `\`${path}\`: Expected YAML metadata to be a dict, got NoneType`,
     );
   });
   test("unterminated fence returns yaml_parse_error", () => {
@@ -447,7 +448,7 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
-      `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
+      `\`${path}\`: Delimiter \`---\` for end of frontmatter not found`,
     );
   });
 });

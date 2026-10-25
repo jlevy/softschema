@@ -58,7 +58,7 @@ export function readUtf8(path: string): string {
     text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new PortableInputError("invalid_utf8", "input is not valid UTF-8");
+      throw new PortableInputError("invalid_utf8", `\`${path}\`: input is not valid UTF-8`);
     }
     throw error;
   }

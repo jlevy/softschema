@@ -625,7 +625,7 @@ $ $SOFTSCHEMA validate tests/golden/fixtures/pure-yaml-report.yaml --profile fro
     "errors": [
       {
         "kind": "no_frontmatter",
-        "message": "no frontmatter in tests/golden/fixtures/pure-yaml-report.yaml"
+        "message": "`tests/golden/fixtures/pure-yaml-report.yaml`: the document has no YAML frontmatter"
       }
     ],
     "ok": false,

@@ -167,6 +167,28 @@ describe("strictness is a property of the command", () => {
     }
   });
 
+  test("repair reports a non-UTF-8 artifact as the same input error validation does", async () => {
+    // `kind` is the documented matching key, and `unreadableArtifactResult` promises the
+    // shape validation uses for the identical condition. Without a contract, repair's raw
+    // `invalid_utf8` code reached the record unmapped, so the same file was
+    // `artifact_invalid_utf8` at `input_error` under `--contract` and `invalid_utf8` at
+    // `invalid` without it.
+    const bytes = Buffer.from("---\ntitle: na\xefve\n---\nBody.\n", "latin1");
+    const path = join(dir, "latin1.md");
+    writeFileSync(path, bytes);
+    for (const extra of [[], ["--contract", "test.detect:Doc/v1"]] as const) {
+      stdout = "";
+      stderr = "";
+      expect(await main(argv("repair", path, "--check", ...extra))).toBe(1);
+      expect(stderr).toBe("");
+      const result = JSON.parse(stdout);
+      expect(result.outcome).toBe("input_error");
+      expect(result.structural.errors[0].kind).toBe("artifact_invalid_utf8");
+      expect(result.structural.errors[0].message).toBe(`\`${path}\`: input is not valid UTF-8`);
+    }
+    expect(readFileSync(path)).toEqual(bytes);
+  });
+
   test("repair leaves an unreadable artifact untouched", async () => {
     const path = write("unreadable.md", UNREADABLE);
     const before = readFileSync(path, "utf8");
