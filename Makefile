@@ -3,7 +3,7 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install hooks-install format format-check lint lint-check test test-fast test-slow upgrade build clean
+.PHONY: default install hooks-install format format-check lint lint-check test test-fast test-slow test-pure upgrade build clean
 
 # Pinned for stability — bump deliberately. flowmark-rs is a first-party package
 # (github.com/jlevy/flowmark); the --exclude-newer-package exception admits the pinned
@@ -77,15 +77,20 @@ lint:
 lint-check:
 	$(UV_RUN) python devtools/lint.py --check
 
-# The whole Python suite: the default tier, then the tests marked `slow` (corpus and
-# generated-document comparisons), which `addopts` leaves out of a bare `pytest`.
-test: test-fast test-slow
+# The whole Python suite as CI runs it: the default tier, then the tests marked `slow`
+# (corpus and generated-document comparisons), which `addopts` leaves out of a bare
+# `pytest`, then both tiers again with the pure-Python YAML parser.
+test: test-fast test-slow test-pure
 
 test-fast:
 	$(UV_RUN) pytest
 
 test-slow:
 	$(UV_RUN) pytest -m slow
+
+test-pure:
+	SOFTSCHEMA_PURE_YAML=1 $(UV_RUN) pytest
+	SOFTSCHEMA_PURE_YAML=1 $(UV_RUN) pytest -m slow
 
 upgrade:
 	uv sync --upgrade --all-extras --dev

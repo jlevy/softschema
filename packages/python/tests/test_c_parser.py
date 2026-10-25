@@ -45,9 +45,18 @@ from softschema._portable import PortableInputError, parse_yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PURE_ENV = "SOFTSCHEMA_PURE_YAML"
 
+REQUIRE_C_PARSER_ENV = "SOFTSCHEMA_REQUIRE_C_PARSER"
+"""Set in CI: the C parser must be available, so the C-first tests fail instead of skipping.
+
+Without it, a lock refresh that dropped ``ruamel.yaml.clib``, a ruamel release that imports
+another extension module, or a runner Python with no clib wheel would turn C-first off,
+skip every comparison, routing, fallback and emitter test in this file, and leave the
+suite green. Locally a missing extension still skips with a reason. The JSON path has
+the same switch, ``SOFTSCHEMA_REQUIRE_JSON_PATH`` in ``test_json_fast_path.py``.
+"""
 C_AVAILABLE = YAML(typ="safe").Parser is not RuamelParser
 requires_c = pytest.mark.skipif(
-    not C_AVAILABLE,
+    not C_AVAILABLE and not os.environ.get(REQUIRE_C_PARSER_ENV),
     reason="ruamel.yaml.clib is not installed, so there is no C parser to compare",
 )
 
@@ -334,6 +343,7 @@ def _repo_texts() -> list[str]:
 
 
 @requires_c
+@pytest.mark.slow
 def test_repo_documents_and_vector_texts_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     texts = _repo_texts()
     assert len(texts) > 200, len(texts)
@@ -367,6 +377,7 @@ def _short_texts() -> list[str]:
 
 
 @requires_c
+@pytest.mark.slow
 def test_generated_short_texts_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     _assert_reads_as_pure(_short_texts(), monkeypatch)
 
@@ -469,6 +480,7 @@ def _generated_documents(seed: int, count: int) -> list[str]:
 
 
 @requires_c
+@pytest.mark.slow
 def test_generated_documents_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     _assert_reads_as_pure(_generated_documents(20261024, 2000), monkeypatch)
 
@@ -500,6 +512,7 @@ def _mutations(texts: list[str], seed: int, per_text: int) -> list[str]:
 
 
 @requires_c
+@pytest.mark.slow
 def test_mutated_documents_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     small = [text for text in _repo_texts() if len(text) < 4000]
     edge = [text for text in EDGE_CASES.values() if len(text) < 4000]
@@ -522,6 +535,7 @@ CODE_POINT_TEMPLATES = ["a: x{c}y\n", 'a: "x{c}y"\n', "a: |\n  x{c}y\n", "x{c}y:
 
 
 @requires_c
+@pytest.mark.slow
 def test_sampled_code_points_read_as_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     texts = [
         template.format(c=chr(code))
@@ -889,6 +903,23 @@ def test_mode_is_pure_when_the_c_extension_is_absent(monkeypatch: pytest.MonkeyP
 def test_mode_reports_the_c_parser_when_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(PURE_ENV, raising=False)
     assert softschema.yaml_parser_mode() == "c-first"
+
+
+def test_ci_requires_the_checked_c_parser() -> None:
+    """With ``SOFTSCHEMA_REQUIRE_C_PARSER`` set, as CI sets it, the checked C parser is present.
+
+    The one test in this file that never skips under the switch, so a build job whose
+    environment lost the extension fails here by name, with the reason, instead of
+    skipping every C-first test and passing.
+    """
+    if not os.environ.get(REQUIRE_C_PARSER_ENV):
+        pytest.skip(
+            f"{REQUIRE_C_PARSER_ENV} is not set; a missing extension skips the C-first tests"
+        )
+    assert _portable._C_PARSER_AVAILABLE, (
+        f"{REQUIRE_C_PARSER_ENV} is set but the C parser is off: "
+        f"parser {YAML(typ='safe').Parser.__module__}; {_portable.yaml_parser_reason()}"
+    )
 
 
 @requires_c

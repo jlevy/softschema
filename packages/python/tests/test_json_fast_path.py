@@ -37,10 +37,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 REQUIRE_JSON_PATH_ENV = "SOFTSCHEMA_REQUIRE_JSON_PATH"
 """Set in CI: the JSON path must be on, so the tests that need it fail instead of skipping.
 
-Without it, a C extension that slipped into the environment through a new dependency or
-a lock refresh would turn the path off, skip the five tests that need the path (three of
-them prove a JSON document never reaches ruamel; the other two are the slow corpus and
-generated comparisons), and leave the suite green.
+On this layer the path does not depend on the parser (see ``_json_path_enabled``), so only
+a ruamel release outside ``CHECKED_RUAMEL_VERSIONS`` turns it off. Without the variable,
+that would skip the two slow corpus and generated comparisons that still carry
+``requires_json_path``; the three tests that prove a JSON document never reaches ruamel
+run unconditionally here, and ``test_installed_ruamel_is_a_checked_release`` fails on its
+own. ``SOFTSCHEMA_REQUIRE_C_PARSER`` in ``test_c_parser.py`` is the same switch for the
+C parser.
 """
 requires_json_path = pytest.mark.skipif(
     not _portable._JSON_PATH_ENABLED and not os.environ.get(REQUIRE_JSON_PATH_ENV),
@@ -642,9 +645,10 @@ def test_the_gate_is_what_this_process_runs() -> None:
 def test_installed_ruamel_is_a_checked_release() -> None:
     """The locked ruamel is inside the range, so this suite exercises the JSON path.
 
-    With ``SOFTSCHEMA_REQUIRE_JSON_PATH`` set, as CI sets it, the path itself must be on:
-    a C extension in the environment then fails here, and the tests that need the path
-    fail instead of skipping.
+    With ``SOFTSCHEMA_REQUIRE_JSON_PATH`` set, as CI sets it, the path itself must be on. On
+    this layer only an unchecked ruamel release turns it off, which the first assertion
+    already fails; the variable keeps the two slow comparisons that need the path from
+    skipping on such a release.
     """
     assert _portable._ruamel_is_checked(), ruamel.yaml.version_info
     if os.environ.get(REQUIRE_JSON_PATH_ENV):

@@ -11,7 +11,10 @@ every text the guard lets through. A divergence is a text libyaml read to a valu
 pure ruamel rejects or reads differently; the fix is a new guard, never a change to the
 pure result.
 
-Run it from the repo root with the C extension installed (the dev group installs it):
+Run it from the repo root with the C extension installed (the dev group installs it).
+``SOFTSCHEMA_PURE_YAML`` does not change the search: the two readers are called directly,
+whichever one ``parse_yaml`` would use, and the summary line reports the build gate, not
+the switch:
 
     uv run python devtools/yaml_parser_fuzz.py 200000
     uv run python devtools/yaml_parser_fuzz.py 1000000 --seed 7 --jobs 4
@@ -368,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"ruamel.yaml {ruamel.yaml.__version__}, ruamel.yaml.clib "
         f"{_distribution_version('ruamel.yaml.clib')} (libyaml {_installed_libyaml_version()}), "
-        f"seeds {args.seed}-{args.seed + len(jobs) - 1}, C parser {'on' if _C_PARSER_AVAILABLE else 'off'}"
+        f"seeds {args.seed}-{args.seed + len(jobs) - 1}, C parser gate {'on' if _C_PARSER_AVAILABLE else 'off'}"
     )
     print(
         f"texts: {sum(totals)}  routed to pure: {routed}  rejected by C: {rejected}  read by C: {accepted}"

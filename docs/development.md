@@ -31,6 +31,8 @@ Direct commands:
 uv run python devtools/lint.py --check
 uv run pytest             # the default run leaves out tests marked `slow`
 uv run pytest -m slow     # the slow tier: corpus and generated-document comparisons
+SOFTSCHEMA_PURE_YAML=1 uv run pytest          # either tier again with the pure-Python
+SOFTSCHEMA_PURE_YAML=1 uv run pytest -m slow  #   YAML parser; `make test` runs all four
 uv run pytest -m slow packages/python/tests/test_json_fast_path.py::test_generated_deep_documents_parse_identically
                           # one slow test: name it with -m slow too, or addopts deselects it
 uv run softschema docs --list
@@ -44,9 +46,10 @@ The Python package is built from `packages/python/src/softschema`.
 The dev group installs ruamel’s optional C extension (`ruamel.yaml.clib`), so the suite
 reads YAML C-first by default; `test_c_parser.py` compares that with the pure-Python
 parser.
-`SOFTSCHEMA_PURE_YAML=1 uv run pytest` runs the whole suite with the pure parser,
-which CI also does. `devtools/yaml_parser_fuzz.py` is the larger differential search
-behind `test_c_parser.py`; rerun it after a ruamel or `ruamel.yaml.clib` bump.
+`SOFTSCHEMA_PURE_YAML=1 uv run pytest` runs the default tier with the pure parser
+(add `-m slow` for the rest); CI runs both tiers both ways.
+`devtools/yaml_parser_fuzz.py` is the larger differential search behind
+`test_c_parser.py`; rerun it after a ruamel or `ruamel.yaml.clib` bump.
 
 ### Git Hooks (This Repo)
 
