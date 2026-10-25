@@ -54,9 +54,8 @@ Four files, all in `tests/manual/agent-repair/`:
 | `form-template.md` | a fill-in-the-blanks template |
 | `run_agents.py` / `evaluate.py` / `feedback.py` | drive the model, judge, and loop |
 
-The contract is loosely borrowed from the GTIA v2 `prelim-scan-terms` form in
-`finterm-ai/trading`, whose real pipeline runs a Gemini Flash model through a
-`gemini-cli` adapter.
+The contract is loosely modeled on a prelim-scan form from a downstream pipeline that
+runs a Gemini Flash model through a `gemini-cli` adapter.
 It keeps that form’s shape — a ticker pattern, a date, a `search_fit` enum, an integer
 `term_budget`, a `rubric_version` string, and four panels of `{term, why}` items — under
 `additionalProperties: false` and `status: enforced`.

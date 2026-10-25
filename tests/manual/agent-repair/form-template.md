@@ -1,6 +1,6 @@
 ---
 softschema:
-  contract: trading.prelim_scan:PrelimScanTerms/v1
+  contract: example.prelim_scan:PrelimScanTerms/v1
   schema: prelim-scan-terms.schema.yaml
   envelope: prelim_scan_terms
   status: enforced
