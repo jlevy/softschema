@@ -34,7 +34,7 @@ The automated half of the story runs on every push and PR
 | Python build (`uv build`) | `build` job |
 | TS typecheck, biome, unit tests + coverage gate | `typescript` job |
 | TS build + publint (publishable layout) | `typescript` job |
-| TS dependency advisories (`bun audit` on the frozen lockfile) | `dependency-audit` job |
+| TS dependency advisories (`bun audit` on the frozen lockfile) | `dependency-audit` job (and, until it is a required check, the last `typescript` step) |
 | Golden corpus on py, ts (Node), ts-bun | `golden` + `typescript` jobs |
 | Python-vs-TypeScript semantic parity | `cross-impl` job |
 | Tag ↔ `package.json` version match | `publish.yml` guard |

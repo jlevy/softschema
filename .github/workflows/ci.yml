@@ -197,8 +197,8 @@ jobs:
         run: SOFTSCHEMA_IMPL=py ./tests/golden/run_golden_tests.py
 
   dependency-audit:
-    # Dependency policy is its own job so a new upstream advisory fails this check alone
-    # and never skips the TypeScript typecheck, tests, build, and goldens below.
+    # Dependency policy is its own job so a new upstream advisory reads as a dependency
+    # failure and never skips the TypeScript typecheck, tests, build, and goldens below.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -268,6 +268,14 @@ jobs:
       - name: Run golden corpus (TypeScript CLI under Bun)
         working-directory: ${{ github.workspace }}
         run: SOFTSCHEMA_IMPL=ts-bun ./tests/golden/run_golden_tests.py
+
+      # Stopgap (tracked: ss-6v74): `dependency-audit` is not yet a required check in the
+      # "Protect main" ruleset, so the required `typescript` check repeats the audit to keep
+      # it merge-blocking. It runs last, after every test, build, and golden step, so an
+      # advisory never masks those results. Remove this step once the repository owner adds
+      # `dependency-audit` to the ruleset's required status checks.
+      - name: Audit dependencies (stopgap until dependency-audit is required)
+        run: bun audit
 
   cross-impl:
     # Direct Python-vs-TypeScript(Node) semantic comparison on the same inputs, so a

@@ -39,8 +39,9 @@ version number.
 - **CI runs the dependency audit as its own `dependency-audit` job.** `bun audit` used
   to be a step inside the `typescript` job, so a new upstream advisory skipped the
   TypeScript typecheck, tests, build, publint, and golden runs on every PR. The audit
-  still blocks, but it now fails on its own, and the TypeScript results always report on
-  the change under review.
+  now has its own check, and the TypeScript results always report on the change under
+  review. Until `dependency-audit` is a required check, the `typescript` job repeats the
+  audit as its last step so an advisory still blocks merging.
 - **Zod 4.5 and 4.6 semantic behavior applies to TypeScript models.** String `.min()`,
   `.max()`, and `.length()` count code points rather than UTF-16 units, and a strict
   object with an unknown key now also reports its other issues; both match Pydantic.
