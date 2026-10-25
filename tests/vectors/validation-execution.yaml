@@ -1133,6 +1133,21 @@ engine_deviations:
       written, and both ids here follow it.
     python: {execution: completed, ok: true}
     typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
+  - name: urn-root-relative-child-id-joining-to-root
+    values: {name: hello}
+    schema:
+      $id: urn:example:dir/item.json
+      type: object
+      properties:
+        name: {$ref: item.json}
+      $defs:
+        Item: {$id: item.json, type: string}
+    why: >-
+      Ajv joins the relative `item.json` onto the root's last path segment, which gives
+      the root's own id, and refuses the duplicate resource while compiling. Python keeps
+      the nested id relative, resolves the `$ref` to it, and completes.
+    python: {execution: completed, ok: true}
+    typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
   - name: tag-root-nested-relative-id-absolute-reference
     values: {name: hello, item: {v: s}}
     schema:
