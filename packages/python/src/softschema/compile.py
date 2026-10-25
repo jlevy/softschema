@@ -198,11 +198,16 @@ def _yaml_dump(schema: dict[str, Any]) -> str:
     # U+2029, a C1 control) is forced into double-quoted style, where ruamel writes it as
     # the escape both engines decode (`\N`, `\L`, `\P`, `\x85`). Left to its own style
     # choice ruamel single-quotes such a string with the character raw inside, and the
-    # sidecar it just wrote fails every later read as `schema_invalid`. The override is an
-    # instance attribute on this writer's representer: ruamel's `add_representer` is a
+    # sidecar it just wrote fails every later read as `schema_invalid`. A string holding a
+    # carriage return of any kind takes the same path: frontmatter-format picks a block
+    # literal for a multi-line string, and a raw `\r\n` inside one is normalized to `\n` by
+    # both readers, so the sidecar's content would differ from the model's. The override is
+    # an instance attribute on this writer's representer: ruamel's `add_representer` is a
     # classmethod that would restyle every safe emitter in the process.
     def represent_scalar(tag: str, value: Any, style: Any = None, anchor: Any = None) -> Any:
-        if tag == "tag:yaml.org,2002:str" and find_non_portable_character(value) is not None:
+        if tag == "tag:yaml.org,2002:str" and (
+            "\r" in value or find_non_portable_character(value) is not None
+        ):
             style = '"'
         return SafeRepresenter.represent_scalar(representer, tag, value, style=style, anchor=anchor)
 

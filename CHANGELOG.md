@@ -31,13 +31,24 @@ Write such a character as an escape inside a double-quoted scalar: `"\N"` for U+
 `"\L"` for U+2028, `"\P"` for U+2029, `"\r"` for a carriage return, `"\f"`, `"\v"`,
 `"\0"`, or `"\xHH"` for a control character.
 Both engines decode every one identically.
-`repair` writes the escape for a character inside a single-line value (see Added); one
-in a key, a comment, or a block scalar is reported with its line and escape and left for
-the author. To find affected files before upgrading:
+`repair` writes the escape for a character inside a single-line scalar value (see
+Added); one in a key, a comment, a block scalar, or a value that is not a scalar is
+reported with its line and escape and left for the author, and a lone carriage return is
+never escaped, since it may be a line ending.
+To find affected files before upgrading:
 
 ```bash
-rg -l '[\x{85}\x{2028}\x{2029}\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\r[^\n]'
+rg -l '[\x{85}\x{2028}\x{2029}\x{FFFE}\x{FFFF}\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\r(?:[^\n]|$)'
 ```
+
+**Tabs and a plain `=`.** A raw tab inside a plain scalar, or as spacing in block
+context (after a key’s colon, before a comment, at the end of a value, on a blank line),
+was a parse error in Python and content in TypeScript; TypeScript now rejects it too, as
+`yaml_parse_error` with its own message, while a tab inside a quoted scalar, a block
+scalar, or a comment, and as spacing inside a flow collection, is accepted by both.
+Write such a value as a quoted scalar.
+A plain `=` was the YAML 1.1 `!!value` key in Python (a parse error) and the string `=`
+in TypeScript; Python now reads it as the string `=`, as YAML 1.2 does.
 
 **Fence lines.** A frontmatter delimiter is `---` plus trailing spaces or tabs only.
 Python previously also trimmed U+0085 and U+001C–U+001F, and TypeScript U+FEFF, so a
@@ -70,8 +81,10 @@ these did; `kind` is the matching key:
 it.
 
 **Compiled schemas.** `compile` output changes only for a model whose text carries one
-of the rejected characters: such strings are now double-quoted with escapes, and the
-sidecar reads back in both runtimes.
+of the rejected characters, a carriage return, a tab, or is exactly `=`: such strings
+are now double-quoted with escapes, so the sidecar one writer produces reads back in
+both runtimes with the model’s content (a 4,686-case writer-to-other-reader sweep over
+U+0000–U+02FF and the separators in six scalar shapes finds no remaining difference).
 `schema_sha256` is computed over canonical JSON, so the escaping leaves it unchanged for
 every schema.
 
@@ -82,14 +95,17 @@ and a model using `z.email()` compiles to a new `schema_sha256`; see Changed.
 ### Added
 
 - **`repair` escapes a raw character the portable rule rejects.** A U+0085, U+2028,
-  U+2029, control character, or lone carriage return inside a single-line value is
-  rewritten as a double-quoted scalar carrying the YAML escape, with one
+  U+2029, or control character other than a carriage return inside a single-line scalar
+  value is rewritten as a double-quoted scalar carrying the YAML escape, with one
   `yaml_escaped_character` record per value naming each character and its escape.
   The decoded value is exactly what YAML 1.2 gives the raw text; no character is
   replaced by a guess at what was meant (a mis-decoded cp1252 ellipsis stays a visible
   U+0085). Plain, single-quoted, and double-quoted values are handled, trailing comments
   and the author’s own escapes are kept.
-  A rejected character in a key, a comment, or a block scalar stays a parse error.
+  Only a scalar value is rewritten: a flow collection, a comment, an anchor, an alias,
+  or a tag is left alone, a rejected character in a key, a comment, or a block scalar
+  (whatever its key looks like) stays a parse error, and a lone carriage return is never
+  escaped, because it may be a line ending and the text after it another line.
   Both implementations.
 
 ### Changed
@@ -128,6 +144,12 @@ and a model using `z.email()` compiles to a new `schema_sha256`; see Changed.
   `compile --check` reports an unreadable committed sidecar as drift.
   The cross-language parity fixture carries these characters in a description, a
   default, and an enum value.
+  Two older holes of the same kind are closed: the Python writer wrote a string holding
+  a CRLF as a block literal, which both readers normalize to `\n`, so the sidecar’s
+  content differed from the model and `compile --check` reported drift on fresh output
+  (such strings are now double-quoted, `"a\r\nb"`); and the TypeScript writer wrote a
+  tab inside a plain scalar, and a bare `=`, which ruamel refuses (both are now
+  double-quoted). The parity fixture carries a CRLF, a tab, and `=` as well.
 
 - **Conform never folds a raw U+0085.** The conform pass loaded the YAML region through
   the round-trip loader, which skipped the preflight; ruamel folds the character to a
@@ -139,6 +161,16 @@ and a model using `z.email()` compiles to a new `schema_sha256`; see Changed.
 
 - **Fence lines trim one explicit set.** See Compatibility; six `fence_scan` vectors pin
   the agreement.
+
+- **The quoting pass trims one explicit set too.** `repair`’s older quoting pass trimmed
+  a value with each host’s default whitespace set (U+0085 is whitespace to Python,
+  U+FEFF to JavaScript), so a rejected character in the comment of a line that needed
+  quoting was dropped from the file in one runtime and refused in the other.
+  Both passes now trim space and tab only and treat only `[ \t]+#[ \t]` as a comment;
+  such a line stays a parse error in both runtimes.
+
+- **Tabs in plain scalars and a plain `=` read the same in both runtimes.** See
+  Compatibility.
 
 - **Control characters in a filename never reach stderr raw.** A document name in a
   human-readable message is written through one helper per runtime that escapes C0/C1

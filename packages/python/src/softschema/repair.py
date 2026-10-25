@@ -98,13 +98,28 @@ _NOT_REPAIRABLE = frozenset(
 # left unrepaired identically on both sides; the shared vectors lock this in).
 _MAPPING_LINE = re.compile(r"^(?P<indent>[ \t]*)(?P<key>[A-Za-z0-9_.-]+): (?P<value>.+)$")
 
-# A line that opens a block scalar (`key: |`, `key: >-`, `- |2`, with an optional comment):
-# its content is every following line indented deeper than the opener, and the escaping
-# rule must not touch those lines even when one happens to look like `key: value`.
+# A line that opens a block scalar (`key: |`, `"quoted": >-`, `- |2`, `- key: |`, with an
+# optional comment): its content is every following line indented deeper than the opener,
+# and the escaping rule must not touch those lines even when one looks like `key: value`.
+# The opener is recognised by the indicator alone, whatever the key looks like, so a quoted
+# or non-ASCII key opens a block scalar here exactly as it does for the engines.
 _BLOCK_SCALAR_OPENER = re.compile(
-    r"^(?P<indent>[ \t]*)(?:[A-Za-z0-9_.-]+:|-)[ \t]+[|>][-+0-9]*[ \t]*(?:#.*)?$"
+    r"^[ \t]*(?:-[ \t]+)?(?:[^\n]*?:[ \t]+)?[|>][-+0-9]*[ \t]*(?:#[^\n]*)?$"
 )
-_TRAILING_COMMENT = re.compile(r"^[ \t]*(?:#.*)?$")
+_TRAILING_COMMENT = re.compile(r"^[ \t]*(?:#[^\n]*)?$")
+
+# Characters that cannot begin a plain scalar (YAML 1.2 c-indicator). A value starting
+# with one is a flow collection, a comment, an anchor, an alias, a tag, a block scalar
+# indicator, or a directive, never a plain scalar, so neither pass may quote it: the quotes
+# would turn structure into a string. `-`, `?` and `:` are indicators only when followed
+# by a space or standing alone.
+_NOT_PLAIN_START = frozenset("[]{}#&*!|>'\"%@`")
+
+
+def _can_be_plain_scalar(stripped: str) -> bool:
+    if not stripped or stripped[0] in _NOT_PLAIN_START:
+        return False
+    return not (stripped[0] in "-?:" and (len(stripped) == 1 or stripped[1] in " \t"))
 
 
 @dataclass(frozen=True)
@@ -181,6 +196,11 @@ def _escape_value(value: str) -> tuple[str, list[str]] | None:
     """
     if find_non_portable_character(value) is None:
         return None
+    # A lone carriage return is a line break for YAML 1.2 and for ruamel, so the text after
+    # it may be another line of the document; escaping it as content would swallow that
+    # line. It stays a parse error, whose message already says to end lines with "\n".
+    if "\r" in value:
+        return None
     # Only ASCII blanks are trimmed: `str.strip()` would also eat the U+0085 being escaped.
     stripped = value.strip(" \t")
     if stripped[:1] in {'"', "'"}:
@@ -192,7 +212,9 @@ def _escape_value(value: str) -> tuple[str, list[str]] | None:
         if quote == "'":
             body = body.replace("''", "'").replace("\\", "\\\\").replace('"', '\\"')
     else:
-        comment = re.search(r"([ \t]+#.*)$", stripped)
+        if not _can_be_plain_scalar(stripped):
+            return None  # a flow collection, comment, anchor, alias or tag: not a scalar
+        comment = re.search(r"([ \t]+#[^\n]*)$", stripped)
         body = stripped[: comment.start()] if comment else stripped
         rest = comment.group(1) if comment else ""
         body = body.replace("\\", "\\\\").replace('"', '\\"')
@@ -214,14 +236,19 @@ def _value_needs_quoting(value: str) -> bool:
     the author meant prose. A leading quote that never closes makes it try to read a
     quoted scalar and run off the end of the value.
     """
-    stripped = value.strip()
+    # Only ASCII blanks are trimmed and only `[ \t]+#[ \t]` opens a comment: the hosts'
+    # default whitespace sets differ (U+0085 is whitespace to Python, U+FEFF to JavaScript),
+    # and a rejected character trimmed away here would be dropped from the file silently.
+    stripped = value.strip(" \t")
     if (stripped.startswith('"') and stripped.endswith('"')) or (
         stripped.startswith("'") and stripped.endswith("'")
     ):
         return False
     if stripped in ("null", "true", "false", "~", ""):
         return False
-    comment = re.search(r"\s+#\s", stripped)
+    if stripped[0] not in {'"', "'"} and not _can_be_plain_scalar(stripped):
+        return False  # a flow collection or other non-scalar: `: ` inside it is structure
+    comment = re.search(r"[ \t]+#[ \t]", stripped)
     value_part = stripped[: comment.start()] if comment else stripped
     if ": " in value_part:
         return True
@@ -251,8 +278,8 @@ def _quote_value(value: str) -> str:
     and a fix that quietly reformats what it touches is how a one-scalar diff becomes a
     reviewable-looking whole-file one.
     """
-    stripped = value.strip()
-    comment = re.search(r"(\s+#\s.*)$", stripped)
+    stripped = value.strip(" \t")
+    comment = re.search(r"([ \t]+#[ \t][^\n]*)$", stripped)
     if comment:
         value_part = stripped[: comment.start()]
         comment_part = comment.group(1)

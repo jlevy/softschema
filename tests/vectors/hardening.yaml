@@ -104,6 +104,22 @@ portable_values:
   - { id: lone_cr_in_block_scalar, text: "value: |\n  a\rb\n", valid: false, code: yaml_parse_error }
   - { id: crlf_line_endings, text: "value: 1\r\nother: 2\r\n", valid: true, expected: { value: 1, other: 2 } }
   - { id: escaped_cr, text: "value: \"a\\rb\"", valid: true, expected: { value: "a\rb" } }
+  # A raw tab is read by both engines inside a quoted scalar, a block scalar, a comment, and
+  # as spacing inside a flow collection. In a plain scalar or as block-context spacing one
+  # engine refuses it (YAML 1.2 allows it), so both reject it there.
+  - { id: tab_in_plain_scalar, text: "value: a\tb", valid: false, code: yaml_parse_error }
+  - { id: tab_after_plain_scalar, text: "value: a\t", valid: false, code: yaml_parse_error }
+  - { id: tab_after_colon, text: "value:\ta", valid: false, code: yaml_parse_error }
+  - { id: tab_in_key, text: "va\tlue: a", valid: false, code: yaml_parse_error }
+  - { id: tab_on_blank_line, text: "value: a\n\t\nother: b", valid: false, code: yaml_parse_error }
+  - { id: tab_in_double_quoted, text: "value: \"a\tb\"", valid: true, expected: { value: "a\tb" } }
+  - { id: tab_in_single_quoted, text: "value: 'a\tb'", valid: true, expected: { value: "a\tb" } }
+  - { id: tab_in_block_scalar, text: "value: |\n  a\tb\n", valid: true, expected: { value: "a\tb\n" } }
+  - { id: tab_in_comment, text: "value: a # c\td", valid: true, expected: { value: a } }
+  - { id: tab_as_flow_spacing, text: "value: [a,\tb]", valid: true, expected: { value: [a, b] } }
+  # A plain `=` is the string `=` (YAML 1.2); one engine still resolves it to the YAML 1.1
+  # `!!value` key and had no constructor for it.
+  - { id: plain_equals, text: "value: =", valid: true, expected: { value: "=" } }
   # Two `\u` escapes forming a surrogate pair are the one character they encode, as in
   # JSON; one engine works in UTF-16 and reads them so natively, the other is made to agree.
   # A surrogate that pairs with nothing stays a lone surrogate and is rejected.
@@ -968,9 +984,22 @@ yaml_repair:
     expected_text: "note: \"a\\Nb\\tc\"  # keep me\n"
   - id: control_characters_in_plain_value
     profile: pure-yaml
-    text: "note: a\fb\x7fc\rd\n"
+    text: "note: a\fb\x7fc\n"
     repaired: true
-    expected_text: "note: \"a\\fb\\x7fc\\rd\"\n"
+    expected_text: "note: \"a\\fb\\x7fc\"\n"
+  # A lone carriage return is a line break for YAML 1.2, so what follows it may be another
+  # line of the document; escaping it as content would swallow that line. It stays a parse
+  # error whose message says to end lines with "\n".
+  - id: lone_cr_in_value_is_not_repaired
+    profile: pure-yaml
+    text: "note: a\rb\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: cr_only_file_is_not_repaired
+    profile: pure-yaml
+    text: "note: 1\rother: 2\r"
+    repaired: false
+    code: yaml_parse_error
   # A plain value that also carries structure gets one record: the escape rule already
   # produces a double-quoted scalar.
   - id: next_line_beside_unquoted_colon
@@ -978,7 +1007,59 @@ yaml_repair:
     text: "summary: Note: actually\u0085Q1\n"
     repaired: true
     expected_text: "summary: \"Note: actually\\NQ1\"\n"
-  # Keys, comments and block scalars have no exact rewrite and stay parse errors.
+  # A value that is not a scalar (a flow collection, a comment, an anchor, a tag) is left
+  # alone: quoting it would turn structure into a string, and the record would not say so.
+  - id: next_line_in_flow_sequence
+    profile: pure-yaml
+    text: "tags: [alpha, beta\u0085]\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_flow_mapping
+    profile: pure-yaml
+    text: "meta: {a: b\u0085}\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_comment_value
+    profile: pure-yaml
+    text: "note: #comment\u0085\nother: 1\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_after_anchor
+    profile: pure-yaml
+    text: "a: &x foo\u0085\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_after_tag
+    profile: pure-yaml
+    text: "a: !!str foo\u0085\n"
+    repaired: false
+    code: yaml_parse_error
+  # The quoting pass must not quote a flow collection either: `: ` inside `{a: b}` is
+  # structure, and only the line that needs quoting changes.
+  - id: flow_mapping_beside_a_line_needing_quotes
+    profile: pure-yaml
+    text: "meta: {a: b}\nsummary: Note: actually Q1\n"
+    repaired: true
+    expected_text: "meta: {a: b}\nsummary: \"Note: actually Q1\"\n"
+  # A rejected character in the comment of a line that needs quoting: neither pass may trim
+  # it away (Python's `str.strip()` eats U+0085, JavaScript's `trim()` eats U+FEFF), so the
+  # line stays a parse error in both runtimes instead of being quoted with the character
+  # silently dropped in one of them.
+  - id: next_line_in_comment_of_line_needing_quotes
+    profile: pure-yaml
+    text: "summary: a: b # c\u0085\n"
+    repaired: false
+    code: yaml_parse_error
+  # A U+FEFF before the `#` is content (only space or tab opens a comment), and it is in
+  # the portable class, so both runtimes quote the whole value and keep it; before, one
+  # trimmed it away as whitespace and the other refused the file.
+  - id: bom_before_hash_in_line_needing_quotes
+    profile: pure-yaml
+    text: "summary: a: b\ufeff# c\n"
+    repaired: true
+    expected_text: "summary: \"a: b\ufeff# c\"\n"
+  # Keys, comments and block scalars have no exact rewrite and stay parse errors. A block
+  # scalar is recognised by its indicator whatever the key looks like.
   - id: next_line_in_key
     profile: pure-yaml
     text: "no\u0085te: x\n"
@@ -992,6 +1073,21 @@ yaml_repair:
   - id: next_line_in_block_scalar
     profile: pure-yaml
     text: "note: |\n  sub: a\u0085b\nother: 1\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar_after_quoted_key
+    profile: pure-yaml
+    text: "\"note\": |\n  sub: a\u0085b\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar_in_sequence_mapping
+    profile: pure-yaml
+    text: "- note: |\n    sub: a\u0085b\n- other: 1\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar_after_non_ascii_key
+    profile: pure-yaml
+    text: "título: >\n  sub: a\u0085b\n"
     repaired: false
     code: yaml_parse_error
 

@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { writeFileSync } from "atomically";
-import { isAlias, isCollection, isPair, isScalar, parseDocument, visit } from "yaml";
+import { isAlias, isCollection, isPair, isScalar, Parser, parseDocument, visit } from "yaml";
 
 /** Largest integer that survives a round trip through a JS number. */
 const MAX_SAFE_INTEGER = 9_007_199_254_740_991;
@@ -179,22 +179,7 @@ export function escapeNonPortableCharacters(text: string): string {
 export function checkPortableText(text: string): void {
   const match = NON_PORTABLE_CHARACTER.exec(text);
   if (match === null) return;
-  let line = 1;
-  let lineStart = 0;
-  for (
-    let at = text.indexOf("\n");
-    at !== -1 && at < match.index;
-    at = text.indexOf("\n", at + 1)
-  ) {
-    line += 1;
-    lineStart = at + 1;
-  }
-  let column = 1;
-  for (let at = lineStart; at < match.index; at += 1) {
-    const unit = text.charCodeAt(at);
-    if (unit >= 0xd800 && unit <= 0xdbff) at += 1;
-    column += 1;
-  }
+  const { line, column } = textPosition(text, match.index);
   const char = match[0];
   const codePoint = (char.codePointAt(0) ?? 0).toString(16).padStart(4, "0");
   const advice =
@@ -205,6 +190,81 @@ export function checkPortableText(text: string): void {
     "yaml_parse_error",
     `unacceptable character #x${codePoint} at line ${line}, column ${column}: ` +
       `non-printable and line separator characters are not allowed as raw text; ${advice}`,
+  );
+}
+
+/** The one-based line and code-point column of `index` in `text`, without allocating. */
+function textPosition(text: string, index: number): { line: number; column: number } {
+  let line = 1;
+  let lineStart = 0;
+  for (let at = text.indexOf("\n"); at !== -1 && at < index; at = text.indexOf("\n", at + 1)) {
+    line += 1;
+    lineStart = at + 1;
+  }
+  let column = 1;
+  for (let at = lineStart; at < index; at += 1) {
+    const unit = text.charCodeAt(at);
+    if (unit >= 0xd800 && unit <= 0xdbff) at += 1;
+    column += 1;
+  }
+  return { line, column };
+}
+
+/** Token types whose source may hold a raw tab in both engines. */
+const TAB_TOLERANT_TOKENS = new Set([
+  "double-quoted-scalar",
+  "single-quoted-scalar",
+  "block-scalar",
+  "comment",
+]);
+
+/**
+ * Reject a raw tab where ruamel rejects one: in a plain scalar, or as spacing in block
+ * context (after a key's colon, before a comment, at the end of a value, on a blank line,
+ * after a sequence dash). YAML 1.2 allows every one of these and the `yaml` package reads
+ * them, but ruamel's scanner refuses them all ("found character '\t' that cannot start any
+ * token"), so a tab in those places read in one runtime and failed in the other. A tab inside
+ * a quoted scalar, a block scalar, or a comment, and a tab as spacing inside a flow
+ * collection, is fine for both and is left alone. The check walks the `yaml` CST, which
+ * keeps the exact source of every token, and runs after the engine parse so an engine error
+ * is reported first, as it would be in Python. Tab indentation is already an engine error in
+ * both.
+ */
+function checkPlainTabs(text: string): void {
+  if (!text.includes("\t")) return;
+  let offender = -1;
+  const walk = (node: unknown, inFlow: boolean): void => {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, inFlow);
+      return;
+    }
+    const token = node as { type?: unknown; offset?: unknown; source?: unknown };
+    if (typeof token.type === "string" && TAB_TOLERANT_TOKENS.has(token.type)) return;
+    const flow = inFlow || token.type === "flow-collection";
+    if (
+      typeof token.source === "string" &&
+      typeof token.offset === "number" &&
+      !(token.type === "space" && flow)
+    ) {
+      const at = token.source.indexOf("\t");
+      if (at !== -1 && (offender === -1 || token.offset + at < offender)) {
+        offender = token.offset + at;
+      }
+    }
+    const record = node as Record<string, unknown>;
+    for (const part of ["start", "key", "sep", "value", "end", "items", "props"]) {
+      if (part in record) walk(record[part], flow);
+    }
+  };
+  for (const document of new Parser().parse(text)) walk(document, false);
+  if (offender === -1) return;
+  const { line, column } = textPosition(text, offender);
+  throw new PortableInputError(
+    "yaml_parse_error",
+    `unacceptable tab character at line ${line}, column ${column}: ` +
+      "a raw tab in a plain scalar or as block-context spacing is read by only one YAML engine; " +
+      'write the value as a quoted scalar ("\\t")',
   );
 }
 
@@ -235,6 +295,7 @@ export function parsePortableYaml(text: string): unknown {
       document.warnings[0]?.message ?? "unsupported tag",
     );
   }
+  checkPlainTabs(text);
 
   let hasAlias = false;
   visit(document, (_key, node, path) => {

@@ -141,6 +141,11 @@ surrogates, and non-finite numbers are rejected.
 A surrogate pair written as two `\u` escapes in a double-quoted scalar is the one
 character it encodes, as in JSON; only a surrogate that pairs with nothing is a lone
 surrogate.
+A plain `=` is the string `=`. A raw tab is accepted inside a quoted scalar, a
+block scalar, or a comment, and as spacing inside a flow collection; in a plain scalar
+or as spacing in block context it is rejected as `yaml_parse_error`, because one engine
+refuses it there although YAML 1.2 allows it.
+Write such a value as a quoted scalar.
 
 Raw characters that the host YAML engines read differently are rejected before parsing,
 as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls
@@ -823,15 +828,19 @@ done:
   document that does not parse becomes one that does.
   This needs no schema and runs first.
 - **Escaping a raw character the portable rule rejects** (a next line, line or paragraph
-  separator, a control character, a lone carriage return) inside a single-line value:
-  the value is rewritten as a double-quoted scalar carrying the YAML escape (`"\N"`,
-  `"\L"`, `"\P"`, `"\f"`, `"\xHH"`), so its decoded content is exactly what YAML 1.2
-  gives the raw text, and the record names the character and its escape.
+  separator, or a control character other than a carriage return) inside a single-line
+  scalar value, plain or quoted: the value is rewritten as a double-quoted scalar
+  carrying the YAML escape (`"\N"`, `"\L"`, `"\P"`, `"\f"`, `"\xHH"`), so its decoded
+  content is exactly what YAML 1.2 gives the raw text, and the record names the
+  character and its escape.
   The character is never replaced by a guess at what was meant: a mis-decoded ellipsis
   stays a U+0085, now visible.
-  A rejected character in a key, a comment, or a block scalar has no such rewrite and
-  remains a parse error.
-  This also needs no schema and runs with the quoting pass.
+  Only a value that is a scalar is rewritten: a flow collection, a comment, an anchor,
+  an alias, or a tag is not, and a rejected character in a key, a comment, or a block
+  scalar has no such rewrite either; each remains a parse error.
+  A lone carriage return is a line break, so the text after it may be another line of
+  the document; it is never escaped as content and remains a parse error that says to
+  end lines with `\n`. This also needs no schema and runs with the quoting pass.
 - **Retyping a scalar as a string** where the contract declares `type: string` and the
   value arrived as another scalar.
   The replacement text is the scalar as written, so a notation the author chose (`1.10`,

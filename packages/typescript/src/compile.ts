@@ -143,12 +143,22 @@ function fieldTitle(name: string): string {
  * every later read as `schema_invalid`. Keys are scalars too, so a property name is
  * covered the same way; once every such string is double-quoted, every raw occurrence
  * left in the text sits inside a double-quoted scalar, where the textual escape is exact.
+ *
+ * Two more strings take the double-quoted path because the `yaml` package writes them as
+ * plain scalars that ruamel refuses: one holding a tab (ruamel reads a raw tab in a plain
+ * scalar as a scanner error) and the string `=` (the YAML 1.1 `!!value` key). The Python
+ * writer quotes both on its own.
  */
-function renderYaml(schema: Record<string, unknown>): string {
+export function renderYaml(schema: Record<string, unknown>): string {
   const document = new Document(schema, { sortMapEntries: true });
   visit(document, {
     Scalar(_key, node) {
-      if (typeof node.value === "string" && findNonPortableCharacter(node.value) !== null) {
+      if (
+        typeof node.value === "string" &&
+        (findNonPortableCharacter(node.value) !== null ||
+          node.value.includes("\t") ||
+          node.value === "=")
+      ) {
         node.type = Scalar.QUOTE_DOUBLE;
       }
     },

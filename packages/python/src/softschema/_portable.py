@@ -78,8 +78,19 @@ class _PortableConstructor(SafeConstructor):
         return value
 
 
+def _construct_value_key_as_string(_constructor: SafeConstructor, node: ScalarNode) -> str:
+    """Read a plain ``=`` as the string ``=``, as YAML 1.2 and the ``yaml`` package do.
+
+    ruamel's resolver still tags a plain ``=`` as the YAML 1.1 ``!!value`` key, for which
+    the safe constructor has no entry, so the one-character string was a parse error in
+    Python and the string ``=`` in TypeScript.
+    """
+    return node.value
+
+
 # The first subclass registration copies ruamel's inherited constructor registry.
 _PortableConstructor.add_constructor("tag:yaml.org,2002:timestamp", _construct_timestamp_as_string)
+_PortableConstructor.add_constructor("tag:yaml.org,2002:value", _construct_value_key_as_string)
 
 
 class PortableInputError(ValueError):

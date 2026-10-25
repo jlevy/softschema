@@ -107,13 +107,31 @@ const NOT_REPAIRABLE = new Set([
 const MAPPING_LINE = /^(?<indent>[ \t]*)(?<key>[A-Za-z0-9_.-]+): (?<value>[^\n]+)$/;
 
 /**
- * A line that opens a block scalar (`key: |`, `key: >-`, `- |2`, with an optional comment):
- * its content is every following line indented deeper than the opener, and the escaping
- * rule must not touch those lines even when one happens to look like `key: value`.
+ * A line that opens a block scalar (`key: |`, `"quoted": >-`, `- |2`, `- key: |`, with an
+ * optional comment): its content is every following line indented deeper than the opener,
+ * and the escaping rule must not touch those lines even when one looks like `key: value`.
+ * The opener is recognised by the indicator alone, whatever the key looks like, so a quoted
+ * or non-ASCII key opens a block scalar here exactly as it does for the engines.
  */
-const BLOCK_SCALAR_OPENER =
-  /^(?<indent>[ \t]*)(?:[A-Za-z0-9_.-]+:|-)[ \t]+[|>][-+0-9]*[ \t]*(?:#[^\n]*)?$/;
+const BLOCK_SCALAR_OPENER = /^[ \t]*(?:-[ \t]+)?(?:[^\n]*?:[ \t]+)?[|>][-+0-9]*[ \t]*(?:#[^\n]*)?$/;
 const TRAILING_COMMENT = /^[ \t]*(?:#[^\n]*)?$/;
+
+/**
+ * Characters that cannot begin a plain scalar (YAML 1.2 c-indicator). A value starting with
+ * one is a flow collection, a comment, an anchor, an alias, a tag, a block scalar indicator,
+ * or a directive, never a plain scalar, so neither pass may quote it: the quotes would turn
+ * structure into a string. `-`, `?` and `:` are indicators only when followed by a space or
+ * standing alone.
+ */
+const NOT_PLAIN_START = new Set([..."[]{}#&*!|>'\"%@`"]);
+
+function canBePlainScalar(stripped: string): boolean {
+  const first = stripped[0];
+  if (first === undefined || NOT_PLAIN_START.has(first)) return false;
+  if (first !== "-" && first !== "?" && first !== ":") return true;
+  const second = stripped[1];
+  return !(second === undefined || second === " " || second === "\t");
+}
 
 /**
  * What one repair attempt did.
@@ -202,8 +220,12 @@ function escapeCharacters(text: string): string {
  */
 function escapeValue(value: string): { text: string; escaped: string[] } | null {
   if (findNonPortableCharacter(value) === null) return null;
+  // A lone carriage return is a line break for YAML 1.2 and for ruamel, so the text after it
+  // may be another line of the document; escaping it as content would swallow that line. It
+  // stays a parse error, whose message already says to end lines with "\n".
+  if (value.includes("\r")) return null;
   // Only ASCII blanks are trimmed, the same set Python's `strip(" \t")` takes.
-  const stripped = value.replace(/^[ \t]+/u, "").replace(/[ \t]+$/u, "");
+  const stripped = stripBlanks(value);
   let body: string;
   let rest: string;
   const quote = stripped[0];
@@ -216,6 +238,7 @@ function escapeValue(value: string): { text: string; escaped: string[] } | null 
       body = body.replaceAll("''", "'").replaceAll("\\", "\\\\").replaceAll('"', '\\"');
     }
   } else {
+    if (!canBePlainScalar(stripped)) return null; // a flow collection, comment, anchor, tag
     const comment = /([ \t]+#[^\n]*)$/u.exec(stripped);
     body = comment ? stripped.slice(0, comment.index) : stripped;
     rest = comment ? (comment[1] as string) : "";
@@ -245,8 +268,15 @@ function escapeDetail(key: string, escaped: string[]): string {
  * author meant prose. A leading quote that never closes makes it try to read a quoted
  * scalar and run off the end of the value.
  */
+function stripBlanks(value: string): string {
+  return value.replace(/^[ \t]+/u, "").replace(/[ \t]+$/u, "");
+}
+
 function valueNeedsQuoting(value: string): boolean {
-  const stripped = value.trim();
+  // Only ASCII blanks are trimmed and only `[ \t]+#[ \t]` opens a comment: the hosts'
+  // default whitespace sets differ (U+0085 is whitespace to Python, U+FEFF to JavaScript),
+  // and a rejected character trimmed away here would be dropped from the file silently.
+  const stripped = stripBlanks(value);
   if (
     (stripped.startsWith('"') && stripped.endsWith('"')) ||
     (stripped.startsWith("'") && stripped.endsWith("'"))
@@ -254,7 +284,9 @@ function valueNeedsQuoting(value: string): boolean {
     return false;
   }
   if (["null", "true", "false", "~", ""].includes(stripped)) return false;
-  const comment = /\s+#\s/.exec(stripped);
+  const first = stripped[0];
+  if (first !== '"' && first !== "'" && !canBePlainScalar(stripped)) return false;
+  const comment = /[ \t]+#[ \t]/u.exec(stripped);
   const valuePart = comment ? stripped.slice(0, comment.index) : stripped;
   if (valuePart.includes(": ")) return true;
   return startsWithUnbalancedQuotedPhrase(valuePart);
@@ -282,8 +314,8 @@ function startsWithUnbalancedQuotedPhrase(value: string): boolean {
  * reviewable-looking whole-file one.
  */
 function quoteValue(value: string): string {
-  const stripped = value.trim();
-  const comment = /(\s+#\s.*)$/.exec(stripped);
+  const stripped = stripBlanks(value);
+  const comment = /([ \t]+#[ \t][^\n]*)$/u.exec(stripped);
   const valuePart = comment ? stripped.slice(0, comment.index) : stripped;
   const commentPart = comment ? (comment[1] as string) : "";
   const escaped = valuePart.replace(/\\/g, "\\\\").replace(/"/g, '\\"');

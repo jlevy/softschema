@@ -81,6 +81,14 @@ properties:
     pattern: ^[A-Z]+$
     title: Code
     type: string
+  control_text:
+    default: "tab\there"
+    description: "Carries a CRLF\r\nand a tab\tand ends with ="
+    enum:
+    - '='
+    - "tab\there"
+    title: Control Text
+    type: string
   count:
     maximum: 100
     minimum: 0
@@ -199,4 +207,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 6db7ff23184cd7ffc2c4747a612691e85be38c5d316df57d840eb6ceda7026fa
+  schema_sha256: a67903cc24f20fd48776b5c19f9336828e7f720ec3250ffcf8485abadb7dd8c3

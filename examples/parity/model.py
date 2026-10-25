@@ -81,6 +81,13 @@ class KitchenSink(BaseModel):
         default="next\u0085line",
         description="Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
     )
+    # Text one writer or the other once wrote in a form the other reader refused: a CRLF
+    # (Python folded it in a block literal), a tab in a plain scalar and a bare `=` (the
+    # yaml package wrote them plain, ruamel refused them). Both writers now quote them.
+    control_text: Literal["=", "tab\there"] = Field(
+        default="tab\there",
+        description="Carries a CRLF\r\nand a tab\tand ends with =",
+    )
     # Required nested object (single-use $ref).
     primary: Address
     # Optional nested object (anyOf [$ref, null]).
