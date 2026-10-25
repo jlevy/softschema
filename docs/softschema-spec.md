@@ -543,6 +543,8 @@ Supported spellings include:
 - supplied resources keyed by an absolute URI without a fragment.
 
 A supplied resource’s root `$id`, when present, must resolve to its mapping key.
+A `urn:` key of a resource without a root `$id` follows the namespace-identifier rule in
+Compiled Schemas, in raw and enforced validation alike.
 All resources are supplied explicitly; neither runtime performs network retrieval.
 Valid `$dynamicRef` and `$dynamicAnchor` schemas are outside this profile.
 Caller-constructed schema graphs must also use a distinct mapping object at every schema
@@ -631,12 +633,15 @@ model library can express.
 A compiled schema is Draft 2020-12. When it carries `$schema`, the value is the
 canonical URI `https://json-schema.org/draft/2020-12/schema`, with or without a trailing
 `#`; any other value, including the `http://` spelling, is refused.
-A root `$id`, when present, is an absolute URI. Keywords that only one engine would
-honor are refused as well: the legacy `dependencies` (write `dependentSchemas` or
-`dependentRequired`), the OpenAPI `nullable` (write `type: [..., "null"]`), and
-2019-09’s `$recursiveRef` and `$recursiveAnchor`. Validation reports each as
-`schema_invalid` with `reason: dialect` (`resource_identity` for the root `$id`) before
-either engine runs; see Reporting Validation Execution.
+A root `$id`, when present, is an absolute URI. Any `$id`, root or nested, that is a
+`urn:` names a namespace identifier, as in `urn:example:name`: after `urn:` (in any
+case) come one to 32 ASCII letters, digits, or hyphens starting with a letter or digit,
+a colon, and a non-empty name, so `urn:example` and `urn:dir/item.json` are refused.
+Keywords that only one engine would honor are refused as well: the legacy `dependencies`
+(write `dependentSchemas` or `dependentRequired`), the OpenAPI `nullable` (write
+`type: [..., "null"]`), and 2019-09’s `$recursiveRef` and `$recursiveAnchor`. Validation
+reports each as `schema_invalid` with `reason: dialect` (`resource_identity` for the
+`$id` rules) before either engine runs; see Reporting Validation Execution.
 
 ### Release-Level Mapping Across JSON Schema, Pydantic, and Zod
 
@@ -816,10 +821,10 @@ gate gives one answer.
 Preparation also refuses, before either engine runs, a `$schema` other than the
 canonical Draft 2020-12 URI and the keywords only one engine would honor
 (`dependencies`, `nullable`, `$recursiveRef`, `$recursiveAnchor`), each as
-`schema_invalid` with `reason: dialect`, and a relative root `$id` as
-`reason: resource_identity`; the Compiled Schemas section lists the portable forms to
-write instead. Normal completed passes and rejections retain the common execution
-meaning.
+`schema_invalid` with `reason: dialect`, and a relative root `$id` or a `urn:` `$id`
+without a namespace identifier, root or nested, as `reason: resource_identity`; the
+Compiled Schemas section lists the portable forms to write instead.
+Normal completed passes and rejections retain the common execution meaning.
 
 Outside that rule the engines keep their own behavior on degenerate schemas, and every
 such difference is pinned in the `engine_deviations` list of

@@ -250,7 +250,12 @@ function buildValidator(
     validateFormats: false,
   });
   checkRootIdentity(schemaObject);
+  for (const [key, resource] of Object.entries(resources)) {
+    // A supplied resource without its own `$id` is registered under its key.
+    if (typeof resource.$id !== "string") checkUrnIdentity(key, "resource key");
+  }
   for (const document of [schemaObject, ...Object.values(resources)]) {
+    checkUrnIdentities(document);
     checkPatterns(document);
     checkDialect(document);
     if (!ajv.validateSchema(document)) {
@@ -281,8 +286,9 @@ const URN_WITHOUT_NID = "URN without nid cannot be serialized";
 /**
  * Report a `$ref` naming a URN that Ajv's URI library cannot serialize as the
  * unresolvable reference it is, the reason Python's walk gives, not as a compilation
- * failure. Only a `$ref` whose own value fails is reclassified: the same error raised by
- * a root `$id`, or by a relative reference joined onto such an id, stays `compilation`.
+ * failure. Only a `$ref` whose own value fails is reclassified. A `urn:` `$id` without a
+ * namespace identifier never gets this far (`checkUrnIdentities`), and the same error
+ * raised by a relative `$id` that Ajv joins onto a `urn:` base stays `compilation`.
  */
 function unserializableReference(
   ajv: Ajv2020,
@@ -559,6 +565,40 @@ function checkRootIdentity(schema: Record<string, unknown>): void {
       "resource_identity",
       `the root $id must be an absolute URI, got ${JSON.stringify(rootId)}`,
     );
+  }
+}
+
+/**
+ * The name after `urn:`, up to any query or fragment: a namespace identifier of one to 32
+ * ASCII letters, digits, or hyphens starting with a letter or digit, a colon, and a
+ * non-empty namespace-specific string. Mirrors fast-uri's `URN_REG` over ASCII. Kept in
+ * step with Python's `_URN_NAME`.
+ */
+const URN_NAME =
+  /^[0-9A-Za-z][0-9A-Za-z-]{0,31}:(?:[0-9A-Za-z_!$'()*+,\-./:;=@]|%[0-9A-Fa-f]{2})+$/;
+
+/**
+ * Require a `urn:` resource identity to name a namespace identifier. fast-uri, the URI
+ * library Ajv resolves with, cannot serialize a URN without one, such as `urn:example` or
+ * `urn:dir/item.json`, so Ajv fails on the identity while jsonschema accepts it. Refusing
+ * it keeps one verdict. Kept in step with Python's `_check_urn_identity`.
+ */
+function checkUrnIdentity(identity: string, label: string): void {
+  const colon = identity.indexOf(":");
+  if (colon === -1 || identity.slice(0, colon).toLowerCase() !== "urn") return;
+  const name = identity.slice(colon + 1).split(/[?#]/, 1)[0] ?? "";
+  if (!URN_NAME.test(name)) {
+    throw new SchemaGraphError(
+      "resource_identity",
+      `a urn: ${label} must name a namespace identifier, as in urn:example:name, got ${JSON.stringify(identity)}`,
+    );
+  }
+}
+
+/** Apply `checkUrnIdentity` to every `$id`, root or nested. */
+function checkUrnIdentities(schema: Record<string, unknown>): void {
+  for (const node of iterSchemas(schema)) {
+    if (typeof node.$id === "string") checkUrnIdentity(node.$id, "$id");
   }
 }
 

@@ -210,7 +210,12 @@ def _build_validator(
         raise _SchemaRootNotAMapping
     resource_schemas = dict(resources or {})
     _check_root_identity(schema)
+    for key, resource_schema in resource_schemas.items():
+        # A supplied resource without its own `$id` is registered under its key.
+        if not isinstance(resource_schema.get("$id"), str):
+            _check_urn_identity(key, "resource key")
     for document in (schema, *resource_schemas.values()):
+        _check_urn_identities(document)
         _check_patterns(document)
         _check_dialect(document)
         Draft202012Validator.check_schema(document)
@@ -566,6 +571,42 @@ def _check_root_identity(schema: dict[str, Any]) -> None:
             "resource_identity",
             f"the root $id must be an absolute URI, got {root_id!r}",
         )
+
+
+# The name after `urn:`, up to any query or fragment: a namespace identifier of one to 32
+# ASCII letters, digits, or hyphens starting with a letter or digit, a colon, and a
+# non-empty namespace-specific string. Mirrors fast-uri's `URN_REG` over ASCII. Kept in
+# step with TypeScript's `URN_NAME`.
+_URN_NAME = re.compile(
+    r"[0-9A-Za-z][0-9A-Za-z-]{0,31}:(?:[0-9A-Za-z_!$'()*+,\-./:;=@]|%[0-9A-Fa-f]{2})+"
+)
+
+
+def _check_urn_identity(identity: str, label: str) -> None:
+    """Require a ``urn:`` resource identity to name a namespace identifier.
+
+    fast-uri, the URI library Ajv resolves with, cannot serialize a URN without one, such
+    as ``urn:example`` or ``urn:dir/item.json``, so Ajv fails on the identity while
+    jsonschema accepts it. Refusing it keeps one verdict. Kept in step with TypeScript's
+    ``checkUrnIdentity``.
+    """
+    scheme, separator, rest = identity.partition(":")
+    if not separator or scheme.lower() != "urn":
+        return
+    if not _URN_NAME.fullmatch(re.split(r"[?#]", rest, maxsplit=1)[0]):
+        raise SchemaGraphError(
+            "resource_identity",
+            f"a urn: {label} must name a namespace identifier, as in urn:example:name, "
+            f"got {identity!r}",
+        )
+
+
+def _check_urn_identities(schema: dict[str, Any]) -> None:
+    """Apply :func:`_check_urn_identity` to every ``$id``, root or nested."""
+    for node in _iter_schemas(schema):
+        identity = node.get("$id")
+        if isinstance(identity, str):
+            _check_urn_identity(identity, "$id")
 
 
 def _contains_is_inert(node: dict[str, Any]) -> bool:

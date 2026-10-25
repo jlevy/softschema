@@ -319,8 +319,9 @@ for: an inert or impossible `contains`, `unevaluatedProperties` beside
 `_check_dialect` refuses, before either engine runs, a `$schema` other than the
 canonical 2020-12 URI and the keywords only Ajv honors (`dependencies`, `nullable`,
 `$recursiveRef`, `$recursiveAnchor`); `_check_root_identity` refuses a relative root
-`$id`. The engine differences that remain on degenerate schemas are pinned per runtime
-in the `engine_deviations` list of the shared execution vectors.
+`$id`, and `_check_urn_identities` a `urn:` `$id`, root or nested, without a namespace
+identifier. The engine differences that remain on degenerate schemas are pinned per
+runtime in the `engine_deviations` list of the shared execution vectors.
 An error raised during `iter_errors` itself is `errored` with the existing structural
 error. Unexpected semantic callback exceptions propagate, so there is no returned result
 to mark completed. `validate_values`, artifact validation, and repair share these

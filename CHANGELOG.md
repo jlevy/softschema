@@ -52,9 +52,12 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   while jsonschema ignored them: the legacy `dependencies`, the OpenAPI `nullable`, and
   2019-09’s `$recursiveRef` and `$recursiveAnchor`, each as `schema_invalid` with
   `reason: dialect`. A relative root `$id`, which the engines resolved against different
-  invented bases, is refused as `reason: resource_identity`. Write `dependentSchemas` or
-  `dependentRequired`, `type: [..., "null"]`, `$dynamicRef`/`$dynamicAnchor`, and an
-  absolute root `$id`.
+  invented bases, is refused as `reason: resource_identity`, and so is a `$id`, root or
+  nested, that is a `urn:` without a namespace identifier, such as `urn:example`, which
+  Python accepted and Ajv could not serialize.
+  Write `dependentSchemas` or `dependentRequired`, `type: [..., "null"]`,
+  `$dynamicRef`/`$dynamicAnchor`, an absolute root `$id`, and a URN as
+  `urn:<nid>:<name>`.
 - The TypeScript `validate --require` with an unknown layer reports
   `softschema validate: invalid require: <value>` with the usual exit 2, the prefix the
   Python CLI uses, instead of the argument parser’s own line.
@@ -102,11 +105,14 @@ and for `$recursiveRef`, which Python ignored and TypeScript evaluated (write
 `$dynamicRef`). **Both runtimes** change for the legacy `dependencies` keyword, which
 TypeScript enforced and Python ignored (write `dependentSchemas` or
 `dependentRequired`), for OpenAPI `nullable`, which TypeScript honored and Python
-ignored (write `type: [..., "null"]`), and for a relative root `$id`, which each
-resolved against a different invented base (write an absolute `$id`). Skip reasons
-change only for the TypeScript library fix above.
-Strict serialized-result consumers must accept the new layer fields and remove the
-unreleased aggregate field.
+ignored (write `type: [..., "null"]`), for a relative root `$id`, which each resolved
+against a different invented base (write an absolute `$id`), and for a `$id`, root or
+nested, that is a `urn:` without a namespace identifier, such as `urn:example` or
+`urn:dir/item.json`, which Python accepted and TypeScript failed to compile as
+`reason: compilation` (write `urn:<nid>:<name>`, such as `urn:example:name`); both now
+refuse it as `reason: resource_identity`. Skip reasons change only for the TypeScript
+library fix above. Strict serialized-result consumers must accept the new layer fields
+and remove the unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or
 revalidate rather than fabricating evidence.
 See the

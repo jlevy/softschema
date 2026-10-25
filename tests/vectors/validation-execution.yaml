@@ -494,6 +494,95 @@ cases:
         name: {type: string}
     structural: {execution: completed, ok: true, skipped_reason: null}
     semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  # A urn: $id names a namespace identifier (urn:<nid>:<name>). Ajv's URI library cannot
+  # serialize one that does not, so both runtimes refuse it, root or nested.
+  - name: urn-root-id-without-namespace
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: urn:example
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: urn-root-id-with-path-for-namespace
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: urn:dir/item.json
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: urn-nested-id-without-namespace
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {$id: "urn:example", type: string}
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+  - name: urn-root-id-without-namespace-enforced
+    values: {name: hello}
+    schema:
+      $id: urn:example
+      type: object
+      properties:
+        name: {type: string}
+      required: [name]
+    structural: {execution: not_run, ok: false, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+    error_kind: schema_invalid
+    error_reason: resource_identity
+    warning: document-enforcement-not-applied
+  - name: urn-uuid-root-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: urn:uuid:6e8bc430-9c3a-11d9-9669-0800200c9a66
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: urn-uuid-root-id-enforced
+    values: {name: hello}
+    schema:
+      $id: urn:uuid:6e8bc430-9c3a-11d9-9669-0800200c9a66
+      type: object
+      properties:
+        name: {type: string}
+      required: [name]
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: urn-isbn-nested-id
+    values: {name: hello}
+    status: soft
+    schema:
+      type: object
+      properties:
+        name: {$id: "urn:isbn:0451450523", type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
+  - name: uppercase-urn-root-id
+    values: {name: hello}
+    status: soft
+    schema:
+      $id: "URN:Example:Root"
+      type: object
+      properties:
+        name: {type: string}
+    structural: {execution: completed, ok: true, skipped_reason: null}
+    semantic: {execution: not_run, ok: true, skipped_reason: no_semantic_model}
   # Subschemas Ajv compiles nothing for are not walked either: an inert contains, and
   # unevaluatedProperties or unevaluatedItems beside a sibling that evaluates everything.
   # Unreached, both runtimes complete; reached, jsonschema still evaluates them, which the
@@ -842,7 +931,8 @@ engine_deviations:
       inside it, and completes. Ajv resolves the id to `urn:dir/item.json`, a URN with no
       namespace identifier, and fast-uri throws `URN without nid cannot be serialized`
       when Ajv resolves the `$ref` inside that resource, so TypeScript refuses the schema
-      whether or not the payload reaches it.
+      whether or not the payload reaches it. The `urn:` identity check reads each `$id`
+      as written, and neither id here lacks a namespace identifier.
     python: {execution: completed, ok: true}
     typescript: {execution: not_run, ok: false, error_kind: schema_invalid, error_reason: compilation}
   - name: tag-root-nested-relative-id-absolute-reference

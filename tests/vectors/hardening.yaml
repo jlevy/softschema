@@ -129,6 +129,30 @@ structural:
     value: Ada
     valid: false
     code: schema_invalid
+  # A resource is identified by its $id, or by its key when it has none; a urn: identity
+  # must name a namespace identifier in either place.
+  - id: urn_resource_id_without_namespace
+    schema: { $ref: "urn:example:item" }
+    resources:
+      "urn:example:item": { $id: "urn:example", type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: urn_resource_key_without_namespace
+    schema: { $ref: "urn:example" }
+    resources:
+      "urn:example": { type: string }
+    value: Ada
+    valid: false
+    code: schema_invalid
+    reason: resource_identity
+  - id: urn_resource_key_with_namespace
+    schema: { $ref: "urn:example:item" }
+    resources:
+      "urn:example:item": { type: string }
+    value: Ada
+    valid: true
 
 canonicalization:
   - id: preserve_empty_default
