@@ -72,12 +72,14 @@ softschema validate: [..]
 
 # Test: validate --require with an unknown layer is a usage error (exit 2)
 
-`--require` accepts only `structural` and `semantic`. The diagnostic wording is each
-argument parser's own, so only the exit class and a non-empty diagnostic are asserted.
+`--require` accepts only `structural` and `semantic`. Both CLIs report the mistake under
+the `softschema validate:` prefix; the wording after it is each argument parser's own
+(argparse prints its usage line first), so the prefix and the exit class are asserted.
 
 ```console
 $ $SOFTSCHEMA validate tests/golden/fixtures/extra-field-enforced.md --require payload 2>&1
 ...
+softschema validate: [..]
 ? 2
 ```
 

@@ -15,7 +15,7 @@ import {
 import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Command, CommanderError, InvalidArgumentError } from "commander";
+import { Command, CommanderError } from "commander";
 import { z } from "zod";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
@@ -524,7 +524,7 @@ interface BindingOptions {
 }
 
 interface ValidateOptions extends BindingOptions {
-  require?: ("structural" | "semantic")[];
+  require?: string[];
 }
 
 interface RepairOptions extends BindingOptions {
@@ -544,15 +544,24 @@ function missingContractReason(profile: SchemaProfile): string {
     : "missing --contract because the document has no YAML frontmatter";
 }
 
-/** Accumulate repeated `--require` values, accepting only the two layer names. */
-function collectRequiredCheck(
-  value: string,
-  previous: ("structural" | "semantic")[] | undefined,
-): ("structural" | "semantic")[] {
-  if (value !== "structural" && value !== "semantic") {
-    throw new InvalidArgumentError("expected structural or semantic.");
-  }
+/** Accumulate repeated `--require` values; `requiredChecksFromOpts` judges them. */
+function collectRequiredCheck(value: string, previous: string[] | undefined): string[] {
   return [...(previous ?? []), value];
+}
+
+/**
+ * Check the collected `--require` values here rather than in the option parser, so an
+ * unknown layer is reported under the command's own `softschema validate:` prefix, as
+ * `--status` and `--profile` are, instead of Commander's generic `error:` line.
+ */
+function requiredChecksFromOpts(opts: ValidateOptions): ("structural" | "semantic")[] | undefined {
+  if (opts.require === undefined) return undefined;
+  return opts.require.map((value) => {
+    if (value !== "structural" && value !== "semantic") {
+      throw new UsageError(`invalid require: ${value} (expected structural or semantic)`);
+    }
+    return value;
+  });
 }
 
 /** Import `path:export` and confirm the export is a Zod schema before use. */
@@ -690,7 +699,7 @@ async function runValidate(path: string, opts: ValidateOptions): Promise<number>
     const result = validateArtifact(path, contract, {
       semanticModel,
       document: read.document,
-      require: opts.require,
+      require: requiredChecksFromOpts(opts),
     });
     if (result.outcome === "input_error") {
       throw new Error("pre-parsed CLI validation returned an input error");
