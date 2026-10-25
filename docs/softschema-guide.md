@@ -866,8 +866,9 @@ Use this sequence:
    `repair --dry-run` reports what would change and still passes when the result would
    be valid — what an agent asks before committing to a change.
    `repair --check` fails whenever anything would change at all — what a gate runs
-   against an artifact under review, the same shape as `generate --check`. Structural
-   and semantic failures are separate.
+   against an artifact under review, the same shape as `generate --check`; a gate that
+   also needs completed checks follows it with `validate --require`, since repair takes
+   no requirement. Structural and semantic failures are separate.
    For a structural repair, match `kind`, `code`, and `path`; records for missing or
    undeclared properties also include `property`. Do not parse `message`; see
    [Matching on structural error records](softschema-spec.md#matching-on-structural-error-records).

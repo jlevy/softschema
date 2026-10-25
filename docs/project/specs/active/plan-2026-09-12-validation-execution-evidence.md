@@ -114,7 +114,7 @@ completed checks rather than a winning mechanism.
 | Old serialized validation results | Absence of `execution` means historical execution is unknown. Preserve absence or rerun validation; never infer an execution state from `ok`, `engine`, or skip reasons. No result-deserialization migration framework is added. |
 | Public Python result constructors | Require `execution` explicitly as a keyword-only argument. Update manual constructors and fixtures rather than silently inventing a default. |
 | Public TypeScript interfaces | Require the same field on manually constructed layer records. |
-| Validation function callers | Existing arguments and default verdict rules remain supported. The optional `require` argument rejects checks that did not complete. TypeScript structural skip reasons now follow the supplied semantic validator, not its label. |
+| Validation function callers | Existing arguments and default verdict rules remain supported, with one verdict change in Python: a raw-mode schema with an unresolvable `$ref` on a branch the payload never reaches, which TypeScript already refused, is now `schema_invalid` (not ok, `invalid`, exit 1) with or without `require`; both runtimes also refuse a `$schema` naming another draft and the legacy `dependencies` keyword. Only hand-written or third-party schemas are affected, never `softschema compile` output; fix the schema. The optional `require` argument rejects checks that did not complete. TypeScript structural skip reasons now follow the supplied semantic validator, not its label. |
 
 Two repair-result corrections share this release boundary.
 Python callers passing `model=` to `repair_and_validate_artifact` receive a final

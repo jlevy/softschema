@@ -42,7 +42,17 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   reaches is now `schema_invalid` (`reason: reference`) with structural `not_run` in
   both runtimes, instead of a Python-only completed acceptance, so
   `--require structural` gives one answer.
-  A definition nothing references is still not checked in raw mode.
+  The walk follows the applicators both engines evaluate; a definition nothing
+  references, a `contentSchema` annotation, and a `then` or `else` with no `if` are not
+  checked in raw mode.
+  The remaining engine differences on degenerate schemas are pinned as
+  `engine_deviations` in the shared vectors and listed in the spec.
+- Both runtimes refuse a `$schema` naming a draft other than 2020-12 and the legacy
+  `dependencies` keyword as `schema_invalid` with `reason: dialect`, since Ajv honored
+  each where jsonschema did not; write `dependentSchemas` or `dependentRequired`.
+- The TypeScript `validate --require` with an unknown layer reports
+  `softschema validate: invalid require: <value>` with the usual exit 2, the prefix the
+  Python CLI uses, instead of the argument parser’s own line.
 - Checked enforcement accepts nested nullable references to explicitly closed models
   without adding redundant object closure to their nullable wrappers.
   Explicit open object policy and rejection of unknown fields remain owned by the
@@ -63,6 +73,9 @@ checks. Declared `status` still selects validation mode; it does not prove a che
   Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
   without a label reports `inferred_via_model`. The CLI output is unchanged because
   `--model` sets both.
+- Python `validate_values(schema=...)` with a schema file that does not exist reports
+  `schema_missing` with the path, as artifact validation does, instead of
+  `schema_invalid` with the operating system’s message.
 
 ### Compatibility
 
@@ -70,9 +83,16 @@ Target the next coordinated minor release, **0.9.0**. Python layer-result constr
 require an explicit keyword-only `execution`; TypeScript layer interfaces require the
 same field. Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit
 classes, artifact metadata, and compiled schema files are unchanged except for the
-corrected repair-result verdicts above; skip reasons change only for the TypeScript
-library fix above. Strict serialized-result consumers must accept the new layer fields
-and remove the unreleased aggregate field.
+corrected repair-result verdicts above and three schema refusals that now apply in both
+runtimes: a hand-written or third-party schema with an unresolvable `$ref` on a branch
+the payload never reaches, which TypeScript already refused, is now `schema_invalid` in
+Python too (`ok` false, `invalid`, `validate` exit 1, with or without `--require`), and
+a `$schema` naming another draft or the legacy `dependencies` keyword is refused in
+both. Fix or remove the dangling reference, drop or correct `$schema`, and write
+`dependentSchemas` or `dependentRequired`; schemas written by `softschema compile` are
+unaffected. Skip reasons change only for the TypeScript library fix above.
+Strict serialized-result consumers must accept the new layer fields and remove the
+unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or
 revalidate rather than fabricating evidence.
 See the
