@@ -839,6 +839,12 @@ The appended error record has these fields:
 
 `execution`, `skipped_reason`, warnings, and existing errors keep their values and
 order, so a schema preparation error remains the first structural error.
+The appended record is keyed by `kind`, like every other softschema diagnostic, while
+the errors of a completed semantic check are the semantic validator’s own issue records
+(for example Pydantic’s `type`, `loc`, and `msg`) and carry no `kind`. A consumer that
+reads issue fields from `semantic.errors` must dispatch on `kind` first.
+The two never appear together today, because a layer that did not complete has no issue
+records, but the rule holds regardless.
 `outcome` is recomputed by the usual rule: a result that was `valid` becomes `invalid`,
 and an `input_error` stays one.
 A strict read refuses the artifact, and the `validate` command exits `1`. An unknown
@@ -858,7 +864,10 @@ than discovering the verdict after it has exited.
 
 Repair is one escalating pass: parse, repair the document if it does not parse, conform
 its scalars to the types the contract declares, write once if anything changed, then
-validate.
+validate. Repair takes no requirement for completed checks, so a repaired metadata-only
+artifact in effective `enforced` mode still passes its check; a gate that needs
+completed checks follows the repair check with `validate --require` (see Required
+checks).
 
 #### Reading and checking are separate postures
 

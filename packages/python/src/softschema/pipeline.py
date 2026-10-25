@@ -61,7 +61,8 @@ def repair_and_validate_artifact(
 
     ``write=False`` is the check mode: everything is computed and reported, and the file is
     not touched. That is what a gate runs when it wants to know whether an artifact *would*
-    be repaired without mutating one under review.
+    be repaired without mutating one under review. Repair takes no ``require``; a gate that
+    also needs completed checks follows it with :func:`validate_artifact` and ``require=``.
 
     ``model`` overrides the contract's model for both conformance and final validation.
     The caller's contract is unchanged; the result names the effective binding used.
