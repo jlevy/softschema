@@ -676,6 +676,57 @@ describe("compile: write mode + build", () => {
       type: "array",
     });
   });
+  test("rejects a default or catch value canonical JSON cannot carry, as Python does", () => {
+    const compile = (field: z.ZodType) =>
+      buildCanonicalSchema(z.strictObject({ f: field }), "x:NonJson/v1");
+    const toNumber = (value: number) => value;
+    const transformingCatch = (fallback: unknown) =>
+      z
+        .number()
+        .transform(toNumber)
+        .catch(fallback as number);
+
+    // A restored fallback over a transform is checked: Zod's JSON copy would turn these into
+    // `null` or fail without naming the field.
+    for (const [fallback, shown] of [
+      [Number.NaN, "NaN"],
+      [Number.POSITIVE_INFINITY, "Infinity"],
+      [Number.NEGATIVE_INFINITY, "-Infinity"],
+    ] as const) {
+      expect(() => compile(transformingCatch(fallback))).toThrow(
+        `canonical JSON requires finite numbers; the .catch() value at #/properties/f is ${shown}`,
+      );
+    }
+    expect(() => compile(transformingCatch(1n))).toThrow(
+      "canonical JSON cannot represent a BigInt; the .catch() value at #/properties/f is 1n",
+    );
+    // So is every other default, which used to compile to `default: null`.
+    expect(() => compile(z.number().catch(Number.NaN))).toThrow(
+      "the .catch() value at #/properties/f is NaN",
+    );
+    expect(() => compile(z.number().default(Number.POSITIVE_INFINITY))).toThrow(
+      "the .default() value at #/properties/f is Infinity",
+    );
+    expect(() => compile(z.number().prefault(Number.NaN))).toThrow(
+      "the .prefault() value at #/properties/f is NaN",
+    );
+    expect(() => compile(z.number().meta({ default: Number.NaN }))).toThrow(
+      "the default at #/properties/f is NaN",
+    );
+    // A Date fallback is written as its ISO string, as a `.default()` Date already is and as
+    // Pydantic writes a datetime default.
+    const epoch = new Date(0);
+    const dateCatch = z
+      .string()
+      .transform((text) => new Date(text))
+      .catch(epoch);
+    expect((compile(dateCatch).schema.properties as { f: unknown }).f).toEqual({
+      default: "1970-01-01T00:00:00.000Z",
+      title: "F",
+      type: "string",
+    });
+    expect(compile(dateCatch).sha).toBe(compile(z.string().default(epoch as never)).sha);
+  });
   test("semantic datetime options do not change the structural schema digest", () => {
     const variants = [
       z.iso.datetime(),

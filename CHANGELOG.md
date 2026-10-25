@@ -62,6 +62,14 @@ version number.
   A tuple element with a `.catch()` still counts toward `minItems`, as an element of
   Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
   Pydantic cannot default a tuple element.
+- **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
+  compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
+  `default` used to compile to `default: null`, because Zod’s final JSON copy of the
+  schema turns non-finite numbers into `null`. It now fails with
+  `canonical JSON requires finite numbers` and the schema path of the value, as the
+  Python compiler fails on a NaN or infinite default.
+  A BigInt `.catch()` value fails with a named error instead of Zod’s
+  `Error converting schema to JSON.` A `Date` value is still written as its ISO string.
 
 ### Changed
 

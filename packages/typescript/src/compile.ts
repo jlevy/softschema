@@ -195,6 +195,25 @@ function catchesAbsentKey(field: z.core.$ZodType | undefined): boolean {
 }
 
 /**
+ * The JSON form of a default value, as Zod writes a `.default()` value: a `Date` becomes
+ * its ISO string. Throws for what canonical JSON cannot carry, as the Python compiler
+ * does. Zod's final JSON copy of the schema would otherwise turn NaN or ±Infinity into
+ * `null` and fail on a BigInt with an error that names no field.
+ */
+function jsonDefault(value: unknown, what: string): unknown {
+  const serialized = JSON.stringify(value, (_key, item: unknown) => {
+    if (typeof item === "number" && !Number.isFinite(item)) {
+      throw new TypeError(`canonical JSON requires finite numbers; ${what} is ${item}`);
+    }
+    if (typeof item === "bigint") {
+      throw new TypeError(`canonical JSON cannot represent a BigInt; ${what} is ${item}n`);
+    }
+    return item;
+  });
+  return serialized === undefined ? undefined : JSON.parse(serialized);
+}
+
+/**
  * Zod's names for its `.startsWith()`, `.endsWith()`, and `.includes()` string checks.
  *
  * Since 4.6, `z.toJSONSchema` writes the name of a string schema's last format-like check
@@ -264,7 +283,7 @@ export function buildCanonicalSchema(
     // Zod-specific output must not leak into the canonical cross-language sidecar. Zod's
     // overrides run on a wrapped schema before its wrapper copies the result, so fixing
     // the node that carries the checks fixes every copy.
-    override: ({ zodSchema: source, jsonSchema }) => {
+    override: ({ zodSchema: source, jsonSchema, path }) => {
       if (
         typeof jsonSchema.format === "string" &&
         AFFIX_CHECK_FORMATS.has(jsonSchema.format) &&
@@ -285,13 +304,26 @@ export function buildCanonicalSchema(
       if (source instanceof z.core.$ZodRecord && catchesAbsentKey(source._zod.def.valueType)) {
         delete jsonSchema.required;
       }
-      // Zod 4.6 drops the `default` of a transforming schema in input mode, the catch value
-      // included. Zod 4.4 kept it, and so does the Pydantic mirror, a defaulted field with an
-      // `AfterValidator`, so put it back.
-      if (source instanceof z.core.$ZodCatch && !("default" in jsonSchema)) {
-        const catchValue = source._zod.def.catchValue(undefined as never);
-        if (catchValue !== undefined) jsonSchema.default = catchValue;
+      // A default the canonical sidecar cannot carry fails here, as it does in Python. By
+      // now Zod has already turned a `.default()` NaN into `null`, so check the source value.
+      const at = `#/${path.join("/")}`;
+      if (source instanceof z.core.$ZodDefault) {
+        jsonDefault(source._zod.def.defaultValue, `the .default() value at ${at}`);
+      } else if (source instanceof z.core.$ZodPrefault) {
+        jsonDefault(source._zod.def.defaultValue, `the .prefault() value at ${at}`);
+      } else if (source instanceof z.core.$ZodCatch) {
+        const catchValue = jsonDefault(
+          source._zod.def.catchValue(undefined as never),
+          `the .catch() value at ${at}`,
+        );
+        // Zod 4.6 drops the `default` of a transforming schema in input mode, the catch
+        // value included. Zod 4.4 kept it, and so does the Pydantic mirror, a defaulted field
+        // with an `AfterValidator`, so put it back.
+        if (!("default" in jsonSchema) && catchValue !== undefined) {
+          jsonSchema.default = catchValue;
+        }
       }
+      if ("default" in jsonSchema) jsonDefault(jsonSchema.default, `the default at ${at}`);
       // Pydantic temporal fields emit a format annotation without a pattern. Zod ISO nodes
       // validate semantically with an intrinsic regex; drop it and keep the format.
       if (

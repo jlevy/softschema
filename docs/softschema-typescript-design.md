@@ -105,6 +105,9 @@ since a Pydantic `dict` never requires its keys, and it restores the catch value
 `default` where Zod 4.6 dropped it because the caught type transforms.
 A tuple element with a `.catch()` keeps counting toward `minItems`, as an element of
 Pydantic’s `tuple[...]` does.
+Every `.default()`, `.prefault()`, `.catch()`, and authored `default` value is checked
+before Zod’s final JSON copy, which would turn NaN or ±Infinity into `null`: a
+non-finite number or a BigInt fails compilation, as it does in Python.
 
 A closed `z.tuple([...])` emits `items: false` beside a `maxItems` that already rejects
 every element past `prefixItems`. Pydantic’s `tuple[...]` omits it, so the compiler
