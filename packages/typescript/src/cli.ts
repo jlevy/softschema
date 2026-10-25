@@ -770,8 +770,11 @@ function repairFailureMessage(
   path: string,
   profile: SchemaProfile,
 ): string {
-  if (repaired.errorMessage) return repaired.errorMessage;
+  // The reader's message comes first because it names the document; repair's own carries
+  // the same engine text without it, and is what remains when nothing could be parsed at
+  // all (an unreadable or non-UTF-8 file).
   if (parseError !== null) return parseError.message;
+  if (repaired.errorMessage) return repaired.errorMessage;
   return profile === "pure-yaml"
     ? `the document root is not a YAML mapping: \`${path}\``
     : `the document has no YAML frontmatter: \`${path}\``;
@@ -824,7 +827,7 @@ function parseAfterRepair(
   if (text === null) return { document: null, parseError: null };
   try {
     const document =
-      profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text, source);
+      profile === "pure-yaml" ? parseYamlText(text, source) : parseFrontmatterText(text, source);
     return { document, parseError: null };
   } catch (error) {
     // Only the failures the readers themselves throw mean "still unreadable after

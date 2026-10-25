@@ -111,15 +111,28 @@ export interface ParsedDocument {
  */
 export class YamlParseError extends Error {}
 
-function parseYaml(text: string): unknown {
+function parseYaml(text: string, source: string): unknown {
   try {
     return parsePortableYaml(text);
   } catch (err) {
     if (err instanceof PortableInputError) {
-      throw new YamlParseError(err.message, { cause: err });
+      throw new YamlParseError(nameSource(err.message, source), { cause: err });
     }
-    throw new YamlParseError((err as Error).message);
+    throw new YamlParseError(nameSource((err as Error).message, source));
   }
+}
+
+/**
+ * A parse failure's message with the document named first.
+ *
+ * The engine says where in the text it stopped, not which text: the `yaml` package reports
+ * a line and column and ruamel an anonymous `"<unicode string>"`. An agent repairing a
+ * batch of artifacts cannot act on a line number alone, so both readers put the document
+ * first, in the backticked form softschema's own messages already use. Mirrors the Python
+ * `_parse_document_yaml`.
+ */
+function nameSource(message: string, source: string): string {
+  return `\`${source}\`: ${message}`;
 }
 
 /**
@@ -159,7 +172,7 @@ export function parseFrontmatterText(text: string, source = "<text>"): ParsedDoc
   }
   // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
-  const parsed = parseYaml(lines.slice(1, end).join("\n"));
+  const parsed = parseYaml(lines.slice(1, end).join("\n"), source);
   if (!isMapping(parsed)) {
     // Reject the same non-mapping values as Python: a whitespace-only block (YAML
     // `null`), a list, or a bare scalar. Use the portable type names from the shared
@@ -178,12 +191,22 @@ export function parseFrontmatterText(text: string, source = "<text>"): ParsedDoc
  * rules, which a host YAML library does not enforce; see `validateArtifact`.
  */
 function readYamlDoc(path: string): ParsedDocument {
-  return parseYamlText(readUtf8(path));
+  return parseYamlText(readUtf8(path), path);
 }
 
-/** The text-level half of `readYamlDoc`, for the same reason. */
-export function parseYamlText(text: string): ParsedDocument {
-  return { hasFence: false, value: parsePortableYaml(text) };
+/**
+ * The text-level half of `readYamlDoc`, for the same reason. `source` only names the
+ * document in error messages; the error keeps its portable code.
+ */
+export function parseYamlText(text: string, source = "<text>"): ParsedDocument {
+  try {
+    return { hasFence: false, value: parsePortableYaml(text) };
+  } catch (err) {
+    if (err instanceof PortableInputError) {
+      throw new PortableInputError(err.code, nameSource(err.message, source));
+    }
+    throw err;
+  }
 }
 
 /**

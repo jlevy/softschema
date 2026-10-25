@@ -1076,7 +1076,7 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
     if end == 1:
         return "\n".join(lines[2:]), None
     raw = "\n".join(lines[1:end])
-    value = parse_yaml(raw)
+    value = _parse_document_yaml(raw, source)
     if not isinstance(value, dict):
         raise PortableInputError(
             "yaml_parse_error",
@@ -1093,12 +1093,30 @@ def read_yaml_doc(path: Path) -> Any:
     contract. Decoding goes through softschema's portable YAML rules, which a host YAML
     library does not enforce; see :func:`validate_artifact` on why that matters.
     """
-    return parse_yaml(read_utf8(path))
+    return parse_yaml_text(read_utf8(path), source=str(path))
 
 
-def parse_yaml_text(text: str) -> Any:
-    """The text-level half of :func:`read_yaml_doc`, for the same reason."""
-    return parse_yaml(text)
+def parse_yaml_text(text: str, *, source: str = "<text>") -> Any:
+    """The text-level half of :func:`read_yaml_doc`, for the same reason.
+
+    ``source`` only names the document in error messages.
+    """
+    return _parse_document_yaml(text, source)
+
+
+def _parse_document_yaml(text: str, source: str) -> Any:
+    """:func:`parse_yaml`, with the document named in any failure it raises.
+
+    The engine says where in the text it stopped, not which text: ruamel reports
+    ``in "<unicode string>"`` and the ``yaml`` package nothing at all. An agent repairing
+    a batch of artifacts cannot act on a line number alone, so both readers put the
+    document first, in the backticked form softschema's own messages already use. The code
+    is kept as is; only the message changes.
+    """
+    try:
+        return parse_yaml(text)
+    except PortableInputError as exc:
+        raise PortableInputError(exc.code, f"`{source}`: {exc}") from exc
 
 
 def _portable_error_kind(error: Exception) -> str:

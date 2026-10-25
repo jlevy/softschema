@@ -19,6 +19,18 @@ version number.
   Python only: the TypeScript emitter is configured per call and has no shared state to
   leak.
 
+- **A YAML parse failure names the artifact.** The YAML engines say where in the text
+  they stopped, not which text: ruamel reports `in "<unicode string>", line 4` and the
+  `yaml` package a line and column alone.
+  softschema’s own fence messages already named the document, but an engine failure in
+  either profile — and every failure in a pure-yaml artifact — did not, so an agent
+  repairing a batch could not tell which file a `yaml_parse_error` record was about.
+  The `validate` diagnostic and the `yaml_parse_error` record now begin with the
+  backticked document path, followed by the engine’s message, in both profiles, both
+  commands, and both implementations.
+  The record `kind` is unchanged; anything matching the engine’s message from its first
+  character needs its pattern widened.
+
 ### Security
 
 - **The `fast-uri` override is raised to 3.1.9.** It closes seven advisories against

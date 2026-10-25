@@ -15,6 +15,7 @@ fixtures:
   - {source: ../fixtures/repair-missing-required.md, dest: missing/repair-missing-required.md}
   - {source: ../fixtures/repair.schema.yaml, dest: missing/repair.schema.yaml}
   - {source: ../fixtures/repair-unrepairable.md, dest: floor/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unrepairable.yaml, dest: floor/repair-unrepairable.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: dry/repair-unquoted-colon.md}
   - {source: ../fixtures/repair.schema.yaml, dest: dry/repair.schema.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: check/repair-unquoted-colon.md}
@@ -37,6 +38,7 @@ fixtures:
   - {source: ../fixtures/repair-already-valid.md, dest: original/repair-already-valid.md}
   - {source: ../fixtures/repair-missing-required.md, dest: original/repair-missing-required.md}
   - {source: ../fixtures/repair-unrepairable.md, dest: original/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unrepairable.yaml, dest: original/repair-unrepairable.yaml}
   - {source: ../fixtures/repair-unterminated-fence.md, dest: original/repair-unterminated-fence.md}
 env:
   NO_COLOR: "1"
@@ -405,8 +407,10 @@ The escalation has a floor: when quoting does not make the document parse, `--re
 reports exactly what plain `validate` reports — the parse failure, not a repair artifact
 of its own — and the file is left exactly as it was found. The binding is passed as flags
 because the document's own `softschema:` block sits inside the very frontmatter that
-cannot be read. The parse-failure `message` is engine wording, so that one line is
-elided; every other field is pinned.
+cannot be read. The parse-failure `message` is engine wording after softschema's own
+prefix — the backticked document name, so an agent repairing a batch knows which artifact
+the line number belongs to — so the prefix is pinned and the engine's tail elided; every
+other field is pinned.
 
 ```console
 $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 --envelope data
@@ -436,7 +440,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
     "errors": [
       {
         "kind": "yaml_parse_error",
-        "message": [..]
+        "message": "`floor/repair-unrepairable.md`: [..]
       }
     ],
     "ok": false,
@@ -450,6 +454,61 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
 
 ```console
 $ diff original/repair-unrepairable.md floor/repair-unrepairable.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+The pure-yaml profile names the document the same way. It once did not: a `*.yaml`
+artifact that still failed to parse reported the engine's wording alone — `in "<unicode
+string>", line 4` — with no artifact name on either path, while the frontmatter readers
+named theirs. An agent repairing a batch could not tell which file the record was about.
+No binding is passed here, so this is the record `repair` builds itself when it cannot
+rescue a document that declares no legible contract.
+
+```console
+$ $SOFTSCHEMA repair floor/repair-unrepairable.yaml --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "floor/repair-unrepairable.yaml",
+  "profile": "pure-yaml",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "ok": false,
+    "skipped_reason": "yaml_parse_error"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "yaml_parse_error",
+        "message": "`floor/repair-unrepairable.yaml`: [..]
+      }
+    ],
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+Plain `validate` names it too, in its one line, and the file is left as it was found.
+
+```console
+$ $SOFTSCHEMA validate floor/repair-unrepairable.yaml 2>&1
+softschema validate: `floor/repair-unrepairable.yaml`: [..]
+...
+? 2
+```
+
+```console
+$ diff original/repair-unrepairable.yaml floor/repair-unrepairable.yaml && echo "byte-identical"
 byte-identical
 ? 0
 ```

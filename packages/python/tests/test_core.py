@@ -390,6 +390,8 @@ def test_validate_artifact_reports_yaml_parse_error_for_malformed_pure_yaml(tmp_
 
     assert not result.ok
     assert result.structural.errors[0]["kind"] == "yaml_parse_error"
+    # The engine's wording names a line, not a file; the record has to name the file.
+    assert result.structural.errors[0]["message"].startswith(f"`{doc}`: ")
 
 
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:

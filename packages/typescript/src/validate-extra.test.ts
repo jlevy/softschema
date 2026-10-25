@@ -254,6 +254,16 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
     const structural = result.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("yaml_parse_error");
   });
+
+  test("a pure-yaml parse failure names the document", () => {
+    // The engine's wording names a line, not a file; the record has to name the file.
+    const doc = tmpFile("bad.yaml", "key: [unclosed\n");
+    const result = validateArtifact(doc, contract({ profile: "pure-yaml" }));
+    expect(result.ok).toBe(false);
+    const structural = result.structural as { errors: { kind: string; message: string }[] };
+    expect(structural.errors[0]?.kind).toBe("yaml_parse_error");
+    expect(structural.errors[0]?.message.startsWith(`\`${doc}\`: `)).toBe(true);
+  });
 });
 
 test("shared portable YAML and artifact-input vectors", () => {

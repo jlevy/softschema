@@ -533,10 +533,16 @@ def _repair_failure_message(
     path: Path,
     profile: SchemaProfile,
 ) -> str:
-    if repaired.error_message:
-        return repaired.error_message
+    """The record message for a document repair could not make readable.
+
+    The reader's message comes first because it names the document; repair's own carries
+    the same engine text without it, and is what remains when nothing could be parsed at
+    all (an unreadable or non-UTF-8 file).
+    """
     if parse_error is not None:
         return str(parse_error)
+    if repaired.error_message:
+        return repaired.error_message
     if profile is SchemaProfile.pure_yaml:
         return f"the document root is not a YAML mapping: `{path}`"
     return f"the document has no YAML frontmatter: `{path}`"
@@ -590,7 +596,7 @@ def _parse_after_repair(
         return None, None
     try:
         if profile is SchemaProfile.pure_yaml:
-            return parse_yaml_text(text), None
+            return parse_yaml_text(text, source=source), None
         _body, frontmatter = parse_frontmatter_text(text, source=source)
     except PortableInputError as exc:
         return None, exc
