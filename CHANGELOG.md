@@ -4,7 +4,7 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
-## Unreleased
+## v0.9.0—2026-10-26
 
 This is a minor release (0.9.0): the portable YAML rule gains a normative rejection, and
 documents that validated under 0.8.1 can now be refused.
@@ -515,6 +515,7 @@ A `.catch()` whose value the referenced `$defs` entry already carries compiles a
   An authored `examples` value is checked the same way.
   A BigInt `.catch()` value or example fails with a named error instead of Zod’s
   `Error converting schema to JSON.` A `Date` value is still written as its ISO string.
+
 - **Python `compile` no longer restyles the host process’s own YAML output.** The Python
   package now requires `frontmatter-format>=0.5.0`. The compile writer comes from
   `frontmatter_format.new_yaml`, which in 0.4.0 registered its `dict` and `str`
