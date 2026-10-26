@@ -36,25 +36,40 @@ npx softschema --help               # resolves the local pinned copy
 
 ### Faster YAML Parsing in Python
 
-The Python implementation reads YAML with ruamel.yaml.
-Its C extension, `ruamel.yaml.clib`, is optional in ruamel.yaml 0.19, while the 0.18.x
-releases declare it as a dependency on CPython (0.18.10 below Python 3.13, 0.18.17 below
-3.15), so an install that resolves to 0.18 gets it without asking.
-With the extension present, large YAML artifacts parse several times faster; a 0.19
-install adds it with `uv add --dev ruamel.yaml.clib`. Results do not change: softschema
-uses the C parser only where it reads a document exactly as the pure parser does, and
-the pure parser decides everything else.
-It also uses the C parser only for the libyaml build and ruamel releases it was checked
-against (libyaml 0.1.7 as bundled by `ruamel.yaml.clib` 0.2.8 through 0.2.15, with
-ruamel.yaml 0.18 and 0.19) and reads everything with the pure parser on any other
-combination. Install `ruamel.yaml.clib` itself (ruamel.yaml’s `oldlibyaml` extra), not
-the `libyaml` extra: that one installs `ruamel.yaml.clibz`, which ruamel.yaml 0.19 does
-not use, so softschema stays on the pure parser.
-A `uv tool install softschema` user adds the extension with `--with ruamel.yaml.clib`.
-`softschema.yaml_parser_mode()` returns `"c-first"` when the C parser is in use and
-`"pure"` otherwise, `softschema doctor` reports the same with the reason (not installed,
-another build or release, or turned off), and `SOFTSCHEMA_PURE_YAML=1` turns the C
-parser off.
+The Python implementation reads YAML with ruamel.yaml, which can use an optional C
+extension, `ruamel.yaml.clib`: a Cython wrapper around a lightly patched libyaml 0.1.7,
+with prebuilt wheels for CPython 3.9–3.14 on Linux, macOS, and Windows.
+ruamel.yaml 0.18 depended on it on CPython below a Python-version cap (below 3.13 for
+0.18.0–0.18.10, below 3.14 for 0.18.11–0.18.16, and below 3.15 for 0.18.17), so most
+0.18 releases install without it on Python 3.13 and 3.14. ruamel.yaml 0.19.0 depended on
+`ruamel.yaml.clibz` instead, and since 0.19.1 the C extension is opt-in (the
+`oldlibyaml` extra).
+The newer `ruamel.yaml.clibz` is the same libyaml, compiled with Zig at install time and
+published only as source; ruamel’s `YAML()` API does not use it, so it gives no speedup
+here. softschema never reads with clibz, and requires ruamel.yaml 0.18 or later except
+0.19.0, the one release that builds clibz by default.
+
+libyaml parses YAML 1.1 and pure ruamel YAML 1.2, so they disagree on some texts.
+softschema gives libyaml only the texts on which the two were shown to agree, and reads
+the rest, and anything libyaml rejects, with pure ruamel.
+It uses libyaml only for clib’s libyaml 0.1.7 on ruamel.yaml 0.18–0.19, so results are
+the same either way; only speed changes, several times faster on large documents (see
+[Performance](softschema-guide.md#performance) in the guide).
+
+To get the speedup, install `ruamel.yaml.clib` (`uv add ruamel.yaml.clib`, or
+`--with ruamel.yaml.clib` for `uv tool install` and `uvx`), not `ruamel.yaml[libyaml]`:
+
+```bash
+uv add ruamel.yaml.clib                               # in a project
+uv tool install softschema --with ruamel.yaml.clib    # persistent CLI
+uvx --with ruamel.yaml.clib softschema@latest doctor  # zero-install
+```
+
+A bare `uvx softschema@latest` runs the pure parser.
+`softschema.yaml_parser_mode()` returns `"c-first"` when libyaml is in use and `"pure"`
+otherwise, `softschema doctor` reports the same with the reason (not installed, clibz
+installed but unused, another build or release, or turned off), and
+`SOFTSCHEMA_PURE_YAML=1` forces the pure parser.
 
 ## Zero-Install
 

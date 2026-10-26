@@ -9,7 +9,7 @@ clean-environment checks CI cannot run—is codified in the
 Set up the repo (Python deps, Node tooling for hooks, and the git hooks themselves):
 
 ```bash
-make install        # uv sync --all-extras + npm install (lefthook)
+make install        # uv sync --all-extras + npm install (lefthook) + bun install
 make hooks-install  # install the lefthook pre-commit hooks
 ```
 
@@ -57,8 +57,9 @@ Hooks are managed by [lefthook](https://lefthook.dev) (`lefthook.yml`), installe
 `make hooks-install`. The `pre-commit` hook formats staged changes so commits stay
 clean:
 
-- **Markdown:** delegates to `make format` (pinned `flowmark-rs` and
-  `softschema generate`); the single source of truth, the same command you run locally.
+- **Markdown:** delegates to `make format` (pinned `flowmark-rs`, `softschema generate`,
+  and the skill-mirror install); the single source of truth, the same command you run
+  locally.
 - **Python:** `ruff format` and `ruff check --fix` on staged `*.py`.
 - **TypeScript:** `biome check --write` on staged files in `packages/typescript`.
 
@@ -247,7 +248,7 @@ The parity invariants, and where each is enforced:
 | Structurally equal JSON and exact stable human output | the shared golden corpus (run twice via `SOFTSCHEMA_IMPL`) |
 | Equal flag/command surface | per-impl and neutral golden scenarios |
 | Bundled docs/skill resolve from the package | the standalone test (`packages/typescript/test/standalone.test.ts`) |
-| Skill mirrors never go stale | the mirror drift test (`tests/test_skill_mirror_drift.py`) |
+| Skill mirrors never go stale | the mirror drift tests (`packages/python/tests/test_skill_mirror_drift.py`, `packages/typescript/test/mirror-drift.test.ts`) |
 
 Semantic invariants that JSON Schema cannot express (Pydantic validators ↔ Zod
 refinements) are implementation-specific by design and tested per-language, not in the
@@ -270,7 +271,10 @@ through a different number of records, and normalizing the difference away would
 real information. Two cases ship today, both in the `engine_deviations` section of
 `tests/vectors/hardening.yaml`: `dependentSchemas` (ajv adds a closure record for a
 property that top-level `properties` already evaluated) and `anyOf` multiplicity (ajv
-reports each branch’s failure alongside the `anyOf`).
+reports each branch’s failure alongside the `anyOf`). Execution and verdict differences
+on degenerate schemas, such as a lone `if` or a `$dynamicRef` with no matching anchor,
+are pinned the same way in the `engine_deviations` list of
+`tests/vectors/validation-execution.yaml`; the spec lists them.
 
 The mechanism is deliberately not a tolerance.
 Each runtime asserts *its own* listed record set exactly, so:

@@ -289,8 +289,10 @@ Start with one document type, not a whole repository:
 3. **Move the consumed values into YAML frontmatter** under one envelope key (for
    example, `movie:` for a movie page, `incident:` for an incident review).
 4. **Add `softschema.contract`** with a stable contract ID.
-5. **Pick a status.** Start with `status: soft` (no validation) or `status: permissive`
-   (validate known fields under the bound model or schema’s authored extension policy).
+5. **Pick a status.** Start with `status: soft` (a named convention; nothing need be
+   bound yet) or `status: permissive` (validate known fields under the bound model or
+   schema’s authored extension policy).
+   A schema or model bound to the artifact checks the payload under either status.
    Save `enforced` for later.
 6. **Leave the body alone.** Headings, prose, and tables for human readers stay.
 7. **Validate at the boundary** (next playbook) and tighten over time.
@@ -450,6 +452,8 @@ Wire a Pydantic model to a contract and validate at file boundaries:
    classes when the structure is settled.
 
    ```python
+   from typing import Literal
+
    from pydantic import BaseModel, ConfigDict, Field
 
    class IncidentReview(BaseModel):
@@ -468,9 +472,9 @@ Wire a Pydantic model to a contract and validate at file boundaries:
      --out schemas/incident-review.v1.schema.yaml
    ```
 
-   **Trust note:** `--model` imports and executes local Python code.
-   Use it only with trusted models.
-   For untrusted input, use `--schema` with a compiled JSON Schema instead.
+   **Trust note:** `compile`, like `validate --model`, imports and executes local Python
+   code. Use it only with trusted models.
+   For untrusted input, validate with `--schema` and a compiled JSON Schema instead.
 
 3. **Bind artifacts to their schema.** Add `schema:` (and `envelope:` when needed) to
    each artifact’s `softschema:` block so `softschema validate <doc>` works with no
@@ -628,9 +632,9 @@ Two checks belong in CI:
     --out schemas/incident-review.v1.schema.yaml --check
   ```
 
-  **Trust note:** `--model` imports and executes local Python code.
-  Use it only with trusted models.
-  For untrusted input, use `--schema` with a compiled JSON Schema instead.
+  **Trust note:** `compile`, like `validate --model`, imports and executes local Python
+  code. Use it only with trusted models.
+  For untrusted input, validate with `--schema` and a compiled JSON Schema instead.
 
 - **Artifact validation.** When artifacts carry the full self-description quartet
   (`contract`, `schema`, `envelope`, `status`), validation needs no per-file flags.
@@ -797,10 +801,10 @@ The `format: date`, `format: date-time`, `format: time`, and `format: duration` 
 in a compiled schema are annotations, not structural assertions.
 For schema-only lexical rejection, add a portable `pattern` explicitly.
 The compiler removes Zod’s intrinsic ISO date, datetime, time, and duration patterns so
-structurally corresponding Pydantic and Zod fields produce the same format-only sidecar;
-an authored Zod regex remains intact.
-The sidecar and its digest therefore describe structural parity, not equality of every
-semantic model option.
+structurally corresponding Pydantic and Zod fields produce the same format-only compiled
+schema; an authored Zod regex remains intact.
+The compiled schema and its digest therefore describe structural parity, not equality of
+every semantic model option.
 The validation result’s `values` mapping remains portable strings; host code that needs
 native date objects should construct its model explicitly from that mapping.
 See [Portable YAML Values](softschema-spec.md#portable-yaml-values) for the exact rule.
@@ -1070,6 +1074,85 @@ siblings decide what counts as declared, what Draft 2020-12 guarantees, and wher
 The [spec](softschema-spec.md#rejecting-undeclared-properties-under-enforced) states the
 normative rules and the support matrix.
 
+## Performance
+
+**Write clean, readable YAML by default.** At the sizes people read and edit, the format
+makes no practical difference: a 10 KB document parses in under 10 ms in TypeScript or
+in Python with the C parser (about 50 ms in pure Python), while starting the CLI takes
+0.2–0.4 s for an installed command, about 0.7 s for `uvx`, and about 1.3 s for `npx`,
+with a warm cache.
+
+**When to switch.** The format matters only for megabytes of structured data parsed
+often: in a hot loop, in CI over many files, or in a service.
+Parse times for the same records, on one machine:
+
+| Document | Python, C-first | Python, pure | Python, JSON syntax | TypeScript (Node or Bun) |
+| --- | --- | --- | --- | --- |
+| 10 KB | ~8 ms | ~50 ms | under 1 ms | ~6–8 ms |
+| 100 KB | ~80 ms | ~0.5 s | ~6 ms | ~70 ms |
+| 1 MB | ~1 s | ~6 s | ~75 ms | ~0.7–1 s |
+| 10 MB | ~18 s | ~80 s | ~1 s | ~8–12 s |
+
+Checking the schema adds a few tenths of a second per MB in Python and less in
+TypeScript. Below about 100 KB, a CLI run is mostly startup, except for block YAML in
+pure-Python mode. Past about 1 MB parsed more than occasionally, choose the format
+deliberately.
+
+**How to switch, in order:**
+
+1. **Write the data as JSON syntax.** A JSON object is valid YAML, so a `.json` or
+   `.yaml` file holding one is a pure-yaml artifact and validates the same way.
+   Python reads it with the standard `json` module when ruamel would read the text
+   identically: more than 10 times faster than block YAML with the C parser, and 80 to
+   100 times faster than without it.
+   The text stays on that path when it is strict JSON (no comments, trailing commas,
+   `NaN`, or `Infinity`) with an object or array root and only spaces and line breaks
+   around it, has no duplicate or `<<` keys and no key longer than 128 characters, keeps
+   each key on the line of its colon, writes non-ASCII characters raw or as `\uXXXX`
+   escapes outside the surrogate range, and contains no `-0` followed by anything but a
+   digit, `.`, or `e` (inside a string too), on ruamel.yaml 0.18 or 0.19. Python’s
+   `json.dumps` escapes an emoji as a surrogate pair by default; pass
+   `ensure_ascii=False`. A text that misses any of these still reads correctly, at YAML
+   speed. TypeScript has no JSON path: the `yaml` package reads JSON syntax at about the
+   speed of block YAML.
+2. **Keep block YAML off the slow shapes.** With the C parser active, Python reads the
+   whole document with the pure parser, 4 to 7 times slower, when it contains a tab
+   anywhere (in a comment or a quoted string too; write `"\t"` instead), a line that
+   starts with `%` or `...`, a colon right after a space or quote with no space after it
+   (`x :y`, or JSON-style `{"a":1}` inside a YAML document), or a block scalar whose
+   first line holds only spaces.
+   Block style also reads about 30% faster than flow collections there.
+   In TypeScript a tab costs about 60% extra, and style otherwise makes little
+   difference.
+3. **In Python, install the C extension.** ruamel.yaml’s optional `ruamel.yaml.clib`
+   reads block YAML 4 to 7 times faster with identical results: softschema hands libyaml
+   only the texts on which it was shown to agree with pure ruamel, and only for clib’s
+   libyaml 0.1.7 on ruamel.yaml 0.18–0.19. Install `ruamel.yaml.clib`
+   (`uv add ruamel.yaml.clib`, or `--with ruamel.yaml.clib` for `uv tool install` and
+   `uvx`), not `ruamel.yaml[libyaml]`: its `ruamel.yaml.clibz` is not used by ruamel’s
+   `YAML()` API, and softschema never reads with it.
+   A bare `uvx softschema@latest` runs the pure parser.
+   `softschema.yaml_parser_mode()` returns `"c-first"` when libyaml is in use and
+   `"pure"` otherwise, `softschema doctor` prints the same with the reason, and
+   `SOFTSCHEMA_PURE_YAML=1` forces the pure parser; [Installation](installation.md) has
+   the details. frontmatter-format 0.5.0, which the Python package uses to write compiled
+   schemas, reads YAML C-first the same way in its own readers, behind the same build
+   gate (`FRONTMATTER_FORMAT_PURE_YAML=1` turns it off there); softschema validates with
+   its own reader, so that switch does not affect validation.
+4. **Batch files in one process.** `softschema validate` takes one path, so a loop that
+   runs it per file pays process startup each time: 1,000 small files take several
+   minutes that way and about a second through `validate_artifact` or `validateArtifact`
+   in one process.
+
+Frontmatter is read by the same parser, so a large frontmatter block costs the same per
+KB and JSON-syntax frontmatter gets the same Python fast path.
+Keep frontmatter small enough to read, and put bulk data in a standalone pure-yaml or
+JSON artifact.
+
+**Measure it.** Time `softschema validate` on a representative file in both forms, check
+which parser Python uses with `softschema doctor` or `yaml_parser_mode()`, and compare
+with `SOFTSCHEMA_PURE_YAML=1` to see what the C parser saves.
+
 ## Common Mistakes
 
 - **Parsing a Markdown body.** Body tables and prose exist for human readers.
@@ -1091,6 +1174,15 @@ normative rules and the support matrix.
 - **Adding a contract with no consumer.** A `soft` convention can precede validation,
   but it still coordinates a producer and a consumer.
   If nobody reads the YAML payload, a contract ID is decoration.
+- **Writing YAML only one engine reads.** Both implementations refuse text the Python
+  and TypeScript YAML engines would read differently, so the refusal is loud rather than
+  a silent difference: a number such as `1_000`, `0b101`, or `.5e3`, a raw control or
+  line-separator character, a tab in a plain value, a glued flow indicator such as
+  `[a:, b]`, and any directive but `%YAML 1.2`. Write core-form numbers (`1000`) or
+  quote, escape characters inside double quotes (`"\N"`), and run `softschema repair`,
+  which fixes the cases it can.
+  The exact rules are in
+  [Portable YAML Values](softschema-spec.md#portable-yaml-values).
 - **Formalizing fields no consumer needs.** Keep uncertain YAML values as extension
   fields until their meaning stabilizes.
   In a Markdown artifact, leave background, analysis, and caveats in the body unless a
@@ -1104,12 +1196,15 @@ The Python public surface:
 
 - `Contract`: maps a contract ID to a Pydantic model and optional compiled JSON Schema.
 - `Contracts`: host-owned mapping from contract IDs to contracts.
-- `validate_artifact(path, contract_id=..., registry=...)`: validates a file at a
-  boundary; returns a structured `ArtifactValidationResult` with separate `structural`
-  and `semantic` reports.
-- `validate_values(values, model=..., schema=...)`: validates a values dict produced by
-  any consumer (frontmatter, body-form runtime, structured-output adapter, hand-written
-  fixture).
+- `validate_artifact(path, contract_id=..., registry=..., require=...)`: validates a
+  file at a boundary; returns a structured `ArtifactValidationResult` with separate
+  `structural` and `semantic` reports, each with its `execution`. `require` names the
+  checks that must complete.
+- `load_artifact(...)`: the same call for consuming code; it returns the payload values
+  and raises `ArtifactInvalidError` on anything short of valid.
+- `validate_values(values, model=..., schema=..., require=...)`: validates a values dict
+  produced by any consumer (frontmatter, body-form runtime, structured-output adapter,
+  hand-written fixture).
 - `compile_model(model_cls, out_path, contract_id=..., schema_id=...)`: emits a
   deterministic JSON Schema YAML file.
   The required contract ID names the payload; the optional schema ID is a separate JSON
@@ -1118,8 +1213,9 @@ The Python public surface:
 The TypeScript package mirrors this surface (`validateArtifact`, `validateValues`,
 `compileSchema`) with Zod models; both CLIs expose the same commands.
 
-The CLI mirrors the library: `softschema validate`, `softschema compile`,
-`softschema inspect`, `softschema generate`, `softschema docs`, `softschema skill`.
+The CLI mirrors the library: `softschema validate`, `softschema repair`,
+`softschema compile`, `softschema inspect`, `softschema generate`, `softschema docs`,
+`softschema skill`, `softschema prime`, and `softschema doctor`.
 
 A host application typically registers complete contracts during startup and validates
 artifacts at file boundaries:

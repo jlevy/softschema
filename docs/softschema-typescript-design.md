@@ -18,7 +18,7 @@ test; see the parity development process in [development.md](development.md).
 | Module | Purpose |
 | --- | --- |
 | `models` | `Contract`, status/profile unions, `SchemaMetadata`, `WarningCode`, `parseSchemaMetadata` |
-| `portable` | Bounded UTF-8 reading and portable YAML value decoding |
+| `portable` | Strict UTF-8 reading and portable YAML value decoding |
 | `registry` | `Contracts`: resolve contracts by id |
 | `canonicalize` | The shared canonical JSON Schema profile (same rules as Python) |
 | `enforcement` | Checked enforced-profile analysis and offline schema-resource graph preparation |
@@ -31,7 +31,7 @@ test; see the parity development process in [development.md](development.md).
 | `conform` | `conformArtifact`: retype a scalar to the string its contract declares, reading both validation layers |
 | `repairValidate` | `repairAndValidateArtifact`: the escalating pass, writing once |
 | `generate` | `parseSections`/`regenerate`: deterministic generated Markdown sections |
-| `cli` | `commander` program: `validate`, `repair` (with `--dry-run`/`--check`), `compile`, `inspect`, `docs`, `generate`, `skill` |
+| `cli` | `commander` program: `validate`, `repair` (with `--dry-run`/`--check`), `compile`, `inspect`, `docs`, `generate`, `prime`, `doctor`, `skill` |
 
 ## Idiomatic Zod Choices
 
@@ -54,6 +54,20 @@ features, converts it to JavaScript values, and checks the result against the sh
 portable domain. The configured parser already decodes implicit date- and
 timestamp-shaped scalars as strings, so softschema does not apply a separate lexical
 rejection or timestamp constructor.
+
+Before parsing, `checkPortableText` rejects the raw characters the two engines read
+differently, the same preflight Python runs, and `checkDirectives` admits only
+`%YAML 1.2` and `%TAG`. The checks over the parsed tree then refuse what ruamel would
+read differently or refuse: a tab in a plain scalar or block spacing, a glued flow
+indicator, a number form outside the YAML 1.2 core schema, a long or multi-line implicit
+flow-mapping key, spaces past an explicit block-scalar indentation indicator, an entry
+the `yaml` package would compose with content left out, and nesting past 64 collections.
+Duplicate keys are found in one pass with a set per mapping, with `uniqueKeys: false`
+passed to the parser, because the `yaml` package’s own check compares each key with
+every earlier key and is quadratic in a mapping’s width.
+The `yaml` package is pure JavaScript, so the reader gives the same results under Node
+and Bun at similar speed, and it has no separate JSON path: JSON-syntax text is parsed
+as YAML like any other.
 
 Host-native JavaScript objects are outside the portable domain and are rejected when
 programmatic field metadata is checked.
@@ -142,8 +156,8 @@ matching `tuple[()]`. The compiler also drops `type: "string"` from a record’s
 schema, which every JSON key satisfies and Pydantic never emits there.
 
 Zod ISO datetime options such as offset, local-time, and precision affect semantic
-validation but are not represented in the canonical sidecar or `schema_sha256`. The
-digest proves structural parity; it does not prove identical semantic accept sets.
+validation but are not represented in the canonical compiled schema or `schema_sha256`.
+The digest proves structural parity; it does not prove identical semantic accept sets.
 
 Ajv runs with `validateFormats: false`, matching JSON Schema Draft 2020-12’s default
 Format-Annotation vocabulary and the Python runtime.
@@ -296,8 +310,9 @@ byte encoding is reserved for the compiled-schema digest.
 
 bun (runtime and package manager), `bunup` (build), `bun test` (unit), `biome` (lint and
 format), `tsc --noEmit` (types).
-Dependencies: `zod`, `yaml`, `commander`, `ajv` (`ajv/dist/2020`), and `atomically`. The
-shared `tests/golden/` corpus runs against this CLI via `SOFTSCHEMA_IMPL=ts`.
+Dependencies: `zod` (`^4.6.6`), `yaml`, `commander`, `ajv` (`ajv/dist/2020`), and
+`atomically`. The shared `tests/golden/` corpus runs against this CLI via
+`SOFTSCHEMA_IMPL=ts`.
 
 ## Packaging
 

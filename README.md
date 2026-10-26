@@ -347,6 +347,29 @@ so a document cannot silently redirect a host’s validation; a contract registe
 without a schema path lets self-describing documents bind themselves.
 See the [softschema Guide](docs/softschema-guide.md) for the full playbooks.
 
+## Performance
+
+Write clean, readable YAML by default.
+A document of tens of KB parses in milliseconds (up to about 50 ms in pure Python), and
+starting the CLI (0.2–0.4 s installed, about 0.7 s through `uvx` and 1.3 s through
+`npx`) costs more than reading the file.
+The format matters only for megabytes parsed often, in a hot loop, CI over many files,
+or a service:
+
+| 1 MB of records | Python | TypeScript (Node or Bun) |
+| --- | --- | --- |
+| Block YAML | ~1 s with `ruamel.yaml.clib`, ~6 s without | ~0.7–1 s |
+| JSON syntax (valid YAML) | ~75 ms | ~0.7–1 s |
+
+Then, in order: write the data as JSON syntax (Python reads strict JSON with the
+standard `json` module); keep tabs out of block YAML, which send a Python document from
+the C parser to the slower pure one; in Python, install `ruamel.yaml.clib`, not
+`ruamel.yaml[libyaml]` (`softschema doctor` should report `yaml parser: c-first`); and
+validate many files in one process through the library rather than one CLI run per file.
+Results are the same on every path; only speed changes.
+The [guide](docs/softschema-guide.md#performance) has the measurements and exactly what
+keeps a file on each fast path.
+
 ## Use as an Agent Skill
 
 Both packages ship the same [`SKILL.md`](https://agentskills.io) following the open
