@@ -64,8 +64,13 @@ Outcome = tuple[Any, ...]
 
 
 def _outcome(text: str) -> Outcome:
+    return _reading(parse_yaml, text)
+
+
+def _reading(read: Callable[..., Any], text: str, **options: Any) -> Outcome:
+    """What ``read(text, **options)`` returns, or the code (or type) and message it raises."""
     try:
-        return ("value", parse_yaml(text))
+        return ("value", read(text, **options))
     except PortableInputError as exc:
         return ("error", exc.code, str(exc))
     except Exception as exc:
@@ -973,6 +978,187 @@ def test_the_portable_error_from_pure_is_the_one_raised(monkeypatch: pytest.Monk
         parse_yaml("a: [1\n")
     assert raised.value.code == "yaml_parse_error"
     assert calls == [True]
+
+
+# --- Drift against frontmatter-format's guard -------------------------------------------------
+#
+# frontmatter-format keeps its own list of the shapes on which libyaml reads differently
+# from pure ruamel, for its own C-first reader. softschema keeps a separate one,
+# `_needs_pure_parser`, because its reader also has the portable preflight, the event pass
+# and `_check_value`, which refuse tags, anchors, aliases and non-string keys on both
+# paths. The two lists are maintained by hand, so these tests check that they do not drift
+# apart in the direction that would change a value: a shape frontmatter-format routes to
+# pure ruamel and softschema hands to libyaml must read the same either way.
+#
+# The expectations are pinned to frontmatter-format 0.5.x, whose guard is the private
+# `needs_pure_parser` in `frontmatter_format/_libyaml_guard.py`. Its readers use libyaml
+# when `yaml_util._c_eligible(text)` holds: no shape from that function and a nesting
+# bound (`_nesting_bound(text) <= _C_SCAN_DEPTH`, 150). The bound is not compared here:
+# it keeps deep texts from ruamel's C composer, which recurses on the C stack, while
+# softschema's event pass raises `yaml_limit` past `MAX_DEPTH` (64) on both parsers
+# before anything is composed, so a deep text never reaches that composer here either.
+
+FFMT_SHAPES: dict[str, list[str]] = {
+    # `_PURE_ONLY_CHARACTERS`: a tab, NEL, LS, PS or byte order mark anywhere.
+    "tab": ["\t", "x\t", "\tx", ":\t1", "- \tx"],
+    "nel_ls_ps_bom": ["\x85", "x\u2028y", "\u2029", "\ufeff", "x\ufeff", "\ufeffx: 1"],
+    # `_DIRECTIVE_LINE`: a `%` at the start of the text or of a line.
+    "directive_line": [
+        "%YAML 1.1\n---\nx: yes", "%TAG !e! tag:e.com,2000:\n---\n", "%x", "\n%y",
+        "\r%YAML 1.2\r---\r",
+    ],
+    # `_DOCUMENT_END_LINE`: `...` starting a line, then a space, a line break or the end.
+    "document_end_line": ["...", "...\n...", "... #c", "\n...\n", "x\n...\n...\n", "\r...\r"],
+    # `_BLOCK_HEADER_COMMENT`: a `#` glued to a block scalar header.
+    "block_header_comment": ["|#", "|#c\n  x", ">-#c\n  x", "|2#", "|+2#c\n   x"],
+    # `_block_scalar_before_space_line`: a block scalar header, then a line of only spaces.
+    "block_header_space_line": [
+        "|\n \n  x", ">\n  \n   x", "|2 \n \n   x", ">- # c\n \n  x", "|\r \r  x",
+    ],
+    # `_has_quoted_key_colon`: a quoted scalar, any spaces, then a colon before a non-space.
+    "quoted_key_colon": ['"a":1', "'a':b", '"k"  :v', '"":', "'':x"],
+    # `_FLOW_EXPLICIT_KEY`, in a text with a `[` or `{`: a `?` at the start of a token.
+    "flow_explicit_key": ["?", "? ", "?x", "? :", "? ]", "?&a :", "x, ?y", "\n?z"],
+    # `_FLOW_TOKEN_COLON`, in a text with a `[` or `{`: a colon before a non-space at the
+    # start of a token or right after a flow collection.
+    "flow_token_colon": [":x", " :x", ",:x", "[]:x", "{}:x", "[a]:b", "\n:x", "x, :y"],
+    # `_NODE_PROPERTY`: a tag, anchor or alias indicator at the start of a token.
+    "node_property": [
+        "!", "!x", "!!str x", "!<!>", "! x", "&a", "&a x", "&a: 1", "*a", "* x", "x !y",
+        "x &y", "-!x", "?*a", "[!]", "{&a}",
+    ],
+    # `_ROOT_BLOCK_SCALAR`: a block scalar as the document, after blanks, comments, markers.
+    "root_block_scalar": ["|", ">", "|\n#x", "--- |\n#x", "# c\n>\n#x", "...\n|\n x", "\n\n>-\n  x"],
+}  # fmt: skip
+"""Representatives of each shape family frontmatter-format 0.5.x routes to pure ruamel,
+read off the regexes in ``frontmatter_format/_libyaml_guard.py`` (the comment above each
+family names the rule). Each is also placed in every one of :data:`TEMPLATES`."""
+
+FFMT_TOKENS = [
+    "a", "b", "1", " ", "  ", "\n", "\n  ", "\r\n", ": ", ":", "- ", "-", "? ", "?", ",",
+    ", ", "[", "]", "{", "}", '"q"', "'s'", "!", "!!str ", "!x ", "&a ", "*a", "&", "*",
+    "|", ">", "|-", "#c", " #c", "...", "---", "%", ".", "\t", "\ufeff",
+]  # fmt: skip
+"""Tokens for random texts, weighted toward the characters frontmatter-format's rules key
+on, so most texts it routes are ones softschema hands to libyaml."""
+
+SOFTSCHEMA_ONLY_ROUTES = {"spaced_colon_in_block_value"}
+"""The :data:`ROUTED_TO_PURE` texts frontmatter-format 0.5.x hands to libyaml.
+
+softschema routes a colon after a space before a non-space anywhere (``a: x :y``);
+frontmatter-format routes it only after a quoted scalar or in a flow collection, and
+otherwise relies on libyaml rejecting the text, which its fallback then re-reads."""
+
+
+def _ffmt_needs_pure_parser() -> Callable[[str], bool]:
+    """frontmatter-format's shape check, a private name used only in these tests.
+
+    A release that moves or renames it skips the drift tests with a reason that says so,
+    until they are pointed at the new name.
+    """
+    import importlib.metadata
+
+    version = importlib.metadata.version("frontmatter-format")
+    try:
+        from frontmatter_format._libyaml_guard import needs_pure_parser
+    except ImportError:
+        pytest.skip(
+            f"frontmatter-format {version} has no _libyaml_guard.needs_pure_parser, which "
+            "the drift tests were written against (0.5.x); point them at its new guard"
+        )
+    return needs_pure_parser
+
+
+def _ffmt_random_texts(seed: int, count: int) -> list[str]:
+    rng = random.Random(seed)
+    return [
+        "".join(rng.choice(FFMT_TOKENS) for _ in range(rng.randrange(1, 12))) for _ in range(count)
+    ]
+
+
+def _ffmt_drift_corpus() -> list[tuple[str, str]]:
+    """``(source, text)`` pairs: the pinned routing lists, the edge cases, every family
+    representative bare and in each template, and seeded random token texts."""
+    corpus = [("routed_to_pure", text) for text in ROUTED_TO_PURE.values()]
+    corpus += [("c_first", text) for text in C_FIRST.values()]
+    corpus += [("edge_cases", text) for text in EDGE_CASES.values()]
+    for family, fragments in FFMT_SHAPES.items():
+        for fragment in fragments:
+            corpus.append((family, fragment))
+            corpus += [(family, template.format(s=fragment)) for template in TEMPLATES]
+    corpus += [("random", text) for text in _ffmt_random_texts(20261026, 4000)]
+    return corpus
+
+
+@requires_c
+def test_texts_frontmatter_format_routes_to_pure_read_as_pure_here(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every text frontmatter-format's guard keeps from libyaml is safe on softschema's path.
+
+    For each such text, as written or as the reader hands it on with its last line break
+    supplied, softschema either refuses it in the portable preflight, routes it to pure
+    ruamel with ``_needs_pure_parser``, or reads it C-first to exactly what pure ruamel
+    reads (the value with its types, key order and float bits, or the error code and
+    message). The C-first reading is ``_parse_with_ruamel`` itself, not ``parse_yaml``,
+    so the JSON fast path cannot stand in for libyaml. A failure is a shape softschema
+    should route: add it to ``_needs_pure_parser`` with a :data:`ROUTED_TO_PURE` vector.
+    """
+    ffmt_needs_pure_parser = _ffmt_needs_pure_parser()
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    assert softschema.yaml_parser_mode() == "c-first", _portable.yaml_parser_reason()
+    kept: list[bool] = []
+    real_try_c_parser = _portable._try_c_parser
+
+    def recording_try_c_parser(text: str) -> Any:
+        value = real_try_c_parser(text)
+        kept.append(value is not _portable._C_FAILED)
+        return value
+
+    monkeypatch.setattr(_portable, "_try_c_parser", recording_try_c_parser)
+
+    corpus = _ffmt_drift_corpus()
+    routed: dict[str, int] = dict.fromkeys(FFMT_SHAPES, 0)
+    outcomes = {"refused": 0, "pure": 0, "c_first": 0}
+    mismatches: list[tuple[str, str, Outcome, Outcome]] = []
+    for source, text in corpus:
+        handed = text if not text or text.endswith("\n") else text + "\n"
+        if not (ffmt_needs_pure_parser(text) or ffmt_needs_pure_parser(handed)):
+            continue
+        if source in routed:
+            routed[source] += 1
+        try:
+            _portable.check_portable_text(text)
+        except PortableInputError:
+            outcomes["refused"] += 1
+            continue
+        if _portable._needs_pure_parser(handed):
+            outcomes["pure"] += 1
+        else:
+            outcomes["c_first"] += 1
+            c_first = _reading(_portable._parse_with_ruamel, handed)
+            pure = _reading(_portable._parse_with, handed, pure=True)
+            if not _same(c_first, pure):
+                mismatches.append((source, text, c_first, pure))
+    assert not mismatches, f"{len(mismatches)} differ, first: {mismatches[:5]}"
+    # The families are still the ones frontmatter-format 0.5.x routes, so the corpus
+    # reaches each of its rules.
+    assert all(routed.values()), {family: n for family, n in routed.items() if not n}
+    # The C parser ran on every C-first text and its reading was kept on some, so the
+    # comparison was not of pure ruamel with itself.
+    assert len(kept) == outcomes["c_first"], (len(kept), outcomes)
+    assert any(kept), outcomes
+
+
+def test_frontmatter_format_routes_the_shared_families_to_pure() -> None:
+    """The other direction, which costs only speed: frontmatter-format routes every text in
+    :data:`ROUTED_TO_PURE` but the softschema-only ones in :data:`SOFTSCHEMA_ONLY_ROUTES`.
+
+    A change here means one of the two guards gained or lost a family: port it, or record
+    it as one-sided."""
+    ffmt_needs_pure_parser = _ffmt_needs_pure_parser()
+    unrouted = {name for name, text in ROUTED_TO_PURE.items() if not ffmt_needs_pure_parser(text)}
+    assert unrouted == SOFTSCHEMA_ONLY_ROUTES
 
 
 # --- The switch and the report --------------------------------------------------------------
