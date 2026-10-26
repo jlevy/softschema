@@ -5,8 +5,8 @@ title: Handle legacy libuv Windows stat identity safely
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - ci
   - windows
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T02:22:18.433Z
-updated_at: 2026-07-11T02:23:47.639Z
+updated_at: 2026-10-26T03:52:50.883Z
 closed_at: 2026-07-11T02:23:47.638Z
 close_reason: Version-gated only the unreliable path-to-descriptor ID comparison for libuv <1.51 on Windows, retaining all interface-local snapshots and size/read checks; primary-source upstream fixes linked and 593 TypeScript tests pass.
 ---

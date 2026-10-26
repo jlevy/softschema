@@ -5,8 +5,8 @@ title: Correct activation fixture coverage claim
 kind: bug
 status: closed
 priority: 3
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - agents
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T18:25:20.022Z
-updated_at: 2026-07-10T18:36:59.312Z
+updated_at: 2026-10-26T03:52:37.586Z
 closed_at: 2026-07-10T18:36:59.311Z
 close_reason: Qualified shared activation prompts versus per-product availability observations.
 ---

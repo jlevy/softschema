@@ -5,8 +5,8 @@ title: Fix generated Copilot links for .github location
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 4
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - agents
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:04:07.999Z
-updated_at: 2026-07-10T12:50:38.329Z
+updated_at: 2026-10-26T03:51:42.262Z
 closed_at: 2026-07-10T12:50:38.328Z
 close_reason: Generated Copilot links are rewritten for the .github location, every local target resolves, Makefile regeneration is durable after Flowmark, and shim drift/public-doc tests pass.
 ---

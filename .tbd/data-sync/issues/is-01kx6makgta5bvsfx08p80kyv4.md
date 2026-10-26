@@ -5,8 +5,8 @@ title: Descriptor-bind remaining release-state JSON and hash reads
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - release
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx6p8vjpyjv6kvjb3r6zqc1s
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T18:23:35.449Z
-updated_at: 2026-07-10T18:57:49.312Z
+updated_at: 2026-10-26T03:52:23.206Z
 closed_at: 2026-07-10T18:36:58.851Z
 close_reason: Descriptor-bound remaining release-state JSON and streaming-hash reads with race tests.
 ---

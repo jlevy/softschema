@@ -5,8 +5,8 @@ title: Validate field annotations at both authoring boundaries
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - conformance
   - parity
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T10:23:41.369Z
-updated_at: 2026-07-10T11:51:32.360Z
+updated_at: 2026-10-26T03:51:54.404Z
 closed_at: 2026-07-10T11:51:32.359Z
 close_reason: Validated field annotations at both authoring boundaries; compiler-profile and cross-runtime tests pass.
 ---

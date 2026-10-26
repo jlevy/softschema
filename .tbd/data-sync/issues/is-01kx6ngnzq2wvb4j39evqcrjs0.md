@@ -5,8 +5,8 @@ title: Use fresh Windows 3.11 candidate file identity
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - release
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T18:44:23.159Z
-updated_at: 2026-07-10T18:52:37.297Z
+updated_at: 2026-10-26T03:52:18.907Z
 closed_at: 2026-07-10T18:52:37.296Z
 close_reason: Inventory now uses fresh path lstat for admission and authenticated descriptor snapshots for cross-platform stability comparisons; 775 Python tests pass.
 ---

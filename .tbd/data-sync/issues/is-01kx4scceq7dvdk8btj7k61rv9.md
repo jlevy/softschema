@@ -5,8 +5,8 @@ title: Disable remote JSON Schema reference retrieval by default
 kind: bug
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 9
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - python
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:27.766Z
-updated_at: 2026-07-10T05:26:43.106Z
+updated_at: 2026-10-26T03:51:31.640Z
 closed_at: 2026-07-10T05:26:43.105Z
 close_reason: null
 ---

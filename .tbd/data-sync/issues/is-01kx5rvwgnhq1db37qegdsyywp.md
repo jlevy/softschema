@@ -5,8 +5,8 @@ title: Harden conformance publication and standalone JSON boundaries
 kind: bug
 status: closed
 priority: 2
-version: 9
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 11
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - conformance
   - security
@@ -25,7 +25,7 @@ dependencies:
     target: is-01kx64djnhdw2q7x5eg26j66vy
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T10:23:41.588Z
-updated_at: 2026-07-10T13:45:54.395Z
+updated_at: 2026-10-26T03:52:20.860Z
 closed_at: 2026-07-10T11:51:34.188Z
 close_reason: Hardened publication/consumer/adapter boundaries, exact output inventories, confined paths, strict bounded JSON, and live-index verification; hostile tests pass.
 ---

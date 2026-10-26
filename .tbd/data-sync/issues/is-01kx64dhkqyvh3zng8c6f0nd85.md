@@ -5,8 +5,8 @@ title: Bound SchemaView and compile drift file reads before allocation
 kind: bug
 status: closed
 priority: 1
-version: 11
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 13
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - python
@@ -20,7 +20,7 @@ dependencies:
     target: is-01kx6dmkxknbjdge7z1kg1srpb
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:45:34.582Z
-updated_at: 2026-07-10T18:36:55.660Z
+updated_at: 2026-10-26T03:52:25.429Z
 closed_at: 2026-07-10T18:36:55.659Z
 close_reason: Implemented descriptor-bound bounded schema readers in both runtimes with adversarial coverage.
 ---

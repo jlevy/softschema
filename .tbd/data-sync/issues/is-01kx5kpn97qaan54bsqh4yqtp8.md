@@ -5,8 +5,8 @@ title: Make deterministic JSON serialization byte-identical across runtimes
 kind: bug
 status: closed
 priority: 1
-version: 7
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - serialization
@@ -22,7 +22,7 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T08:53:27.462Z
-updated_at: 2026-07-10T13:10:42.171Z
+updated_at: 2026-10-26T03:51:27.366Z
 closed_at: 2026-07-10T11:51:31.808Z
 close_reason: Implemented portable canonical JSON serialization; adversarial vectors, goldens, and direct Python/Node byte parity pass.
 ---

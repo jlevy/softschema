@@ -5,8 +5,8 @@ title: Preserve exact CLI example bytes in artifact smoke
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - ci
   - windows
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T01:43:03.526Z
-updated_at: 2026-07-11T01:45:16.639Z
+updated_at: 2026-10-26T03:52:20.397Z
 closed_at: 2026-07-11T01:45:16.638Z
 close_reason: Verified bundled schema topic and wrote Python/npm CLI examples as exact UTF-8 bytes; focused tests, full 779-test suite, lint, and real frozen artifact smoke pass.
 ---

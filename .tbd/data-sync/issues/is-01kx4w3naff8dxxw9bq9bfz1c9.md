@@ -5,8 +5,8 @@ title: Add artifact-format v1 and extension negotiation
 kind: feature
 status: closed
 priority: 2
-version: 10
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 11
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - spec
   - parity
@@ -24,7 +24,7 @@ dependencies:
     target: is-01kx7szy9exjfdz4eps7wfb720
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T02:01:07.662Z
-updated_at: 2026-07-11T05:29:38.077Z
+updated_at: 2026-10-26T03:52:12.684Z
 closed_at: 2026-07-10T07:18:26.053Z
 close_reason: Implemented and verified in 99d5250
 ---

@@ -5,8 +5,8 @@ title: Make dual-registry releases idempotent and verify published artifacts
 kind: task
 status: closed
 priority: 1
-version: 11
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 13
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - security
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T02:01:07.872Z
-updated_at: 2026-07-11T23:13:49.574Z
+updated_at: 2026-10-26T03:52:42.193Z
 closed_at: 2026-07-11T23:13:49.574Z
 close_reason: "Superseded by the clean main-based minimal hardening plan; PR #20 will not be merged and its remaining conformance/recovery/live-release work is intentionally excluded."
 ---

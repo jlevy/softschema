@@ -5,8 +5,8 @@ title: Settle ambiguous compact-flow YAML semantics
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - yaml
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T11:08:25.664Z
-updated_at: 2026-07-10T11:51:33.283Z
+updated_at: 2026-10-26T03:52:21.888Z
 closed_at: 2026-07-10T11:51:33.282Z
 close_reason: Settled compact-flow portability policy with shared accepted/rejected vectors and public conformance cases.
 ---

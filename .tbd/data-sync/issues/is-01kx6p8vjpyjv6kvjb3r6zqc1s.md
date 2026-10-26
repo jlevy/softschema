@@ -5,8 +5,8 @@ title: Make post-open release byte-limit regression cross-version
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 4
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - tests
   - release
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T18:57:35.317Z
-updated_at: 2026-07-10T19:01:49.499Z
+updated_at: 2026-10-26T03:51:28.848Z
 closed_at: 2026-07-10T19:01:49.498Z
 close_reason: Made the post-open byte-limit test mock lstat/fstat consistently across supported Python versions; full suite passes.
 ---

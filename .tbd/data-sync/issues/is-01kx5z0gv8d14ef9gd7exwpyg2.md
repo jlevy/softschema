@@ -5,8 +5,8 @@ title: Separate release-candidate versions from verified bootstrap pins
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - agents
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:11:04.935Z
-updated_at: 2026-07-10T12:50:40.568Z
+updated_at: 2026-10-26T03:52:26.939Z
 closed_at: 2026-07-10T12:50:40.567Z
 close_reason: Release metadata now separates candidate artifact versions from last verified stable bootstrap pins, enforces candidate/released/RC state rules, and documents the verified follow-up transition; release/public-claim/build tests pass.
 ---

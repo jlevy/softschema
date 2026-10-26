@@ -5,8 +5,8 @@ title: July 2026 review remediation
 kind: epic
 status: closed
 priority: 1
-version: 123
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 124
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - review
   - remediation
@@ -125,7 +125,7 @@ child_order_hints:
   - is-01kx7vpb1m9ebwjsyka8m20kcf
   - is-01kx7y05kqvgmrf9zwxraf3cya
 created_at: 2026-07-10T01:12:51.448Z
-updated_at: 2026-07-11T23:13:49.556Z
+updated_at: 2026-10-26T03:52:14.969Z
 closed_at: 2026-07-11T23:13:49.555Z
 close_reason: "Superseded by the clean main-based minimal hardening plan; PR #20 will not be merged and its remaining conformance/recovery/live-release work is intentionally excluded."
 ---

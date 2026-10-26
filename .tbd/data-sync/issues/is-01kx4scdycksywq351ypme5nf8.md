@@ -5,8 +5,8 @@ title: Expose pure-yaml validation through both CLIs
 kind: feature
 status: closed
 priority: 2
-version: 9
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 10
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - cli
   - parity
@@ -19,7 +19,7 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:29.291Z
-updated_at: 2026-07-10T07:55:25.044Z
+updated_at: 2026-10-26T03:51:35.591Z
 closed_at: 2026-07-10T07:55:25.043Z
 close_reason: Implemented and verified in 30c41b0
 ---

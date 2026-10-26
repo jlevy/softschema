@@ -5,8 +5,8 @@ title: Align multiline flow-mapping source spans across runtimes
 kind: bug
 status: closed
 priority: 2
-version: 9
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 11
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - typescript
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:45:35.452Z
-updated_at: 2026-07-10T18:36:57.277Z
+updated_at: 2026-10-26T03:52:29.861Z
 closed_at: 2026-07-10T18:36:57.276Z
 close_reason: Aligned multiline flow-mapping spans through shared source vectors.
 ---

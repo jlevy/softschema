@@ -5,8 +5,8 @@ title: Qualify legacy single-file JSON output compatibility
 kind: task
 status: closed
 priority: 3
-version: 8
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 10
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - compatibility
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:45:35.884Z
-updated_at: 2026-07-10T18:36:58.396Z
+updated_at: 2026-10-26T03:52:52.091Z
 closed_at: 2026-07-10T18:36:58.395Z
 close_reason: Qualified legacy single-file JSON compatibility in spec, skill, guide, and golden output.
 ---

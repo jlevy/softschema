@@ -5,8 +5,8 @@ title: Verify live publisher authorization and release preflight
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - security
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T07:46:23.623Z
-updated_at: 2026-07-11T23:13:49.581Z
+updated_at: 2026-10-26T03:52:21.415Z
 closed_at: 2026-07-11T23:13:49.581Z
 close_reason: "Superseded by the clean main-based minimal hardening plan; PR #20 will not be merged and its remaining conformance/recovery/live-release work is intentionally excluded."
 ---

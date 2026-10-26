@@ -5,8 +5,8 @@ title: Use supported Node file-open flags on Windows
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - ci
   - windows
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T01:55:38.331Z
-updated_at: 2026-07-11T02:17:26.748Z
+updated_at: 2026-10-26T03:52:24.106Z
 closed_at: 2026-07-11T02:17:26.747Z
 close_reason: Selected only Node-documented Windows open flags while retaining path/descriptor checks and POSIX hardening; focused and full TypeScript gates pass.
 ---

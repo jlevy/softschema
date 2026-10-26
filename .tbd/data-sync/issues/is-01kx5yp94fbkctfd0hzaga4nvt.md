@@ -5,8 +5,8 @@ title: Reject TypeScript metadata-schema symlink escapes
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - typescript
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:05:29.358Z
-updated_at: 2026-07-10T12:50:39.830Z
+updated_at: 2026-10-26T03:52:30.970Z
 closed_at: 2026-07-10T12:50:39.829Z
 close_reason: TypeScript metadata schema resolution now verifies realpath confinement while preserving missing-traversal parity; Python and TypeScript symlink-escape regressions plus full suites pass.
 ---

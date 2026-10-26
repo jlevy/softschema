@@ -5,8 +5,8 @@ title: Make the public conformance namespace truly immutable and release-capable
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - conformance
   - release
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx5ytgxt6cte9hx68c8y0ez7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T10:27:21.042Z
-updated_at: 2026-07-10T13:10:39.739Z
+updated_at: 2026-10-26T03:52:07.225Z
 closed_at: 2026-07-10T11:51:34.550Z
 close_reason: Implemented absent-or-exact immutable Pages classification, protected-upstream binding, released-metadata validation, and exact postdeploy verification. Live Pages publication remains ss-6i6d.
 ---

@@ -5,8 +5,8 @@ title: Separate registry README versions from source bootstrap pins
 kind: bug
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - release
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:09:28.088Z
-updated_at: 2026-07-10T12:50:40.384Z
+updated_at: 2026-10-26T03:52:33.362Z
 closed_at: 2026-07-10T12:50:40.383Z
 close_reason: PyPI now uses the package-specific Python README and both registry READMEs are version-bound, while root/source/skill docs remain verified-pin-bound; public claims and bootstrap tests pass.
 ---

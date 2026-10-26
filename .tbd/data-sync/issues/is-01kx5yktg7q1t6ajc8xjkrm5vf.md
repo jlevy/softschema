@@ -5,8 +5,8 @@ title: Rebaseline the final skill brief golden
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - testing
   - docs
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:04:08.839Z
-updated_at: 2026-07-10T12:50:39.094Z
+updated_at: 2026-10-26T03:52:24.508Z
 closed_at: 2026-07-10T12:50:39.093Z
 close_reason: Rebaselined the intentional skill brief wrapping and all Python, Node, and Bun golden corpora pass (62/60/62).
 ---

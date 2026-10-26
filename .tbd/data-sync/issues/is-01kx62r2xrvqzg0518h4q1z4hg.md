@@ -5,8 +5,8 @@ title: Keep transient integration copies out of TypeScript coverage gates
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - typescript
   - testing
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:16:22.839Z
-updated_at: 2026-07-10T13:18:38.083Z
+updated_at: 2026-10-26T03:52:44.117Z
 closed_at: 2026-07-10T13:18:38.082Z
 close_reason: Scoped transient integration copies out of Bun's per-file coverage gate and verified the complete TypeScript check passes.
 ---

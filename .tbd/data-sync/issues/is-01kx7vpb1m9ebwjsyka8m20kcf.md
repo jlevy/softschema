@@ -5,8 +5,8 @@ title: Simplify test architecture and use readable YAML goldens
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - testing
   - maintainability
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx7y05kqvgmrf9zwxraf3cya
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T05:51:34.451Z
-updated_at: 2026-07-11T06:31:57.712Z
+updated_at: 2026-10-26T03:51:45.514Z
 closed_at: 2026-07-11T06:29:01.927Z
 close_reason: Removed duplicate golden/parity execution and trivial tests, reduced the golden corpus, converted 59 human-reviewed expectation/vector/policy fixtures to strictly equivalent YAML, documented test-layer ownership, and passed the complete local and GitHub matrices.
 ---

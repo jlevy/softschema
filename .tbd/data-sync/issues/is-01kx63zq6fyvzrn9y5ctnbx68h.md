@@ -5,8 +5,8 @@ title: Keep frozen candidate verification non-mutating
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - testing
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx670z3q4dppv2xp9s7n38e1
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:38:01.549Z
-updated_at: 2026-07-10T14:31:19.715Z
+updated_at: 2026-10-26T03:51:22.740Z
 closed_at: 2026-07-10T13:43:14.531Z
 close_reason: Fixed downloaded-candidate self-mutation and verified locally across supported Python lines; ready for the rerun PR matrix.
 ---

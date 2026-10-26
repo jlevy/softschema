@@ -5,8 +5,8 @@ title: Return structured schema_invalid results for every malformed compiled sch
 kind: bug
 status: closed
 priority: 1
-version: 15
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 17
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - python
   - typescript
@@ -30,7 +30,7 @@ dependencies:
     target: is-01kx50evvgsk1fep50sk4y6za9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:28.308Z
-updated_at: 2026-07-10T05:26:42.900Z
+updated_at: 2026-10-26T03:52:46.676Z
 closed_at: 2026-07-10T05:26:42.898Z
 close_reason: null
 ---

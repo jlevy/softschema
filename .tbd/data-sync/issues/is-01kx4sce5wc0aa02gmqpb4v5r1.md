@@ -5,8 +5,8 @@ title: Harden and standardize agent bootstrap instructions
 kind: task
 status: closed
 priority: 1
-version: 14
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 15
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - agents
   - security
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx5z0gv8d14ef9gd7exwpyg2
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:29.531Z
-updated_at: 2026-07-10T13:10:41.613Z
+updated_at: 2026-10-26T03:51:21.486Z
 closed_at: 2026-07-10T06:40:47.771Z
 close_reason: Implemented and verified in 0854bcc
 ---

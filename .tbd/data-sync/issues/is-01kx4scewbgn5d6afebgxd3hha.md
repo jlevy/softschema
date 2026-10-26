@@ -5,8 +5,8 @@ title: Harden CI and the pre-publish artifact boundary
 kind: task
 status: closed
 priority: 1
-version: 21
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 23
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - security
@@ -32,7 +32,7 @@ parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 child_order_hints:
   - is-01ksrzx0p7vnm70hqdzm4eqg9f
 created_at: 2026-07-10T01:13:30.250Z
-updated_at: 2026-07-10T18:57:49.099Z
+updated_at: 2026-10-26T03:52:36.604Z
 closed_at: 2026-07-10T08:24:03.510Z
 close_reason: Code-side artifact boundary implemented and verified in 6046517; live PR, publisher, and manual preflight evidence moved to ss-0rqn
 ---

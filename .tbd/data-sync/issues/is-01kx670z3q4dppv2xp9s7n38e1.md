@@ -5,8 +5,8 @@ title: Reject non-regular nodes in frozen candidate inventories
 kind: bug
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 11
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - release
@@ -24,7 +24,7 @@ dependencies:
     target: is-01kx7dqzt6q0sh4n4pxfjx9qj2
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T14:31:08.150Z
-updated_at: 2026-07-11T01:49:46.325Z
+updated_at: 2026-10-26T03:51:25.692Z
 closed_at: 2026-07-10T18:36:55.881Z
 close_reason: Implemented exact regular-node frozen inventory verification with swap and special-node coverage.
 ---

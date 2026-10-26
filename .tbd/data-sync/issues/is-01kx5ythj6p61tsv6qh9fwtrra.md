@@ -5,8 +5,8 @@ title: Remove shell-special placeholders from publishing commands
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 4
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - release
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:07:49.061Z
-updated_at: 2026-07-10T12:50:40.203Z
+updated_at: 2026-10-26T03:52:00.103Z
 closed_at: 2026-07-10T12:50:40.202Z
 close_reason: Publishing commands use defined shell variables instead of angle-bracket redirection placeholders; documentation checks pass.
 ---

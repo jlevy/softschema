@@ -5,13 +5,13 @@ title: "[deferred] Enable UV_NO_BUILD once uv supports per-package allowlist for
 kind: task
 status: closed
 priority: 3
-version: 7
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels: []
 dependencies: []
 parent_id: is-01kx4scewbgn5d6afebgxd3hha
 created_at: 2026-05-29T04:29:25.574Z
-updated_at: 2026-07-10T07:18:26.393Z
+updated_at: 2026-10-26T03:52:28.807Z
 closed_at: 2026-07-10T07:18:26.392Z
 close_reason: Implemented and verified in 99d5250
 ---

@@ -5,8 +5,8 @@ title: Keep the active plan bead map complete
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 4
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - planning
   - tbd
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:04:58.375Z
-updated_at: 2026-07-10T12:50:39.642Z
+updated_at: 2026-10-26T03:51:30.200Z
 closed_at: 2026-07-10T12:50:39.641Z
 close_reason: "Active plan bead map was reconciled against tbd: all 71 epic children are represented, including ss-1yt7, ss-c305, and every final red-team bead; dependency edges were added."
 ---

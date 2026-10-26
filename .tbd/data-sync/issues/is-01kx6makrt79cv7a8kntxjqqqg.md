@@ -5,8 +5,8 @@ title: Correct release review source-checkout claim
 kind: bug
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - release
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T18:23:35.705Z
-updated_at: 2026-07-10T18:36:59.080Z
+updated_at: 2026-10-26T03:52:33.799Z
 closed_at: 2026-07-10T18:36:59.079Z
 close_reason: Corrected release review to describe the exact-checkout trusted verifier accurately.
 ---

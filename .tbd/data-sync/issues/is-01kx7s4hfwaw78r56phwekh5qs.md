@@ -5,8 +5,8 @@ title: Reject boolean conformance limit values in JavaScript
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - review
   - parity
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T05:06:54.075Z
-updated_at: 2026-07-11T05:12:13.328Z
+updated_at: 2026-10-26T03:51:38.259Z
 closed_at: 2026-07-11T05:12:13.327Z
 close_reason: Made JavaScript numeric type guard explicit, added shared Python/Node/Bun invalid-request coverage, refreshed kit integrity, and passed full suites.
 ---

@@ -5,8 +5,8 @@ title: Document the TypeScript ArtifactValidationResult wrapper correctly
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 4
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - typescript
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:14:02.603Z
-updated_at: 2026-07-10T12:50:40.756Z
+updated_at: 2026-10-26T03:51:15.168Z
 closed_at: 2026-07-10T12:50:40.755Z
 close_reason: Public API and TypeScript design docs correctly describe ArtifactValidationResult {ok, output} and failure handling; documentation tests pass.
 ---

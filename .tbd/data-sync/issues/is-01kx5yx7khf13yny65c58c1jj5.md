@@ -5,8 +5,8 @@ title: Persist release recovery state beyond Actions artifact retention
 kind: bug
 status: closed
 priority: 1
-version: 9
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 11
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - security
@@ -21,7 +21,7 @@ dependencies:
     target: is-01kx61tt02rykpj8fr1pc8y7xq
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:09:17.168Z
-updated_at: 2026-07-10T13:00:26.753Z
+updated_at: 2026-10-26T03:52:37.101Z
 closed_at: 2026-07-10T12:45:03.736Z
 close_reason: Durable attested draft recovery plus 90-day initial transfer retention is implemented; every downstream job verifies and extracts the original frozen closure without rebuilding. Focused 36-test release-state suite, full release workflow tests, Ruff, and basedpyright pass.
 ---

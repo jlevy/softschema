@@ -5,8 +5,8 @@ title: Make conformance Pages promotion monotonic across absence and outages
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - conformance
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx5yth4h3th3jvhb4r7gevef
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:07:48.409Z
-updated_at: 2026-07-10T13:10:40.417Z
+updated_at: 2026-10-26T03:52:51.452Z
 closed_at: 2026-07-10T12:34:41.066Z
 close_reason: Added a protected-main root namespace digest marker; predeploy allows true absence only before the marker and fails closed on later 404, outage, shrinkage, or changed index bytes.
 ---

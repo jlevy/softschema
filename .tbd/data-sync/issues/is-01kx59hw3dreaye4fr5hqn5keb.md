@@ -5,8 +5,8 @@ title: Resolve nested JSON Schema resource identities and collisions
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - json-schema
   - security
@@ -20,7 +20,7 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T05:56:04.844Z
-updated_at: 2026-07-10T06:40:48.549Z
+updated_at: 2026-10-26T03:52:08.338Z
 closed_at: 2026-07-10T06:40:48.548Z
 close_reason: Implemented and verified in 0854bcc
 ---

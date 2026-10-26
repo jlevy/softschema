@@ -5,8 +5,8 @@ title: Use Unicode scalar ordering for canonical schema required arrays
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - canonicalization
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx64dj887nrm1d41xspztcqt
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:20:55.696Z
-updated_at: 2026-07-10T13:45:53.467Z
+updated_at: 2026-10-26T03:51:41.001Z
 closed_at: 2026-07-10T12:36:20.386Z
 close_reason: TypeScript canonical required-array sorting now uses Unicode scalar ordering; Python, Node, and Bun exact adapters pass all 7 canonicalization cases.
 ---

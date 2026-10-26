@@ -5,8 +5,8 @@ title: Make source-resource tests installation-mode independent
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - testing
   - packaging
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T14:21:08.554Z
-updated_at: 2026-07-10T14:22:20.687Z
+updated_at: 2026-10-26T03:52:30.420Z
 closed_at: 2026-07-10T14:22:20.686Z
 close_reason: Source-resource trust test now passes deterministically under wheel-first CI and source runs.
 ---

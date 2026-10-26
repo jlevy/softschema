@@ -5,13 +5,13 @@ title: "[deferred] Tighten __all__ surface in softschema/__init__.py"
 kind: task
 status: closed
 priority: 3
-version: 7
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels: []
 dependencies: []
 parent_id: is-01kx4vfdwqtmk0tt9q9kznyhwq
 created_at: 2026-05-29T03:55:10.077Z
-updated_at: 2026-07-10T07:18:26.556Z
+updated_at: 2026-10-26T03:51:34.296Z
 closed_at: 2026-07-10T07:18:26.555Z
 close_reason: Implemented and verified in 99d5250
 ---

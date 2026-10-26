@@ -5,8 +5,8 @@ title: Authenticate recovery checksums before parsing them
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - release
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T13:00:23.425Z
-updated_at: 2026-07-10T13:09:03.447Z
+updated_at: 2026-10-26T03:52:38.551Z
 closed_at: 2026-07-10T13:09:03.446Z
 close_reason: Recovery checksum inventory now has its own attestation, is verified before parsing, is restricted to exactly the two relative recovery filenames, and is reverified after extraction; malicious filename regression passes.
 ---

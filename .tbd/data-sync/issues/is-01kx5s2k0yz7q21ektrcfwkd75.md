@@ -5,8 +5,8 @@ title: Require release provenance postconditions before retry success
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - security
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx5zkegfyhhxb0j7s3gj1xbf
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T10:27:21.245Z
-updated_at: 2026-07-10T13:10:39.051Z
+updated_at: 2026-10-26T03:51:39.356Z
 closed_at: 2026-07-10T11:51:32.723Z
 close_reason: Retry completion now requires the provenance/publisher postcondition; bounded-failure regressions pass.
 ---

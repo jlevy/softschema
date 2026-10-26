@@ -5,8 +5,8 @@ title: Define portable JSON Schema regular-expression semantics
 kind: bug
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 10
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - json-schema
@@ -23,7 +23,7 @@ dependencies:
     target: is-01kx6dmkfg4vcq8nfckm2e21zb
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T02:58:17.481Z
-updated_at: 2026-07-10T16:29:08.683Z
+updated_at: 2026-10-26T03:52:32.057Z
 closed_at: 2026-07-10T06:40:48.356Z
 close_reason: Implemented and verified in 0854bcc
 ---

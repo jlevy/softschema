@@ -5,8 +5,8 @@ title: Reserve and validate the root compiler metadata block
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - compiler
   - parity
@@ -20,7 +20,7 @@ dependencies:
     target: is-01kx5rvw9tdgwa3cdhmgtxad6h
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T10:00:27.780Z
-updated_at: 2026-07-10T11:51:32.181Z
+updated_at: 2026-10-26T03:51:32.969Z
 closed_at: 2026-07-10T11:51:32.180Z
 close_reason: Reserved root x-softschema compiler metadata in both runtimes; hostile metadata and public-profile tests pass.
 ---

@@ -5,8 +5,8 @@ title: Verify GitHub latest-release pointer postconditions
 kind: bug
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - release
   - correctness
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:13:07.516Z
-updated_at: 2026-07-10T12:41:13.554Z
+updated_at: 2026-10-26T03:52:44.786Z
 closed_at: 2026-07-10T12:39:24.464Z
 close_reason: "Added bounded /releases/latest classification and final postconditions: stable tags must be exact latest and prereleases cannot displace stable latest; focused workflow and classifier tests pass."
 ---

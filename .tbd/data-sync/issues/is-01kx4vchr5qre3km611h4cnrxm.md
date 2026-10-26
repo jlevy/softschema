@@ -5,14 +5,14 @@ title: Write comprehensive hardening and conformance plan spec
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - planning
 dependencies: []
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:48:30.340Z
-updated_at: 2026-07-10T03:23:59.683Z
+updated_at: 2026-10-26T03:52:39.968Z
 closed_at: 2026-07-10T03:23:59.682Z
 close_reason: Created and independently audited the prioritized hardening/conformance plan spec, linked the remediation epic and 27 child beads, added missing YAML/regex/format/research/release work, encoded the live dependency graph, and passed repository lint, diff checks, and tbd graph validation.
 ---

@@ -5,8 +5,8 @@ title: Separate the portable contract core from runtime and CLI adapters
 kind: feature
 status: closed
 priority: 2
-version: 10
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 12
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - architecture
   - python
@@ -24,7 +24,7 @@ dependencies:
     target: is-01kx5kpn97qaan54bsqh4yqtp8
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:50:05.417Z
-updated_at: 2026-07-10T08:59:35.765Z
+updated_at: 2026-10-26T03:52:27.848Z
 closed_at: 2026-07-10T07:55:24.873Z
 close_reason: Implemented and verified in 30c41b0
 ---

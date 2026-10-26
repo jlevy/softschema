@@ -5,8 +5,8 @@ title: Anchor extra-property diagnostics to the offending key
 kind: bug
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - diagnostics
   - parity
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4vfebyfym3whq7f3e3x0qs
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T09:36:46.535Z
-updated_at: 2026-07-10T09:47:30.000Z
+updated_at: 2026-10-26T03:52:34.289Z
 closed_at: 2026-07-10T09:47:29.999Z
 close_reason: Implemented and verified across Python and TypeScript with shared multiple-extra and escaped-key location tests.
 ---

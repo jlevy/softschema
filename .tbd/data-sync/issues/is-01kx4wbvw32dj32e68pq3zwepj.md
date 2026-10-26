@@ -5,8 +5,8 @@ title: Bootstrap draft conformance schemas and the shared case runner
 kind: feature
 status: closed
 priority: 1
-version: 19
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 21
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - conformance
   - parity
@@ -40,7 +40,7 @@ dependencies:
     target: is-01kx5rvwgnhq1db37qegdsyywp
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T02:05:36.514Z
-updated_at: 2026-07-10T13:10:41.265Z
+updated_at: 2026-10-26T03:52:16.380Z
 closed_at: 2026-07-10T04:35:14.381Z
 close_reason: Added reviewed draft schemas, digest-bound manifest, ready/pending language-neutral cases, strict standalone runner, and CI execution across Python/Node/Bun; committed as fe5d47c.
 ---

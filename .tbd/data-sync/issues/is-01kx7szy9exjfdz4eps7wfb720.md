@@ -5,8 +5,8 @@ title: Use one authored version string in softschema artifacts
 kind: feature
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - artifact-format
   - simplicity
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx7vpb1m9ebwjsyka8m20kcf
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-11T05:21:51.917Z
-updated_at: 2026-07-11T06:23:26.144Z
+updated_at: 2026-10-26T03:52:48.714Z
 closed_at: 2026-07-11T05:41:51.670Z
 close_reason: Removed the unmerged softschema.format discriminator across Python, TypeScript, conformance, release discovery, examples, docs, and agent skills; one closed metadata grammar now uses the contract ID as its only authored version string.
 ---

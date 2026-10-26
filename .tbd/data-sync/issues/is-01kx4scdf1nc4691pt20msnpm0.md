@@ -5,8 +5,8 @@ title: Validate contract IDs at every API and CLI boundary
 kind: bug
 status: closed
 priority: 2
-version: 13
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 15
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - python
@@ -29,7 +29,7 @@ dependencies:
     target: is-01kx59hw3dreaye4fr5hqn5keb
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:28.801Z
-updated_at: 2026-07-10T06:40:48.748Z
+updated_at: 2026-10-26T03:52:47.195Z
 closed_at: 2026-07-10T06:40:48.747Z
 close_reason: Implemented and verified in 0854bcc
 ---

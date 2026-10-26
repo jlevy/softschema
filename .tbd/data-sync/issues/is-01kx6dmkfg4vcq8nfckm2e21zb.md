@@ -5,8 +5,8 @@ title: Replace portable regex backtracking with bounded linear engines
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - parity
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx6mak81cn94pjt82awqdjqs
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T16:26:43.055Z
-updated_at: 2026-07-10T18:36:56.112Z
+updated_at: 2026-10-26T03:52:17.331Z
 closed_at: 2026-07-10T18:36:56.111Z
 close_reason: Implemented bounded Thompson/lazy-DFA regex engines and aggregate work limits in both runtimes.
 ---

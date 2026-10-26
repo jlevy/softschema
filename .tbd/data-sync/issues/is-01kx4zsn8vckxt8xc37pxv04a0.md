@@ -5,8 +5,8 @@ title: Research adjacent schema-document systems and strategic positioning
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 6
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - research
   - strategy
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T03:05:34.234Z
-updated_at: 2026-07-10T06:40:49.149Z
+updated_at: 2026-10-26T03:51:51.544Z
 closed_at: 2026-07-10T06:40:49.148Z
 close_reason: Implemented and verified in 0854bcc
 ---

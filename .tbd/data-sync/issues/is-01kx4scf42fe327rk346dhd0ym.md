@@ -5,8 +5,8 @@ title: Publish a versioned language-neutral conformance kit
 kind: feature
 status: closed
 priority: 2
-version: 16
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 18
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - spec
   - architecture
@@ -18,7 +18,7 @@ dependencies:
     target: is-01kx5fvvr8jfgg5bf70vr9h5kj
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T01:13:30.497Z
-updated_at: 2026-07-11T23:13:49.567Z
+updated_at: 2026-10-26T03:52:50.348Z
 closed_at: 2026-07-11T23:13:49.567Z
 close_reason: "Superseded by the clean main-based minimal hardening plan; PR #20 will not be merged and its remaining conformance/recovery/live-release work is intentionally excluded."
 ---

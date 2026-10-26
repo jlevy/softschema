@@ -5,8 +5,8 @@ title: Scope conformance consumer instructions to extracted archives
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - conformance
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:04:58.168Z
-updated_at: 2026-07-10T12:50:39.455Z
+updated_at: 2026-10-26T03:52:25.926Z
 closed_at: 2026-07-10T12:50:39.454Z
 close_reason: Guide instructions now run the standard-library consumer only against an extracted conformance-kit.tar.gz with copyable shell commands; extracted 135-file smoke passes.
 ---

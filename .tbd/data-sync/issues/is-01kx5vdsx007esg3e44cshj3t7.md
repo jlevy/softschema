@@ -5,8 +5,8 @@ title: Make recursive discovery iterative and bounded
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - discovery
@@ -19,7 +19,7 @@ dependencies:
     target: is-01kx64dhv0p41vtygc1q9fdjbc
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T11:08:25.887Z
-updated_at: 2026-07-10T13:45:52.549Z
+updated_at: 2026-10-26T03:52:19.386Z
 closed_at: 2026-07-10T11:51:34.006Z
 close_reason: Recursive discovery is iterative, identity-aware, and bounded to depth 64/100000 entries per operand with fail-closed partial-result behavior.
 ---

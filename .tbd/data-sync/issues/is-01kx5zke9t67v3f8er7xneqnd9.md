@@ -5,8 +5,8 @@ title: Bound release manifest subject and aggregate bytes
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - release
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nh1qz49ffey0dgewxp7
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:21:24.921Z
-updated_at: 2026-07-10T12:41:13.733Z
+updated_at: 2026-10-26T03:52:10.471Z
 closed_at: 2026-07-10T12:39:24.646Z
 close_reason: Added 512 MiB per-subject and 1 GiB aggregate manifest limits enforced before reads/downloads, with adversarial tests in the 36-test release-state suite.
 ---

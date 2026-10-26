@@ -5,8 +5,8 @@ title: Normalize artifact parse and access failures across single and batch vali
 kind: bug
 status: closed
 priority: 1
-version: 9
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 11
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - parity
   - cli
@@ -22,7 +22,7 @@ dependencies:
     target: is-01kx4scemwng8g758svkrcdnh9
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T02:05:36.294Z
-updated_at: 2026-07-10T06:40:48.162Z
+updated_at: 2026-10-26T03:52:28.353Z
 closed_at: 2026-07-10T06:40:48.162Z
 close_reason: Implemented and verified in 0854bcc
 ---

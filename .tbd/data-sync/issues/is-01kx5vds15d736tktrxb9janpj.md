@@ -5,8 +5,8 @@ title: Bound artifact and schema reads before allocation
 kind: bug
 status: closed
 priority: 1
-version: 7
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 8
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - io
@@ -21,7 +21,7 @@ dependencies:
     target: is-01kx64dhkqyvh3zng8c6f0nd85
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T11:08:24.996Z
-updated_at: 2026-07-10T13:45:52.173Z
+updated_at: 2026-10-26T03:52:13.815Z
 closed_at: 2026-07-10T11:51:33.647Z
 close_reason: Artifact/schema reads are limit+1 bounded before allocation, decoding, and parsing in Python and TypeScript; adversarial tests pass.
 ---

@@ -5,8 +5,8 @@ title: Make trusted-publisher documentation reflect live verification state
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 5
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - docs
   - release
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx4w3nqewdhf1d3g0xgvj4ra
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T12:04:08.214Z
-updated_at: 2026-07-10T12:50:38.532Z
+updated_at: 2026-10-26T03:52:45.547Z
 closed_at: 2026-07-10T12:50:38.531Z
 close_reason: Publishing docs now distinguish required registry settings from credentialed live verification and make no unsupported configured/bootstrap-complete claim; docs gates pass.
 ---

@@ -5,8 +5,8 @@ title: Bound skill-installer target and recovery-file inspection
 kind: bug
 status: closed
 priority: 2
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-09-softschema-hardening-and-conformance.md
+version: 7
+spec_path: docs/project/specs/archive/plan-2026-07-09-softschema-hardening-and-conformance.md
 labels:
   - security
   - skills
@@ -16,7 +16,7 @@ dependencies:
     target: is-01kx4scf42fe327rk346dhd0ym
 parent_id: is-01kx4sb8zsz0vfdry39n0bqcdd
 created_at: 2026-07-10T17:29:39.368Z
-updated_at: 2026-07-10T18:36:58.170Z
+updated_at: 2026-10-26T03:52:09.359Z
 closed_at: 2026-07-10T18:36:58.169Z
 close_reason: Bound skill target, residue, and lock inspection with non-mutating conflict behavior.
 ---
