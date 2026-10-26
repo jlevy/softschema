@@ -134,7 +134,8 @@ TypeScript now rejects it too, as `yaml_parse_error`.
 limit and reports the limit before a duplicate key earlier in the text or a parse error
 later in it, as Python does: an empty `[]` that is the 65th open collection was
 accepted, and a document past the limit with a duplicate key was `yaml_duplicate_key`.
-Both are `yaml_limit` in both runtimes.
+Both are `yaml_limit` in both runtimes, while a tag, a merge key, or another refusal
+earlier in the text than the deep collection is still reported first.
 
 **Directives.** `%YAML 1.1` switched both engines to YAML 1.1 schemas that differ (`08`
 was a string in Python and 8 in TypeScript, and a date a string in one and an

@@ -260,10 +260,12 @@ explicit-tag rule.
 
 One YAML document has at most 64 simultaneously open collections, including the root.
 Exceeding that depth is `yaml_limit`, as is a host YAML parser stack overflow; an empty
-collection counts, and the limit is reported before a duplicate key or a parse error
-later in the text. The depth rule is a portability rule rather than a resource ceiling:
-left to the host, the two runtimes disagree by an order of magnitude about how deep a
-document may be, so a fixed bound is what makes depth mean the same thing in both.
+collection counts, and the limit is reported before a duplicate key, a number form, a
+non-string key, an alias, or a parse error later in the text, and after a parse error, a
+tag, a merge key, or another rule of this section that applies earlier in the text.
+The depth rule is a portability rule rather than a resource ceiling: left to the host,
+the two runtimes disagree by an order of magnitude about how deep a document may be, so
+a fixed bound is what makes depth mean the same thing in both.
 
 Input size, scalar size, and node count are not bounded.
 Those ceilings only answered whether a hostile document could exhaust the parser, and

@@ -1244,6 +1244,13 @@ describe("portable reader: cost and duplicate keys", () => {
     grows(shape, 2_000);
   });
 
+  test("the earliest of several entries with dropped content is the one reported", () => {
+    // The CST walk visits sibling entries in reverse; the report names the first one.
+    expect(() => parsePortableYaml("a:\n- ? k\n  - x\n- ? j\n  - y\n")).toThrow(
+      /^content at line 3, column 3 belongs to no value/u,
+    );
+  });
+
   test("a duplicate key reads as the yaml package reports it", () => {
     for (const text of [
       "a: 1\nb: 2\na: 3\n",

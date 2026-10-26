@@ -310,6 +310,10 @@ portable_values:
   - { id: empty_sequence_at_depth_limit, generated: deep_sequence, depth: 63, empty: true, valid: true }
   - { id: empty_sequence_past_depth_limit, generated: deep_sequence, depth: 64, empty: true, valid: false, code: yaml_limit }
   - { id: duplicate_key_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: 1\na: 2\n", valid: false, code: yaml_limit }
+  # What that pass raises itself before the deep collection is still reported first.
+  - { id: tag_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: !!str x\n", valid: false, code: yaml_custom_tag }
+  - { id: merge_key_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "<<: {b: 1}\n", valid: false, code: yaml_merge_key }
+  - { id: flow_rule_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: [x:, y]\n", valid: false, code: yaml_parse_error }
   # A JSON document is a YAML document and keeps its YAML meaning, including where the
   # two languages disagree: NaN is a plain scalar string, and duplicate keys fail.
   - id: json_document

@@ -266,7 +266,7 @@ const FLOW_END_TOKENS = new Set(["flow-seq-end", "flow-map-end"]);
  * is reported first, as it would be in Python. Tab indentation is already an engine error in
  * both.
  */
-function checkPlainTabs(text: string): void {
+function checkPlainTabs(text: string, limit = Number.POSITIVE_INFINITY): void {
   if (!text.includes("\t")) return;
   let offender = -1;
   const walk = (node: unknown, inFlow: boolean): void => {
@@ -277,6 +277,8 @@ function checkPlainTabs(text: string): void {
     }
     const token = node as { type?: unknown; offset?: unknown; source?: unknown };
     const record = node as Record<string, unknown>;
+    // Everything inside a token starts at or after it, so nothing past `limit` is visited.
+    if (typeof token.offset === "number" && token.offset >= limit) return;
     if (token.type === "block-scalar") {
       // The content may hold tabs; the header line (`|`, its indicators, the spacing and
       // comment after them, kept in `props`) is block-context spacing like any other.
@@ -313,7 +315,7 @@ function checkPlainTabs(text: string): void {
     }
   };
   for (const document of new Parser().parse(text)) walk(document, false);
-  if (offender === -1) return;
+  if (offender === -1 || offender >= limit) return;
   const { line, column } = textPosition(text, offender);
   throw new PortableInputError(
     "yaml_parse_error",
@@ -478,11 +480,12 @@ const MAYBE_DROPPED = /[!&]|(?:^|[\s[{,])\?(?=\s|$)/mu;
  * holding `!`, `&` or an explicit-key `?` can have such an entry, so others skip the extra
  * CST pass.
  */
-function checkDroppedContent(text: string): void {
+function checkDroppedContent(text: string, limit = Number.POSITIVE_INFINITY): void {
   if (!MAYBE_DROPPED.test(text)) return;
-  let dropped = -1;
+  // The walk visits siblings in reverse, so the earliest entry is the smallest offset.
+  let dropped = limit;
   forEachCstRecord(new Parser().parse(text), (record, parentType) => {
-    if (dropped !== -1 || (parentType !== "block-map" && parentType !== "flow-collection")) return;
+    if (parentType !== "block-map" && parentType !== "flow-collection") return;
     if (!("key" in record) && !("explicitKey" in record)) return;
     const sep = Array.isArray(record.sep)
       ? (record.sep as Array<{ type?: unknown; offset?: unknown }>)
@@ -491,9 +494,9 @@ function checkDroppedContent(text: string): void {
     const value = record.value as { offset?: unknown } | null | undefined;
     const property = sep.find((token) => token.type === "tag" || token.type === "anchor");
     const at = typeof value?.offset === "number" ? value.offset : property?.offset;
-    if (typeof at === "number") dropped = at;
+    if (typeof at === "number" && at < dropped) dropped = at;
   });
-  if (dropped === -1) return;
+  if (dropped === limit) return;
   const { line, column } = textPosition(text, dropped);
   throw new PortableInputError(
     "yaml_parse_error",
@@ -813,14 +816,15 @@ export function parsePortableYaml(input: string): unknown {
     throw error;
   }
   const firstError = document.errors[0];
-  // Python's event pass stops at the first collection past the limit, before it looks for
-  // duplicate keys and before any parse error later in the text; so does this. It also
-  // keeps the walks below off a document nested thousands deep.
+  // Python's event pass stops at the first collection past the limit. Whatever it raises
+  // in that pass before the collection (a parse error, a tag, a merge key, a key or flow
+  // scalar rule) still comes first, and whatever it finds only afterwards (a duplicate
+  // key, a number form, a non-string key, an alias) does not. With `limit` set, every
+  // check below reports only what starts before it, and the limit is reported last.
   const tooDeep = firstTooDeep(document);
-  if (tooDeep !== null && (firstError === undefined || tooDeep < firstError.pos[0])) {
-    throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
-  }
-  const duplicate = firstDuplicateKey(document);
+  const limit =
+    tooDeep !== null && (firstError === undefined || tooDeep < firstError.pos[0]) ? tooDeep : null;
+  const duplicate = limit === null ? firstDuplicateKey(document) : null;
   if (
     duplicate !== null &&
     (firstError === undefined ||
@@ -836,46 +840,55 @@ export function parsePortableYaml(input: string): unknown {
       describeAt(text, duplicate.at, "Map keys must be unique"),
     );
   }
-  if (firstError !== undefined) {
+  if (firstError !== undefined && limit === null) {
     const message = firstError.message;
     if (message.includes("Maximum call stack size exceeded")) {
       throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
     }
     throw new PortableInputError("yaml_parse_error", message);
   }
-  checkDroppedContent(text);
-  if (document.warnings.length > 0) {
-    throw new PortableInputError(
-      "yaml_custom_tag",
-      document.warnings[0]?.message ?? "unsupported tag",
-    );
+  const before = limit ?? Number.POSITIVE_INFINITY;
+  checkDroppedContent(text, before);
+  const warning = document.warnings[0];
+  if (warning !== undefined && warning.pos[0] < before) {
+    throw new PortableInputError("yaml_custom_tag", warning.message);
   }
-  checkPlainTabs(text);
+  checkPlainTabs(text, before);
   const explicitKeys = explicitKeyIndex(text);
 
   let hasAlias = false;
-  // `path` is bounded by MAX_DEPTH: `firstTooDeep` refused anything deeper above.
+  // Nodes come in document order and every node past the depth limit starts at or after
+  // `limit`, so stopping there keeps `path` within MAX_DEPTH.
   visit(document, (_key, node, path) => {
+    if (limit !== null) {
+      const first = isPair(node) ? (node.key ?? node.value) : node;
+      const start = (first as { range?: readonly number[] | null } | null)?.range?.[0];
+      if (typeof start === "number" && start >= limit) return visit.BREAK;
+    }
     if (isPair(node)) {
-      // A key the two engines type differently is reported as that, not as a non-string
-      // key, which is what Python reports for `.5e3: x` (a string key to ruamel).
-      if (
-        isScalar(node.key) &&
-        node.key.type === Scalar.PLAIN &&
-        typeof node.key.source === "string" &&
-        node.key.range
-      ) {
-        checkNumberForm(text, node.key.source, node.key.range[0]);
+      const key = node.key;
+      if (limit === null) {
+        // A key the two engines type differently is reported as that, not as a non-string
+        // key, which is what Python reports for `.5e3: x` (a string key to ruamel).
+        if (
+          isScalar(key) &&
+          key.type === Scalar.PLAIN &&
+          typeof key.source === "string" &&
+          key.range
+        ) {
+          checkNumberForm(text, key.source, key.range[0]);
+        }
+        if (!isScalar(key) || typeof key.value !== "string") {
+          throw new PortableInputError("yaml_non_string_key", "mapping keys must be strings");
+        }
       }
-      if (!isScalar(node.key) || typeof node.key.value !== "string") {
-        throw new PortableInputError("yaml_non_string_key", "mapping keys must be strings");
-      }
-      if (node.key.value === "<<") {
+      if (!isScalar(key)) return;
+      if (key.value === "<<") {
         throw new PortableInputError("yaml_merge_key", "YAML merge keys are not supported");
       }
       const parent = path[path.length - 1];
       if (isMap(parent) && parent.flow === true) {
-        checkFlowMappingKey(text, node.key, parent.range?.[0], explicitKeys);
+        checkFlowMappingKey(text, key, parent.range?.[0], explicitKeys);
       }
       return;
     }
@@ -904,7 +917,7 @@ export function parsePortableYaml(input: string): unknown {
       typeof node.source === "string" &&
       node.range
     ) {
-      checkNumberForm(text, node.source, node.range[0]);
+      if (limit === null) checkNumberForm(text, node.source, node.range[0]);
       if (path.some((ancestor) => isCollection(ancestor) && ancestor.flow === true)) {
         const owner = path[path.length - (isPair(path[path.length - 1]) ? 2 : 1)];
         const inMapping = isMap(owner) && owner.flow === true;
@@ -912,6 +925,7 @@ export function parsePortableYaml(input: string): unknown {
       }
     }
     if (
+      limit === null &&
       isScalar(node) &&
       typeof node.value === "number" &&
       Number.isInteger(node.value) &&
@@ -922,6 +936,9 @@ export function parsePortableYaml(input: string): unknown {
       throw new PortableInputError("number_out_of_range", "integer exceeds the safe range");
     }
   });
+  if (limit !== null) {
+    throw new PortableInputError("yaml_limit", "YAML exceeds the depth limit");
+  }
   if (hasAlias) {
     throw new PortableInputError("yaml_alias", "YAML aliases and anchors are not supported");
   }
