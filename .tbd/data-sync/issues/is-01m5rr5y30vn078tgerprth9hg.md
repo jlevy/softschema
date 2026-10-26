@@ -3,9 +3,9 @@ type: is
 id: is-01m5rr5y30vn078tgerprth9hg
 title: "PR #60 (fix): JSON fast path for strict JSON documents"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -18,6 +18,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-25T05:22:51.104Z
-updated_at: 2026-10-25T06:01:25.546Z
+updated_at: 2026-10-25T06:37:56.567Z
 started_at: 2026-10-25T05:22:57.928Z
+closed_at: 2026-10-25T06:37:56.566Z
+close_reason: "review A on #60 addressed: A1-A5 fixed (c447283, 1e62837); disposition reply posted"
+resolution: null
+duplicate_of: null
 ---

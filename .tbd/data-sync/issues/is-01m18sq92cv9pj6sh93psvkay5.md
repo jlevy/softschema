@@ -3,9 +3,9 @@ type: is
 id: is-01m18sq92cv9pj6sh93psvkay5
 title: "PR #52 review F5: repair path does not name the file for a pure-yaml artifact that still fails to parse"
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 4
+version: 5
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m18sp5xn5a5kpxza57ts9mbm
 hold: null
 hold_until: null
 created_at: 2026-08-30T07:39:09.771Z
-updated_at: 2026-10-25T06:04:17.991Z
+updated_at: 2026-10-25T06:26:59.159Z
 started_at: 2026-10-25T06:04:17.991Z
+closed_at: 2026-10-25T06:26:59.158Z
+close_reason: "Fixed in 2a65587: parse_yaml_text/parseYamlText take source, readers prefix a parse failure with the backticked document path in both profiles, and the repair command prefers the reader's message over repair's own copy of the engine text. Golden: new pure-yaml journey in tests/golden/scenarios/repair.tryscript.md (fixture repair-unrepairable.yaml) pins the prefix on the repair --check record and on validate's one line; the frontmatter floor journey pins its prefix too. Goldens pass under py/ts/ts-bun, cross-impl-diff OK, plus one reader test per implementation (test_core.py, validate-extra.test.ts)."
+resolution: null
+duplicate_of: null
 ---
 _parse_after_repair threads 'source' into parse_frontmatter_text but not parse_yaml_text, which takes no such parameter. Same asymmetry in TypeScript (parseYamlText).
 
