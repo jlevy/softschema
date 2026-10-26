@@ -1,10 +1,10 @@
 ---
 softschema:
-  contract: trading.prelim_scan:PrelimScanTerms/v1
-  schema: prelim-scan-terms.schema.yaml
-  envelope: prelim_scan_terms
+  contract: example.research:ScanTerms/v1
+  schema: scan-terms.schema.yaml
+  envelope: scan_terms
   status: enforced
-prelim_scan_terms:
+scan_terms:
   ticker: "[TICKER]"
   company: "[COMPANY]"
   as_of_date: [YYYY-MM-DD]
@@ -27,7 +27,7 @@ prelim_scan_terms:
       - term: [category, market context, or competitor query]
         why: [short context connection]
 ---
-# [TICKER] - Prelim Scan Terms
+# [TICKER] - Scan Terms
 
 ## Notes
 

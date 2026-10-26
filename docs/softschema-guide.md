@@ -851,10 +851,11 @@ Use this sequence:
 
 5. **Repair at each handoff, validate at each boundary.** Run `softschema repair ...`
    immediately after an agent writes an artifact and return the JSON result to the
-   agent. `repair` quotes a scalar that made the document unparsable and retypes one the
-   contract wants as a string, writes the file, and then validates — so the producing
-   agent sees the same verdict its consumer will, while it is still in a position to fix
-   what remains.
+   agent. `repair` quotes a scalar that made the document unparsable, escapes a raw
+   character the portable rule rejects inside a value, and retypes one the contract
+   wants as a string, writes the file, and then validates — so the producing agent sees
+   the same verdict its consumer will, while it is still in a position to fix what
+   remains.
 
    The two commands take deliberately different postures toward an artifact that cannot
    be read. `validate` is what a consumer runs and refuses one outright, because an

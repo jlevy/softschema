@@ -15,6 +15,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { conformArtifact } from "./conform.js";
 import type { Contract, SchemaProfile } from "./models.js";
+import { parsePortableYaml } from "./portable.js";
 import { repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
 import { validateArtifact } from "./validate.js";
@@ -102,6 +103,50 @@ describe("schema conform vectors", () => {
 });
 
 describe("filesystem boundary", () => {
+  test("conform never loads a region the portable reader rejects", () => {
+    // The round-trip parser never runs the preflight. The `yaml` package reads a raw U+0085
+    // as content, so this guard is what keeps the TypeScript pass on the same rule as the
+    // Python one, where ruamel folded the character to a space and wrote the fold back.
+    const dir = scratch();
+    const path = join(dir, "artifact.md");
+    const original =
+      "---\ndata:\n  name: 007\n  summary: Hayao Miyazaki\u0085 Studio Ghibli\n---\nBody.\n";
+    writeFileSync(path, original);
+
+    const result = conformArtifact(path, {
+      schema: { type: "object", properties: { name: { type: "string" } } },
+      envelopeKey: "data",
+      write: true,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.skipped_reason).toBe("unparsable");
+    expect(readFileSync(path, "utf8")).toBe(original);
+  });
+
+  test("escaping a rejected character is recorded per value", () => {
+    const path = join(scratch(), "a.yaml");
+    writeFileSync(path, "note: a\u0085b\u2028c\u0085x\nplain: fine\n");
+
+    const result = repairArtifact(path, { profile: "pure-yaml", write: true });
+
+    expect(result.changed).toBe(true);
+    expect(result.records).toEqual([
+      {
+        kind: "repair_applied",
+        code: "yaml_escaped_character",
+        path: ["note"],
+        message: `escaped #x0085 as "\\N", #x2028 as "\\L" in the value of 'note'`,
+      },
+    ]);
+    expect(readFileSync(path, "utf8")).toBe('note: "a\\Nb\\Lc\\Nx"\nplain: fine\n');
+    // The escaped document decodes to the characters as they arrived; nothing was guessed.
+    expect(parsePortableYaml(readFileSync(path, "utf8"))).toEqual({
+      note: "a\u0085b\u2028c\u0085x",
+      plain: "fine",
+    });
+  });
+
   test("repair is idempotent", () => {
     const path = join(scratch(), "a.md");
     writeFileSync(path, "---\nthing:\n  summary: Note: actually Q1\n---\nBody.\n");

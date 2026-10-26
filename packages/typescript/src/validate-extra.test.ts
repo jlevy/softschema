@@ -5,9 +5,12 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 import type { Contract } from "./models.js";
+import { documentLabel } from "./portable.js";
 import { softFieldMeta } from "./softField.js";
 import {
   clearValidatorCache,
+  parseFrontmatterText,
+  parseYamlText,
   readFrontmatterDoc,
   validateArtifact,
   validateSemantic,
@@ -187,7 +190,7 @@ describe("compiled schema invalid root", () => {
     const error = result.structural.errors[0] as Record<string, unknown>;
     expect(result.structural.ok).toBe(false);
     expect(error.kind).toBe("schema_invalid");
-    expect(error.message).toBe("compiled schema root must be a mapping");
+    expect(error.message).toBe(`\`${compiledSchema}\`: compiled schema root must be a mapping`);
     expect(error.reason).toBe("syntax");
   });
 
@@ -199,7 +202,7 @@ describe("compiled schema invalid root", () => {
     const error = result.structural.errors[0] as Record<string, unknown>;
     expect(result.structural.ok).toBe(false);
     expect(error.kind).toBe("schema_invalid");
-    expect(error.message).toBe("compiled schema root must be a mapping");
+    expect(error.message).toBe(`\`${compiledSchema}\`: compiled schema root must be a mapping`);
     expect(error.reason).toBe("syntax");
   });
 
@@ -211,6 +214,31 @@ describe("compiled schema invalid root", () => {
       kind: "schema_invalid",
       reason: "syntax",
     });
+  });
+
+  test("schema_invalid names the schema file", () => {
+    // The record's `path` is the artifact, so the schema's own name has to be in the message.
+    const compiledSchema = tmpFile("raw.schema.yaml", "description: raw\u0085next\ntype: object\n");
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
+    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
+    const error = result.structural.errors[0] as Record<string, unknown>;
+    expect(error.kind).toBe("schema_invalid");
+    expect(error.reason).toBe("syntax");
+    expect(String(error.message)).toStartWith(
+      `\`${compiledSchema}\`: unacceptable character #x0085 `,
+    );
+    expect(String(error.message).split(compiledSchema).length).toBe(2);
+  });
+
+  test("an invalid-UTF-8 compiled schema is named once", () => {
+    const compiledSchema = tmpFile("bad.schema.yaml", "");
+    writeFileSync(compiledSchema, Buffer.from([0xff]));
+    const doc = tmpFile("doc.md", "---\nsample:\n  name: hi\n---\nbody\n");
+    const result = validateArtifact(doc, contract({ schemaPath: compiledSchema }));
+    const error = result.structural.errors[0] as Record<string, unknown>;
+    expect(error.kind).toBe("schema_invalid");
+    expect(error.reason).toBe("syntax");
+    expect(error.message).toBe(`\`${compiledSchema}\`: input is not valid UTF-8`);
   });
 });
 
@@ -254,7 +282,42 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
     const structural = result.structural as { ok: boolean; errors: { kind: string }[] };
     expect(structural.errors[0]?.kind).toBe("yaml_parse_error");
   });
+
+  test("a pure-yaml parse failure names the document", () => {
+    // The engine's wording names a line, not a file; the record has to name the file.
+    const doc = tmpFile("bad.yaml", "key: [unclosed\n");
+    const result = validateArtifact(doc, contract({ profile: "pure-yaml" }));
+    expect(result.ok).toBe(false);
+    const structural = result.structural as { errors: { kind: string; message: string }[] };
+    expect(structural.errors[0]?.kind).toBe("yaml_parse_error");
+    expect(structural.errors[0]?.message.startsWith(`\`${doc}\`: `)).toBe(true);
+  });
 });
+
+/** The text of a `portable_values` vector, building the generated ones. */
+function portableVectorText(item: Record<string, unknown>): string {
+  if (item.generated === "deep_sequence") {
+    const depth = Number(item.depth ?? 1_000);
+    const inner = item.empty === true ? "" : "0";
+    return `${String(item.prefix ?? "")}value: ${"[".repeat(depth)}${inner}${"]".repeat(depth)}`;
+  }
+  if (item.generated === "long_flow_key") {
+    const key = String(item.key_char ?? "k").repeat(Number(item.length));
+    if (item.explicit_comment === true) return `value: {? # note\n  "${key}": 1}`;
+    return item.json === true ? `{"${key}": 1}` : `value: {"${key}": 1}`;
+  }
+  if (item.generated === "long_key") {
+    const key = String(item.key_char).repeat(Number(item.length));
+    const forms: Record<string, string> = {
+      block: `${key}: 1`,
+      pair: `value: [${key}: 1]`,
+      explicit_pair: `value: [? ${key} : 1]`,
+    };
+    return forms[String(item.form)] as string;
+  }
+  expect(item.generated).toBeUndefined();
+  return String(item.text);
+}
 
 test("shared portable YAML and artifact-input vectors", () => {
   const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
@@ -263,17 +326,16 @@ test("shared portable YAML and artifact-input vectors", () => {
   >;
   const portableContract = contract({ profile: "pure-yaml" });
   for (const item of vectors.portable_values ?? []) {
-    const depth = Number(item.depth ?? 1_000);
-    const text =
-      item.generated === "deep_sequence"
-        ? `value: ${"[".repeat(depth)}0${"]".repeat(depth)}`
-        : String(item.text);
+    const text = portableVectorText(item);
     const path = tmpFile(`${String(item.id)}.yaml`, text);
     const result = validateArtifact(path, portableContract);
     expect(result.ok).toBe(item.valid as boolean);
     if ("expected" in item) {
       expect(result.values).toEqual(item.expected as Record<string, unknown>);
     }
+    // Every refusal names its kind, so the two runtimes are held to the same one; a vector
+    // cannot pass on the verdict alone.
+    if (item.valid !== true) expect(typeof item.code).toBe("string");
     if ("code" in item) {
       const structural = result.structural as { errors: { kind: string }[] };
       expect(structural.errors[0]?.kind).toBe(item.code as string);
@@ -299,8 +361,53 @@ test("shared frontmatter vectors", () => {
     const path = tmpFile(`${String(item.id)}.md`, String(item.text));
     const result = validateArtifact(path, contract({ envelopeKey: "movie" }));
     expect(result.ok).toBe(true);
-    expect(result.values).toEqual(item.expected as Record<string, unknown>);
+    if ("expected" in item) {
+      expect(result.values).toEqual(item.expected as Record<string, unknown>);
+    }
   }
+});
+
+test("shared fence scan vectors", () => {
+  const vectors = yamlParse(readFileSync(HARDENING_VECTORS, "utf8")) as Record<
+    string,
+    Array<Record<string, unknown>>
+  >;
+  for (const item of vectors.fence_scan ?? []) {
+    const path = tmpFile(`${String(item.id)}.md`, String(item.text));
+    const result = validateArtifact(path, contract({ envelopeKey: "movie" }));
+    const structural = result.structural as { errors: { kind: string }[] };
+    expect(result.ok).toBe(false);
+    expect(structural.errors[0]?.kind).toBe(item.code as string);
+  }
+});
+
+test("frontmatter messages count lines from the top of the file", () => {
+  // The engines and the preflight count within the block they were handed; the reader
+  // shifts every `line N, column M` by the opening fence. A pure-yaml document has no
+  // fence and is unchanged.
+  expect(() => parseFrontmatterText("---\na: x\u2028y\n---\nbody\n", "doc.md")).toThrow(
+    /^`doc\.md`: unacceptable character #x2028 at line 2, column 5: .*write it as "\\L" inside a double-quoted scalar$/u,
+  );
+  // The block is parsed with its last line break, so the end of input it reports is the
+  // start of the closing fence's line.
+  expect(() => parseFrontmatterText("---\nmovie:\n  notes: [\n---\nbody\n", "doc.md")).toThrow(
+    /line 4, column 1/u,
+  );
+  expect(() => parseYamlText("a: x\u2028y\n", "doc.yaml")).toThrow(/at line 1, column 5/u);
+});
+
+test("documentLabel escapes terminal controls in a filename", () => {
+  const name = "evil\x1b]0;PWNED\x07\x1b[2K\rsoftschema validate: ok\nx\x85y.yaml";
+  expect(documentLabel(name)).toBe(
+    "`evil#x001b]0;PWNED#x0007#x001b[2K#x000dsoftschema validate: ok#x000ax#x0085y.yaml`",
+  );
+  expect(documentLabel("plain/doc.md")).toBe("`plain/doc.md`");
+  const path = tmpFile("bad\x1b[2K.yaml", "value: [\n");
+  const result = validateArtifact(path, contract({ profile: "pure-yaml" }));
+  const structural = result.structural as { errors: { message: string }[] };
+  const message = structural.errors[0]?.message ?? "";
+  expect(message).toContain("#x001b");
+  expect(message).not.toContain("\x1b");
 });
 
 test("shared structural vectors", () => {

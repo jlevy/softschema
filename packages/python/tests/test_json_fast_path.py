@@ -61,8 +61,15 @@ def _ruamel_path(text: str) -> Any:
     """Pure ruamel's parse, which every JSON fast-path result must equal.
 
     Pure, not the C-first default: pure ruamel is the reading the JSON path was derived
-    against and the one ``parse_yaml`` keeps with or without the C extension.
+    against and the one ``parse_yaml`` keeps with or without the C extension. It runs
+    behind the same portable preflight ``parse_yaml`` runs: the preflight rejects a raw
+    character the two runtimes read differently before any reader is chosen, so it is part
+    of every path's contract rather than of one reader.
     """
+    _portable.check_portable_text(text)
+    # `parse_yaml` hands every reader the text with its final line break.
+    if text and not text.endswith("\n"):
+        text += "\n"
     return _portable._parse_with(text, pure=True)
 
 
@@ -131,8 +138,6 @@ VALUE_CASES: list[tuple[str, str, Any]] = [
     ("infinity", '{"a": Infinity}', {"a": "Infinity"}),
     ("negative_infinity", '{"a": -Infinity}', {"a": "-Infinity"}),
     ("max_safe_integer", '{"a": 9007199254740991, "b": -9007199254740991}', AS_JSON),
-    # YAML resolves ``-0`` as the integer 0, so it is not a negative zero.
-    ("negative_zero_integer", '{"a": -0}', {"a": 0}),
     ("positive_zero_float", '{"a": 0.0}', {"a": 0.0}),
     ("exponent_float", "[1e5, 1E5, 1e+5, 1.5E-3, -2e2, 0e0]", [1e5, 1e5, 1e5, 1.5e-3, -2e2, 0.0]),
     ("fraction_float", "[1.0, 10.50, 0.1]", [1.0, 10.5, 0.1]),
@@ -167,9 +172,9 @@ VALUE_CASES: list[tuple[str, str, Any]] = [
     ("escapes", r'["\/", "\b\f\n\r\t", "\u0000", "\"", "\\", "\u00e9", "\u2028"]', AS_JSON),
     ("raw_astral", '{"a": "\U0001f600"}', {"a": "\U0001f600"}),
     ("raw_bom_inside_string", '{"a": "x\ufeffy"}', {"a": "x\ufeffy"}),
-    ("raw_line_separator", '{"a": "x\u2028y"}', {"a": "x\u2028y"}),
-    # A raw NEL is a YAML line break, so ruamel folds it; JSON would keep it.
-    ("raw_next_line_folds", '{"a": "x\x85y"}', {"a": "x y"}),
+    # ``json`` joins an escaped surrogate pair into one character, and so does the portable
+    # constructor on the ruamel path (the TypeScript runtime reads it that way natively).
+    ("surrogate_pair_escape", r'{"a": "\ud83d\ude00"}', {"a": "\U0001f600"}),
     ("bom", '\ufeff{"a": 1}', {"a": 1}),
     ("trailing_newline", '{"a": 1}\n', {"a": 1}),
     ("trailing_whitespace", '{"a": 1}   \n\n  ', {"a": 1}),
@@ -214,11 +219,17 @@ ERROR_CASES: list[tuple[str, str, str]] = [
     ("overflowing_float", "[1e400]", "number_out_of_range"),
     ("negative_zero_float", '{"a": -0.0}', "number_negative_zero"),
     ("negative_zero_exponent", "[-0e0]", "number_negative_zero"),
+    # ruamel resolves ``-0`` as the integer 0 and ``json`` reads it so too, but it is
+    # negative zero to the ``yaml`` package, and the spec rejects negative zero.
+    ("negative_zero_integer", '{"a": -0}', "number_negative_zero"),
+    ("negative_zero_integer_in_list", "[1, -0]", "number_negative_zero"),
     ("lone_surrogate_escape", r'{"a": "\ud800"}', "yaml_unsupported_scalar"),
-    # ruamel decodes each half of an escaped surrogate pair on its own, so the pair
-    # is two lone surrogates. ``json`` would join it into one valid character.
-    ("surrogate_pair_escape", r'{"a": "\ud83d\ude00"}', "yaml_unsupported_scalar"),
     ("raw_lone_surrogate", '{"a": "\ud800"}', "yaml_parse_error"),
+    # A raw U+2028 or U+0085 is a character the two runtimes read differently (JSON and
+    # the ``yaml`` package keep it, ruamel folds a NEL to a space), so the portable
+    # preflight rejects it before any reader is chosen.
+    ("raw_line_separator", '{"a": "x\u2028y"}', "yaml_parse_error"),
+    ("raw_next_line", '{"a": "x\x85y"}', "yaml_parse_error"),
     ("depth_over_limit", _nest(MAX_DEPTH + 1), "yaml_limit"),
     ("hostile_depth", "[" * 50_000 + "]" * 50_000, "yaml_limit"),
     ("leading_tab", '\t{"a": 1}', "yaml_parse_error"),
@@ -272,7 +283,17 @@ def _repo_files(*suffixes: str) -> list[Path]:
     except (OSError, subprocess.CalledProcessError):  # pragma: no cover
         pytest.skip("the repo corpus needs a git checkout")
     paths = [REPO_ROOT / name for name in listed.decode("utf-8").split("\0") if name]
-    return [path for path in paths if path.is_file()]
+    # A fixture that is deliberately not UTF-8 (the golden `repair-non-utf8.md`) is not a
+    # document either reader can be handed; the readers compare only decodable texts.
+    return [path for path in paths if path.is_file() and _is_utf8(path)]
+
+
+def _is_utf8(path: Path) -> bool:
+    try:
+        path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
 
 
 def test_every_repo_json_file_parses_identically() -> None:

@@ -15,6 +15,12 @@ fixtures:
   - {source: ../fixtures/repair-missing-required.md, dest: missing/repair-missing-required.md}
   - {source: ../fixtures/repair.schema.yaml, dest: missing/repair.schema.yaml}
   - {source: ../fixtures/repair-unrepairable.md, dest: floor/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unrepairable.yaml, dest: floor/repair-unrepairable.yaml}
+  - {source: ../fixtures/repair-non-utf8.md, dest: floor/repair-non-utf8.md}
+  - {source: ../fixtures/repair-next-line.md, dest: floor/repair-next-line.md}
+  - {source: ../fixtures/no-frontmatter.md, dest: floor/no-frontmatter.md}
+  - {source: ../fixtures/repair-root-list.yaml, dest: floor/repair-root-list.yaml}
+  - {source: ../fixtures/repair.schema.yaml, dest: floor/repair.schema.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: dry/repair-unquoted-colon.md}
   - {source: ../fixtures/repair.schema.yaml, dest: dry/repair.schema.yaml}
   - {source: ../fixtures/repair-unquoted-colon.md, dest: check/repair-unquoted-colon.md}
@@ -37,6 +43,9 @@ fixtures:
   - {source: ../fixtures/repair-already-valid.md, dest: original/repair-already-valid.md}
   - {source: ../fixtures/repair-missing-required.md, dest: original/repair-missing-required.md}
   - {source: ../fixtures/repair-unrepairable.md, dest: original/repair-unrepairable.md}
+  - {source: ../fixtures/repair-unrepairable.yaml, dest: original/repair-unrepairable.yaml}
+  - {source: ../fixtures/repair-non-utf8.md, dest: original/repair-non-utf8.md}
+  - {source: ../fixtures/repair-next-line.md, dest: original/repair-next-line.md}
   - {source: ../fixtures/repair-unterminated-fence.md, dest: original/repair-unterminated-fence.md}
 env:
   NO_COLOR: "1"
@@ -415,8 +424,10 @@ The escalation has a floor: when quoting does not make the document parse, `--re
 reports exactly what plain `validate` reports — the parse failure, not a repair artifact
 of its own — and the file is left exactly as it was found. The binding is passed as flags
 because the document's own `softschema:` block sits inside the very frontmatter that
-cannot be read. The parse-failure `message` is engine wording, so that one line is
-elided; every other field is pinned.
+cannot be read. The parse-failure `message` is engine wording after softschema's own
+prefix — the backticked document name, so an agent repairing a batch knows which artifact
+the line number belongs to — so the prefix is pinned and the engine's tail elided; every
+other field is pinned.
 
 ```console
 $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 --envelope data
@@ -447,7 +458,7 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
     "errors": [
       {
         "kind": "yaml_parse_error",
-        "message": [..]
+        "message": "`floor/repair-unrepairable.md`: [..]
       }
     ],
     "execution": "not_run",
@@ -464,6 +475,278 @@ $ $SOFTSCHEMA repair floor/repair-unrepairable.md --contract test.repair:Doc/v1 
 $ diff original/repair-unrepairable.md floor/repair-unrepairable.md && echo "byte-identical"
 byte-identical
 ? 0
+```
+
+A raw U+0085 beside a conformable scalar is the case where the two passes once disagreed.
+The character is what a cp1252 ellipsis becomes when agent output is mis-decoded, and the
+parse fails on it in both runtimes. Python's conform pass then loaded the block through a
+round-trip loader that never ran the portable preflight; ruamel folds the character to a
+space, so with `--schema` naming a contract that wanted `name` as a string, the pass retyped
+`007`, wrote the folded text back with no record of the fold, and reported `valid` for a
+file `validate` rejects. Two things changed. Conform runs the preflight before it loads, in
+both runtimes, so a fold can never be written. And `repair` now has a rule for this
+character: a rejected character inside a single-line value is rewritten as the double-quoted
+escape both engines decode to the same character, with a record naming it. The escape keeps
+the U+0085 exactly as it arrived, visible, rather than guessing at the ellipsis the author
+meant; the conform pass then retypes `007`, and the file carries both changes.
+
+```console
+$ $SOFTSCHEMA repair floor/repair-next-line.md --contract test.repair:Doc/v1 --schema floor/repair.schema.yaml --envelope data
+{
+  "contract": {
+    "envelope_key": "data",
+    "id": "test.repair:Doc/v1",
+    "model": null,
+    "profile": "frontmatter-md",
+    "schema_path": "floor/repair.schema.yaml",
+    "status": "soft"
+  },
+  "contract_id": "test.repair:Doc/v1",
+  "document_metadata": null,
+  "outcome": "valid",
+  "path": "floor/repair-next-line.md",
+  "profile": "frontmatter-md",
+  "repairs": [
+    {
+      "code": "yaml_escaped_character",
+      "kind": "repair_applied",
+      "message": "escaped #x0085 as \"\\N\" in the value of 'summary'",
+      "path": [
+        "summary"
+      ]
+    },
+    {
+      "code": "scalar_conformed",
+      "kind": "conform_applied",
+      "message": "conformed 7 to the string '007'",
+      "path": [
+        "name"
+      ]
+    }
+  ],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": true,
+    "skipped_reason": "no_semantic_model"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [],
+    "execution": "completed",
+    "ok": true,
+    "skipped_reason": null
+  },
+  "values": {
+    "name": "007",
+    "summary": "Hayao Miyazaki Studio Ghibli"
+  },
+  "warnings": []
+}
+? 0
+```
+
+```console
+$ cat floor/repair-next-line.md
+---
+data:
+  name: '007'
+  summary: "Hayao Miyazaki\N Studio Ghibli"
+---
+Body prose stays put.
+? 0
+```
+
+The same character in a key, a comment, or a block scalar has no exact rewrite, so it stays
+the parse error `validate` reports, naming the line and the escape to write.
+
+The pure-yaml profile names the document the same way, so an agent repairing a batch can
+tell which file a record is about: the engine's own wording — `in "<unicode string>",
+line 4` — says where in the text it stopped, not which text. No binding is passed here,
+so this is the record `repair` builds itself when it cannot rescue a document that
+declares no legible contract.
+
+```console
+$ $SOFTSCHEMA repair floor/repair-unrepairable.yaml --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "floor/repair-unrepairable.yaml",
+  "profile": "pure-yaml",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "yaml_parse_error"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "yaml_parse_error",
+        "message": "`floor/repair-unrepairable.yaml`: [..]
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+Plain `validate` names it too, in its one line, and the file is left as it was found.
+
+```console
+$ $SOFTSCHEMA validate floor/repair-unrepairable.yaml 2>&1
+softschema validate: `floor/repair-unrepairable.yaml`: [..]
+...
+? 2
+```
+
+```console
+$ diff original/repair-unrepairable.yaml floor/repair-unrepairable.yaml && echo "byte-identical"
+byte-identical
+? 0
+```
+
+A file that is not UTF-8 at all sits below even that floor: there is no text to repair.
+Without `--contract`, the record is the one `repair` builds itself, and it is the record
+`validate` gives the identical condition — `artifact_invalid_utf8` at `input_error`, which
+is what tells a gate that the file is not an artifact rather than a failing one. Repair's
+own error code is `invalid_utf8`; the record maps it through the same code-to-kind rule
+validation applies, so the verdict does not depend on whether a contract was named. The
+message is softschema's own, names the file, and is pinned in full.
+
+```console
+$ $SOFTSCHEMA repair floor/repair-non-utf8.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "input_error",
+  "path": "floor/repair-non-utf8.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "artifact_invalid_utf8"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "artifact_invalid_utf8",
+        "message": "`floor/repair-non-utf8.md`: input is not valid UTF-8"
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ $SOFTSCHEMA validate floor/repair-non-utf8.md 2>&1
+softschema validate: `floor/repair-non-utf8.md`: input is not valid UTF-8
+? 2
+```
+
+```console
+$ cmp original/repair-non-utf8.md floor/repair-non-utf8.md && echo "byte-identical"
+byte-identical
+? 0
+```
+
+A document that reads but holds no mapping to validate is not a parse failure, and
+`repair` must not call it one. Without `--contract` nothing failed on the way in: the
+fenceless document has no frontmatter region to rewrite and the list-root document parses.
+`validate` reports these as `no_frontmatter` and `yaml_not_mapping` by profile, and so does
+`repair`; after the message unification the two commands print the identical message, so
+one message carrying two `kind`s depending on a flag would break `kind` as the matching key.
+
+```console
+$ $SOFTSCHEMA repair floor/no-frontmatter.md --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "floor/no-frontmatter.md",
+  "profile": "frontmatter-md",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "no_frontmatter"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "no_frontmatter",
+        "message": "`floor/no-frontmatter.md`: the document has no YAML frontmatter"
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
+```
+
+```console
+$ $SOFTSCHEMA repair floor/repair-root-list.yaml --check
+{
+  "contract": null,
+  "contract_id": "",
+  "document_metadata": null,
+  "outcome": "invalid",
+  "path": "floor/repair-root-list.yaml",
+  "profile": "pure-yaml",
+  "repairs": [],
+  "semantic": {
+    "errors": [],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": "yaml_not_mapping"
+  },
+  "status": "soft",
+  "structural": {
+    "engine": "json_schema",
+    "errors": [
+      {
+        "kind": "yaml_not_mapping",
+        "message": "YAML root is list, expected mapping"
+      }
+    ],
+    "execution": "not_run",
+    "ok": false,
+    "skipped_reason": null
+  },
+  "values": null,
+  "warnings": []
+}
+? 1
 ```
 
 # Journey: `repair --check` reports without writing
@@ -682,7 +965,7 @@ the wrong one this journey exists to catch.
 
 ```console
 $ $SOFTSCHEMA validate fence/repair-unterminated-fence.md 2>&1
-softschema validate: Delimiter `---` for end of frontmatter not found: `fence/repair-unterminated-fence.md`
+softschema validate: `fence/repair-unterminated-fence.md`: Delimiter `---` for end of frontmatter not found
 ? 2
 ```
 
@@ -713,7 +996,7 @@ $ cd fence && $SOFTSCHEMA repair repair-unterminated-fence.md --check
     "errors": [
       {
         "kind": "yaml_parse_error",
-        "message": "Delimiter `---` for end of frontmatter not found: `repair-unterminated-fence.md`"
+        "message": "`repair-unterminated-fence.md`: Delimiter `---` for end of frontmatter not found"
       }
     ],
     "execution": "not_run",

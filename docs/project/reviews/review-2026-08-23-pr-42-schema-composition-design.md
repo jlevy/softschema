@@ -519,15 +519,15 @@ remediation. Final GitHub CI evidence is recorded on PR #44.
 ## Pre-Merge Compatibility Gate — 2026-08-24
 
 The final gate compared the complete stack with released version 0.6.2 and exercised the
-actual trading-models, GTIA v2, and metaproc consumers.
-It found two release blockers before the compatibility fixes:
+actual downstream consumers: metaproc, plus a downstream application’s model package and
+form pipeline. It found two release blockers before the compatibility fixes:
 
 1. Model-only contracts marked `enforced` changed from native semantic validation to
    `enforced_schema_required`. This broke metaproc’s registered Pydantic contracts.
 2. A common generated nullable model field, `anyOf: [{$ref: ...}, {type: "null"}]`,
    returned `composition_reference_context` even when every referenced object already
    stated its unknown-property policy.
-   This broke valid GTIA query-context and cohort artifacts.
+   This broke valid query-context and cohort artifacts in the downstream form pipeline.
 
 Both are fixed. Model-only and metadata-only paths retain their 0.6.2 verdicts and skip
 reasons. A pure `$ref` to a target that already states `additionalProperties` or
@@ -541,9 +541,9 @@ subtrees that still need inferred closure retain the checked safety analysis.
 | --- | --- | --- |
 | Ordinary structural verdicts | A 30-case 0.6.2-versus-stack matrix covered flat objects, required fields, explicit open and closed objects, inline nesting, arrays, local `$defs`/`$ref`, pattern properties, free-form maps, scalar constraints, nullability, and raw versus enforced status | Every pre-existing accept/reject verdict matched. The only matrix difference is the new optional `status` parameter on the values API. |
 | Model-only and metadata-only calls | Direct artifact and values probes plus metaproc’s registered contracts | Verdicts and structural skip reasons match 0.6.2. Native Pydantic or Zod validation still runs. |
-| Generated trading and GTIA schemas | 44 compiled sidecars containing 377 structured object schemas, 429 references, and 536 `anyOf` sites | All 377 object schemas already state their property policy: 249 use `additionalProperties: false` and 128 use `additionalProperties: true`. The enforced overlay does not need to infer simple-object closure there. |
-| Trading models | Full `packages/trading-models` suite against the stack | 102 passed. |
-| GTIA v2 | Full test directory against the stack | 1,547 passed. One stale assertion for a pure-YAML CLI limitation already removed in 0.6.2 was excluded. |
+| Downstream generated schemas | 44 compiled sidecars containing 377 structured object schemas, 429 references, and 536 `anyOf` sites | All 377 object schemas already state their property policy: 249 use `additionalProperties: false` and 128 use `additionalProperties: true`. The enforced overlay does not need to infer simple-object closure there. |
+| Downstream model package | Full model-package suite against the stack | 102 passed. |
+| Downstream form pipeline | Full pipeline test directory against the stack | 1,547 passed. One stale assertion for a pure-YAML CLI limitation already removed in 0.6.2 was excluded. |
 | metaproc | Full vendored suite against the stack | 4,270 passed and 8 skipped. |
 | softschema Python | Lint, types, unit/integration tests, package build, and goldens | 194 tests and 49 golden journeys passed; sdist and wheel built. |
 | softschema TypeScript | Lint, types, coverage tests, package build, publint, and Node/Bun goldens | 192 tests passed at 98.02% line coverage; 47 Node and 49 Bun golden journeys passed. |
@@ -575,7 +575,7 @@ stack should release as version 0.7.0, not 0.6.3. Existing consumers constrained
 `softschema>=0.6,<0.7` will not receive those output changes automatically.
 
 **Final compatibility verdict:** Approved for merge and for a 0.7.0 release.
-No known ordinary-schema or current trading/GTIA validity regression remains.
+No known ordinary-schema or current downstream-consumer validity regression remains.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

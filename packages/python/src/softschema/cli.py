@@ -20,6 +20,7 @@ from strif import atomic_write_text
 
 from softschema._portable import (
     PortableInputError,
+    document_label,
     opens_frontmatter_fence,
     read_utf8,
     yaml_parser_mode,
@@ -36,6 +37,7 @@ from softschema.validate import (
     infer_envelope_key,
     parse_frontmatter_text,
     parse_yaml_text,
+    portable_artifact_kind,
     read_frontmatter_doc,
     read_yaml_doc,
     unreadable_artifact_result,
@@ -504,8 +506,8 @@ def _repair_cmd(args: argparse.Namespace) -> int:
         result = unreadable_artifact_result(
             args.path,
             profile=profile,
-            kind=_repair_failure_kind(repaired, parse_error),
-            message=_repair_failure_message(repaired, parse_error, args.path, profile),
+            kind=_repair_failure_kind(repaired, parse_error, profile),
+            message=_repair_failure_message(repaired, parse_error, args.path, profile, document),
         )
         print(_json(result))
         return 1
@@ -532,17 +534,30 @@ def _repair_cmd(args: argparse.Namespace) -> int:
     return 0 if result.outcome == "valid" else 1
 
 
-def _repair_failure_kind(repaired: RepairResult, parse_error: PortableInputError | None) -> str:
+def _repair_failure_kind(
+    repaired: RepairResult, parse_error: PortableInputError | None, profile: SchemaProfile
+) -> str:
     """The record kind for a document repair could not make readable.
 
     Repair's own error code wins when it has one — an alias or a merge key is a precise
     diagnosis, and quoting could never have fixed it. Otherwise the reader's code names
     the failure, which is the ordinary case: repair reports success for a document with no
     frontmatter region to rewrite, leaving the reader to say why it cannot be opened.
+
+    Either code goes through the same code-to-kind rule validation applies, so a non-UTF-8
+    file is ``artifact_invalid_utf8`` at ``input_error`` here as it is under a contract.
+
+    When neither failed, the document read and simply holds no mapping to validate: a
+    fenceless or empty-block frontmatter-md document, or a pure-yaml root that is a list
+    or a scalar. ``validate`` reports that condition as ``no_frontmatter`` or
+    ``yaml_not_mapping`` by profile, and so does this, or the identical message would carry
+    one ``kind`` with ``--contract`` and another without it.
     """
     if repaired.error_code:
-        return repaired.error_code
-    return parse_error.code if parse_error is not None else "yaml_parse_error"
+        return portable_artifact_kind(repaired.error_code)
+    if parse_error is not None:
+        return portable_artifact_kind(parse_error.code)
+    return "yaml_not_mapping" if profile is SchemaProfile.pure_yaml else "no_frontmatter"
 
 
 def _repair_failure_message(
@@ -550,14 +565,22 @@ def _repair_failure_message(
     parse_error: PortableInputError | None,
     path: Path,
     profile: SchemaProfile,
+    document: Any,
 ) -> str:
-    if repaired.error_message:
-        return repaired.error_message
+    """The record message for a document repair could not make readable.
+
+    The reader's message comes first because it names the document; repair's own carries
+    the same engine text without it, and is what remains when nothing could be parsed at
+    all (an unreadable or non-UTF-8 file). When the document read and holds no mapping,
+    the message is the one ``validate`` gives the same condition, word for word.
+    """
     if parse_error is not None:
         return str(parse_error)
+    if repaired.error_message:
+        return repaired.error_message
     if profile is SchemaProfile.pure_yaml:
-        return f"the document root is not a YAML mapping: `{path}`"
-    return f"the document has no YAML frontmatter: `{path}`"
+        return f"YAML root is {type(document).__name__}, expected mapping"
+    return f"{document_label(path)}: the document has no YAML frontmatter"
 
 
 def _detect_profile(path: Path) -> SchemaProfile:
@@ -608,7 +631,7 @@ def _parse_after_repair(
         return None, None
     try:
         if profile is SchemaProfile.pure_yaml:
-            return parse_yaml_text(text), None
+            return parse_yaml_text(text, source=source), None
         _body, frontmatter = parse_frontmatter_text(text, source=source)
     except PortableInputError as exc:
         return None, exc

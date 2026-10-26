@@ -78,7 +78,7 @@ def main():
     out = HERE / "work" / f"{variant}-round2"
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
-    shutil.copy(HERE / "prelim-scan-terms.schema.yaml", out)
+    shutil.copy(HERE / "scan-terms.schema.yaml", out)
 
     todo = []
     for p in sorted(work.glob("*.md")):

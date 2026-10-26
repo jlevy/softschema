@@ -5,7 +5,7 @@
  * `repair` is its own command because it answers a different question from `validate` and
  * has the opposite posture toward a document that cannot be read. `validate` is the
  * consuming-side gate and refuses one; `repair` is the producing-side loop and reports one.
- * See docs/project/specs/active/plan-2026-08-30-repair-command.md.
+ * See docs/project/specs/done/plan-2026-08-30-repair-command.md.
  *
  * Kept in step with the Python cases in packages/python/tests/test_cli.py.
  */
@@ -114,6 +114,29 @@ describe("the repair command", () => {
     }
   });
 
+  test("a document with no mapping to validate gets validate's kind, not a parse error", async () => {
+    // Nothing failed on the way in: the document read and simply holds no mapping. The
+    // fallback used to say `yaml_parse_error` where the same message under `--contract`
+    // carried `no_frontmatter` or `yaml_not_mapping`; `kind` is the matching key.
+    for (const [name, text, kind] of [
+      ["fenceless.md", "# Title\n\nJust a body.\n", "no_frontmatter"],
+      ["empty-block.md", "---\n---\n# Title\n", "no_frontmatter"],
+      ["root-list.yaml", "- not\n- a mapping\n", "yaml_not_mapping"],
+      ["root-scalar.yaml", "just a string\n", "yaml_not_mapping"],
+    ] as const) {
+      const path = write(name, text);
+      stdout = "";
+      expect(await main(argv("repair", path, "--check"))).toBe(1);
+      const repaired = JSON.parse(stdout).structural.errors[0];
+      stdout = "";
+      expect(await main(argv("validate", path, "--contract", "test.detect:Doc/v1"))).toBe(1);
+      const validated = JSON.parse(stdout).structural.errors[0];
+      expect(repaired.kind).toBe(kind);
+      expect(validated.kind).toBe(kind);
+      expect(repaired.message).toBe(validated.message);
+    }
+  });
+
   test("--dry-run and --check are mutually exclusive", async () => {
     const path = write("doc.md", NEEDS_REPAIR);
     expect(await main(argv("repair", path, "--dry-run", "--check"))).toBe(2);
@@ -165,6 +188,28 @@ describe("strictness is a property of the command", () => {
       expect(record.message).toContain("Delimiter `---` for end of frontmatter not found");
       expect(record.message).not.toContain("--contract");
     }
+  });
+
+  test("repair reports a non-UTF-8 artifact as the same input error validation does", async () => {
+    // `kind` is the documented matching key, and `unreadableArtifactResult` promises the
+    // shape validation uses for the identical condition. Without a contract, repair's raw
+    // `invalid_utf8` code reached the record unmapped, so the same file was
+    // `artifact_invalid_utf8` at `input_error` under `--contract` and `invalid_utf8` at
+    // `invalid` without it.
+    const bytes = Buffer.from("---\ntitle: na\xefve\n---\nBody.\n", "latin1");
+    const path = join(dir, "latin1.md");
+    writeFileSync(path, bytes);
+    for (const extra of [[], ["--contract", "test.detect:Doc/v1"]] as const) {
+      stdout = "";
+      stderr = "";
+      expect(await main(argv("repair", path, "--check", ...extra))).toBe(1);
+      expect(stderr).toBe("");
+      const result = JSON.parse(stdout);
+      expect(result.outcome).toBe("input_error");
+      expect(result.structural.errors[0].kind).toBe("artifact_invalid_utf8");
+      expect(result.structural.errors[0].message).toBe(`\`${path}\`: input is not valid UTF-8`);
+    }
+    expect(readFileSync(path)).toEqual(bytes);
   });
 
   test("repair leaves an unreadable artifact untouched", async () => {

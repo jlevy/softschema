@@ -14,10 +14,17 @@ from typing import Any
 from frontmatter_format import new_yaml
 from pydantic import BaseModel
 from ruamel.yaml.emitter import Emitter
+from ruamel.yaml.representer import SafeRepresenter
 from strif import atomic_write_text
 
 from softschema._identity import check_root_id
-from softschema._portable import MAX_SAFE_INTEGER, parse_yaml, read_utf8
+from softschema._portable import (
+    MAX_SAFE_INTEGER,
+    PortableInputError,
+    check_portable_text,
+    find_non_portable_character,
+    read_yaml_file,
+)
 from softschema.canonicalize import canonicalize_json_schema
 from softschema.models import _check_contract_id
 
@@ -67,8 +74,20 @@ def compile_model(
             )
         # Compare parsed content, not raw bytes, so YAML formatting differences (e.g.
         # a different writer in another implementation) are not treated as drift; only a
-        # genuine schema change is.
-        existing = parse_yaml(read_utf8(out_path))
+        # genuine schema change is. A committed file the portable reader refuses (not
+        # UTF-8, a raw character the preflight rejects) is drift too: `--check` asks
+        # whether the committed output still stands, and it does not.
+        try:
+            existing = read_yaml_file(out_path)
+        except PortableInputError as exc:
+            # The message names the file once, whichever step refused it.
+            return CompileResult(
+                out_path=out_path,
+                schema_yaml=rendered,
+                drift=True,
+                drift_diff=f"committed compiled schema is not portable YAML: {exc}",
+                schema_sha256=schema_sha256,
+            )
         if _canonical_json(existing) == _canonical_json(schema):
             return CompileResult(
                 out_path=out_path,
@@ -180,6 +199,33 @@ def _yaml_dump(schema: dict[str, Any]) -> str:
     # wrapped onto continuation lines; keeps the compiled schema clean and the byte
     # output reproducible across implementations.
     writer.width = 4096
+    representer = writer.representer
+
+    # A string carrying a character the portable reader rejects raw (U+0085, U+2028,
+    # U+2029, a C1 control) is forced into double-quoted style, where ruamel writes it as
+    # the escape both engines decode (`\N`, `\L`, `\P`, `\x85`). Left to its own style
+    # choice ruamel single-quotes such a string with the character raw inside, and the
+    # sidecar it just wrote fails every later read as `schema_invalid`. A string holding a
+    # carriage return of any kind takes the same path: frontmatter-format picks a block
+    # literal for a multi-line string, and a raw `\r\n` inside one is normalized to `\n` by
+    # both readers, so the sidecar's content would differ from the model's. The override is
+    # an instance attribute on this writer's representer: ruamel's `add_representer` is a
+    # classmethod that would restyle every safe emitter in the process.
+    def represent_scalar(tag: str, value: Any, style: Any = None, anchor: Any = None) -> Any:
+        if tag == "tag:yaml.org,2002:str" and (
+            "\r" in value or find_non_portable_character(value) is not None
+        ):
+            style = '"'
+        return SafeRepresenter.represent_scalar(representer, tag, value, style=style, anchor=anchor)
+
+    representer.represent_scalar = represent_scalar  # pyright: ignore[reportAttributeAccessIssue]
     buffer = io.StringIO()
     writer.dump(schema, buffer)
-    return buffer.getvalue()
+    rendered = buffer.getvalue()
+    # The writer's output must pass the reader's preflight: a gap here fails once, at
+    # write time, rather than on every later read of the schema.
+    try:
+        check_portable_text(rendered)
+    except PortableInputError as exc:
+        raise RuntimeError(f"compile produced YAML the portable reader rejects: {exc}") from exc
+    return rendered

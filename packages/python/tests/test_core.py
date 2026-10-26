@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import itertools
 import json
+import math
 import os
+import random
+import re
 from datetime import date, datetime
+from importlib.metadata import version as package_version
+from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from ruamel.yaml import YAML
+from ruamel.yaml.nodes import ScalarNode
 
 import softschema
 from softschema import (
@@ -27,7 +34,16 @@ from softschema import (
     validate_values,
 )
 from softschema import validate as validate_module
-from softschema._portable import PortableInputError, parse_yaml
+from softschema._portable import (
+    _CORE_NUMBER,  # pyright: ignore[reportPrivateUsage]
+    _RUAMEL_NUMBER,  # pyright: ignore[reportPrivateUsage]
+    MAX_SAFE_INTEGER,
+    PortableInputError,
+    document_label,
+    find_non_portable_character,
+    parse_yaml,
+)
+from softschema.validate import parse_frontmatter_text, parse_yaml_text
 
 
 class SampleModel(BaseModel):
@@ -137,6 +153,19 @@ def test_compile_separates_optional_schema_id_and_reserves_metadata(tmp_path: Pa
         compile_model(ReservedModel, out, contract_id="example:Reserved/v1")
 
 
+def test_unreadable_schema_names_the_file_once(tmp_path: Path) -> None:
+    """A compiled schema the reader refuses is named once, by decoding or by parsing."""
+    schema = tmp_path / "bad.schema.yaml"
+    schema.write_bytes(b"\xff")
+    result = validate_structural({}, schema)
+    assert result.errors[0]["kind"] == "schema_invalid"
+    assert result.errors[0]["message"] == f"{document_label(schema)}: input is not valid UTF-8"
+    schema.write_text("type: object\ndescription: raw\u0085next\n", encoding="utf-8")
+    message = validate_structural({}, schema).errors[0]["message"]
+    assert message.startswith(f"{document_label(schema)}: unacceptable character #x0085")
+    assert message.count(str(schema)) == 1
+
+
 def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
     out = tmp_path / "sample.schema.yaml"
     compile_model(SampleModel, out, contract_id="example:Sample/v1")
@@ -144,9 +173,107 @@ def test_compile_drift_is_portable_and_boolean_safe(tmp_path: Path) -> None:
         out.read_text().replace("additionalProperties: false", "additionalProperties: 0")
     )
     assert compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True).drift
+    # A committed file the portable reader refuses is drift, not a usage error: `--check`
+    # asks whether the committed output still stands.
     out.write_bytes(b"\xff")
-    with pytest.raises(ValueError, match="UTF-8"):
-        compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+    unreadable = compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+    assert unreadable.drift
+    assert unreadable.drift_diff is not None
+    # The file is named once, by the reader, whichever step refused it.
+    assert unreadable.drift_diff == (
+        f"committed compiled schema is not portable YAML: {document_label(out)}: "
+        "input is not valid UTF-8"
+    )
+    out.write_text("description: raw\u0085next\ntype: object\n", encoding="utf-8")
+    raw = compile_model(SampleModel, out, contract_id="example:Sample/v1", check_only=True)
+    assert raw.drift
+    assert raw.drift_diff is not None
+    assert "#x0085" in raw.drift_diff
+    assert raw.drift_diff.count(str(out)) == 1
+
+
+class SeparatorModel(BaseModel):
+    """Text the compile writer must escape, in every place a schema carries text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["next\u0085line", "line\u2028separator"] = Field(
+        default="next\u0085line",
+        description="Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
+    )
+    odd: str = Field(alias="odd\u0085key", default="c1\x9fcontrol\x7fdel")
+
+
+def test_compile_escapes_every_character_the_reader_rejects(tmp_path: Path) -> None:
+    """The sidecar `compile` writes is one `validate` can read.
+
+    ruamel single-quotes a string holding U+0085, U+2028 or U+2029 with the character raw
+    inside, and the portable preflight then rejects the schema `compile` just wrote, so
+    every document bound to it reported `schema_invalid`. The writer now forces such a
+    string into double-quoted style, where ruamel writes `\\N`, `\\L`, `\\P` and `\\x85`,
+    which both engines decode to the original characters.
+    """
+    out = tmp_path / "separator.schema.yaml"
+    result = compile_model(SeparatorModel, out, contract_id="example:Separator/v1")
+    text = out.read_text(encoding="utf-8")
+    assert find_non_portable_character(text) is None
+    assert '"next\\Nline"' in text
+    assert '"line\\Lseparator"' in text
+    assert "\\Pseparator." in text
+    assert '"odd\\Nkey"' in text
+    assert '"c1\\x9Fcontrol\\x7Fdel"' in text or '"c1\\x9fcontrol\\x7fdel"' in text
+
+    schema = parse_yaml(text)
+    field = schema["properties"]["kind"]
+    assert field["default"] == "next\u0085line"
+    assert field["enum"] == ["next\u0085line", "line\u2028separator"]
+    assert (
+        field["description"]
+        == "Carries a next line\u0085a line\u2028and a paragraph\u2029separator."
+    )
+    assert schema["properties"]["odd\u0085key"]["default"] == "c1\x9fcontrol\x7fdel"
+    assert not compile_model(
+        SeparatorModel, out, contract_id="example:Separator/v1", check_only=True
+    ).drift
+    assert result.schema_sha256 == schema["x-softschema"]["schema_sha256"]
+    assert validate_structural({"kind": "line\u2028separator"}, out).ok
+
+
+_FRONTMATTER_FORMAT_VERSION = tuple(
+    int(part) for part in re.findall(r"\d+", package_version("frontmatter-format"))[:3]
+)
+
+
+@pytest.mark.xfail(
+    _FRONTMATTER_FORMAT_VERSION < (0, 4, 1),
+    reason=(
+        "frontmatter-format < 0.4.1 registers new_yaml's representers on ruamel's shared "
+        "SafeRepresenter; 0.4.1 gives each instance a private subclass (softschema's floor "
+        "rises with ss-c9bc)"
+    ),
+    strict=True,
+)
+def test_compile_leaves_ruamels_shared_safe_representer_unchanged(tmp_path: Path) -> None:
+    """``compile`` must not restyle a host's own safe YAML dumps.
+
+    The compile writer comes from ``frontmatter_format.new_yaml``, which registers a
+    ``dict`` and a ``str`` representer. ruamel's ``add_representer`` is a classmethod, so
+    registered on a stock ``YAML(typ="safe")`` those land on the shared ``SafeRepresenter``
+    and every safe emitter in the process writes multi-line strings as block literals and
+    sorts its keys. The shared table, and a stock emitter built afterward, must both come
+    out as ruamel ships them.
+    """
+    from ruamel.yaml.representer import SafeRepresenter
+
+    compile_model(SampleModel, tmp_path / "sample.schema.yaml", contract_id="example:Sample/v1")
+
+    assert SafeRepresenter.yaml_representers[dict] is SafeRepresenter.represent_dict
+    assert SafeRepresenter.yaml_representers[str] is SafeRepresenter.represent_str
+    buffer = StringIO()
+    YAML(typ="safe").dump({"zebra": "two\nlines", "apple": 1}, buffer)
+    # ruamel quotes a multi-line scalar and keeps insertion order; the compile writer
+    # would emit a `|-` block and sort the keys.
+    assert buffer.getvalue() == 'zebra: "two\\nlines"\napple: 1\n'
 
 
 def test_shared_generated_title_vectors(tmp_path: Path) -> None:
@@ -392,6 +519,8 @@ def test_validate_artifact_reports_yaml_parse_error_for_malformed_pure_yaml(tmp_
 
     assert not result.ok
     assert result.structural.errors[0]["kind"] == "yaml_parse_error"
+    # The engine's wording names a line, not a file; the record has to name the file.
+    assert result.structural.errors[0]["message"].startswith(f"`{doc}`: ")
 
 
 def test_validate_artifact_reports_envelope_mismatch(tmp_path: Path) -> None:
@@ -516,22 +645,94 @@ def test_validate_artifact_returns_input_error_for_missing_file_pure_yaml() -> N
     assert result.outcome == "input_error"
 
 
+def _portable_vector_text(case: dict[str, Any]) -> str:
+    """The text of a `portable_values` vector, building the generated ones."""
+    generated = case.get("generated")
+    if generated == "deep_sequence":
+        depth = int(case.get("depth", 1_000))
+        inner = "" if case.get("empty") else "0"
+        return str(case.get("prefix", "")) + "value: " + "[" * depth + inner + "]" * depth
+    if generated == "long_flow_key":
+        key = str(case.get("key_char", "k")) * int(case["length"])
+        if case.get("explicit_comment"):
+            return f'value: {{? # note\n  "{key}": 1}}'
+        return f'{{"{key}": 1}}' if case.get("json") else f'value: {{"{key}": 1}}'
+    if generated == "long_key":
+        key = str(case["key_char"]) * int(case["length"])
+        forms = {
+            "block": f"{key}: 1",
+            "pair": f"value: [{key}: 1]",
+            "explicit_pair": f"value: [? {key} : 1]",
+        }
+        return forms[case["form"]]
+    assert generated is None, generated
+    return case["text"]
+
+
 def test_shared_portable_yaml_vectors(tmp_path: Path) -> None:
     vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
     contract = Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
     for case in vectors["portable_values"]:
         path = tmp_path / f"{case['id']}.yaml"
-        depth = int(case.get("depth", 1_000))
-        text = (
-            "value: " + "[" * depth + "0" + "]" * depth if case.get("generated") else case["text"]
-        )
-        path.write_text(text)
+        path.write_text(_portable_vector_text(case), encoding="utf-8")
         result = validate_artifact(path, contract=contract)
         assert result.ok is case["valid"], case["id"]
         if "expected" in case:
             assert result.values == case["expected"], case["id"]
+        # Every refusal names its kind, so the two runtimes are held to the same one; a
+        # vector cannot pass on the verdict alone.
+        assert case["valid"] or "code" in case, case["id"]
         if "code" in case:
             assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def _number_like_scalars() -> list[str]:
+    """Short scalars over a numeric alphabet, every one up to three characters and a
+    seeded sample of longer ones, plus the YAML 1.1 and core spellings by name."""
+    alphabet = "0123456789_.+-eExXoObBaAfF:inN"
+    values = {"".join(chars) for n in (1, 2, 3) for chars in itertools.product(alphabet, repeat=n)}
+    rng = random.Random(20261025)
+    while len(values) < 60_000:
+        values.add("".join(rng.choice(alphabet) for _ in range(rng.randint(4, 9))))
+    values.update([".inf", "-.Inf", "+.INF", ".nan", ".NaN", ".NAN", "1_000", "0b101", "-0x10"])
+    return sorted(values)
+
+
+def test_number_forms_match_ruamels_resolver() -> None:
+    """`_RUAMEL_NUMBER` is the set of plain scalars ruamel's YAML 1.2 resolver types as numbers.
+
+    The refusal of non-portable number forms compares it with the core schema, so a ruamel
+    release that changes its resolver must fail here before it can change a verdict.
+    """
+    resolver = YAML(typ="safe", pure=True).resolver
+    numeric = {"tag:yaml.org,2002:int", "tag:yaml.org,2002:float"}
+    for value in _number_like_scalars():
+        resolved = str(resolver.resolve(ScalarNode, value, (True, False))) in numeric
+        assert resolved == (_RUAMEL_NUMBER.fullmatch(value) is not None), value
+
+
+def test_core_number_forms_parse_as_core_numbers() -> None:
+    """Every scalar both patterns call a number reads as the core schema's number."""
+    for value in _number_like_scalars():
+        if _RUAMEL_NUMBER.fullmatch(value) is None or _CORE_NUMBER.fullmatch(value) is None:
+            continue
+        core = _core_value(value)
+        # Infinities, unsafe integers and negative zero are refused in both runtimes.
+        unsafe = isinstance(core, int) and abs(core) > MAX_SAFE_INTEGER
+        if not math.isfinite(core) or unsafe or (core == 0 and value.startswith("-")):
+            continue
+        assert parse_yaml(f"value: {value}")["value"] == core, value
+
+
+def _core_value(value: str) -> float:
+    """What the YAML 1.2 core schema reads a core-form number as."""
+    if value.startswith(("0o", "0x")):
+        return int(value, 0)
+    if value.lstrip("+-").lower() in {".inf", ".nan"}:
+        return math.inf
+    if any(char in value for char in ".eE"):
+        return float(value)
+    return int(value, 10)
 
 
 def test_portable_timestamp_constructor_does_not_change_ruamel_defaults() -> None:
@@ -574,7 +775,77 @@ def test_shared_frontmatter_vectors(tmp_path: Path) -> None:
         path.write_text(case["text"])
         result = validate_artifact(path, contract=contract)
         assert result.ok, case["id"]
-        assert result.values == case["expected"], case["id"]
+        if "expected" in case:
+            assert result.values == case["expected"], case["id"]
+
+
+def test_frontmatter_reader_keeps_unicode_separators_inside_their_line() -> None:
+    """The fence scan splits on ``"\\n"`` alone, so the portable preflight sees a raw separator.
+
+    With ``str.splitlines()`` the U+2028 below would end a line, the block would be rejoined
+    with a real newline, and the scalar would parse as the folded value ``"x y"`` where
+    TypeScript rejects the document. The shared vectors cannot carry this case, because the
+    frontmatter vectors are all expected to validate; the golden corpus pins the CLI side.
+    """
+    with pytest.raises(PortableInputError) as excinfo:
+        parse_frontmatter_text("---\na: x\u2028y\n---\nbody\n", source="doc.md")
+    assert excinfo.value.code == "yaml_parse_error"
+    # Line 2 of the file: the reader adds the fence line to the block-relative position.
+    assert "#x2028 at line 2, column 5" in str(excinfo.value)
+    assert str(excinfo.value).endswith('write it as "\\L" inside a double-quoted scalar')
+    assert str(excinfo.value).startswith("`doc.md`: ")
+
+
+def test_frontmatter_messages_count_lines_from_the_top_of_the_file() -> None:
+    """Every ``line N, column M`` in a frontmatter message names a line of the file.
+
+    The engines and the preflight count within the block they were handed, which put the
+    reported line one above the real one for every frontmatter-md document. The reader
+    shifts them by the opening fence; a pure-yaml document has no fence and is unchanged.
+    """
+    with pytest.raises(PortableInputError) as engine:
+        parse_frontmatter_text("---\nmovie:\n  notes: [\n---\nbody\n", source="doc.md")
+    # The block is parsed with its last line break, so the end of input it reports is the
+    # start of the closing fence's line.
+    assert "line 4, column 1" in str(engine.value)
+    assert "line 2, column" not in str(engine.value)
+    with pytest.raises(PortableInputError) as pure:
+        parse_yaml_text("a: x\u2028y\n", source="doc.yaml")
+    assert "#x2028 at line 1, column 5" in str(pure.value)
+
+
+def test_shared_fence_scan_vectors(tmp_path: Path) -> None:
+    vectors = YAML(typ="safe").load(HARDENING_VECTORS.read_text())
+    contract = Contract(id="example:Movie/v1", envelope_key="movie")
+    for case in vectors["fence_scan"]:
+        path = tmp_path / f"{case['id']}.md"
+        path.write_text(case["text"], newline="")
+        result = validate_artifact(path, contract=contract)
+        assert result.ok is False, case["id"]
+        assert result.structural.errors[0]["kind"] == case["code"], case["id"]
+
+
+def test_document_label_escapes_terminal_controls(tmp_path: Path) -> None:
+    """A control character in a filename never reaches stderr raw.
+
+    The OSC title write, the clear-line-and-overwrite, and the forged second line below are
+    what a hostile filename in a third-party corpus would do to a terminal; each byte comes
+    back as ``#xHHHH``, and the human-readable diagnostic carries no raw control at all.
+    """
+    name = "evil\x1b]0;PWNED\x07\x1b[2K\rsoftschema validate: ok\nx\x85y.yaml"
+    assert (
+        document_label(name)
+        == "`evil#x001b]0;PWNED#x0007#x001b[2K#x000dsoftschema validate: ok#x000ax#x0085y.yaml`"
+    )
+    assert document_label(Path("plain/doc.md")) == "`plain/doc.md`"
+    path = tmp_path / "bad\x1b[2K.yaml"
+    path.write_text("value: [\n")
+    result = validate_artifact(
+        path, contract=Contract(id="example:Portable/v1", profile=SchemaProfile.pure_yaml)
+    )
+    message = result.structural.errors[0]["message"]
+    assert "#x001b" in message
+    assert "\x1b" not in message
 
 
 def test_shared_artifact_input_vectors(tmp_path: Path) -> None:
@@ -900,3 +1171,16 @@ def test_a_schema_whose_root_is_not_a_mapping_still_reports_syntax(tmp_path: Pat
 
     assert not result.ok
     assert result.errors[0]["kind"] == "schema_invalid"
+    assert result.errors[0]["message"] == f"`{schema}`: compiled schema root must be a mapping"
+
+
+def test_schema_invalid_names_the_schema_file(tmp_path: Path) -> None:
+    """The record's `path` is the artifact, so the schema's own name has to be in the message."""
+    schema = tmp_path / "raw.schema.yaml"
+    schema.write_text("description: raw\u0085next\ntype: object\n", encoding="utf-8")
+
+    result = validate_structural({"name": "ok"}, schema)
+
+    assert result.errors[0]["kind"] == "schema_invalid"
+    assert result.errors[0]["reason"] == "syntax"
+    assert result.errors[0]["message"].startswith(f"`{schema}`: unacceptable character #x0085 ")

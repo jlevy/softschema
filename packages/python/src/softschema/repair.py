@@ -38,7 +38,9 @@ from typing import Any
 
 from softschema._portable import (
     PortableInputError,
+    find_non_portable_character,
     parse_yaml,
+    portable_escape,
     read_utf8,
     split_frontmatter,
     write_artifact_text,
@@ -54,7 +56,19 @@ structural error records".
 """
 
 _YAML_QUOTED_SCALAR = "yaml_quoted_scalar"
-"""``code`` for the one repair this module performs."""
+"""``code`` for a plain scalar quoted because YAML read structure in it."""
+
+_YAML_ESCAPED_CHARACTER = "yaml_escaped_character"
+"""``code`` for a value rewritten as a double-quoted scalar to escape a rejected character.
+
+The portable preflight refuses a raw U+0085, U+2028, U+2029, control character or lone
+carriage return anywhere in the YAML text. Inside a single-line value the fix is
+mechanical and meaning-preserving: a serializer would have written the escape, and the
+decoded value is exactly what YAML 1.2 gives the raw text. The character itself is never
+replaced by a guess at what was meant (a mis-decoded ellipsis stays a U+0085, now visible
+in the record); and a rejected character in a key, a comment or a block scalar has no such
+rewrite, so those stay parse errors.
+"""
 
 # Portable violations that are not authoring slips. Quoting a scalar cannot fix any of
 # them, and attempting a repair would replace a precise diagnostic with a vague one.
@@ -84,6 +98,29 @@ _NOT_REPAIRABLE = frozenset(
 # left unrepaired identically on both sides; the shared vectors lock this in).
 _MAPPING_LINE = re.compile(r"^(?P<indent>[ \t]*)(?P<key>[A-Za-z0-9_.-]+): (?P<value>.+)$")
 
+# A line that opens a block scalar (`key: |`, `"quoted": >-`, `- |2`, `- key: |`, with an
+# optional comment): its content is every following line indented deeper than the opener,
+# and the escaping rule must not touch those lines even when one looks like `key: value`.
+# The opener is recognised by the indicator alone, whatever the key looks like, so a quoted
+# or non-ASCII key opens a block scalar here exactly as it does for the engines.
+_BLOCK_SCALAR_OPENER = re.compile(
+    r"^[ \t]*(?:-[ \t]+)?(?:[^\n]*?:[ \t]+)?[|>][-+0-9]*[ \t]*(?:#[^\n]*)?$"
+)
+_TRAILING_COMMENT = re.compile(r"^[ \t]*(?:#[^\n]*)?$")
+
+# Characters that cannot begin a plain scalar (YAML 1.2 c-indicator). A value starting
+# with one is a flow collection, a comment, an anchor, an alias, a tag, a block scalar
+# indicator, or a directive, never a plain scalar, so neither pass may quote it: the quotes
+# would turn structure into a string. `-`, `?` and `:` are indicators only when followed
+# by a space or standing alone.
+_NOT_PLAIN_START = frozenset("[]{}#&*!|>'\"%@`")
+
+
+def _can_be_plain_scalar(stripped: str) -> bool:
+    if not stripped or stripped[0] in _NOT_PLAIN_START:
+        return False
+    return not (stripped[0] in "-?:" and (len(stripped) == 1 or stripped[1] in " \t"))
+
 
 @dataclass(frozen=True)
 class RepairResult:
@@ -102,13 +139,117 @@ class RepairResult:
     error_message: str | None = None
 
 
-def _record(path: list[Any], detail: str) -> dict[str, Any]:
+def _record(path: list[Any], detail: str, code: str = _YAML_QUOTED_SCALAR) -> dict[str, Any]:
     return {
         "kind": REPAIR_KIND,
-        "code": _YAML_QUOTED_SCALAR,
+        "code": code,
         "path": path,
         "message": detail,
     }
+
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" \t"))
+
+
+def _closing_quote(text: str, quote: str) -> int | None:
+    """Index of the quote that closes the scalar opened at ``text[0]``, or ``None``.
+
+    Inside double quotes a backslash escapes the next character; inside single quotes the
+    only escape is a doubled quote.
+    """
+    index = 1
+    while index < len(text):
+        char = text[index]
+        if quote == '"' and char == "\\":
+            index += 2
+            continue
+        if char == quote:
+            if quote == "'" and text[index + 1 : index + 2] == "'":
+                index += 2
+                continue
+            return index
+        index += 1
+    return None
+
+
+def _escape_characters(text: str) -> str:
+    return re.sub(
+        r".", lambda m: portable_escape(m.group()) if _is_rejected(m.group()) else m.group(), text
+    )
+
+
+def _is_rejected(char: str) -> bool:
+    return find_non_portable_character(char) is not None
+
+
+def _follows_open_escape(body: str) -> bool:
+    """Whether a rejected character in a double-quoted body follows an unescaped backslash.
+
+    There the character is the second half of an escape the author started: ``\\`` and a
+    raw NEL is a YAML 1.1 escaped line break, and ``\\`` and a raw control character is no
+    escape at all. No rewrite keeps a value the text never had, and escaping the character
+    as well would write ``\\\\`` and the escape's name as text while reporting success.
+    The value is left for the author. A backslash that is itself escaped (``\\\\``)
+    does not count.
+    """
+    backslashes = 0
+    for char in body:
+        if char == "\\":
+            backslashes += 1
+            continue
+        if backslashes % 2 and _is_rejected(char):
+            return True
+        backslashes = 0
+    return False
+
+
+def _escape_value(value: str) -> tuple[str, list[str]] | None:
+    """Rewrite a single-line value holding a rejected character as a double-quoted scalar.
+
+    Returns the new value text and the characters escaped, or ``None`` when the value has
+    nothing to escape or is not one of the three shapes this rule can rewrite exactly: a
+    plain scalar, a complete single-quoted scalar, or a complete double-quoted scalar, each
+    optionally followed by a comment. Whitespace before a comment is kept as written. The
+    decoded value is unchanged in every case: the plain and single-quoted forms are
+    re-expressed with the same content, and in the double-quoted form only the raw
+    characters are replaced, so escapes the author already wrote stay as they are.
+    """
+    if find_non_portable_character(value) is None:
+        return None
+    # A lone carriage return is a line break for YAML 1.2 and for ruamel, so the text after
+    # it may be another line of the document; escaping it as content would swallow that
+    # line. It stays a parse error, whose message already says to end lines with "\n".
+    if "\r" in value:
+        return None
+    # Only ASCII blanks are trimmed: `str.strip()` would also eat the U+0085 being escaped.
+    stripped = value.strip(" \t")
+    if stripped[:1] in {'"', "'"}:
+        quote = stripped[0]
+        end = _closing_quote(stripped, quote)
+        if end is None or not _TRAILING_COMMENT.match(stripped[end + 1 :]):
+            return None
+        body, rest = stripped[1:end], stripped[end + 1 :]
+        if quote == '"' and _follows_open_escape(body):
+            return None
+        if quote == "'":
+            body = body.replace("''", "'").replace("\\", "\\\\").replace('"', '\\"')
+    else:
+        if not _can_be_plain_scalar(stripped):
+            return None  # a flow collection, comment, anchor, alias or tag: not a scalar
+        comment = re.search(r"([ \t]+#[^\n]*)$", stripped)
+        body = stripped[: comment.start()] if comment else stripped
+        rest = comment.group(1) if comment else ""
+        body = body.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = sorted({char for char in body if _is_rejected(char)}, key=ord)
+    if not escaped:
+        return None  # the rejected character sits in the comment, which has no escape
+    return f'"{_escape_characters(body)}"{rest}', escaped
+
+
+def _escape_detail(key: str, escaped: list[str]) -> str:
+    listed = ", ".join(f'#x{ord(char):04x} as "{portable_escape(char)}"' for char in escaped)
+    return f"escaped {listed} in the value of {key!r}"
 
 
 def _value_needs_quoting(value: str) -> bool:
@@ -118,14 +259,19 @@ def _value_needs_quoting(value: str) -> bool:
     the author meant prose. A leading quote that never closes makes it try to read a
     quoted scalar and run off the end of the value.
     """
-    stripped = value.strip()
+    # Only ASCII blanks are trimmed and only `[ \t]+#[ \t]` opens a comment: the hosts'
+    # default whitespace sets differ (U+0085 is whitespace to Python, U+FEFF to JavaScript),
+    # and a rejected character trimmed away here would be dropped from the file silently.
+    stripped = value.strip(" \t")
     if (stripped.startswith('"') and stripped.endswith('"')) or (
         stripped.startswith("'") and stripped.endswith("'")
     ):
         return False
     if stripped in ("null", "true", "false", "~", ""):
         return False
-    comment = re.search(r"\s+#\s", stripped)
+    if stripped[0] not in {'"', "'"} and not _can_be_plain_scalar(stripped):
+        return False  # a flow collection or other non-scalar: `: ` inside it is structure
+    comment = re.search(r"[ \t]+#[ \t]", stripped)
     value_part = stripped[: comment.start()] if comment else stripped
     if ": " in value_part:
         return True
@@ -155,8 +301,8 @@ def _quote_value(value: str) -> str:
     and a fix that quietly reformats what it touches is how a one-scalar diff becomes a
     reviewable-looking whole-file one.
     """
-    stripped = value.strip()
-    comment = re.search(r"(\s+#\s.*)$", stripped)
+    stripped = value.strip(" \t")
+    comment = re.search(r"([ \t]+#[ \t][^\n]*)$", stripped)
     if comment:
         value_part = stripped[: comment.start()]
         comment_part = comment.group(1)
@@ -188,15 +334,33 @@ def repair_yaml_text(text: str) -> RepairResult:
 
     repaired_lines: list[str] = []
     records: list[dict[str, Any]] = []
+    block_indent: int | None = None
     for line in text.split("\n"):
-        match = _MAPPING_LINE.match(line)
-        if match and _value_needs_quoting(match.group("value")):
-            key = match.group("key")
-            repaired_lines.append(
-                f"{match.group('indent')}{key}: {_quote_value(match.group('value'))}"
-            )
-            records.append(_record([key], f"quoted the value of {key!r}"))
+        if block_indent is not None:
+            # Inside a block scalar: content runs while lines are blank or indented deeper
+            # than the opener. The escaping rule leaves it alone, whatever it looks like.
+            if line.strip(" \t") == "" or _indent_of(line) > block_indent:
+                repaired_lines.append(line)
+                continue
+            block_indent = None
+        if _BLOCK_SCALAR_OPENER.match(line):
+            block_indent = _indent_of(line)
+            repaired_lines.append(line)
             continue
+        match = _MAPPING_LINE.match(line)
+        if match:
+            key, value = match.group("key"), match.group("value")
+            escaped = _escape_value(value)
+            if escaped is not None:
+                repaired_lines.append(f"{match.group('indent')}{key}: {escaped[0]}")
+                records.append(
+                    _record([key], _escape_detail(key, escaped[1]), _YAML_ESCAPED_CHARACTER)
+                )
+                continue
+            if _value_needs_quoting(value):
+                repaired_lines.append(f"{match.group('indent')}{key}: {_quote_value(value)}")
+                records.append(_record([key], f"quoted the value of {key!r}"))
+                continue
         repaired_lines.append(line)
 
     if not records:

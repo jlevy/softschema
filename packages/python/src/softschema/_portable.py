@@ -26,6 +26,8 @@ from ruamel.yaml.events import (
 )
 from ruamel.yaml.nodes import ScalarNode
 from ruamel.yaml.parser import Parser as RuamelParser
+from ruamel.yaml.representer import RoundTripRepresenter
+from ruamel.yaml.tokens import DirectiveToken
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 """Largest integer that survives a round trip through a JS number."""
@@ -58,12 +60,70 @@ def _construct_timestamp_as_string(_constructor: SafeConstructor, node: ScalarNo
     return node.value
 
 
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
 class _PortableConstructor(SafeConstructor):
     """Safe constructor overrides scoped to softschema parser instances."""
+
+    def construct_scalar(self, node: Any) -> Any:  # pyright: ignore[reportImplicitOverride]
+        """Join a surrogate pair written as two ``\\u`` escapes into the character it encodes.
+
+        ruamel decodes ``"\\ud83d\\ude00"`` to two lone surrogates, where the ``yaml``
+        package, working in UTF-16, reads the one character U+1F600, as JSON does. The
+        two engines must agree on that text, and the JSON reading is the one a producer
+        that serializes with ``ensure_ascii`` relies on. A surrogate that pairs with
+        nothing is left as it is, for :func:`_check_value` to reject as unsupported.
+        """
+        value = super().construct_scalar(node)
+        if isinstance(value, str) and _SURROGATE.search(value):
+            try:
+                return value.encode("utf-16-le", "surrogatepass").decode("utf-16-le")
+            except UnicodeDecodeError:
+                return value
+        return value
+
+
+def _construct_value_key_as_string(_constructor: SafeConstructor, node: ScalarNode) -> str:
+    """Read a plain ``=`` as the string ``=``, as YAML 1.2 and the ``yaml`` package do.
+
+    ruamel's resolver still tags a plain ``=`` as the YAML 1.1 ``!!value`` key, for which
+    the safe constructor has no entry, so the one-character string was a parse error in
+    Python and the string ``=`` in TypeScript.
+    """
+    return node.value
+
+
+class _NegativeZero(int):
+    """An integer literal spelled ``-0``: zero to Python, negative zero to JavaScript.
+
+    A JSON or YAML number is a double in the ``yaml`` package, where ``-0`` keeps its sign,
+    and an ``int`` in ruamel, where it cannot. The spec rejects negative zero, so the
+    constructor marks the literal and :func:`_check_value` rejects it exactly where it
+    rejects ``-0.0``. The marked value never leaves this module.
+    """
+
+
+_NEGATIVE_ZERO_INTEGER = re.compile(r"-0+")
+"""The decimal integer literals that are zero with a minus sign (``-0``, ``-00``).
+
+Only the decimal form is negative zero in both engines; the ``yaml`` package reads
+``-0x0``, ``-0o0`` and ``-0_0`` as strings.
+"""
+
+
+def _construct_portable_int(constructor: SafeConstructor, node: ScalarNode) -> int:
+    """Construct an integer, marking a ``-0`` literal for :func:`_check_value`."""
+    value = SafeConstructor.construct_yaml_int(constructor, node)
+    if value == 0 and _NEGATIVE_ZERO_INTEGER.fullmatch(node.value) is not None:
+        return _NegativeZero(0)
+    return value
 
 
 # The first subclass registration copies ruamel's inherited constructor registry.
 _PortableConstructor.add_constructor("tag:yaml.org,2002:timestamp", _construct_timestamp_as_string)
+_PortableConstructor.add_constructor("tag:yaml.org,2002:value", _construct_value_key_as_string)
+_PortableConstructor.add_constructor("tag:yaml.org,2002:int", _construct_portable_int)
 
 
 class PortableInputError(ValueError):
@@ -99,8 +159,134 @@ def read_utf8(path: Path) -> str:
     try:
         text = path.read_bytes().decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise PortableInputError("invalid_utf8", "input is not valid UTF-8") from exc
+        raise PortableInputError(
+            "invalid_utf8", f"{document_label(path)}: input is not valid UTF-8"
+        ) from exc
     return text[1:] if text.startswith(BOM) else text
+
+
+def named_parse_error(path: Path | str, exc: PortableInputError) -> PortableInputError:
+    """``exc`` from parsing the text of ``path``, with the file named first.
+
+    :func:`read_utf8` names the file in a decoding failure itself, and the parser, which
+    sees only text, names nothing. A caller that reads a file by path labels a parse
+    failure here and reports either error's message as it stands, so the name appears
+    exactly once.
+    """
+    return PortableInputError(exc.code, f"{document_label(path)}: {exc}")
+
+
+def read_yaml_file(path: Path) -> Any:
+    """Read and parse one YAML file, naming the file once in any failure."""
+    text = read_utf8(path)
+    try:
+        return parse_yaml(text)
+    except PortableInputError as exc:
+        raise named_parse_error(path, exc) from exc
+
+
+_CONTROL_CHARACTER = re.compile("[\x00-\x1f\x7f-\x9f]")
+
+
+def document_label(path: Path | str) -> str:
+    """The backticked document name every message that names a document begins with.
+
+    C0 and C1 control characters and DEL in the name are written as ``#xHHHH``, the
+    notation the preflight uses for a rejected character. A path is untrusted input like
+    the artifact it names: a filename carrying an escape sequence would otherwise reach
+    stderr raw, where a terminal acts on it (an OSC title or clipboard write, a line
+    cleared and overwritten, a forged second diagnostic line). JSON output escapes the
+    string on its own, so only the human-readable channel needed this. Keep the rule
+    identical to ``documentLabel`` in ``portable.ts``.
+    """
+    name = _CONTROL_CHARACTER.sub(lambda match: f"#x{ord(match.group()):04x}", str(path))
+    return f"`{name}`"
+
+
+_NON_PORTABLE_CHARACTER = re.compile(
+    "[^\t\n\r\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]|\r(?!\n)"
+)
+"""A raw character the two YAML engines read differently.
+
+The class is YAML 1.2 ``c-printable`` with the three Unicode line separators taken out,
+plus a carriage return that does not begin a ``\\r\\n`` sequence. ruamel rejects
+everything outside ``c-printable`` (its ``Reader.NON_PRINTABLE``) and the ``yaml``
+package reads it as content; for U+0085, U+2028 and U+2029 ruamel follows YAML 1.1 and
+treats them as line breaks, folding a NEL in a flow scalar to a space and breaking a
+block scalar or a comment into a parse error, while the ``yaml`` package again reads them
+as content. A lone carriage return is the same shape: a YAML line break for ruamel, so a
+CR-only document is many lines and a CR inside a flow scalar folds to a space, while the
+``yaml`` package reads it as content and sees one long line. Neither reading can be
+reproduced in the other engine, so the portable rule is to accept none of them raw. Every
+one of them can be written as a double-quoted escape (``"\\f"``, ``"\\x7f"``, ``"\\N"``,
+``"\\L"``, ``"\\P"``, ``"\\r"``), which both engines decode identically. Keep this class
+identical to ``NON_PORTABLE_CHARACTER`` in ``portable.ts``.
+"""
+
+_NAMED_ESCAPES = {
+    0x00: "\\0",
+    0x07: "\\a",
+    0x08: "\\b",
+    0x0B: "\\v",
+    0x0C: "\\f",
+    0x0D: "\\r",
+    0x1B: "\\e",
+    0x85: "\\N",
+    0x2028: "\\L",
+    0x2029: "\\P",
+}
+
+
+def portable_escape(char: str) -> str:
+    """The double-quoted YAML escape for one character, as both engines decode it.
+
+    YAML 1.2 names the common controls and the three line separators; everything else
+    takes the fixed-width ``\\xHH``, ``\\uHHHH`` or ``\\UHHHHHHHH`` form. Used in the
+    preflight message and by ``repair`` when it rewrites a rejected character.
+    """
+    code = ord(char)
+    if code in _NAMED_ESCAPES:
+        return _NAMED_ESCAPES[code]
+    if code <= 0xFF:
+        return f"\\x{code:02x}"
+    if code <= 0xFFFF:
+        return f"\\u{code:04x}"
+    return f"\\U{code:08x}"
+
+
+def find_non_portable_character(text: str) -> re.Match[str] | None:
+    """The first raw character in ``text`` that :func:`check_portable_text` rejects."""
+    return _NON_PORTABLE_CHARACTER.search(text)
+
+
+def check_portable_text(text: str) -> None:
+    """Reject the first raw character in ``text`` that the engines would read differently.
+
+    Runs before the engine sees the text, on the whole YAML text the reader was handed:
+    the frontmatter block or the entire pure-yaml document, comments and keys included.
+    The line and column are counted within that text, as the engines count them; the
+    frontmatter reader adds the fence offset so the message names a line of the file.
+    Raising here, with one message in both runtimes, is what keeps a mis-decoded cp1252
+    ellipsis (which arrives as U+0085) from silently becoming a space in one runtime and
+    staying a character in the other.
+    """
+    match = _NON_PORTABLE_CHARACTER.search(text)
+    if match is None:
+        return
+    index = match.start()
+    line = text.count("\n", 0, index) + 1
+    column = index - (text.rfind("\n", 0, index) + 1) + 1
+    char = match.group()
+    advice = (
+        'end lines with "\\n", or write it as "\\r" inside a double-quoted scalar'
+        if char == "\r"
+        else f'write it as "{portable_escape(char)}" inside a double-quoted scalar'
+    )
+    raise PortableInputError(
+        "yaml_parse_error",
+        f"unacceptable character #x{ord(char):04x} at line {line}, column {column}: "
+        f"non-printable and line separator characters are not allowed as raw text; {advice}",
+    )
 
 
 def parse_yaml(text: str) -> Any:
@@ -114,6 +300,18 @@ def parse_yaml(text: str) -> Any:
     texts where libyaml and pure ruamel agree, re-reading with pure ruamel whenever the
     C parser fails. Every path ends in the same :func:`_check_value`.
     """
+    # The portable preflight runs first, before any reader is chosen, so a raw character
+    # the two runtimes read differently (U+0085, a control, a lone CR) is rejected with
+    # one message whether the text would have gone to `json`, to libyaml, or to pure
+    # ruamel. Nothing below may see such a text: `json` would keep a raw NEL as content
+    # and ruamel would fold it, which is the disagreement the preflight exists to end.
+    check_portable_text(text)
+    # A last line without a line break is still a line (the spec says so for fences), and
+    # the engines read a block scalar that ends the text without one differently: ruamel
+    # clips its final break away and the `yaml` package keeps it. Both readers parse the
+    # text with the break supplied, so `body: |` as the last key reads `"…\n"` in both.
+    if text and not text.endswith("\n"):
+        text += "\n"
     value = _parse_json_subset(text)
     if value is _NOT_JSON:
         return _parse_with_ruamel(text)
@@ -405,6 +603,432 @@ def _try_c_parser(text: str) -> Any:
         return _C_FAILED
 
 
+_BLANK_AFTER_FIRST = ("", " ", "\t")
+"""What may follow a node's first character for the ``yaml`` package to keep the indent of
+the line before (a block indicator such as ``- `` looks like this)."""
+
+
+class _FlowIndentation:
+    """Reject a flow continuation line in block context that is not indented past its parent.
+
+    YAML 1.2 requires every later line of a flow collection or a quoted scalar that sits
+    in block context to be indented, with spaces, past the block collection holding it,
+    so ``key: [a,\n b]`` under an indented key, or a tab that indents such a line, is not
+    YAML. The ``yaml`` package enforces this ("Missing closing quote", "Flow sequence in
+    block collection must be sufficiently indented") and ruamel does not, so these
+    documents passed in Python and failed in TypeScript. Python now rejects the same
+    lines, mirroring the ``yaml`` lexer's rule rather than the grammar's where the two
+    differ: the required indent is the parent's column plus one, or the column of the
+    line the node starts on when that is less and the node's first character is followed
+    by a non-blank; a blank line, and a comment line inside a flow collection, may have any
+    indent; the outermost closing bracket may sit one column short; a root flow node, as
+    in a JSON document, has no required indent.
+
+    Fed the events of one parse, in order. Only multi-line nodes are examined, so a
+    document without them costs a few comparisons per event.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self._lines: list[str] | None = None
+        self._blocks: list[int] = []
+        """Columns of the open block collections, innermost last."""
+        self._flow_depth = 0
+        self._flow: tuple[int, int] | None = None
+        """Required indent and first line of the open outermost flow collection."""
+        self._quoted: list[tuple[int, int]] = []
+        """First and last lines of the multi-line quoted scalars inside that collection."""
+
+    @property
+    def in_flow(self) -> bool:
+        """Whether the next event is inside a flow collection."""
+        return self._flow_depth > 0
+
+    @property
+    def block_column(self) -> int:
+        """Column of the innermost open block collection, or 0 at the root."""
+        return self._blocks[-1] if self._blocks else 0
+
+    def collection_start(self, event: MappingStartEvent | SequenceStartEvent) -> None:
+        if self._flow_depth:
+            self._flow_depth += 1
+        elif event.flow_style:
+            self._flow_depth = 1
+            self._flow = (self._required(event.start_mark), event.start_mark.line)
+            self._quoted = []
+        else:
+            self._blocks.append(event.start_mark.column)
+
+    def collection_end(self, event: MappingEndEvent | SequenceEndEvent) -> None:
+        if not self._flow_depth:
+            if self._blocks:
+                self._blocks.pop()
+            return
+        self._flow_depth -= 1
+        if self._flow_depth or self._flow is None:
+            return
+        required, first = self._flow
+        self._flow = None
+        if required and event.end_mark.line > first:
+            self._check_flow(required, first, event.end_mark.line, event.end_mark.column - 1)
+
+    def scalar(self, event: ScalarEvent) -> None:
+        if event.style not in ('"', "'") or event.end_mark.line == event.start_mark.line:
+            return
+        if self._flow_depth:
+            self._quoted.append((event.start_mark.line, event.end_mark.line))
+            return
+        required = self._required(event.start_mark)
+        for number in range(event.start_mark.line + 1, event.end_mark.line + 1):
+            self._check_quoted_line(required, number)
+
+    def _line(self, number: int) -> str:
+        if self._lines is None:
+            self._lines = self._text.split("\n")
+        line = self._lines[number]
+        return line[:-1] if line.endswith("\r") else line
+
+    def _required(self, mark: Any) -> int:
+        if not self._blocks:
+            return 0
+        required = self._blocks[-1] + 1
+        line = self._line(mark.line)
+        column = mark.column
+        if not line[:column].strip(" ") and line[column + 1 : column + 2] not in _BLANK_AFTER_FIRST:
+            required = min(required, column)
+        return required
+
+    def _check_quoted_line(self, required: int, number: int) -> None:
+        line = self._line(number)
+        spaces = len(line) - len(line.lstrip(" "))
+        if spaces < required and spaces < len(line):
+            raise self._error(required, number, spaces)
+
+    def _check_flow(self, required: int, first: int, last: int, closing: int) -> None:
+        quoted = {number for start, stop in self._quoted for number in range(start + 1, stop + 1)}
+        for number in range(first + 1, last + 1):
+            if number in quoted:
+                self._check_quoted_line(required, number)
+                continue
+            line = self._line(number)
+            spaces = len(line) - len(line.lstrip(" "))
+            rest = line[spaces:].lstrip(" \t")
+            if not rest or rest[0] == "#" or spaces >= required:
+                continue
+            if (
+                spaces == required - 1
+                and number == last
+                and rest[0] in "]}"
+                and len(line) - len(rest) == closing
+            ):
+                continue
+            raise self._error(required, number, spaces)
+
+    @staticmethod
+    def _error(required: int, number: int, spaces: int) -> PortableInputError:
+        return PortableInputError(
+            "yaml_parse_error",
+            f"insufficient indentation at line {number + 1}, column {spaces + 1}: a later line "
+            "of a flow collection or quoted scalar in block context must be indented past its "
+            f"parent with spaces (at least {required}), or one YAML engine cannot read it",
+        )
+
+
+_RUAMEL_NUMBER = re.compile(
+    r"""
+     [-+]?[0-9][0-9_]*\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+    |[-+]?[0-9][0-9_]*[eE][-+]?[0-9]+
+    |[-+]?\.[0-9_]+(?:[eE][-+][0-9]+)?
+    |[-+]?\.(?:inf|Inf|INF)
+    |\.(?:nan|NaN|NAN)
+    |[-+]?0b[0-1_]+
+    |[-+]?0o?[0-7_]+
+    |[-+][0-9_]+
+    |[0-9][0-9_]*
+    |[-+]?0x[0-9a-fA-F_]+
+    """,
+    re.X,
+)
+"""The plain scalars ruamel's YAML 1.2 resolver reads as a float or an int.
+
+Copied from ``ruamel.yaml.resolver`` for the checked releases
+(:data:`CHECKED_RUAMEL_VERSIONS`); ``test_number_forms_match_ruamels_resolver`` compares
+the two over generated scalars, and the patterns include its first-character index (an
+unsigned ``_1`` is a string). ruamel still accepts YAML 1.1 spellings here: ``_``
+separators, ``0b`` binary, signed ``0x`` and ``0o``, and a float exponent after a bare
+``.5`` only when it is signed.
+"""
+
+_CORE_NUMBER = re.compile(
+    r"""
+     [-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?
+    |[-+]?\.(?:inf|Inf|INF)
+    |\.(?:nan|NaN|NAN)
+    |0o[0-7]+
+    |0x[0-9a-fA-F]+
+    """,
+    re.X,
+)
+"""The plain scalars the YAML 1.2 core schema reads as a float or an int, as the ``yaml``
+package does (its ``core`` schema's ``int``, ``float`` and ``exp`` tests)."""
+
+_NUMBER_START = frozenset("-+.0123456789")
+
+
+def _number_form_error(event: ScalarEvent) -> PortableInputError | None:
+    """The error for a plain scalar one engine reads as a number and the other as a string.
+
+    ``1_000``, ``0b101``, ``-0x10`` and ``1_0.5`` are numbers to ruamel and strings to
+    the YAML 1.2 core schema the ``yaml`` package follows; ``.5e3`` is the reverse. Both
+    runtimes would accept the document with different values, and neither reading can be
+    reproduced in the other engine, so neither is portable. A quoted scalar is a string
+    in both and is never checked. The caller raises the error only once the whole text has
+    parsed, so a parse error elsewhere in the document is reported first, as the ``yaml``
+    package reports it.
+    """
+    value = event.value
+    if event.style or not value or value[0] not in _NUMBER_START:
+        return None
+    if (_RUAMEL_NUMBER.fullmatch(value) is None) == (_CORE_NUMBER.fullmatch(value) is None):
+        return None
+    mark = event.start_mark
+    return PortableInputError(
+        "yaml_unsupported_scalar",
+        f"plain scalar `{value}` at line {mark.line + 1}, column {mark.column + 1} is a number "
+        "to one YAML engine and a string to the other; write the number in YAML 1.2 core form "
+        "(such as 1000, 0x10, 0o17, 1.5e3) or quote it to keep it a string",
+    )
+
+
+_DIRECTIVE_LINE = re.compile(r"(?:\A|[\r\n])%")
+"""A ``%`` at the start of a line, the only place a directive can be."""
+
+
+def _check_directives(text: str, yaml: YAML) -> None:
+    """Reject a ``%YAML`` directive other than ``%YAML 1.2``, and any directive but ``%TAG``.
+
+    Under ``%YAML 1.1`` both engines switch to a YAML 1.1 schema, and the two schemas
+    differ: ``08`` is a string to ruamel and the number 8 to the ``yaml`` package, and a
+    date is a string to one and a host date to the other. ruamel fails on ``%YAML 1.0`` and
+    ``1.3`` with an assertion rather than a parse error, and the ``yaml`` package refuses an
+    unknown directive that ruamel ignores. Only the tokens are scanned, with the handle the
+    parse then uses, and only for a text with a ``%`` at a line start (which
+    :func:`_needs_pure_parser` sends to pure ruamel); a scanner error is left for the parse
+    to report.
+    """
+    if "%" not in text or _DIRECTIVE_LINE.search(text) is None:
+        return
+    try:
+        for token in yaml.scan(text):
+            if not isinstance(token, DirectiveToken):
+                continue
+            if token.name == "TAG" or (token.name == "YAML" and tuple(token.value) == (1, 2)):
+                continue
+            where = f"line {token.start_mark.line + 1}, column {token.start_mark.column + 1}"
+            if token.name == "YAML":
+                major, minor = token.value
+                raise PortableInputError(
+                    "yaml_parse_error",
+                    f"unsupported directive `%YAML {major}.{minor}` at {where}: softschema reads "
+                    "YAML 1.2, and the two YAML engines read a document under another version "
+                    "differently; remove the directive or write `%YAML 1.2`",
+                )
+            raise PortableInputError(
+                "yaml_parse_error",
+                f"unknown directive `%{token.name}` at {where}: one YAML engine ignores it and "
+                "the other refuses it; remove it",
+            )
+    except YAMLError:
+        return
+
+
+def _check_glued_comment(text_lines: list[str], mark: Any) -> None:
+    """Reject a ``#`` right after a closing quote or bracket, with no blank before it.
+
+    YAML 1.2 starts a comment only after a blank, and the ``yaml`` package refuses
+    ``"a"#c`` and ``[a]#c``; ruamel reads the ``#`` as a comment there, so ``"a"#: 1`` was
+    the string ``a`` in Python and an error in TypeScript.
+    """
+    if text_lines[mark.line][mark.column : mark.column + 1] == "#":
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"comment at line {mark.line + 1}, column {mark.column + 1} starts right after a "
+            "closing quote or bracket; one YAML engine reads it as a comment and the other "
+            "refuses it; write a space before the `#`",
+        )
+
+
+_BLOCK_HEADER_INDENT = re.compile(r"[|>][-+]?([1-9])")
+"""A block scalar header with an explicit indentation indicator, such as ``|2`` or ``>-1``."""
+
+
+def _check_block_scalar_spaces(text_lines: list[str], event: ScalarEvent, parent: int) -> None:
+    """Reject a line of only spaces wider than an explicit block scalar indentation.
+
+    With an indentation indicator the content is indented ``parent + indicator`` spaces,
+    and YAML 1.2 makes any further spaces on a line of only spaces content: ``key: >1``
+    followed by a line of four spaces is ``"   \n"`` to ruamel, as the spec reads it, and
+    ``""`` to the ``yaml`` package, which treats the line as empty. Neither reading can be
+    reproduced in the other engine, so the line is refused. ``parent`` is the column of
+    the block collection holding the scalar, or 0 at the root.
+    """
+    mark = event.start_mark
+    header = _BLOCK_HEADER_INDENT.match(text_lines[mark.line], mark.column)
+    if header is None:
+        return
+    indent = parent + int(header.group(1))
+    for number in range(mark.line + 1, min(event.end_mark.line + 1, len(text_lines))):
+        line = text_lines[number]
+        if line.endswith("\r"):
+            line = line[:-1]
+        if len(line) > indent and not line.strip(" "):
+            raise PortableInputError(
+                "yaml_parse_error",
+                f"line {number + 1} of only spaces is wider than the block scalar's explicit "
+                f"indentation ({indent}); the two YAML engines read its extra spaces "
+                "differently; trim the line or drop the indentation indicator",
+            )
+
+
+_GLUED_TO_INDICATOR = frozenset("[{,:?")
+"""Flow indicators a comment's ``#`` may not follow without a blank."""
+
+
+def _check_flow_gap(text: str, starts: list[int], after: Any, before: Any) -> None:
+    """Reject a ``#`` right after a flow indicator (``[``, ``{``, ``,``, ``:``, ``?``).
+
+    ``after`` is the end of one event and ``before`` the start of the next; the text
+    between holds only blanks, line breaks, indicators and comments. ruamel starts a comment at
+    a ``#`` with no blank before it; YAML 1.2 and the ``yaml`` package require one.
+    A comment that does start after a blank is skipped to its line end, so its own text
+    (which may hold ``,#``) is not mistaken for the shape.
+    """
+    begin = starts[after.line] + after.column
+    end = starts[before.line] + before.column
+    if "#" not in text[begin:end]:
+        return
+    previous = text[begin - 1] if begin else ""
+    index = begin
+    while index < end:
+        char = text[index]
+        if char == "#":
+            if previous in _GLUED_TO_INDICATOR:
+                line = text.count("\n", 0, index) + 1
+                column = index - (text.rfind("\n", 0, index) + 1) + 1
+                raise PortableInputError(
+                    "yaml_parse_error",
+                    f"comment at line {line}, column {column} starts right after `{previous}`; "
+                    "one YAML engine reads it as a comment and the other refuses it; write a "
+                    "space before the `#`",
+                )
+            newline = text.find("\n", index, end)
+            if newline == -1:
+                return
+            index, previous = newline, "\n"
+            continue
+        previous = char
+        index += 1
+
+
+def _check_flow_scalar(text_lines: list[str], event: ScalarEvent, *, in_mapping: bool) -> None:
+    """Reject a scalar in a flow collection whose indicator characters the engines split.
+
+    ruamel keeps a ``:`` that a non-space follows inside a plain scalar, so in a flow
+    collection ``a:`` before ``,``, ``]`` or ``}`` (and ``a :`` with spaces) is the string
+    ``a:``, where YAML 1.2 and the ``yaml`` package read the colon as a key indicator:
+    ``[a:, b]`` was ``['a:', 'b']`` in Python and ``[{a: null}, 'b']`` in TypeScript, both
+    valid. ruamel reads a ``?`` glued to the next entry (``[?a]``) as an explicit key, which
+    YAML 1.2 makes part of a plain scalar (``'?a'``), and a bare ``-`` as the string ``-``,
+    which the ``yaml`` package refuses, and its reading of a leading ``:`` in a flow mapping
+    varies. Neither reading is portable, so both runtimes refuse the text.
+    """
+    value = event.value
+    mark = event.start_mark
+    where = f"line {mark.line + 1}, column {mark.column + 1}"
+    line = text_lines[mark.line]
+    glued = mark.column and line[mark.column - 1 : mark.column] == "?"
+    # The `?` must be an indicator itself (after a blank, a line start or a flow
+    # indicator), not the end of the previous scalar as in `{a?}`, and the entry must have
+    # text: an implicit empty value has no characters of its own.
+    if (
+        glued
+        and (event.style or value)
+        and (mark.column < 2 or line[mark.column - 2] in " \t,[]{}")
+    ):
+        # Reported at the `?`, as the other runtime reports it.
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"a `?` at line {mark.line + 1}, column {mark.column} glued to the next entry "
+            "inside a flow collection is a key "
+            "indicator to one YAML engine and part of a plain scalar to the other; write a "
+            "space after it for an explicit key, or quote the value",
+        )
+    if event.style:
+        return
+    if value == "-":
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"a bare `-` at {where} inside a flow collection is a string to one YAML engine "
+            "and an error to the other; quote it",
+        )
+    if in_mapping and value.startswith(":"):
+        # ruamel's reading of a leading `:` in a flow mapping depends on which tokens its
+        # scanner still holds (`{x: :a}` reads, `v: {k: :a}` fails); YAML 1.2 makes it
+        # part of the scalar. In a flow sequence both read `[:a]` as `':a'`.
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"plain scalar `{value}` at {where} starts with ':' inside a flow mapping, which "
+            "the two YAML engines read differently; quote it",
+        )
+    end = event.end_mark
+    if value.endswith(":") and text_lines[end.line][end.column : end.column + 1] in ",[]{}":
+        # Reported at the `:`, as the other runtime reports it.
+        raise PortableInputError(
+            "yaml_parse_error",
+            f"':' at line {end.line + 1}, column {end.column} has no space after it inside a "
+            f"flow collection, so plain scalar `{value}` ends with it, which "
+            "one YAML engine reads as part of the scalar and the other as a key indicator; "
+            "quote the value, or write a space and a value after the colon",
+        )
+
+
+_IMPLICIT_KEY_LIMIT = 1024
+"""The longest implicit key YAML allows, from the key's first character to its ``:``."""
+
+
+def _utf16_length(text: str) -> int:
+    return len(text) + sum(1 for char in text if ord(char) > 0xFFFF)
+
+
+def _check_key_width(text_lines: list[str], event: ScalarEvent) -> None:
+    """Reject an implicit key the ``yaml`` package refuses for its UTF-16 length.
+
+    For a block-mapping key and a flow-sequence pair, both engines enforce YAML's
+    1,024-character limit from the key's first character to its ``:``, but ruamel counts
+    code points and the ``yaml`` package UTF-16 code units, so a key holding characters
+    outside the Basic Multilingual Plane could pass in Python and fail in TypeScript.
+    Python applies the stricter count. ruamel itself rejects a key whose ``:`` is on
+    another line or more than 1,024 code points away, so only a one-line key is measured.
+    """
+    start, end = event.start_mark, event.end_mark
+    if start.line != end.line:
+        return
+    line = text_lines[start.line]
+    colon = end.column
+    while colon < len(line) and line[colon] in " \t":
+        colon += 1
+    if colon >= len(line) or line[colon] != ":" or colon - start.column <= _IMPLICIT_KEY_LIMIT // 2:
+        return
+    if _utf16_length(line[start.column : colon]) <= _IMPLICIT_KEY_LIMIT:
+        return
+    raise PortableInputError(
+        "yaml_parse_error",
+        f"implicit key at line {start.line + 1}, column {start.column + 1}: its ':' is more "
+        "than 1024 UTF-16 code units after the key starts, which one YAML engine cannot read; "
+        "shorten the key",
+    )
+
+
 def _parse_with(text: str, *, pure: bool) -> Any:
     """Parse YAML after a representation preflight, both through the same parser.
 
@@ -413,13 +1037,44 @@ def _parse_with(text: str, *, pure: bool) -> Any:
     """
     yaml = YAML(typ="safe", pure=pure)
     yaml.Constructor = _PortableConstructor
+    _check_directives(text, yaml)
     stack: list[tuple[str, bool]] = []
+    measured: list[bool] = []
+    """Per open collection: whether its keys get the UTF-16 width check (a block mapping,
+    or a flow-sequence pair, which has no ``{``)."""
+    text_lines: list[str] | None = None
+    deferred_error: PortableInputError | None = None
+    """The first error the event pass found that the ``yaml`` package reports after its
+    parse (a number form, a collection key): raised once the whole text has parsed, so an
+    engine error elsewhere is reported first in both runtimes."""
     has_alias = False
+    indentation = _FlowIndentation(text)
+    # Scanned once: a per-event `"#" in text` made a document of quoted scalars and no `#`
+    # quadratic.
+    has_hash = "#" in text
+    line_starts: list[int] = []
+    gap_from: Any = None
+    """End of the previous event inside a flow collection, where the next gap begins."""
 
     def consume_parent_slot() -> None:
         if stack and stack[-1][0] == "map":
             kind, expects_key = stack[-1]
             stack[-1] = (kind, not expects_key)
+
+    def lines() -> list[str]:
+        nonlocal text_lines
+        if text_lines is None:
+            text_lines = text.split("\n")
+        return text_lines
+
+    def check_gap(event: Any) -> None:
+        nonlocal gap_from
+        if gap_from is not None:
+            if not line_starts:
+                line_starts.append(0)
+                line_starts.extend(index + 1 for index, char in enumerate(text) if char == "\n")
+            _check_flow_gap(text, line_starts, gap_from, event.start_mark)
+        gap_from = event.end_mark
 
     try:
         for event in yaml.parse(text):
@@ -428,18 +1083,62 @@ def _parse_with(text: str, *, pure: bool) -> Any:
             if getattr(event, "tag", None) is not None:
                 raise PortableInputError("yaml_custom_tag", "explicit YAML tags are not supported")
             if isinstance(event, ScalarEvent):
-                if stack and stack[-1] == ("map", True) and event.value == "<<":
-                    raise PortableInputError("yaml_merge_key", "YAML merge keys are not supported")
+                if stack and stack[-1] == ("map", True):
+                    if event.value == "<<":
+                        raise PortableInputError(
+                            "yaml_merge_key", "YAML merge keys are not supported"
+                        )
+                    if measured[-1]:
+                        _check_key_width(lines(), event)
+                if indentation.in_flow:
+                    _check_flow_scalar(lines(), event, in_mapping=stack[-1][0] == "map")
+                    if has_hash:
+                        check_gap(event)
+                if event.style in ('"', "'") and has_hash:
+                    _check_glued_comment(lines(), event.end_mark)
+                if event.style in ("|", ">"):
+                    _check_block_scalar_spaces(lines(), event, indentation.block_column)
+                if deferred_error is None:
+                    deferred_error = _number_form_error(event)
                 consume_parent_slot()
+                indentation.scalar(event)
             elif isinstance(event, (MappingStartEvent, SequenceStartEvent)):
+                if deferred_error is None and stack and stack[-1] == ("map", True):
+                    # A collection as a key. Construction would fail on it with a bare
+                    # TypeError (an unhashable key), so it is reported here, as the
+                    # non-string key it is.
+                    deferred_error = PortableInputError(
+                        "yaml_non_string_key", "mapping keys must be strings"
+                    )
                 consume_parent_slot()
-                stack.append(
-                    ("map", True) if isinstance(event, MappingStartEvent) else ("seq", False)
-                )
+                if isinstance(event, MappingStartEvent):
+                    stack.append(("map", True))
+                    mark = event.start_mark
+                    # A `{` opens a flow mapping, measured in code points as ruamel does;
+                    # a `?` opens an explicit pair, which has no limit in either engine.
+                    measured.append(
+                        not event.flow_style
+                        or lines()[mark.line][mark.column : mark.column + 1] not in ("{", "?")
+                    )
+                else:
+                    stack.append(("seq", False))
+                    measured.append(False)
                 if len(stack) > MAX_DEPTH:
                     raise PortableInputError("yaml_limit", "YAML nesting exceeds the depth limit")
+                if has_hash and (indentation.in_flow or event.flow_style):
+                    check_gap(event)
+                indentation.collection_start(event)
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
+                measured.pop()
+                if has_hash and indentation.in_flow:
+                    check_gap(event)
+                    _check_glued_comment(lines(), event.end_mark)
+                indentation.collection_end(event)
+                if not indentation.in_flow:
+                    gap_from = None
+        if deferred_error is not None:
+            raise deferred_error
         if has_alias:
             raise PortableInputError("yaml_alias", "YAML aliases and anchors are not supported")
         value = yaml.load(text)
@@ -473,6 +1172,8 @@ def _check_value(root: Any) -> None:
                 )
             continue
         if isinstance(value, int):
+            if type(value) is _NegativeZero:
+                raise PortableInputError("number_negative_zero", "negative zero is not supported")
             if abs(value) > MAX_SAFE_INTEGER:
                 raise PortableInputError("number_out_of_range", "integer exceeds the safe range")
             continue
@@ -592,6 +1293,14 @@ the last break before such a colon is followed only by spaces and tabs.
 
 _JSON_KEY_GAP = re.compile(rf"(?<![ \t])[ \t]{{{_JSON_GAP_LIMIT},}}:")
 
+_JSON_NEGATIVE_ZERO = re.compile(r"-0(?![.eE0-9])")
+"""An integer ``-0``, which ``json`` reads as ``0`` and the spec rejects as negative zero.
+
+Strict JSON spells an integer zero with a minus sign only this way. The pattern also
+matches ``-0`` inside a string, which only costs that text the fast path; ruamel's
+reading marks the literal for :func:`_check_value`.
+"""
+
 
 class _NotPortableJson(Exception):
     """Raised inside a ``json`` hook to hand the whole text to ruamel."""
@@ -668,6 +1377,7 @@ def _parse_json_subset(text: str) -> Any:
       (:data:`_JSON_SURROGATE_ESCAPE`);
     - a key separated from its colon by a line break or a long gap
       (:data:`_JSON_KEY_LINE_BREAK`, :data:`_JSON_KEY_GAP`);
+    - an integer ``-0`` (:data:`_JSON_NEGATIVE_ZERO`), which ``json`` reads as ``0``;
     - nesting past :data:`MAX_DEPTH`, which ruamel's preflight reports as ``yaml_limit``.
 
     The tests in ``test_json_fast_path.py`` check each of these against ruamel and
@@ -682,6 +1392,8 @@ def _parse_json_subset(text: str) -> Any:
     if "\t" in text[len(text.rstrip(_JSON_WHITESPACE)) :]:
         return _NOT_JSON
     if _json_has_unsafe_character(text) or _JSON_SURROGATE_ESCAPE.search(text):
+        return _NOT_JSON
+    if "-0" in text and _JSON_NEGATIVE_ZERO.search(text):
         return _NOT_JSON
     if _JSON_SPACED_COLON.search(text) and (
         _JSON_KEY_LINE_BREAK.search(text) or _JSON_KEY_GAP.search(text)
@@ -702,9 +1414,9 @@ class FrontmatterSplit:
         text[:metadata_offset] + new_metadata + text[metadata_end:body_offset] + body
 
     That middle slice is the closing fence, kept verbatim rather than re-synthesized.
-    This is the difference from :func:`read_frontmatter_doc`, which splits on
-    ``splitlines()`` and rejoins with ``"\n"``: fine for reading values, lossy for
-    writing the file back.
+    This is the difference from :func:`read_frontmatter_doc`, which splits on ``"\n"``,
+    drops each line's trailing ``"\r"``, and rejoins with ``"\n"``: fine for reading
+    values, lossy for writing the file back.
     """
 
     metadata_text: str
@@ -739,7 +1451,7 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
     splitting identically.
     """
     first = _line_end(text, 0)
-    if first is None or text[: first[0]].rstrip() != "---":
+    if first is None or not is_fence_line(text[: first[0]]):
         return None
     metadata_offset = first[1]
     cursor = metadata_offset
@@ -747,11 +1459,11 @@ def split_frontmatter(text: str) -> FrontmatterSplit | None:
         line = _line_end(text, cursor)
         if line is None:
             break  # unreachable: the loop guard guarantees a line remains
-        if text[cursor : line[0]].rstrip() == "---":
+        if is_fence_line(text[cursor : line[0]]):
             metadata_text = text[metadata_offset:cursor]
             # An empty block (end fence on the very next line) is the portable
             # no_frontmatter case, the same as the reader's ``end == 1``.
-            if not metadata_text.strip():
+            if not metadata_text.strip(" \t\r\n"):
                 return None
             return FrontmatterSplit(
                 metadata_text=metadata_text,
@@ -776,7 +1488,24 @@ def opens_frontmatter_fence(text: str) -> bool:
     whether or not it closes it, exactly as :func:`read_frontmatter_doc` treats it.
     """
     first = _line_end(text, 0)
-    return first is not None and text[: first[0]].rstrip() == "---"
+    return first is not None and is_fence_line(text[: first[0]])
+
+
+def is_fence_line(line: str) -> bool:
+    """Whether one line, given without its ``\\n``, is a frontmatter ``---`` fence.
+
+    The spec allows ``---`` plus optional trailing whitespace, and *whitespace* here is
+    the ASCII blank set, space and tab, after a trailing ``\\r`` is dropped. This is spelled
+    out because the two hosts' default trims disagree: ``str.rstrip()`` strips U+0085 and
+    U+001C through U+001F, which ``String.prototype.trimEnd()`` keeps, and ``trimEnd()`` strips
+    U+FEFF, which ``rstrip()`` keeps. A fence line is never handed to the preflight (it is
+    outside the YAML block), so the fence scan is the one place such a character decides a
+    verdict; with the default trims a ``---`` followed by U+0085 opened a fence in Python
+    and no fence in TypeScript. Keep this identical to ``isFenceLine`` in ``portable.ts``.
+    """
+    if line.endswith("\r"):
+        line = line[:-1]
+    return line.rstrip(" \t") == "---"
 
 
 def _line_end(text: str, start: int) -> tuple[int, int] | None:
@@ -786,8 +1515,8 @@ def _line_end(text: str, start: int) -> tuple[int, int] | None:
     "next line" starts there too, so a caller that keeps scanning stops on the next
     iteration.
 
-    That has to be so, because :func:`read_frontmatter_doc` splits with ``splitlines()``
-    and ``readFrontmatterDoc`` with ``split(/\r?\n/)``, and both keep such a line. A scan
+    That has to be so, because :func:`read_frontmatter_doc` splits on ``"\n"`` and
+    ``readFrontmatterDoc`` with ``split(/\r?\n/)``, and both keep such a line. A scan
     that dropped it would disagree with the reader about where a document's fences are,
     which is the disagreement this module exists to prevent. Concretely, it made
     :func:`split_frontmatter` report "no region to rewrite" for a document ending exactly
@@ -802,6 +1531,24 @@ def _line_end(text: str, start: int) -> tuple[int, int] | None:
     if index == -1:
         return len(text), len(text)
     return index, index + 1
+
+
+class _RoundTripRepresenter(RoundTripRepresenter):
+    """Round-trip representer overrides scoped to softschema emitter instances.
+
+    ``add_representer`` is a classmethod that writes into the receiving class's registry.
+    Called through a stock ``YAML(typ="rt")`` instance, it edits ruamel's shared
+    ``RoundTripRepresenter``, and with it every round-trip emitter in the process — a host
+    application's own included. A subclass copies the inherited registry on its first
+    registration, so the override never reaches other round-trip emitters in the process:
+    only the instances :func:`round_trip_yaml` builds spell a null as ``null``.
+    """
+
+
+_RoundTripRepresenter.add_representer(
+    type(None),
+    lambda dumper, _data: dumper.represent_scalar("tag:yaml.org,2002:null", "null"),
+)
 
 
 def round_trip_yaml() -> YAML:
@@ -822,13 +1569,10 @@ def round_trip_yaml() -> YAML:
     exactly the unasked-for diff round-trip mode exists to prevent.
     """
     yaml = YAML(typ="rt")
+    yaml.Representer = _RoundTripRepresenter
     yaml.preserve_quotes = True
     yaml.width = 4096  # never re-wrap an author's long line
     yaml.indent(mapping=2, sequence=4, offset=2)
-    yaml.representer.add_representer(
-        type(None),
-        lambda dumper, _data: dumper.represent_scalar("tag:yaml.org,2002:null", "null"),
-    )
     return yaml
 
 

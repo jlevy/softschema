@@ -378,7 +378,7 @@ Closed via `ss-oovv`.
 
 ### Phase 3: Python Package Review
 
-Closed via `ss-va24` and `ss-tkfe` (public API naming confirmed against the trading
+Closed via `ss-va24` and `ss-tkfe` (public API naming confirmed against the downstream
 consumer seam).
 
 - [x] Review public API names with no backward-compatibility constraint.
@@ -417,24 +417,23 @@ Each item is net-new relative to the ported core.
 Designs live in v8; this phase implements them.
 Land before the first non-trivial external project depends on the package.
 
-Reuse note: the trading repo’s `packages/softschema` package does *not* contain
+Reuse note: the downstream consumer’s vendored softschema copy does *not* contain
 `SoftField`, `SchemaView`, or generated-sections code.
-Trading-repo softschema today is a subset of this repo’s current code.
-The P0/P1 work is genuinely net-new here; the trading consumer benefits from these APIs
-being available *before* its Phase 3 cutover, not from porting code.
+That vendored copy is a subset of this repo’s current code.
+The P0/P1 work is genuinely net-new here; the downstream consumer benefits from these
+APIs being available *before* it migrates to the published package, not from porting
+code.
 
-Trading consumer alignment (informs API shape, not borrowed code):
+Downstream consumer alignment (informs API shape, not borrowed code):
 
-- `earnings_predictions/src/earnings_predictions/qa/` reads enum values and field
-  metadata ad-hoc today.
-  `SchemaView` becomes the API it switches to.
-- `earnings_predictions/src/earnings_predictions/schemas/*.py` are Pydantic models with
-  rich domain semantics (Direction, EpsResult, ReactionType enums; cross-field
+- The consumer’s QA rules read enum values and field metadata ad-hoc today.
+  `SchemaView` becomes the API they switch to.
+- The consumer’s Pydantic models carry rich domain semantics (enums and cross-field
   validators). They are natural candidates for `SoftField` annotations
   (`tier="hard_fact"` for IDs, `owner="agent"`/`"postprocess"`/`"system"` for ownership,
   `group` for QA categorization).
-- Trading runbooks under `process/` and templates that currently list controlled
-  vocabularies by hand are the natural first consumers of generated sections.
+- Runbooks and templates that currently list controlled vocabularies by hand are the
+  natural first consumers of generated sections.
 
 #### ss-pu9z: Field-level `x-softschema` annotations (DONE)
 
@@ -627,7 +626,7 @@ Implementation map:
 | `ss-68a1` | closed | Updated README, AGENTS.md, SKILL.md, CLI topics after design-doc decision. |
 | `ss-rx6k` | closed | Final consistency check after docs restructure. |
 | `ss-n9gm` | closed | Confirmed v0.1 keeps one-envelope inference; deferred `softschema.values` pointer. |
-| `ss-tkfe` | closed | Confirmed public API naming against the trading consumer seam. |
+| `ss-tkfe` | closed | Confirmed public API naming against the downstream consumer seam. |
 | `ss-qqrj` | closed | Moved `docs/research/` under `docs/project/research/`. |
 | `ss-3epj` | closed | Bundled docs and example guidance into the softschema CLI. |
 | `ss-vnpj` | closed | Added JSON docs discovery output. |
@@ -695,8 +694,8 @@ next reader.
   schema-side concepts (`SchemaStatus`, `SchemaProfile`, `SchemaStage`,
   `SchemaMetadata`, `SchemaWarning`). `Contract` and `Contracts` for the contract record
   and its collection. No prefix where neither fits (`WarningCode`, `RepairKind`,
-  `compile_model`, `validate_artifact`). The trading repo Phase 3 cutover will write
-  `from softschema import Contract`.
+  `compile_model`, `validate_artifact`). A downstream consumer migrating to the
+  published package will write `from softschema import Contract`.
 - **Warning codes use the `document-*` prefix family.** Codified in the public
   `WarningCode` enum (currently `document-contract-mismatch`,
   `document-status-mismatch`). Adding a new code requires both an enum member and a

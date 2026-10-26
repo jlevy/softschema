@@ -10,7 +10,7 @@
  */
 import { existsSync } from "node:fs";
 import { writeFileSync } from "atomically";
-import { stringify as yamlStringify } from "yaml";
+import { Document, Scalar, visit } from "yaml";
 import { z } from "zod";
 import {
   canonicalizeJsonSchema,
@@ -21,7 +21,13 @@ import {
 import { isMapping } from "./guards.js";
 import { checkRootId } from "./identity.js";
 import { checkContractId } from "./models.js";
-import { parsePortableYaml, readUtf8 } from "./portable.js";
+import {
+  checkPortableText,
+  escapeNonPortableCharacters,
+  findNonPortableCharacter,
+  PortableInputError,
+  readYamlFile,
+} from "./portable.js";
 import { canonicalJson, schemaSha256 } from "./settings.js";
 
 export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
@@ -300,8 +306,48 @@ function fieldTitle(name: string): string {
     .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
-function renderYaml(schema: Record<string, unknown>): string {
-  return yamlStringify(schema, { sortMapEntries: true, lineWidth: 0 });
+/**
+ * Render the canonical schema as YAML the portable reader accepts.
+ *
+ * A string carrying a character the reader rejects raw (U+0085, U+2028, U+2029, a C1
+ * control) is forced into double-quoted style and the character is written as the escape
+ * both engines decode (`\N`, `\L`, `\P`, `\x85`). The `yaml` package would otherwise
+ * emit it raw in a plain or double-quoted scalar, and the sidecar it just wrote would fail
+ * every later read as `schema_invalid`. Keys are scalars too, so a property name is
+ * covered the same way; once every such string is double-quoted, every raw occurrence
+ * left in the text sits inside a double-quoted scalar, where the textual escape is exact.
+ *
+ * Two more strings take the double-quoted path because the `yaml` package writes them as
+ * plain scalars that ruamel refuses: one holding a tab (ruamel reads a raw tab in a plain
+ * scalar as a scanner error) and the string `=` (the YAML 1.1 `!!value` key). The Python
+ * writer quotes both on its own.
+ */
+export function renderYaml(schema: Record<string, unknown>): string {
+  const document = new Document(schema, { sortMapEntries: true });
+  visit(document, {
+    Scalar(_key, node) {
+      if (
+        typeof node.value === "string" &&
+        (findNonPortableCharacter(node.value) !== null ||
+          node.value.includes("\t") ||
+          node.value === "=")
+      ) {
+        node.type = Scalar.QUOTE_DOUBLE;
+      }
+    },
+  });
+  const rendered = escapeNonPortableCharacters(document.toString({ lineWidth: 0 }));
+  // The writer's output must pass the reader's preflight: a gap here fails once, at write
+  // time, rather than on every later read of the schema.
+  try {
+    checkPortableText(rendered);
+  } catch (error) {
+    if (error instanceof PortableInputError) {
+      throw new Error(`compile produced YAML the portable reader rejects: ${error.message}`);
+    }
+    throw error;
+  }
+  return rendered;
 }
 
 /**
@@ -469,8 +515,23 @@ export function compileSchema(
       };
     }
     // Compare parsed content, not raw bytes, so YAML formatting (a different writer than
-    // Python's) is not treated as drift; only a genuine schema change is.
-    const existing = parsePortableYaml(readUtf8(outPath));
+    // Python's) is not treated as drift; only a genuine schema change is. A committed file
+    // the portable reader refuses (not UTF-8, a raw character the preflight rejects) is
+    // drift too: `--check` asks whether the committed output still stands, and it does not.
+    let existing: unknown;
+    try {
+      existing = readYamlFile(outPath);
+    } catch (error) {
+      if (!(error instanceof PortableInputError)) throw error;
+      // The message names the file once, whichever step refused it.
+      return {
+        outPath,
+        schemaYaml: rendered,
+        drift: true,
+        driftDiff: `committed compiled schema is not portable YAML: ${error.message}`,
+        schemaSha256: sha,
+      };
+    }
     const drift = canonicalJson(existing) !== canonicalJson(schema);
     return {
       outPath,

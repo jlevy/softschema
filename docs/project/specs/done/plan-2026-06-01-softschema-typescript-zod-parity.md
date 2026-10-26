@@ -25,12 +25,12 @@ Two linked deliverables:
    **canonical JSON Schema sidecar**, and **observable CLI behavior**, proven by a
    **single shared golden-test corpus** (tryscript) run against both CLIs.
 
-**No backward-compatibility constraint.** There is exactly one downstream consumer (the
-trading repo’s `packages/softschema`); it will be down-migrated with a new release as
-needed.
-So Phase 0 removes dead/leaky surface outright rather than deprecating it, and we
-are free to change the Python sidecar/error shapes to land on a clean canonical form
-that both languages can hit exactly.
+**No backward-compatibility constraint.** There is exactly one downstream consumer (a
+vendored copy in a separate application repository); it will be down-migrated with a new
+release as needed.
+So Phase 0 removes dead/leaky surface outright rather than deprecating
+it, and we are free to change the Python sidecar/error shapes to land on a clean
+canonical form that both languages can hit exactly.
 
 The non-negotiable invariant: the Markdown/YAML artifact format and the canonical JSON
 Schema sidecar are the portability boundary (per
@@ -859,7 +859,7 @@ Full feature parity; passes scenarios 3, 5, 6.
 2. Land Phases 1–2 behind the corpus; the TS package is “done” when green on the same
    scenarios as Python and the conformance test passes.
 3. Phase 3 docs + hardening.
-4. Down-migrate the trading-repo consumer to the new release (API renames from Phase 0:
+4. Down-migrate the downstream consumer to the new release (API renames from Phase 0:
    `validate()`/`ValueResolver` gone; `StructuralResult.skipped_reason`; new error
    records; regenerated sidecars).
    Publish npm `softschema` and PyPI `softschema` together from one tag (see

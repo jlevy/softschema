@@ -29,7 +29,14 @@ from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
 from softschema._identity import check_identity, check_root_id
-from softschema._portable import PortableInputError, parse_yaml, read_utf8
+from softschema._portable import (
+    PortableInputError,
+    document_label,
+    is_fence_line,
+    named_parse_error,
+    parse_yaml,
+    read_utf8,
+)
 from softschema.enforcement import (
     EnforcementUnsupportedError,
     SchemaGraphError,
@@ -273,14 +280,24 @@ def _validator_for(
     strict_extras: bool,
     resources: Mapping[str, dict[str, Any]] | None,
 ) -> Draft202012Validator:
-    """Return a validator, reusing a cached one when it is safe to do so."""
+    """Return a validator, reusing a cached one when it is safe to do so.
+
+    A schema the reader refuses raises :class:`PortableInputError` naming the schema file
+    once: :func:`read_utf8` names it in a decoding failure, and a parse failure is named
+    here. The reader's message says where in the schema text it stopped; the record's
+    top-level ``path`` is the artifact, so without the schema's own name an agent following
+    "line 2, column 22" would open the wrong file.
+    """
     schema_text = read_utf8(schema_yaml_path)
-    if resources:
-        # `resources` is a plain mapping of dicts, so it is neither hashable
-        # nor cheap to fingerprint. Registry-backed validation is the rare
-        # path; build it fresh rather than risk a wrong cache key.
-        return _build_validator(schema_text, strict_extras, resources)
-    return _cached_validator(schema_text, strict_extras)
+    try:
+        if resources:
+            # `resources` is a plain mapping of dicts, so it is neither hashable
+            # nor cheap to fingerprint. Registry-backed validation is the rare
+            # path; build it fresh rather than risk a wrong cache key.
+            return _build_validator(schema_text, strict_extras, resources)
+        return _cached_validator(schema_text, strict_extras)
+    except PortableInputError as exc:
+        raise named_parse_error(schema_yaml_path, exc) from exc
 
 
 def validate_structural(
@@ -302,7 +319,11 @@ def validate_structural(
         execution = "errored"
         errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
-        return _schema_invalid("syntax", "compiled schema root must be a mapping", execution)
+        return _schema_invalid(
+            "syntax",
+            f"{document_label(schema_yaml_path)}: compiled schema root must be a mapping",
+            execution,
+        )
     except FileNotFoundError:
         # The record artifact validation gives for an unresolvable binding, so a
         # values-level caller does not see an absent file reported as a broken schema.
@@ -318,6 +339,7 @@ def validate_structural(
             ],
         )
     except PortableInputError as exc:
+        # Already names the schema file, once (see `_validator_for`).
         return _schema_invalid("syntax", str(exc), execution)
     except SchemaError as exc:
         return _schema_invalid("dialect", exc.message, execution)
@@ -899,7 +921,10 @@ def _validate_frontmatter_artifact(
             return _artifact_failure(doc_path, contract, kind, str(exc))
     if frontmatter is None:
         return _artifact_failure(
-            doc_path, contract, "no_frontmatter", f"no frontmatter in {doc_path}"
+            doc_path,
+            contract,
+            "no_frontmatter",
+            f"{document_label(doc_path)}: the document has no YAML frontmatter",
         )
     if not isinstance(frontmatter, dict):
         return _artifact_failure(
@@ -1397,23 +1422,34 @@ def parse_frontmatter_text(text: str, *, source: str = "<text>") -> tuple[str, A
     just produced, rather than what is still on disk — parses it through exactly this code
     path instead of a second implementation that could disagree with it. ``source`` only
     names the document in error messages.
+
+    Lines are split on ``"\n"`` alone, with a trailing ``"\r"`` dropped, the same rule
+    :func:`split_frontmatter` and the TypeScript reader apply. ``str.splitlines()`` would
+    also break on U+2028, U+2029, U+0085, form feed and the ASCII separators. The portable
+    preflight rejects every one of those as raw text; splitting on them would rejoin the
+    block with real newlines, hide them from that check, and let a scalar that TypeScript
+    rejects parse here as a folded multi-line value, so the two runtimes would reach
+    different verdicts on the same file.
     """
-    lines = text.splitlines()
-    if not lines or lines[0].rstrip() != "---":
+    lines = [line[:-1] if line.endswith("\r") else line for line in text.split("\n")]
+    if not lines or not is_fence_line(lines[0]):
         return text, None
-    end = next((index for index, line in enumerate(lines[1:], 1) if line.rstrip() == "---"), -1)
+    end = next((index for index, line in enumerate(lines[1:], 1) if is_fence_line(line)), -1)
     if end < 0:
         raise PortableInputError(
-            "yaml_parse_error", f"Delimiter `---` for end of frontmatter not found: `{source}`"
+            "yaml_parse_error",
+            f"{document_label(source)}: Delimiter `---` for end of frontmatter not found",
         )
     if end == 1:
         return "\n".join(lines[2:]), None
     raw = "\n".join(lines[1:end])
-    value = parse_yaml(raw)
+    # The block starts on file line 2: one fence line precedes it.
+    value = _parse_document_yaml(raw, source, fence_lines=1)
     if not isinstance(value, dict):
         raise PortableInputError(
             "yaml_parse_error",
-            f"Expected YAML metadata to be a dict, got {type(value).__name__}: `{source}`",
+            f"{document_label(source)}: Expected YAML metadata to be a dict, "
+            f"got {type(value).__name__}",
         )
     return "\n".join(lines[end + 1 :]), value
 
@@ -1426,20 +1462,70 @@ def read_yaml_doc(path: Path) -> Any:
     contract. Decoding goes through softschema's portable YAML rules, which a host YAML
     library does not enforce; see :func:`validate_artifact` on why that matters.
     """
-    return parse_yaml(read_utf8(path))
+    return parse_yaml_text(read_utf8(path), source=str(path))
 
 
-def parse_yaml_text(text: str) -> Any:
-    """The text-level half of :func:`read_yaml_doc`, for the same reason."""
-    return parse_yaml(text)
+def parse_yaml_text(text: str, *, source: str = "<text>") -> Any:
+    """The text-level half of :func:`read_yaml_doc`, for the same reason.
+
+    ``source`` only names the document in error messages.
+    """
+    return _parse_document_yaml(text, source)
+
+
+_LINE_AND_COLUMN = re.compile(r"\bline (\d+), column (\d+)\b")
+_RUAMEL_LINE_NOTE = re.compile(r"\(line: (\d+)\)")
+
+
+def _parse_document_yaml(text: str, source: str, *, fence_lines: int = 0) -> Any:
+    """:func:`parse_yaml`, with the document named in any failure it raises.
+
+    The engine says where in the text it stopped, not which text: ruamel reports
+    ``in "<unicode string>"`` and the ``yaml`` package nothing at all. An agent repairing
+    a batch of artifacts cannot act on a line number alone, so both readers put the
+    document first, in the backticked-prefix form every softschema message that names a
+    document uses. The code is kept as is; only the message changes.
+
+    ``fence_lines`` is how many lines of the file precede ``text``: one for a frontmatter
+    block, whose first line is file line 2. The engines and the preflight count lines
+    within the text they were handed, so every ``line N, column M`` in the message is
+    shifted by that many lines and names a line of the file the agent will open. Both
+    engines and the preflight write the position in that one form (ruamel adds a
+    zero-based ``(line: N)`` after its caret), which is why the rewrite can be this narrow.
+    """
+    try:
+        return parse_yaml(text)
+    except PortableInputError as exc:
+        message = str(exc)
+        if fence_lines:
+            message = _LINE_AND_COLUMN.sub(
+                lambda match: f"line {int(match.group(1)) + fence_lines}, column {match.group(2)}",
+                message,
+            )
+            # ruamel also writes the zero-based line of its caret as ``(line: N)``.
+            message = _RUAMEL_LINE_NOTE.sub(
+                lambda match: f"(line: {int(match.group(1)) + fence_lines})", message
+            )
+        raise PortableInputError(exc.code, f"{document_label(source)}: {message}") from exc
+
+
+def portable_artifact_kind(code: str) -> str:
+    """The record ``kind`` for a portable input error ``code`` raised while reading an artifact.
+
+    The reader's ``invalid_utf8`` becomes ``artifact_invalid_utf8``, the input-error kind
+    that puts the verdict at ``input_error`` rather than ``invalid``; every other code is
+    already the kind. One rule for every path that turns a read failure into a record, so
+    ``repair`` and ``validate`` report the identical condition with the same ``kind``.
+    """
+    if code == "invalid_utf8":
+        return "artifact_invalid_utf8"
+    return code
 
 
 def _portable_error_kind(error: Exception) -> str:
     if not isinstance(error, PortableInputError):
         return "yaml_parse_error"
-    if error.code == "invalid_utf8":
-        return "artifact_invalid_utf8"
-    return error.code
+    return portable_artifact_kind(error.code)
 
 
 def _error(kind: str, message: str, **details: Any) -> dict[str, Any]:

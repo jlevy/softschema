@@ -8,13 +8,21 @@ which is per-language by design.
 
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import BaseModel
 from ruamel.yaml import YAML
+from ruamel.yaml.representer import RoundTripRepresenter
 
+from softschema._portable import (
+    _RoundTripRepresenter,
+    dump_round_trip,
+    parse_yaml,
+    round_trip_yaml,
+)
 from softschema.conform import conform_artifact
 from softschema.models import Contract, SchemaProfile
 from softschema.pipeline import repair_and_validate_artifact
@@ -71,6 +79,53 @@ def test_schema_conform_vectors(case: dict[str, Any], tmp_path: Path) -> None:
 
     assert result.changed is case["changed"]
     assert _read(path) == case.get("expected_text", case["text"])
+
+
+def test_conform_never_folds_a_raw_next_line_character(tmp_path: Path) -> None:
+    """A region the portable reader rejects is skipped, not loaded through ruamel.
+
+    ruamel's round-trip loader folds a raw U+0085 in a flow scalar to a space and never
+    runs the preflight. With a conformable scalar beside it, the pass once dumped the
+    folded text and wrote it, with no record of the fold, while `validate` rejected the
+    same file.
+    """
+    path = tmp_path / "artifact.md"
+    original = (
+        "---\ndata:\n  name: 007\n  summary: Hayao Miyazaki\u0085 Studio Ghibli\n---\nBody.\n"
+    )
+    _write(path, original)
+    schema_path = tmp_path / "schema.yaml"
+    YAML(typ="safe").dump(
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        schema_path.open("w", encoding="utf-8"),
+    )
+
+    result = conform_artifact(path, schema_path=schema_path, envelope_key="data", write=True)
+
+    assert result.changed is False
+    assert result.skipped_reason == "unparsable"
+    assert _read(path) == original
+
+
+def test_escaping_a_rejected_character_is_recorded_per_value(tmp_path: Path) -> None:
+    """One ``yaml_escaped_character`` record per value, naming every character and its escape."""
+    path = tmp_path / "a.yaml"
+    _write(path, "note: a\u0085b\u2028c\u0085x\nplain: fine\n")
+
+    result = repair_artifact(path, profile=SchemaProfile.pure_yaml, write=True)
+
+    assert result.changed is True
+    assert result.records == [
+        {
+            "kind": "repair_applied",
+            "code": "yaml_escaped_character",
+            "path": ["note"],
+            "message": 'escaped #x0085 as "\\N", #x2028 as "\\L" in the value of \'note\'',
+        }
+    ]
+    assert _read(path) == 'note: "a\\Nb\\Lc\\Nx"\nplain: fine\n'
+    # The escaped document decodes to the characters as they arrived; nothing was guessed.
+    assert parse_yaml(_read(path)) == {"note": "a\u0085b\u2028c\u0085x", "plain": "fine"}
 
 
 def test_repair_is_idempotent(tmp_path: Path) -> None:
@@ -215,6 +270,28 @@ def test_pipeline_unrepairable_document_matches_plain_validate(tmp_path: Path) -
     assert repaired.structural.errors[0]["kind"] == "yaml_parse_error"
     # The failed repair leaves the document exactly as it was found.
     assert _read(path) == "---\nthing: [unclosed\n---\nBody.\n"
+
+
+def test_round_trip_emitter_leaves_other_round_trip_instances_alone() -> None:
+    """``round_trip_yaml`` pins how a null is spelled, for its own instances only.
+
+    Regression guard: the null representer was registered through the instance, and
+    ``add_representer`` is a classmethod, so the registration landed on ruamel's shared
+    ``RoundTripRepresenter``. After one repair, every plain ``YAML(typ="rt")`` in the
+    process — a host application's own emitter included — wrote ``null`` where ruamel
+    writes nothing. The shared class, and a stock emitter built after softschema ran, must
+    both come out unchanged.
+    """
+    document = {"kept": None, "items": [None, 1]}
+    yaml = round_trip_yaml()
+    assert "null" in dump_round_trip(yaml, document)
+
+    # ruamel spells a nested null as an empty value; only softschema's emitter says `null`.
+    buffer = StringIO()
+    YAML(typ="rt").dump(document, buffer)
+    assert "null" not in buffer.getvalue()
+    assert RoundTripRepresenter.yaml_representers[type(None)] is RoundTripRepresenter.represent_none
+    assert type(yaml.representer) is _RoundTripRepresenter
 
 
 def test_pipeline_missing_file_is_an_input_error(tmp_path: Path) -> None:
