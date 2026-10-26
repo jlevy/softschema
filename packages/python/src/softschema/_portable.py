@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import math
 import os
@@ -350,11 +351,14 @@ CHECKED_LIBYAML_VERSION = "0.1.7"
 """The libyaml build, as ``ruamel.yaml.clib`` reports it, that the C-first guards were
 derived for and searched against.
 
-Every ``ruamel.yaml.clib`` release so far reports this string, so the check cannot tell
-clib releases apart, and it is the clib release that varies between installs: its
-maintainer patches the bundled libyaml. The searches behind the guards ran on clib 0.2.8
-(with ruamel.yaml 0.18.10) and 0.2.15 (with 0.19.1); a new clib release needs
+Every ``ruamel.yaml.clib`` release so far reports this string, and so does
+``ruamel.yaml.clibz``, so the check cannot tell clib releases, or clib from clibz, apart.
+The bundled libyaml sources are byte-identical from clib 0.2.8 through 0.2.15, and in
+clibz; what differs between releases is the generated Cython wrapper around them and how
+the extension is compiled. The searches behind the guards ran on clib 0.2.8 (with
+ruamel.yaml 0.18.10) and 0.2.15 (with 0.19.1); a new clib release needs
 ``devtools/yaml_parser_fuzz.py`` rerun even when this string is unchanged.
+:data:`CHECKED_C_PARSER_MODULES` is what tells clib's parser from clibz's.
 
 :func:`_needs_pure_parser` lists the shapes on which this libyaml accepts what pure
 ruamel rejects, or reads a different value. Another libyaml build could add a shape, so
@@ -364,34 +368,91 @@ Widen either only after rerunning ``devtools/yaml_parser_fuzz.py`` and
 ``test_c_parser.py`` against the new build.
 """
 
+CHECKED_C_PARSER_MODULES = ("ruamel.yaml.clib._ruamel_yaml", "_ruamel_yaml")
+"""The modules, both ``ruamel.yaml.clib``'s, whose ``CParser`` the C-first guards were
+searched against.
+
+``CParser.__module__`` is the qualified name on recent clib releases and ``_ruamel_yaml``
+on older ones. ``ruamel.yaml.clibz`` (module ``_ruamel_yaml_clibz``) bundles the same
+libyaml and reports the same :data:`CHECKED_LIBYAML_VERSION`, but it is another build,
+compiled with Zig and flagged for free-threading, and no search has run on it. No
+released ruamel ``YAML()`` uses clibz, but a patch release could start to (0.18.17
+changed which extension ruamel's ``cyaml`` loaders prefer), so the gate checks the
+parser's module as well as the version string, and a parser from any other module
+leaves every text to pure ruamel. Add a module only after rerunning
+``devtools/yaml_parser_fuzz.py`` and ``test_c_parser.py`` with it.
+"""
+
 
 def _c_parser_is_checked() -> bool:
     """Whether ruamel found a C parser, and it is the build the guards were derived for."""
-    return _installed_libyaml_version() == CHECKED_LIBYAML_VERSION and _ruamel_is_checked()
+    return (
+        _c_parser_module() in CHECKED_C_PARSER_MODULES
+        and _installed_libyaml_version() == CHECKED_LIBYAML_VERSION
+        and _ruamel_is_checked()
+    )
+
+
+def _c_parser_module() -> str | None:
+    """The module of the C parser ruamel's ``YAML()`` found, or ``None`` without one."""
+    parser = YAML(typ="safe").Parser
+    return None if parser is RuamelParser else parser.__module__
 
 
 def _installed_libyaml_version() -> str | None:
     """The libyaml version of the C parser ruamel found, or ``None`` without one.
 
-    ``CParser.__module__`` is ``ruamel.yaml.clib._ruamel_yaml`` on recent clib releases and
-    ``_ruamel_yaml`` on older ones; ruamel itself imports the latter name, so it is the
-    fallback when the qualified name is not registered.
+    ruamel itself imports ``_ruamel_yaml``, so that name is the fallback when a clib
+    parser's qualified module name is not registered. A parser from any other module is
+    read from its own module only, so another build is never credited with clib's version.
     """
-    parser = YAML(typ="safe").Parser
-    if parser is RuamelParser:
+    module_name = _c_parser_module()
+    if module_name is None:
         return None
-    module = sys.modules.get(parser.__module__) or sys.modules.get("_ruamel_yaml")
+    module = sys.modules.get(module_name)
+    if module is None and module_name in CHECKED_C_PARSER_MODULES:
+        module = sys.modules.get("_ruamel_yaml")
     return _libyaml_version(module)
+
+
+def _is_installed(distribution: str) -> bool:
+    """Whether ``distribution`` is installed, judged by its metadata.
+
+    An import check cannot answer this for ``ruamel.yaml.clibz``: the ruamel.yaml 0.19.1
+    wheel ships an empty ``ruamel/yaml/clibz/`` package, so ``ruamel.yaml.clibz`` is
+    importable whether or not clibz is installed.
+    """
+    try:
+        importlib.metadata.distribution(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return True
 
 
 def yaml_parser_reason() -> str:
     """Why :func:`yaml_parser_mode` answers as it does, in one sentence for ``doctor``."""
     ruamel_version = ".".join(map(str, ruamel.yaml.version_info[:3]))
-    libyaml = _installed_libyaml_version()
-    if libyaml is None:
+    module = _c_parser_module()
+    if module is None:
+        if _is_installed("ruamel.yaml.clibz"):
+            return (
+                "ruamel.yaml.clib is not installed, and the installed ruamel.yaml.clibz "
+                "is unused: ruamel's YAML() does not load it"
+            )
         return "ruamel.yaml.clib is not installed"
+    if module not in CHECKED_C_PARSER_MODULES:
+        build = (
+            "ruamel.yaml.clibz"
+            if module.rpartition(".")[2] == "_ruamel_yaml_clibz"
+            else f"the C parser from {module}"
+        )
+        return f"{build} is not a checked build; only ruamel.yaml.clib is"
+    libyaml = _installed_libyaml_version()
     if libyaml != CHECKED_LIBYAML_VERSION:
-        return f"libyaml {libyaml} is not the checked build {CHECKED_LIBYAML_VERSION}"
+        return (
+            f"libyaml {libyaml or 'of unknown version'} is not the checked build "
+            f"{CHECKED_LIBYAML_VERSION}"
+        )
     if not _ruamel_is_checked():
         lower, upper = CHECKED_RUAMEL_VERSIONS
         return (
@@ -417,12 +478,14 @@ _C_PARSER_AVAILABLE = _c_parser_is_checked()
 def yaml_parser_mode() -> Literal["c-first", "pure"]:
     """Which ruamel parser :func:`parse_yaml` reads YAML with, at the time of the call.
 
-    ``"c-first"`` means ruamel's C extension (``ruamel.yaml.clib``) is installed, is the
-    libyaml build the guards were checked against on a checked ruamel release
-    (:data:`CHECKED_LIBYAML_VERSION`, :data:`CHECKED_RUAMEL_VERSIONS`), and is not turned
-    off with ``SOFTSCHEMA_PURE_YAML``: texts are read by libyaml where it is known to agree
-    with pure ruamel, and by pure ruamel otherwise. ``"pure"`` means every text is read by
-    pure ruamel: the extension is absent, is another build or release, or is turned off.
+    ``"c-first"`` means ruamel's ``YAML()`` uses the C parser of ``ruamel.yaml.clib``
+    (:data:`CHECKED_C_PARSER_MODULES`), its libyaml is the build the guards were checked
+    against (:data:`CHECKED_LIBYAML_VERSION`), ruamel is a checked release
+    (:data:`CHECKED_RUAMEL_VERSIONS`), and it is not turned off with
+    ``SOFTSCHEMA_PURE_YAML``: texts are read by libyaml where it is known to agree with
+    pure ruamel, and by pure ruamel otherwise. ``"pure"`` means every text is read by pure
+    ruamel: the extension is absent, is another build (such as ``ruamel.yaml.clibz``) or
+    release, or is turned off.
     The build check happens once at import; the environment variable is read on every
     call, so setting it later changes the answer. Results are identical in both modes;
     only speed differs. :func:`yaml_parser_reason` says which case applies.

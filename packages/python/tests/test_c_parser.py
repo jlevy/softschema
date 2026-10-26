@@ -30,11 +30,13 @@ import re
 import subprocess
 import sys
 import time
+import types
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import ruamel.yaml.main
 from ruamel.yaml import YAML, YAMLError
 from ruamel.yaml.parser import Parser as RuamelParser
 
@@ -1271,6 +1273,114 @@ def test_the_reason_names_why_the_parser_is_pure(monkeypatch: pytest.MonkeyPatch
 
 def test_the_reason_without_the_extension_is_that_it_is_not_installed() -> None:
     assert _in_reference_process("reason") == "ruamel.yaml.clib is not installed"
+
+
+@requires_c
+def test_the_real_clib_parser_is_admitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dev group's clib parser passes the module check, so C-first is on."""
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    assert _portable._c_parser_module() in _portable.CHECKED_C_PARSER_MODULES
+    assert _portable._c_parser_is_checked()
+    assert softschema.yaml_parser_mode() == "c-first"
+    assert _portable.yaml_parser_reason().startswith("ruamel.yaml.clib (libyaml 0.1.7)")
+
+
+def _fake_extension(module_name: str, monkeypatch: pytest.MonkeyPatch) -> type:
+    """Register a stand-in extension module that reports clib's libyaml version.
+
+    ``ruamel.yaml.clibz`` reports the same version, so only the module check can tell the
+    two apart. Returns the module's stand-in ``CParser``.
+    """
+    module = types.ModuleType(module_name)
+    module.get_version_string = lambda: _portable.CHECKED_LIBYAML_VERSION  # pyright: ignore[reportAttributeAccessIssue]
+    parser = type("CParser", (), {"__module__": module_name})
+    module.CParser = parser  # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setitem(sys.modules, module_name, module)
+    return parser
+
+
+def _use_c_parser(parser: type | None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ruamel's ``YAML()`` use ``parser``, or pure ruamel when it is ``None``.
+
+    ``YAML()`` takes its C parser from ``ruamel.yaml.main.CParser``, which is what a
+    release that switched to another extension would change.
+    """
+    monkeypatch.setattr(ruamel.yaml.main, "CParser", parser)
+    assert YAML(typ="safe").Parser is (parser or RuamelParser)
+
+
+@pytest.mark.parametrize(
+    "module_name", ["_ruamel_yaml_clibz", "ruamel.yaml.clibz._ruamel_yaml_clibz"]
+)
+def test_a_clibz_parser_keeps_every_text_on_pure(
+    module_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """clibz reports libyaml 0.1.7 too, but no search has run on it, so the gate says pure.
+
+    ``_C_PARSER_AVAILABLE`` is computed once at import, so the test recomputes it as an
+    import would with the stand-in parser in place.
+    """
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    _use_c_parser(_fake_extension(module_name, monkeypatch), monkeypatch)
+    assert _portable._installed_libyaml_version() == _portable.CHECKED_LIBYAML_VERSION
+    assert not _portable._c_parser_is_checked()
+    monkeypatch.setattr(_portable, "_C_PARSER_AVAILABLE", _portable._c_parser_is_checked())
+    assert softschema.yaml_parser_mode() == "pure"
+    assert _portable.yaml_parser_reason() == (
+        "ruamel.yaml.clibz is not a checked build; only ruamel.yaml.clib is"
+    )
+
+
+def test_a_parser_from_an_unknown_module_keeps_every_text_on_pure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _use_c_parser(_fake_extension("_some_other_yaml", monkeypatch), monkeypatch)
+    assert not _portable._c_parser_is_checked()
+    assert _portable.yaml_parser_reason() == (
+        "the C parser from _some_other_yaml is not a checked build; only ruamel.yaml.clib is"
+    )
+
+
+def test_another_build_is_not_credited_with_clibs_libyaml_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a clib parser falls back to the bare ``_ruamel_yaml`` module for its version."""
+    _use_c_parser(_fake_extension("_ruamel_yaml_clibz", monkeypatch), monkeypatch)
+    _fake_extension("_ruamel_yaml", monkeypatch)
+    monkeypatch.delitem(sys.modules, "_ruamel_yaml_clibz")
+    assert _portable._installed_libyaml_version() is None
+
+
+@pytest.mark.parametrize(
+    ("clibz_installed", "reason"),
+    [
+        (
+            True,
+            "ruamel.yaml.clib is not installed, and the installed ruamel.yaml.clibz is "
+            "unused: ruamel's YAML() does not load it",
+        ),
+        (False, "ruamel.yaml.clib is not installed"),
+    ],
+)
+def test_the_reason_without_a_c_parser_says_whether_clibz_is_installed(
+    clibz_installed: bool, reason: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no C parser in use, the reason notes a clibz install that ``YAML()`` ignores."""
+    _use_c_parser(None, monkeypatch)
+    monkeypatch.setattr(
+        _portable, "_is_installed", lambda name: clibz_installed and name == "ruamel.yaml.clibz"
+    )
+    assert _portable.yaml_parser_reason() == reason
+
+
+def test_installed_distributions_are_found_by_their_metadata() -> None:
+    """The check reads distribution metadata, not the import path.
+
+    ruamel.yaml 0.19.1 ships an empty ``ruamel/yaml/clibz/`` package, so an import check
+    would report clibz installed wherever that ruamel is.
+    """
+    assert _portable._is_installed("ruamel.yaml")
+    assert not _portable._is_installed("softschema-no-such-distribution")
 
 
 # --- The differential search harness runs ---------------------------------------------------
