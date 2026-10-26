@@ -175,7 +175,7 @@ the skill mirrors) → rebuild the TypeScript package → run `cross-impl-diff.s
 **Manual harness.** `tests/manual/agent-repair/{evaluate.py,feedback.py,summarize.py}`.
 
 **Not touched.** `docs/project/reviews/**` — historical records.
-`docs/project/specs/active/plan-2026-08-29-validate-repair.md` gets a forward link and a
+`docs/project/specs/done/plan-2026-08-29-validate-repair.md` gets a forward link and a
 status note, not a rewrite.
 
 ## Phases
