@@ -67,6 +67,9 @@ def _ruamel_path(text: str) -> Any:
     of every path's contract rather than of one reader.
     """
     _portable.check_portable_text(text)
+    # `parse_yaml` hands every reader the text with its final line break.
+    if text and not text.endswith("\n"):
+        text += "\n"
     return _portable._parse_with(text, pure=True)
 
 

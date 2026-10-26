@@ -1253,6 +1253,8 @@ describe("portable reader: cost and duplicate keys", () => {
       "a: 1\na: [\n",
       "value: {a: 1, a: [}\n",
       `value: "${"x".repeat(100)}"\nvalue: 2\n`,
+      // A key far along a long line, where the excerpt is trimmed around the column.
+      `value: {"${"x".repeat(70)}": 1, "${"x".repeat(70)}": 2, "tail": "${"y".repeat(40)}"}\n`,
     ]) {
       const expected = parseDocument(text).errors[0];
       let actual: unknown;
