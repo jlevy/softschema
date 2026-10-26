@@ -21,8 +21,8 @@ nothing but a prose runbook and a template — never the JSON Schema.
 Field-name and value drift therefore arose the way it does in production rather than
 being planted.
 
-The contract is loosely modeled on a prelim-scan form from a downstream pipeline that
-runs `gemini-3.6-flash` through a `gemini-cli` adapter.
+The contract is loosely modeled on a scan form from a downstream pipeline that runs
+`gemini-3.6-flash` through a `gemini-cli` adapter.
 It keeps that form’s shape — a ticker pattern, a date, a `search_fit` enum, an integer
 `term_budget`, a `rubric_version` string, and four panels of `{term, why}` items — under
 `additionalProperties: false` and `status: enforced`.

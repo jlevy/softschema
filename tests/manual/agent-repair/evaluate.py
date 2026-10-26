@@ -94,7 +94,7 @@ def document_level(errors: list[dict]) -> bool:
 
 def evaluate(src: Path, work: Path) -> dict:
     work.mkdir(parents=True, exist_ok=True)
-    shutil.copy(HERE / "prelim-scan-terms.schema.yaml", work)
+    shutil.copy(HERE / "scan-terms.schema.yaml", work)
     target = work / src.name
     shutil.copy(src, target)
     rel = str(target.relative_to(HERE))

@@ -1,4 +1,4 @@
-# Prelim Scan Terms — Runbook
+# Scan Terms — Runbook
 
 You propose high-recall customer search queries for one ticker, so a later stage can
 pull Google Trends panels for them.
