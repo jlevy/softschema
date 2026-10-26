@@ -85,6 +85,14 @@ properties:
     pattern: '@'
     title: Contact
     type: string
+  control_text:
+    default: "tab\there"
+    description: "Carries a CRLF\r\nand a tab\tand ends with ="
+    enum:
+    - '='
+    - "tab\there"
+    title: Control Text
+    type: string
   count:
     maximum: 100
     minimum: 0
@@ -174,6 +182,14 @@ properties:
     - $ref: '#/$defs/Address'
     - type: 'null'
     default: null
+  separator:
+    default: "next\Nline"
+    description: "Carries a next line\Na line\Land a paragraph\Pseparator."
+    enum:
+    - "next\Nline"
+    - "line\Lseparator"
+    title: Separator
+    type: string
   sku:
     pattern: ^SKU-.*
     title: Sku
@@ -219,4 +235,4 @@ title: KitchenSink
 type: object
 x-softschema:
   contract: example.parity:KitchenSink/v1
-  schema_sha256: 6810f0d889ded6f23e4a4f752070928d87b439ae328ae02187b9dfb467b76519
+  schema_sha256: 98785013248fe2bd601e662afa831339453f73dc81ca8153ea1eea45dd20d3b7

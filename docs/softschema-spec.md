@@ -135,9 +135,118 @@ not by each rule that inspects them.
 
 YAML is decoded into the JSON-compatible value domain: null, booleans, strings, finite
 numbers, lists, and string-keyed mappings.
-Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero,
-duplicate keys, aliases, anchors, merge keys, explicit tags, non-string keys, lone
-surrogates, and non-finite numbers are rejected.
+Integer literals must be within the IEEE-754 safe range (`abs < 2^53`). Negative zero
+(the integer literal `-0` as well as a float such as `-0.0`), duplicate keys, aliases,
+anchors, merge keys, explicit tags, non-string keys, lone surrogates, and non-finite
+numbers are rejected.
+A surrogate pair written as two `\u` escapes in a double-quoted scalar is the one
+character it encodes, as in JSON; only a surrogate that pairs with nothing is a lone
+surrogate.
+A plain `=` is the string `=`. A raw tab is accepted inside a quoted scalar, a
+block scalar’s content, or a comment, and as spacing between the brackets of a flow
+collection; in a plain scalar or as spacing in block context (which includes the rest of
+a block scalar’s header line and whatever follows a closing quote or a flow collection’s
+closing bracket) it is rejected as `yaml_parse_error`, because one engine refuses it
+there although YAML 1.2 allows it.
+Write such a value as a quoted scalar.
+
+Each later line of a flow collection or a quoted scalar that sits in block context must
+be indented with spaces past the block collection that holds it, as YAML 1.2 requires; a
+tab does not count toward that indentation.
+A blank line, and a comment line inside a flow collection, may have any indentation, and
+the closing bracket of the outermost collection may sit at the parent’s own column.
+A flow collection or quoted scalar at the root of a document, as in a JSON document, has
+no required indentation.
+One engine enforces this rule and the other does not, so a line that breaks it is
+rejected as `yaml_parse_error` in both.
+
+An implicit mapping key must end, with its `:`, on the line where it starts and at most
+1,024 characters after its first character (an opening quote counts), in a flow mapping
+as in a block mapping; otherwise it is rejected as `yaml_parse_error`. YAML 1.2 sets the
+limit only for block mappings and flow-sequence pairs, and one engine applies it to flow
+mappings too. An explicit key (`? key`) has no limit.
+For a block-mapping key or a flow-sequence pair the 1,024 is counted in UTF-16 code
+units, as one engine counts it, so 512 characters outside the Basic Multilingual Plane
+reach the limit; in a flow mapping it is counted in characters, as the other engine
+counts it there.
+
+A plain scalar is a number only in the YAML 1.2 core schema’s forms: a decimal integer
+with an optional sign, an unsigned `0o` octal or `0x` hexadecimal integer, a decimal
+fraction or exponent with an optional sign, and `.inf`, `-.inf`, or `.nan`. A plain
+scalar that one engine reads as a number and the other as a string is rejected as
+`yaml_unsupported_scalar`: a `_` separator (`1_000`, `1_0.5`), a `0b` binary integer, a
+signed `0x` or `0o` integer (`-0x10`), and an unsigned exponent after a fraction with no
+integer part (`.5e3`, which one engine reads as a string).
+Neither reading can be reproduced in the other engine, so neither is portable.
+Write the number in core form (`1000`, `0x10`, `0o17`, `500.0`) or quote it to keep the
+string. A quoted scalar is always a string; `1:30`, `yes`, and `on` are strings.
+
+Inside a flow collection, the engines split on indicator characters glued to a plain
+scalar, so these are rejected as `yaml_parse_error`: a `:` with no space after it before
+`,`, `]`, `}`, `[`, or `{` (`[a:, b]`, `{a:, b}`, `[a :, b]`; one engine keeps the colon
+in the scalar, the other reads a key), and after a quoted key in a flow sequence
+(`["a":1]`); a `?` glued to the entry after it (`[?a]`, read as an explicit key by one
+engine and as the scalar `?a` by the other); a bare `-`; and a plain scalar that starts
+with `:` as a flow mapping’s key or value.
+A `#` right after a closing quote or bracket (`"a"#c`, `[a]#c`) is rejected anywhere,
+and inside a flow collection so is a `#` right after an opening bracket, a `,`, or a `:`
+or `?` indicator (`[#c`, `[a,#c`, `{"a":#c`): one engine reads it as a comment and the
+other refuses it, as YAML 1.2 needs a blank before a comment.
+A space after the `:` or `?`, before the `#`, or quoting the scalar, gives one reading;
+`[a: b]`, `[a:b]`, `[:a]`, `[? a : b]`, and JSON’s `{"a":1}` are unaffected.
+For a glued `:` or `?` the message names the line and column of the indicator, in both
+runtimes.
+When both engines refuse a document for different reasons (an empty key such as
+`[:]` or `[?]` is a parse error to one and a non-string key to the other), the `kind`
+may differ.
+
+A mapping entry that has a value, a tag, or an anchor but no `:` before it, such as an
+explicit key followed by a less-indented `- x`, or `{"" !}`, is rejected as
+`yaml_parse_error`: one engine refuses it, and the other composes the entry with that
+content left out.
+
+The YAML text a reader parses ends with a line break: the frontmatter block’s last line
+keeps the break before the closing fence, and a pure-yaml document that ends without one
+is read as though it had one.
+A block scalar that ends the text therefore keeps its final line break under clip and
+keep chomping (`body: |` as the last key reads `"line\n"`, and `|-` reads `"line"`), as
+it does anywhere else; at the very end of the input one engine drops it and the other
+keeps it. A block scalar with an explicit indentation indicator (`|2`, `>1-`) may not
+hold a line of only spaces wider than the indentation the indicator sets (the parent
+block’s column plus the indicator); it is rejected as `yaml_parse_error`, because YAML
+1.2 makes the extra spaces content and one engine drops them.
+A line of only spaces no wider than that indentation is an empty line to both.
+Without an indicator, a block scalar whose leading lines of only spaces are indented
+differently from its first content line is refused by one engine and read by the other;
+each runtime reports what its engine does, so write an indentation indicator or trim
+those lines.
+
+A document may carry `%YAML 1.2` and `%TAG` directives.
+Any other `%YAML` version, and any other directive, is rejected as `yaml_parse_error`:
+under `%YAML 1.1` the engines’ YAML 1.1 schemas read some scalars differently (`08` is a
+string to one and a number to the other), one engine cannot read other versions, and one
+refuses a directive the other ignores.
+
+Raw characters that the host YAML engines read differently are rejected before parsing,
+as `yaml_parse_error`: every character outside YAML 1.2 `c-printable` (the C0 controls
+other than tab, line feed, and carriage return; DEL; the C1 controls; U+FFFE and
+U+FFFF), the line separators U+0085, U+2028, and U+2029, and a carriage return that does
+not begin a `\r\n` sequence.
+One engine rejects the first group and treats the second and third as YAML 1.1 line
+breaks, folding a next-line character or a lone carriage return in a flow scalar to a
+space and breaking a block scalar or a comment; the other reads all of them as content.
+Neither reading can be reproduced in the other engine, so neither is portable.
+The check covers the whole YAML text the reader is handed, the frontmatter block or the
+entire pure-yaml document, comments and keys included, and every compiled schema file
+the implementation reads, whether written as YAML or as JSON; the Markdown body of a
+frontmatter-md artifact is not checked.
+An implementation that writes YAML (a schema compiler, a repair pass) must therefore
+never emit one of these characters raw.
+Any of these characters may be written as an escape inside a double-quoted scalar
+(`"\f"`, `"\x7f"`, `"\N"`, `"\L"`, `"\P"`, `"\r"`, `"\u2028"`), which both engines
+decode identically. The diagnostic names the character, the escape to write it as, and
+its line and column; for a frontmatter-md artifact the line counts from the top of the
+file, as every line number in a frontmatter diagnostic does.
 
 Date- and timestamp-shaped plain scalars without an explicit tag decode as strings.
 A conforming implementation must preserve the decoded scalar content rather than
@@ -150,7 +259,10 @@ constraint. An explicit tag such as `!!timestamp` remains unsupported under the
 explicit-tag rule.
 
 One YAML document has at most 64 simultaneously open collections, including the root.
-Exceeding that depth is `yaml_limit`, as is a host YAML parser stack overflow.
+Exceeding that depth is `yaml_limit`, as is a host YAML parser stack overflow; an empty
+collection counts, and the limit is reported before a duplicate key, a number form, a
+non-string key, an alias, or a parse error later in the text, and after a parse error, a
+tag, a merge key, or another rule of this section that applies earlier in the text.
 The depth rule is a portability rule rather than a resource ceiling: left to the host,
 the two runtimes disagree by an order of magnitude about how deep a document may be, so
 a fixed bound is what makes depth mean the same thing in both.
@@ -170,7 +282,11 @@ root decoded by a host YAML library directly may validate in one implementation 
 rejected by another reading the same file.
 
 For `frontmatter-md`, the opening and closing delimiters begin at column one and contain
-`---` plus optional trailing whitespace.
+`---` plus optional trailing spaces or tabs (and the `\r` of a CRLF line ending).
+No other trailing character is trimmed: the hosts’ default whitespace sets differ (one
+strips U+0085, the other U+FEFF), and a delimiter line is outside the YAML text the
+preflight checks, so a wider trim would let one such character open a fence in one
+implementation and not the other.
 An indented `---` is YAML content, so a block scalar may contain it without ending
 frontmatter.
 
@@ -980,12 +1096,26 @@ Exit classes: `0` valid, `1` invalid (or, under `--check`, something would chang
 the command could not run — bad options, a path that does not exist, or an artifact the
 reading posture refused.
 
-Exactly two corrections are in scope, and both restore what a serializer would have
+Exactly three corrections are in scope, and all restore what a serializer would have
 done:
 
 - **Quoting a plain scalar** whose text YAML would otherwise read as structure, so a
   document that does not parse becomes one that does.
   This needs no schema and runs first.
+- **Escaping a raw character the portable rule rejects** (a next line, line or paragraph
+  separator, or a control character other than a carriage return) inside a single-line
+  scalar value, plain or quoted: the value is rewritten as a double-quoted scalar
+  carrying the YAML escape (`"\N"`, `"\L"`, `"\P"`, `"\f"`, `"\xHH"`), so its decoded
+  content is exactly what YAML 1.2 gives the raw text, and the record names the
+  character and its escape.
+  The character is never replaced by a guess at what was meant: a mis-decoded ellipsis
+  stays a U+0085, now visible.
+  Only a value that is a scalar is rewritten: a flow collection, a comment, an anchor,
+  an alias, or a tag is not, and a rejected character in a key, a comment, or a block
+  scalar has no such rewrite either; each remains a parse error.
+  A lone carriage return is a line break, so the text after it may be another line of
+  the document; it is never escaped as content and remains a parse error that says to
+  end lines with `\n`. This also needs no schema and runs with the quoting pass.
 - **Retyping a scalar as a string** where the contract declares `type: string` and the
   value arrived as another scalar.
   The replacement text is the scalar as written, so a notation the author chose (`1.10`,
@@ -997,6 +1127,9 @@ one is not renamed, an explicit null is not stringified, and a value a union alr
 admits is not rewritten.
 A parse failure that quoting cannot fix — an alias, a merge key, an explicit tag — keeps
 its original error code, because each is a choice the author made rather than a slip.
+
+The repair records carry `kind: repair_applied` with a `code` naming the correction:
+`yaml_quoted_scalar`, `yaml_escaped_character`, or `scalar_conformed`.
 
 A conforming implementation must leave an artifact that needs no repair byte-identical,
 must produce the same bytes when repair is applied twice, and must never write a value

@@ -25,9 +25,10 @@ import {
   isSchemaStatus,
   metadataToOutput,
   parseSchemaMetadata,
+  pyTypeName,
   type SchemaProfile,
 } from "./models.js";
-import { opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
+import { documentLabel, opensFrontmatterFence, PortableInputError, readUtf8 } from "./portable.js";
 import { type RepairResult, repairArtifact } from "./repair.js";
 import { repairAndValidateArtifact } from "./repairValidate.js";
 import { stableStringify } from "./settings.js";
@@ -37,6 +38,7 @@ import {
   type ParsedDocument,
   parseFrontmatterText,
   parseYamlText,
+  portableArtifactKind,
   readFrontmatterDoc,
   readYamlDoc,
   unreadableArtifactResult,
@@ -755,8 +757,8 @@ async function runRepair(path: string, opts: RepairOptions): Promise<number> {
         stableStringify(
           unreadableArtifactResult(path, {
             profile,
-            kind: repairFailureKind(repaired, parseError),
-            message: repairFailureMessage(repaired, parseError, path, profile),
+            kind: repairFailureKind(repaired, parseError, profile),
+            message: repairFailureMessage(repaired, parseError, path, profile, root),
           }),
         ),
       );
@@ -785,11 +787,30 @@ async function runRepair(path: string, opts: RepairOptions): Promise<number> {
  * diagnosis, and quoting could never have fixed it. Otherwise the reader's code names the
  * failure, which is the ordinary case: repair reports success for a document with no
  * frontmatter region to rewrite, leaving the reader to say why it cannot be opened.
+ *
+ * Either code goes through the same code-to-kind rule validation applies, so a non-UTF-8
+ * file is `artifact_invalid_utf8` at `input_error` here as it is under a contract.
+ *
+ * When neither failed, the document read and simply holds no mapping to validate: a
+ * fenceless or empty-block frontmatter-md document, or a pure-yaml root that is a list or
+ * a scalar. `validate` reports that condition as `no_frontmatter` or `yaml_not_mapping` by
+ * profile, and so does this, or the identical message would carry one `kind` with
+ * `--contract` and another without it.
  */
-function repairFailureKind(repaired: RepairResult, parseError: Error | null): string {
-  if (repaired.errorCode) return repaired.errorCode;
-  if (parseError instanceof PortableInputError) return parseError.code;
-  return "yaml_parse_error";
+function repairFailureKind(
+  repaired: RepairResult,
+  parseError: Error | null,
+  profile: SchemaProfile,
+): string {
+  if (repaired.errorCode) return portableArtifactKind(repaired.errorCode);
+  if (parseError !== null) {
+    // The frontmatter reader's own failures (an unterminated fence, a non-mapping block)
+    // arrive as `YamlParseError`, which is the `yaml_parse_error` kind by construction.
+    return parseError instanceof PortableInputError
+      ? portableArtifactKind(parseError.code)
+      : "yaml_parse_error";
+  }
+  return profile === "pure-yaml" ? "yaml_not_mapping" : "no_frontmatter";
 }
 
 function repairFailureMessage(
@@ -797,12 +818,17 @@ function repairFailureMessage(
   parseError: Error | null,
   path: string,
   profile: SchemaProfile,
+  root: unknown,
 ): string {
-  if (repaired.errorMessage) return repaired.errorMessage;
+  // The reader's message comes first because it names the document; repair's own carries
+  // the same engine text without it, and is what remains when nothing could be parsed at
+  // all (an unreadable or non-UTF-8 file). When the document read and holds no mapping,
+  // the message is the one `validate` gives the same condition, word for word.
   if (parseError !== null) return parseError.message;
+  if (repaired.errorMessage) return repaired.errorMessage;
   return profile === "pure-yaml"
-    ? `the document root is not a YAML mapping: \`${path}\``
-    : `the document has no YAML frontmatter: \`${path}\``;
+    ? `YAML root is ${pyTypeName(root)}, expected mapping`
+    : `${documentLabel(path)}: the document has no YAML frontmatter`;
 }
 
 /**
@@ -852,7 +878,7 @@ function parseAfterRepair(
   if (text === null) return { document: null, parseError: null };
   try {
     const document =
-      profile === "pure-yaml" ? parseYamlText(text) : parseFrontmatterText(text, source);
+      profile === "pure-yaml" ? parseYamlText(text, source) : parseFrontmatterText(text, source);
     return { document, parseError: null };
   } catch (error) {
     // Only the failures the readers themselves throw mean "still unreadable after

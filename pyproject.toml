@@ -97,7 +97,6 @@ packages = ["packages/python/src/softschema"]
 [tool.hatch.build.targets.sdist]
 include = [
     "README.md",
-    "AGENTS.md",
     "LICENSE",
     "docs",
     "examples",

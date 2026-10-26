@@ -850,12 +850,44 @@ def test_unparsable_frontmatter_names_the_parse_failure(
     assert "flow sequence" in record["message"] or "expected" in record["message"]
 
 
+@pytest.mark.parametrize(
+    ("name", "text", "kind"),
+    [
+        ("fenceless.md", "# Title\n\nJust a body.\n", "no_frontmatter"),
+        ("empty-block.md", "---\n---\n# Title\n", "no_frontmatter"),
+        ("root-list.yaml", "- not\n- a mapping\n", "yaml_not_mapping"),
+        ("root-scalar.yaml", "just a string\n", "yaml_not_mapping"),
+    ],
+)
+def test_contractless_repair_reports_a_mapping_less_document_like_validate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], name: str, text: str, kind: str
+) -> None:
+    """One message, one ``kind``: ``repair`` without ``--contract`` agrees with ``validate``.
+
+    Nothing failed on the way in — the document read and simply holds no mapping — so the
+    fallback used to say ``yaml_parse_error`` where the same message under ``--contract``
+    carried ``no_frontmatter`` or ``yaml_not_mapping``. ``kind`` is the matching key, so
+    the two commands have to agree on it.
+    """
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+
+    assert softschema_main(["repair", str(path), "--check"]) == 1
+    repaired = json.loads(capsys.readouterr().out)["structural"]["errors"][0]
+    assert softschema_main(["validate", str(path), "--contract", "test.detect:Doc/v1"]) == 1
+    validated = json.loads(capsys.readouterr().out)["structural"]["errors"][0]
+
+    assert repaired["kind"] == kind
+    assert validated["kind"] == kind
+    assert repaired["message"] == validated["message"]
+
+
 # --- The `repair` command --------------------------------------------------------------
 #
 # `repair` is its own command because it answers a different question from `validate` and
 # has the opposite posture toward an unreadable document. `validate` is the consuming-side
 # gate and refuses one; `repair` is the producing-side loop and reports one. See
-# docs/project/specs/active/plan-2026-08-30-repair-command.md.
+# docs/project/specs/done/plan-2026-08-30-repair-command.md.
 
 _NEEDS_REPAIR = dedent(
     """
@@ -976,6 +1008,31 @@ def test_repair_reports_an_unreadable_artifact_with_or_without_a_contract(
         assert record["kind"] == "yaml_parse_error", argv
         assert "Delimiter `---` for end of frontmatter not found" in record["message"], argv
         assert "--contract" not in record["message"], argv
+
+
+def test_repair_reports_a_non_utf8_artifact_as_the_same_input_error_validation_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `kind` is the documented matching key, and `unreadable_artifact_result` promises the
+    # shape validation uses for the identical condition. Without a contract, repair's raw
+    # `invalid_utf8` code reached the record unmapped, so the same file was
+    # `artifact_invalid_utf8` at `input_error` under `--contract` and `invalid_utf8` at
+    # `invalid` without it.
+    path = tmp_path / "latin1.md"
+    path.write_bytes(b"---\ntitle: na\xefve\n---\nBody.\n")
+    for argv in (
+        ["repair", str(path), "--check"],
+        ["repair", str(path), "--check", "--contract", "test.detect:Doc/v1"],
+    ):
+        assert softschema_main(argv) == 1, argv
+        captured = capsys.readouterr()
+        assert captured.err == "", argv
+        result = json.loads(captured.out)
+        assert result["outcome"] == "input_error", argv
+        record = result["structural"]["errors"][0]
+        assert record["kind"] == "artifact_invalid_utf8", argv
+        assert record["message"] == f"`{path}`: input is not valid UTF-8", argv
+    assert path.read_bytes() == b"---\ntitle: na\xefve\n---\nBody.\n"
 
 
 def test_repair_leaves_an_unreadable_artifact_untouched(tmp_path: Path) -> None:

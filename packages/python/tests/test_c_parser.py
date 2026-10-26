@@ -315,7 +315,17 @@ def _repo_files(*suffixes: str) -> list[Path]:
     except (OSError, subprocess.CalledProcessError):  # pragma: no cover
         pytest.skip("the repo corpus needs a git checkout")
     paths = [REPO_ROOT / name for name in listed.decode("utf-8").split("\0") if name]
-    return [path for path in paths if path.is_file()]
+    # A fixture that is deliberately not UTF-8 (the golden `repair-non-utf8.md`) is not a
+    # document either reader can be handed; the readers compare only decodable texts.
+    return [path for path in paths if path.is_file() and _is_utf8(path)]
+
+
+def _is_utf8(path: Path) -> bool:
+    try:
+        path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
 
 
 def _strings(value: Any) -> Iterator[str]:
@@ -715,6 +725,42 @@ def test_the_guard_cost_grows_linearly_with_the_input(shape: Callable[[int], str
     assert large < 1000 * max(small, 0.0001), (small, large)
 
 
+READER_SHAPES: dict[str, Callable[[int], str]] = {
+    "flow_lists_without_a_hash": lambda n: "".join(f"k{i}: [a, 'b', {{c: d}}]\n" for i in range(n)),
+    "quoted_scalars_without_a_hash": lambda n: "".join(f"k{i}: 'v'\n" for i in range(n)),
+    "flow_lists_with_comments": lambda n: "".join(f"k{i}: [a, 'b'] # c\n" for i in range(n)),
+}
+"""Documents whose events each tested the whole text for a ``#`` before the test was hoisted."""
+
+
+class _ContainsCountingText(str):
+    """A text that counts the substring tests made on it; a slice of it is a plain ``str``."""
+
+    tests = 0
+
+    def __contains__(self, key: str) -> bool:  # pyright: ignore[reportImplicitOverride]
+        _ContainsCountingText.tests += 1
+        return super().__contains__(key)
+
+
+@pytest.mark.parametrize("shape", READER_SHAPES.values(), ids=READER_SHAPES.keys())
+def test_the_reader_tests_the_whole_text_a_fixed_number_of_times(
+    shape: Callable[[int], str],
+) -> None:
+    """A hundred times the events makes no more substring tests of the whole document.
+
+    A test per event made the read quadratic in a document with quoted scalars or flow
+    collections and no ``#``, where each test scans to the end: 5 MB took 73 s instead of
+    13 s. Counting the tests pins it without a clock.
+    """
+    counts = []
+    for lines in (10, 1_000):
+        _ContainsCountingText.tests = 0
+        parse_yaml(_ContainsCountingText(shape(lines)))
+        counts.append(_ContainsCountingText.tests)
+    assert counts[0] == counts[1], counts
+
+
 def _time_guard(text: str, repeats: int = 5) -> float:
     """The best of ``repeats`` timings of the guard on ``text``, after one warm-up run."""
     _portable._needs_pure_parser(text)
@@ -746,13 +792,9 @@ ROUTED_TO_PURE = {
     "yaml_directive": "%YAML 1.1\n---\na: yes\n",
     "tag_directive": "%TAG !e! tag:example.com,2000:\n---\na: 1\n",
     "directive_on_later_line": "# c\n%YAML 1.2\n---\na: 1\n",
-    "directive_after_cr": "# c\r%YAML 1.2\r---\ra: 1\r",
     "tab": "a: 1\t\n",
     "tab_in_quoted": 'a: "x\ty"\n',
     "bom": "a: 1\n\ufeffb: 2\n",
-    "nel": "a: x\x85y\n",
-    "line_separator": "a: x\u2028y\n",
-    "paragraph_separator": "a: x\u2029y\n",
     "block_header_comment": "a: |#c\n  x\n",
     "block_header_space_line": "a: |\n \n  x\n",
     "block_header_space_line_after_comment": "a: >- # c\r\n \r\n  x\r\n",
@@ -760,7 +802,6 @@ ROUTED_TO_PURE = {
     "root_block_scalar_after_marker_and_comment": "# c\n--- # d\n>\n  x\n",
     "flow_quoted_key_adjacent_colon": '["a":1]',
     "flow_quoted_key_spaced_colon": "['k'  :v]",
-    "quoted_key_colon_at_end": '"a":',
     "explicit_key_colon_next_line": '[? "a"\n:x]',
     "explicit_plain_key_colon_after_comment": "[? a #c\n:x]",
     "spaced_colon_in_block_value": "a: x :y\n",
@@ -778,6 +819,71 @@ def test_disagreement_shapes_skip_the_c_parser(text: str, monkeypatch: pytest.Mo
     assert calls == [True]
 
 
+REJECTED_BEFORE_ANY_READER = {
+    "nel_in_yaml": "a: x\x85y\n",
+    "line_separator_in_yaml": "a: x\u2028y\n",
+    "paragraph_separator_in_yaml": "a: x\u2029y\n",
+    "nel_in_json": '{"a": "x\x85y"}',
+    "delete_in_json": '{"a": "x\x7fy"}',
+    "c1_control_in_yaml": "a: x\x9fy\n",
+    "lone_cr_between_keys": "a: 1\rb: 2\r",
+    "directive_after_cr": "# c\r%YAML 1.2\r---\ra: 1\r",
+    "raw_lone_surrogate": "a: \ud800\n",
+}
+"""Texts the portable preflight refuses before ``parse_yaml`` chooses a reader.
+
+Each holds a raw character the two runtimes read differently (a NEL, LS or PS, a C0/C1
+control or DEL, a lone carriage return, a lone surrogate). The JSON fast path would keep
+such a character as content and ruamel would fold or refuse it, so the preflight runs
+first and no reader, ``json``, libyaml or pure ruamel, ever sees the text.
+"""
+
+
+@pytest.mark.parametrize(
+    "text", REJECTED_BEFORE_ANY_READER.values(), ids=REJECTED_BEFORE_ANY_READER.keys()
+)
+def test_the_portable_preflight_precedes_every_reader(
+    text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One ``yaml_parse_error`` with one message, whichever reader would have run.
+
+    C-first (when the extension is installed), forced pure, the reference interpreter
+    without the extension, and the JSON path all report the preflight's verdict, and no
+    ``YAML`` handle is constructed on the way.
+    """
+    monkeypatch.delenv(PURE_ENV, raising=False)
+    calls = _record_parsers(monkeypatch)
+    c_first = _outcome(text)
+    monkeypatch.setenv(PURE_ENV, "1")
+    forced = _outcome(text)
+    assert calls == [], calls
+    assert c_first[0] == "error", c_first
+    assert c_first[1] == "yaml_parse_error", c_first
+    assert "unacceptable character #x" in str(c_first[2])
+    assert _same(c_first, forced), (c_first, forced)
+    assert _same(c_first, _in_reference_process([text])[0])
+    assert _portable._parse_json_subset(text) is _portable._NOT_JSON
+
+
+def test_the_repair_escape_rule_applies_in_every_parser_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The escape rule is driven by the preflight, so it does not depend on the reader."""
+    from softschema.repair import repair_yaml_text
+
+    for mode in (None, "1"):
+        if mode is None:
+            monkeypatch.delenv(PURE_ENV, raising=False)
+        else:
+            monkeypatch.setenv(PURE_ENV, mode)
+        result = repair_yaml_text("a: x\x85y\nb: [1, 2]\n")
+        assert result.ok, result
+        assert result.changed, result
+        assert result.text == 'a: "x\\Ny"\nb: [1, 2]\n'
+        assert [record["code"] for record in result.records] == ["yaml_escaped_character"]
+        assert parse_yaml(result.text or "") == {"a": "x\x85y", "b": [1, 2]}
+
+
 C_FIRST = {
     "block_mapping": "a: 1\nb:\n  - x\n  - 'y'\nc: {d: [1, 2]}\n",
     "block_scalar": "a: |\n  line\n\n  more\nb: >-\n  folded\n",
@@ -788,6 +894,9 @@ C_FIRST = {
     "ellipsis_and_times": "a: and so on...\nt: 12:30\nu: http://example.com/x\n",
     "banner_comment": "#" * 40 + "\n# Movie page record\n" + "#" * 40 + "\ntitle: x\n",
     "comment_with_block_indicator": "# see | and > below\na: |\n  x\n",
+    # The reader supplies the text's last line break, so this colon is followed by one,
+    # which both parsers read as a value indicator.
+    "quoted_key_colon_at_end_of_text": '"a":',
 }
 
 
@@ -809,7 +918,6 @@ C_REJECTS = {
     "error_code_on_escaped_surrogate": 'a: "\\ud800"\n',
     "error_message_on_duplicate_key": "a: 1\na: 2\n",
     "error_message_on_bad_indent": "a:\n  b: 1\n c: 2\n",
-    "encoding_error_on_raw_surrogate": "a: \ud800\n",
     "preflight_error_on_alias": "a: &x 1\nb: *x\n",
     "value_check_error": "a: 9007199254740992\n",
 }

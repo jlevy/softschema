@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse as yamlParse } from "yaml";
+import { parseDocument, parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
@@ -20,7 +20,13 @@ import {
   parseSchemaMetadata,
   SchemaMetadataError,
 } from "./models.js";
-import { validateArtifact } from "./validate.js";
+import {
+  documentLabel,
+  findNonPortableCharacter,
+  PortableInputError,
+  parsePortableYaml,
+} from "./portable.js";
+import { validateArtifact, validateStructural } from "./validate.js";
 
 const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
 
@@ -1043,19 +1049,70 @@ describe("compile: write mode + build", () => {
       readFileSync(out, "utf8").replace("additionalProperties: false", "additionalProperties: 0"),
     );
     expect(compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true }).drift).toBe(true);
+    // A committed file the portable reader refuses is drift, not a usage error: `--check`
+    // asks whether the committed output still stands.
     writeFileSync(out, Buffer.from([0xff]));
-    expect(() => compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true })).toThrow(
-      "UTF-8",
+    const unreadable = compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true });
+    expect(unreadable.drift).toBe(true);
+    // The file is named once, by the reader, whichever step refused it.
+    expect(unreadable.driftDiff).toBe(
+      `committed compiled schema is not portable YAML: ${documentLabel(out)}: input is not valid UTF-8`,
     );
+    writeFileSync(out, "description: raw\u0085next\ntype: object\n");
+    const raw = compileSchema(Sample, out, { contractId: "x:S/v1", checkOnly: true });
+    expect(raw.drift).toBe(true);
+    expect(raw.driftDiff).toContain("#x0085");
+    expect(raw.driftDiff?.split(out).length).toBe(2);
+  });
+  test("escapes every character the portable reader rejects", () => {
+    // The `yaml` package writes U+0085, U+2028 and U+2029 raw in a plain or double-quoted
+    // scalar, and the portable preflight then rejects the schema `compile` just wrote. The
+    // writer forces such strings (keys included) into double-quoted style and writes the
+    // escapes both engines decode.
+    const Separator = z.strictObject({
+      kind: z
+        .enum(["next\u0085line", "line\u2028separator"])
+        .default("next\u0085line")
+        .describe("Carries a next line\u0085a line\u2028and a paragraph\u2029separator."),
+      "odd\u0085key": z.string().default("c1\x9fcontrol\x7fdel"),
+    });
+    const out = join(mkdtempSync(join(tmpdir(), "softschema-sep-")), "separator.schema.yaml");
+    const result = compileSchema(Separator, out, { contractId: "x:Separator/v1" });
+    const text = readFileSync(out, "utf8");
+    expect(findNonPortableCharacter(text)).toBeNull();
+    expect(text).toContain('"next\\Nline"');
+    expect(text).toContain('"line\\Lseparator"');
+    expect(text).toContain("\\Pseparator.");
+    expect(text).toContain('"odd\\Nkey"');
+    expect(text).toContain('"c1\\x9fcontrol\\x7fdel"');
+
+    const schema = parsePortableYaml(text) as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    expect(schema.properties?.kind).toMatchObject({
+      default: "next\u0085line",
+      enum: ["next\u0085line", "line\u2028separator"],
+      description: "Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
+    });
+    expect(schema.properties?.["odd\u0085key"]?.default).toBe("c1\x9fcontrol\x7fdel");
+    expect(
+      compileSchema(Separator, out, { contractId: "x:Separator/v1", checkOnly: true }).drift,
+    ).toBe(false);
+    expect(result.schemaSha256).toBe(
+      (schema["x-softschema"] as Record<string, unknown>).schema_sha256 as string,
+    );
+    expect(validateStructural({ kind: "line\u2028separator" }, schema).ok).toBe(true);
   });
 });
 
 describe("validate: frontmatter edge cases (ss-3iz5)", () => {
   test("empty frontmatter (---\\n---) returns no_frontmatter, matching Python fmf_read", () => {
-    const r = validateArtifact(tmp("d.md", "---\n---\nbody\n"), contract());
+    const path = tmp("d.md", "---\n---\nbody\n");
+    const r = validateArtifact(path, contract());
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("no_frontmatter");
-    expect(errors[0]?.message).toContain("no frontmatter in ");
+    expect(errors[0]?.message).toBe(`\`${path}\`: the document has no YAML frontmatter`);
   });
   test("whitespace-only frontmatter returns yaml_parse_error", () => {
     const path = tmp("d.md", "---\n   \n---\nbody\n");
@@ -1063,7 +1120,7 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
-      `Expected YAML metadata to be a dict, got NoneType: \`${path}\``,
+      `\`${path}\`: Expected YAML metadata to be a dict, got NoneType`,
     );
   });
   test("unterminated fence returns yaml_parse_error", () => {
@@ -1072,7 +1129,7 @@ describe("validate: frontmatter edge cases (ss-3iz5)", () => {
     const errors = (r.structural as { errors: { kind: string; message: string }[] }).errors;
     expect(errors[0]?.kind).toBe("yaml_parse_error");
     expect(errors[0]?.message).toBe(
-      `Delimiter \`---\` for end of frontmatter not found: \`${path}\``,
+      `\`${path}\`: Delimiter \`---\` for end of frontmatter not found`,
     );
   });
 });
@@ -1138,5 +1195,87 @@ describe("validate: artifact error kinds + advisory warning", () => {
     expect((sm.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "schema_missing",
     );
+  });
+});
+
+describe("portable reader: cost and duplicate keys", () => {
+  /** The best of `repeats` timings, in milliseconds, of reading `text`, after a warm-up. */
+  const timeRead = (text: string, repeats = 3): number => {
+    const read = (): void => {
+      try {
+        parsePortableYaml(text);
+      } catch {
+        // Only the time matters here.
+      }
+    };
+    read();
+    let best = Number.POSITIVE_INFINITY;
+    for (let run = 0; run < repeats; run += 1) {
+      const start = performance.now();
+      read();
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+
+  // Ten times the input should cost about ten times the time; a quadratic term costs a
+  // hundred. The bound sits between the two, and there is no absolute threshold, only the
+  // within-run ratio, so a slow runner does not decide it.
+  const grows = (shape: (count: number) => string, small: number): void => {
+    const smallTime = timeRead(shape(small));
+    const largeTime = timeRead(shape(small * 10), 1);
+    expect(largeTime).toBeLessThan(40 * Math.max(smallTime, 1));
+  };
+
+  test("explicit keys after a comment in a flow mapping cost linear time", () => {
+    // Each key's `?` is followed by a comment, so the key's `:` is on a later line; the
+    // reader looks every such key up in one parse of the document, not one parse each.
+    const shape = (count: number): string => {
+      const keys = Array.from({ length: count }, (_, index) => `? # c\n  k${index}\n  : ${index}`);
+      return `value: {${keys.join(", ")}}\n`;
+    };
+    expect(parsePortableYaml(shape(2))).toEqual({ value: { k0: 0, k1: 1 } });
+    grows(shape, 500);
+  });
+
+  test("a wide mapping costs linear time", () => {
+    const shape = (count: number): string =>
+      Array.from({ length: count }, (_, index) => `k${index}: ${index}\n`).join("");
+    grows(shape, 2_000);
+  });
+
+  test("the earliest of several entries with dropped content is the one reported", () => {
+    // The CST walk visits sibling entries in reverse; the report names the first one.
+    expect(() => parsePortableYaml("a:\n- ? k\n  - x\n- ? j\n  - y\n")).toThrow(
+      /^content at line 3, column 3 belongs to no value/u,
+    );
+  });
+
+  test("a duplicate key reads as the yaml package reports it", () => {
+    for (const text of [
+      "a: 1\nb: 2\na: 3\n",
+      "x:\n  k: 1\n  k: 2\n",
+      "value: {a: 1, b: 2, a: 3}\n",
+      "value: [{k: 1, k: 2}]\n",
+      "a: 1\na: [\n",
+      "value: {a: 1, a: [}\n",
+      `value: "${"x".repeat(100)}"\nvalue: 2\n`,
+      // A key far along a long line, where the excerpt is trimmed around the column.
+      `value: {"${"x".repeat(70)}": 1, "${"x".repeat(70)}": 2, "tail": "${"y".repeat(40)}"}\n`,
+    ]) {
+      const expected = parseDocument(text).errors[0];
+      let actual: unknown;
+      try {
+        parsePortableYaml(text);
+      } catch (error) {
+        actual = error;
+      }
+      expect(actual).toBeInstanceOf(PortableInputError);
+      const error = actual as PortableInputError;
+      expect(error.code).toBe(
+        expected?.code === "DUPLICATE_KEY" ? "yaml_duplicate_key" : "yaml_parse_error",
+      );
+      expect(error.message).toBe(expected?.message as string);
+    }
   });
 });

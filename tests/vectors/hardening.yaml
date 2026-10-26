@@ -19,6 +19,66 @@ frontmatter:
       ---
       body
     expected: { notes: "first line\n---\nmore text\n", count: 3 }
+  # The block is handed to the parser with its last line's break, so a block scalar that is
+  # the last entry reads the same in both runtimes: clip and keep end with "\n", strip not.
+  - id: literal_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  title: Post\n  body: |\n    line one\n    line two\n---\nbody\n"
+    expected: { title: Post, body: "line one\nline two\n" }
+  - id: folded_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  summary: >\n    folded\n    text\n---\nbody\n"
+    expected: { summary: "folded text\n" }
+  - id: keep_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  body: |+\n    text\n---\nbody\n"
+    expected: { body: "text\n" }
+  - id: strip_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  body: |-\n    text\n---\nbody\n"
+    expected: { body: "text" }
+  # U+0085, U+2028 and U+2029 may appear only as double-quoted escapes (`\N`, `\L`, `\P`),
+  # which both engines decode to the same characters; raw, the portable preflight rejects
+  # them (see `portable_values`). The fence scan must not split on them either: both readers
+  # split on "\n" alone. Python's `str.splitlines()` would cut a raw one out of its line and
+  # rejoin the block with real newlines, hiding it from the preflight and folding the scalar
+  # into a multi-line value where TypeScript rejects the file.
+  - id: escaped_line_separators_in_scalar
+    text: "---\nmovie:\n  notes: \"line\\Lseparator\\Pparagraph\\Nnext\"\n  count: 3\n---\nbody\n"
+    expected: { notes: "line\u2028separator\u2029paragraph\u0085next", count: 3 }
+  # A fence is `---` plus optional trailing spaces or tabs (and a CRLF document's `\r`).
+  - id: fence_with_trailing_blanks
+    text: "--- \t\nmovie:\n  title: Spirited Away\n  count: 3\n---\t \nbody\n"
+    expected: { title: Spirited Away, count: 3 }
+  - id: crlf_document
+    text: "---\r\nmovie:\r\n  title: Spirited Away\r\n  count: 3\r\n---\r\nbody\r\n"
+    expected: { title: Spirited Away, count: 3 }
+
+# Frontmatter-md documents the fence scan must refuse identically. Only space and tab are
+# trimmed before a line is compared with `---`: the hosts' default trims disagree
+# (`str.rstrip()` strips U+0085 and U+001C-U+001F, `trimEnd()` strips U+FEFF), and a fence
+# line is never seen by the preflight, so with the default trims a `---` followed by U+0085
+# opened a fence in one runtime and no fence in the other. Each case names the record `kind`
+# both runtimes report under a frontmatter-md contract.
+fence_scan:
+  - id: opening_fence_next_line
+    text: "---\u0085\nmovie:\n  title: x\n---\nbody\n"
+    code: no_frontmatter
+  - id: opening_fence_bom
+    text: "---\ufeff\nmovie:\n  title: x\n---\nbody\n"
+    code: no_frontmatter
+  - id: opening_fence_file_separator
+    text: "---\u001c\nmovie:\n  title: x\n---\nbody\n"
+    code: no_frontmatter
+  # The line is not a fence, so the block runs to the end of the file.
+  - id: closing_fence_next_line
+    text: "---\nmovie:\n  title: x\n---\u0085\nbody\n"
+    code: yaml_parse_error
+  # The line is not a fence, so it is part of the block, where the preflight rejects it.
+  - id: closing_fence_next_line_then_real_fence
+    text: "---\nmovie:\n  title: x\n---\u0085\nextra: 1\n---\nbody\n"
+    code: yaml_parse_error
+  # A block holding only a rejected character is not empty: `strip()` would drop a NEL and
+  # call the block empty (no_frontmatter) where `trim()` keeps it and the preflight rejects it.
+  - id: block_of_one_next_line
+    text: "---\n\u0085\n---\nbody\n"
+    code: yaml_parse_error
 
 portable_values:
   - id: plain_values
@@ -49,14 +109,211 @@ portable_values:
     valid: false
     code: yaml_merge_key
   - { id: custom_tag, text: "value: !thing hello", valid: false, code: yaml_custom_tag }
+  # A lone carriage return is a YAML line break for ruamel and content for the `yaml`
+  # package, so a CR-only document is two keys in one runtime and a parse error in the
+  # other, and a CR inside a flow scalar is a space in one and a character in the other.
+  # Raw, it is rejected like U+0085; `\r\n` passes, and the escape `"\r"` decodes identically.
+  - { id: lone_cr_between_keys, text: "value: 1\rother: 2", valid: false, code: yaml_parse_error }
+  - { id: lone_cr_in_flow_scalar, text: "value: \"a\rb\"", valid: false, code: yaml_parse_error }
+  - { id: lone_cr_in_block_scalar, text: "value: |\n  a\rb\n", valid: false, code: yaml_parse_error }
+  - { id: crlf_line_endings, text: "value: 1\r\nother: 2\r\n", valid: true, expected: { value: 1, other: 2 } }
+  - { id: escaped_cr, text: "value: \"a\\rb\"", valid: true, expected: { value: "a\rb" } }
+  # A raw tab is read by both engines inside a quoted scalar, a block scalar, a comment, and
+  # as spacing inside a flow collection. In a plain scalar or as block-context spacing one
+  # engine refuses it (YAML 1.2 allows it), so both reject it there.
+  - { id: tab_in_plain_scalar, text: "value: a\tb", valid: false, code: yaml_parse_error }
+  - { id: tab_after_plain_scalar, text: "value: a\t", valid: false, code: yaml_parse_error }
+  - { id: tab_after_colon, text: "value:\ta", valid: false, code: yaml_parse_error }
+  - { id: tab_in_key, text: "va\tlue: a", valid: false, code: yaml_parse_error }
+  - { id: tab_on_blank_line, text: "value: a\n\t\nother: b", valid: false, code: yaml_parse_error }
+  - { id: tab_in_double_quoted, text: "value: \"a\tb\"", valid: true, expected: { value: "a\tb" } }
+  - { id: tab_in_single_quoted, text: "value: 'a\tb'", valid: true, expected: { value: "a\tb" } }
+  - { id: tab_in_block_scalar, text: "value: |\n  a\tb\n", valid: true, expected: { value: "a\tb\n" } }
+  - { id: tab_in_comment, text: "value: a # c\td", valid: true, expected: { value: a } }
+  - { id: tab_as_flow_spacing, text: "value: [a,\tb]", valid: true, expected: { value: [a, b] } }
+  # A pure-yaml document whose last line has no break is read as if it had one, so a block
+  # scalar at the end of the input reads the same in both runtimes.
+  - { id: literal_block_scalar_at_end_of_input, text: "value: |\n  line one\n  line two", valid: true, expected: { value: "line one\nline two\n" } }
+  - { id: folded_block_scalar_at_end_of_input, text: "value: >\n  folded\n  text", valid: true, expected: { value: "folded text\n" } }
+  - { id: keep_block_scalar_at_end_of_input, text: "value: |+\n  text", valid: true, expected: { value: "text\n" } }
+  - { id: strip_block_scalar_at_end_of_input, text: "value: |-\n  text", valid: true, expected: { value: "text" } }
+  # A line of only spaces wider than an explicit block scalar indentation is content to one
+  # engine (as YAML 1.2 reads it) and an empty line to the other, so it is refused; one no
+  # wider than the indentation is an empty line to both.
+  - { id: block_scalar_space_line_wider_than_indicator, text: "value: >1\n    \n  \n", valid: false, code: yaml_parse_error }
+  - { id: block_scalar_space_line_inside_explicit_indent, text: "value: |2\n  a\n     \n  b\n", valid: false, code: yaml_parse_error }
+  - { id: block_scalar_space_line_at_explicit_indent, text: "value: |2\n  a\n  \n  b\n", valid: true, expected: { value: "a\n\nb\n" } }
+  # Block context resumes after a block scalar header, a closing quote, and a flow
+  # collection's closing bracket, so a tab there is block-context spacing; before the
+  # bracket it is still flow spacing, and inside the header's comment it is comment text.
+  - { id: tab_after_block_scalar_header, text: "value: |\t\n  a\n", valid: false, code: yaml_parse_error }
+  - { id: tab_between_block_scalar_header_and_comment, text: "value: |\t# c\n  a\n", valid: false, code: yaml_parse_error }
+  - { id: tab_in_block_scalar_header_comment, text: "value: |  # c\td\n  a\n", valid: true, expected: { value: "a\n" } }
+  - { id: tab_after_flow_collection, text: "value: [a, b]\t", valid: false, code: yaml_parse_error }
+  - { id: tab_after_flow_collection_before_comment, text: "value: {a: 1}\t# c", valid: false, code: yaml_parse_error }
+  - { id: tab_after_root_flow_collection, text: "{\"value\": 1}\t", valid: false, code: yaml_parse_error }
+  - { id: tab_before_flow_collection_end, text: "value: [a, b\t]", valid: true, expected: { value: [a, b] } }
+  - { id: tab_after_nested_flow_collection, text: "value: [[a]\t, b]", valid: true, expected: { value: [[a], b] } }
+  - { id: tab_after_quoted_scalar, text: "value: \"a\"\t", valid: false, code: yaml_parse_error }
+  # YAML 1.2 requires each later line of a flow collection or quoted scalar in block context
+  # to be indented with spaces past its parent block; one engine enforces this and the other
+  # does not, so both reject such a line. A tab does not count as indentation, a blank or
+  # comment line is exempt, the outermost closing bracket may sit at the parent's column,
+  # and a root flow collection (a JSON document) has no required indentation.
+  - { id: tab_indents_quoted_continuation, text: "value: \"first\n\tsecond\"", valid: false, code: yaml_parse_error }
+  - { id: tab_indents_flow_continuation, text: "value: [a,\n\tb]", valid: false, code: yaml_parse_error }
+  - { id: under_indented_quoted_continuation, text: "outer:\n  value: \"first\n second\"", valid: false, code: yaml_parse_error }
+  - { id: under_indented_single_quoted_continuation, text: "outer:\n  value: 'first\n  second'", valid: false, code: yaml_parse_error }
+  - { id: under_indented_flow_continuation, text: "outer:\n  value: [a,\n b]", valid: false, code: yaml_parse_error }
+  - { id: under_indented_flow_mapping_continuation, text: "- {a: 1,\nb: 2}", valid: false, code: yaml_parse_error }
+  - { id: indented_quoted_continuation, text: "outer:\n  value: \"first\n   \tsecond\"", valid: true, expected: { outer: { value: "first second" } } }
+  - { id: indented_flow_continuation, text: "outer:\n  value: [a,\n   \tb]", valid: true, expected: { outer: { value: [a, b] } } }
+  - { id: flow_end_at_parent_column, text: "outer:\n  value: [a,\n    b\n  ]", valid: true, expected: { outer: { value: [a, b] } } }
+  - { id: flow_comment_line_at_any_indent, text: "outer:\n  value: [a,\n# note\n    b]", valid: true, expected: { outer: { value: [a, b] } } }
+  - { id: blank_line_in_quoted_continuation, text: "outer:\n  value: \"first\n\n    second\"", valid: true, expected: { outer: { value: "first\nsecond" } } }
+  - { id: root_flow_tab_indent, text: "{\"a\": 1,\n\t\"b\": [2,\n\t\t3]}", valid: true, expected: { a: 1, b: [2, 3] } }
+  # A plain `=` is the string `=` (YAML 1.2); one engine still resolves it to the YAML 1.1
+  # `!!value` key and had no constructor for it.
+  - { id: plain_equals, text: "value: =", valid: true, expected: { value: "=" } }
+  # Two `\u` escapes forming a surrogate pair are the one character they encode, as in
+  # JSON; one engine works in UTF-16 and reads them so natively, the other is made to agree.
+  # A surrogate that pairs with nothing stays a lone surrogate and is rejected.
+  - { id: escaped_surrogate_pair, text: "value: \"a\\ud83d\\ude00b\"", valid: true, expected: { value: "a😀b" } }
+  - { id: escaped_lone_surrogate, text: "value: \"a\\ud83db\"", valid: false, code: yaml_unsupported_scalar }
+  - { id: escaped_reversed_surrogates, text: "value: \"\\ude00\\ud83d\"", valid: false, code: yaml_unsupported_scalar }
   - { id: non_string_key, text: "1: one", valid: false, code: yaml_non_string_key }
   - { id: unsafe_integer, text: "value: 9007199254740992", valid: false, code: number_out_of_range }
+  # Raw characters the two engines read differently are rejected before parsing, in both
+  # runtimes: everything outside YAML 1.2 `c-printable` (ruamel rejects these itself; the
+  # `yaml` package reads them as content), plus U+0085, U+2028 and U+2029, which ruamel
+  # treats as YAML 1.1 line breaks (a NEL folds to a space in a flow scalar, and any of the
+  # three breaks a block scalar or a comment) and the `yaml` package treats as content.
+  # Written as double-quoted escapes they decode identically, so that is the portable form.
+  - { id: raw_form_feed, text: "value: a\fb", valid: false, code: yaml_parse_error }
+  - { id: raw_vertical_tab_in_comment, text: "value: 1 # note\vmore", valid: false, code: yaml_parse_error }
+  - { id: raw_delete_in_key, text: "a\x7fb: 1", valid: false, code: yaml_parse_error }
+  - { id: raw_next_line, text: "value: before\x85after", valid: false, code: yaml_parse_error }
+  - { id: raw_next_line_in_quoted_scalar, text: "value: \"before\x85after\"", valid: false, code: yaml_parse_error }
+  - { id: raw_line_separator, text: "value: a\u2028b", valid: false, code: yaml_parse_error }
+  - { id: raw_paragraph_separator_in_block_scalar, text: "value: |\n  a\u2029b\n", valid: false, code: yaml_parse_error }
+  - { id: escaped_control_characters, text: "value: \"a\\fb\\vc\\x7fd\"", valid: true, expected: { value: "a\fb\vc\x7fd" } }
+  - { id: escaped_line_separators, text: "value: \"a\\Nb\\Lc\\Pd\"", valid: true, expected: { value: "a\x85b\u2028c\u2029d" } }
   - { id: negative_zero, text: "value: -0.0", valid: false, code: number_negative_zero }
+  # `-0` is negative zero to an engine that reads numbers as doubles and plain zero to one
+  # that reads integers exactly; it is rejected as negative zero in both. `-0x0`, `-0o0`,
+  # and `+0` are not negative-zero literals.
+  - { id: negative_zero_integer, text: "value: -0", valid: false, code: number_negative_zero }
+  - { id: negative_zero_integer_padded, text: "value: [-00]", valid: false, code: number_negative_zero }
+  - { id: json_negative_zero_integer, text: '{"value": -0}', valid: false, code: number_negative_zero }
+  - { id: positive_zero_integer, text: "value: +0", valid: true, expected: { value: 0 } }
+  - { id: quoted_negative_zero, text: "value: '-0'", valid: true, expected: { value: "-0" } }
+  # An implicit key's `:` must be on the line the key starts on and at most 1,024 characters
+  # after it, in a flow mapping as in a block mapping (one engine applies the limit only in
+  # block context, as YAML 1.2 does). The distance is counted in characters; the quotes count.
+  - { id: flow_mapping_key_at_limit, generated: long_flow_key, length: 1022, valid: true }
+  - { id: flow_mapping_key_over_limit, generated: long_flow_key, length: 1023, valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_key_astral_at_limit, generated: long_flow_key, length: 1022, key_char: "\U0001F600", valid: true }
+  - { id: json_key_over_limit, generated: long_flow_key, length: 1100, json: true, valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_key_colon_on_next_line, text: "value: {\"a\"\n  : 1}", valid: false, code: yaml_parse_error }
+  - { id: json_key_colon_on_next_line, text: "{\"a\"\n: 1}", valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_multiline_key, text: "value: {a\n  b: 1}", valid: false, code: yaml_parse_error }
+  # An explicit key (`? key`) has no limit in either engine, a comment after the `?`
+  # included.
+  - { id: flow_mapping_explicit_key_after_comment, generated: long_flow_key, length: 1100, explicit_comment: true, valid: true }
+  # For a block-mapping key and a flow-sequence pair, one engine counts the 1,024 in UTF-16
+  # code units, so both do: 512 characters outside the Basic Multilingual Plane reach it.
+  - { id: block_key_astral_at_utf16_limit, generated: long_key, form: block, key_char: "\U0001F600", length: 512, valid: true }
+  - { id: block_key_astral_over_utf16_limit, generated: long_key, form: block, key_char: "\U0001F600", length: 513, valid: false, code: yaml_parse_error }
+  - { id: flow_pair_key_astral_at_utf16_limit, generated: long_key, form: pair, key_char: "\U0001F600", length: 512, valid: true }
+  - { id: flow_pair_key_astral_over_utf16_limit, generated: long_key, form: pair, key_char: "\U0001F600", length: 513, valid: false, code: yaml_parse_error }
+  - { id: flow_pair_explicit_key_astral, generated: long_key, form: explicit_pair, key_char: "\U0001F600", length: 600, valid: true }
+  # A plain scalar one engine reads as a number and the other as a string is refused: ruamel
+  # still takes YAML 1.1 spellings (`_` separators, `0b`, a signed `0x` or `0o`) as numbers,
+  # and reads `.5e3` (an unsigned exponent after a bare fraction) as a string, where the
+  # YAML 1.2 core schema does the reverse. Core-form numbers and quoted strings are unchanged.
+  - { id: integer_with_underscores, text: "value: 1_000", valid: false, code: yaml_unsupported_scalar }
+  - { id: float_with_underscores, text: "value: 1_0.5", valid: false, code: yaml_unsupported_scalar }
+  - { id: binary_integer, text: "value: 0b101", valid: false, code: yaml_unsupported_scalar }
+  - { id: negative_hex_integer, text: "value: -0x10", valid: false, code: yaml_unsupported_scalar }
+  - { id: positive_hex_integer, text: "value: +0x10", valid: false, code: yaml_unsupported_scalar }
+  - { id: negative_octal_integer, text: "value: -0o17", valid: false, code: yaml_unsupported_scalar }
+  - { id: bare_fraction_unsigned_exponent, text: "value: .5e3", valid: false, code: yaml_unsupported_scalar }
+  - { id: sign_and_underscore, text: "value: -_", valid: false, code: yaml_unsupported_scalar }
+  - { id: number_form_key, text: "1_000: x", valid: false, code: yaml_unsupported_scalar }
+  - { id: string_number_form_key, text: ".5e3: x", valid: false, code: yaml_unsupported_scalar }
+  - { id: number_form_in_flow_sequence, text: "value: [1, 0b11]", valid: false, code: yaml_unsupported_scalar }
+  - { id: core_hex_integer, text: "value: 0x10", valid: true, expected: { value: 16 } }
+  - { id: core_octal_integer, text: "value: 0o17", valid: true, expected: { value: 15 } }
+  - { id: leading_zero_decimal, text: "value: 017", valid: true, expected: { value: 17 } }
+  - { id: plain_integer, text: "value: 1000", valid: true, expected: { value: 1000 } }
+  - { id: core_exponent_float, text: "value: 1.5e3", valid: true, expected: { value: 1500 } }
+  - { id: signed_bare_fraction_signed_exponent, text: "value: +.5e-3", valid: true, expected: { value: 0.0005 } }
+  - { id: quoted_underscore_number, text: "value: '1_000'", valid: true, expected: { value: "1_000" } }
+  - { id: double_quoted_binary_number, text: "value: \"0b101\"", valid: true, expected: { value: "0b101" } }
+  - { id: sexagesimal_is_a_string, text: "value: 1:30", valid: true, expected: { value: "1:30" } }
+  - { id: yaml_1_1_boolean_is_a_string, text: "value: yes", valid: true, expected: { value: "yes" } }
+  - { id: plain_negative_infinity, text: "value: -.inf", valid: false, code: number_out_of_range }
+  # Inside a flow collection the engines split on indicator characters glued to a plain
+  # scalar: ruamel keeps a `:` that a non-space follows in the scalar (`[a:, b]` was
+  # `['a:', 'b']` to it and `[{a: null}, 'b']` to the other engine), reads a glued `?` as an
+  # explicit key (`[?a]`), reads a bare `-` as a string, varies on a leading `:` in a flow
+  # mapping, and takes a `#` right after a closing quote or bracket as a comment. All are
+  # refused; a space after the `:` or the `?`, or quoting, gives one reading.
+  - { id: flow_plain_colon_before_comma, text: "value: [a:, b]", valid: false, code: yaml_parse_error }
+  - { id: flow_plain_colon_before_end, text: "value: [a:]", valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_key_colon_before_comma, text: "value: {a:, b}", valid: false, code: yaml_parse_error }
+  - { id: flow_spaced_colon_before_comma, text: "value: [a :, b]", valid: false, code: yaml_parse_error }
+  - { id: flow_mapping_value_trailing_colon, text: "value: {k: v:}", valid: false, code: yaml_parse_error }
+  - { id: flow_quoted_key_glued_colon_in_sequence, text: "value: [\"a\":1]", valid: false, code: yaml_parse_error }
+  - { id: flow_glued_question_mark, text: "value: [?a]", valid: false, code: yaml_parse_error }
+  - { id: flow_glued_question_mark_quoted, text: "value: [?\"a\"]", valid: false, code: yaml_parse_error }
+  - { id: flow_bare_dash_entry, text: "value: [-, x]", valid: false, code: yaml_parse_error }
+  - { id: flow_bare_dash_key, text: "value: {-: x}", valid: false, code: yaml_parse_error }
+  - { id: flow_leading_colon_in_mapping, text: "value: {k: :a}", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_quote, text: "value: \"a\"#c", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_bracket, text: "value: [a]#c", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_open_bracket, text: "value: [#c\n  a]", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_open_brace, text: "value: {#c\n  a: 1}", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_comma, text: "value: [a,#c\n  b]", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_flow_colon, text: "value: {\"a\":#c\n  1}", valid: false, code: yaml_parse_error }
+  - { id: comment_after_comma_and_space, text: "value: [a, # c,#d\n  b]", valid: true, expected: { value: [a, b] } }
+  # The `yaml` package composes these malformed mapping entries with text left out (the
+  # `- x`, the `!`, the `&'`) and no error; ruamel refuses them, and so do both runtimes.
+  - { id: explicit_key_value_without_indicator, text: "a:\n- ? k\n  - x\nb: 1", valid: false, code: yaml_parse_error }
+  - { id: flow_entry_tag_without_value, text: "{\"a\" : b , \"\"!}", valid: false, code: yaml_parse_error }
+  - { id: flow_entry_anchor_without_value, text: "- {k : v, ': '&'}", valid: false, code: yaml_parse_error }
+  - { id: flow_pair_spaced, text: "value: [a: b]", valid: true, expected: { value: [{ a: b }] } }
+  - { id: flow_colon_inside_plain, text: "value: [a:b]", valid: true, expected: { value: ["a:b"] } }
+  - { id: json_adjacent_colon, text: "{\"a\":1,\"b\":[2]}", valid: true, expected: { a: 1, b: [2] } }
+  - { id: flow_sequence_leading_colon, text: "value: [:a]", valid: true, expected: { value: [":a"] } }
+  - { id: flow_dash_prefixed_entries, text: "value: [-1, -a]", valid: true, expected: { value: [-1, "-a"] } }
+  - { id: flow_explicit_pair, text: "value: [? a : b]", valid: true, expected: { value: [{ a: b }] } }
+  - { id: flow_question_inside_plain, text: "value: [a?b]", valid: true, expected: { value: ["a?b"] } }
+  - { id: comment_after_space, text: "value: \"a\" #c", valid: true, expected: { value: a } }
+  - { id: flow_mapping_key_double_colon, text: "value: {a:: b}", valid: true, expected: { value: { "a:": b } } }
+  # Only `%YAML 1.2` and `%TAG` are accepted. Under `%YAML 1.1` the engines' YAML 1.1
+  # schemas disagree (`08` is a string to one and 8 to the other), one engine fails on other
+  # versions, and one refuses an unknown directive the other ignores.
+  - { id: yaml_1_1_directive, text: "%YAML 1.1\n---\nvalue: 08", valid: false, code: yaml_parse_error }
+  - { id: yaml_1_0_directive, text: "%YAML 1.0\n---\nvalue: x", valid: false, code: yaml_parse_error }
+  - { id: yaml_1_3_directive, text: "%YAML 1.3\n---\nvalue: x", valid: false, code: yaml_parse_error }
+  - { id: unknown_directive, text: "%FOO bar\n---\nvalue: x", valid: false, code: yaml_parse_error }
+  - { id: yaml_1_2_directive, text: "%YAML 1.2\n---\nvalue: 08", valid: true, expected: { value: 8 } }
+  - { id: tag_directive, text: "%TAG !e! tag:example.com,2000:\n---\nvalue: x", valid: true, expected: { value: x } }
   - { id: depth_63, generated: deep_sequence, depth: 63, valid: true }
   - { id: depth_64, generated: deep_sequence, depth: 64, valid: false, code: yaml_limit }
   - { id: depth_65, generated: deep_sequence, depth: 65, valid: false, code: yaml_limit }
   - { id: excessive_depth, generated: deep_sequence, depth: 1000, valid: false, code: yaml_limit }
   - { id: hostile_depth, generated: deep_sequence, depth: 50000, valid: false, code: yaml_limit }
+  # The limit counts open collections, an empty one too, and is reported before a duplicate
+  # key earlier in the text, as Python's event pass finds it first.
+  - { id: empty_sequence_at_depth_limit, generated: deep_sequence, depth: 63, empty: true, valid: true }
+  - { id: empty_sequence_past_depth_limit, generated: deep_sequence, depth: 64, empty: true, valid: false, code: yaml_limit }
+  - { id: duplicate_key_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: 1\na: 2\n", valid: false, code: yaml_limit }
+  # What that pass raises itself before the deep collection is still reported first.
+  - { id: tag_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: !!str x\n", valid: false, code: yaml_custom_tag }
+  - { id: merge_key_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "<<: {b: 1}\n", valid: false, code: yaml_merge_key }
+  - { id: flow_rule_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: [x:, y]\n", valid: false, code: yaml_parse_error }
   # A JSON document is a YAML document and keeps its YAML meaning, including where the
   # two languages disagree: NaN is a plain scalar string, and duplicate keys fail.
   - id: json_document
@@ -1072,6 +1329,154 @@ yaml_repair:
     text: "thing: [unclosed\n"
     repaired: false
     code: yaml_parse_error
+  # A raw character the portable preflight rejects, inside a single-line value, is rewritten
+  # as the double-quoted escape both engines decode to the same character. The character is
+  # never replaced by a guess at what was meant; the record makes it visible instead.
+  - id: next_line_in_plain_value
+    profile: frontmatter-md
+    text: "---\nthing:\n  notes: Hayao Miyazaki\u0085 Studio Ghibli\n---\nBody.\n"
+    repaired: true
+    expected_text: "---\nthing:\n  notes: \"Hayao Miyazaki\\N Studio Ghibli\"\n---\nBody.\n"
+  - id: line_separator_in_single_quoted_value
+    profile: pure-yaml
+    text: "note: 'it''s\u2028here'\n"
+    repaired: true
+    expected_text: "note: \"it's\\Lhere\"\n"
+  # Only the raw characters change inside a double-quoted value; the author's own escapes
+  # and the trailing comment stay as written.
+  - id: next_line_in_double_quoted_value_with_comment
+    profile: pure-yaml
+    text: "note: \"a\u0085b\\tc\"  # keep me\n"
+    repaired: true
+    expected_text: "note: \"a\\Nb\\tc\"  # keep me\n"
+  - id: control_characters_in_plain_value
+    profile: pure-yaml
+    text: "note: a\fb\x7fc\n"
+    repaired: true
+    expected_text: "note: \"a\\fb\\x7fc\"\n"
+  # A raw rejected character right after an unescaped backslash is the second half of an
+  # escape the author started (`\` and a raw NEL is a YAML 1.1 escaped line break, `\` and a
+  # raw control character no escape at all). Escaping it too would write `\\` and the
+  # escape's name as text and report success, so the value is left for the author. After an
+  # escaped backslash (`\\`) the character is content and is escaped as usual.
+  - id: next_line_after_open_backslash_is_not_repaired
+    profile: pure-yaml
+    text: "note: \"a\\\u0085b\"\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: control_character_after_open_backslash_is_not_repaired
+    profile: pure-yaml
+    text: "note: \"a\\\x01b\"  # c\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_after_escaped_backslash
+    profile: pure-yaml
+    text: "note: \"a\\\\\u0085b\"\n"
+    repaired: true
+    expected_text: "note: \"a\\\\\\Nb\"\n"
+  # A lone carriage return is a line break for YAML 1.2, so what follows it may be another
+  # line of the document; escaping it as content would swallow that line. It stays a parse
+  # error whose message says to end lines with "\n".
+  - id: lone_cr_in_value_is_not_repaired
+    profile: pure-yaml
+    text: "note: a\rb\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: cr_only_file_is_not_repaired
+    profile: pure-yaml
+    text: "note: 1\rother: 2\r"
+    repaired: false
+    code: yaml_parse_error
+  # A plain value that also carries structure gets one record: the escape rule already
+  # produces a double-quoted scalar.
+  - id: next_line_beside_unquoted_colon
+    profile: pure-yaml
+    text: "summary: Note: actually\u0085Q1\n"
+    repaired: true
+    expected_text: "summary: \"Note: actually\\NQ1\"\n"
+  # A value that is not a scalar (a flow collection, a comment, an anchor, a tag) is left
+  # alone: quoting it would turn structure into a string, and the record would not say so.
+  - id: next_line_in_flow_sequence
+    profile: pure-yaml
+    text: "tags: [alpha, beta\u0085]\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_flow_mapping
+    profile: pure-yaml
+    text: "meta: {a: b\u0085}\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_comment_value
+    profile: pure-yaml
+    text: "note: #comment\u0085\nother: 1\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_after_anchor
+    profile: pure-yaml
+    text: "a: &x foo\u0085\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_after_tag
+    profile: pure-yaml
+    text: "a: !!str foo\u0085\n"
+    repaired: false
+    code: yaml_parse_error
+  # The quoting pass must not quote a flow collection either: `: ` inside `{a: b}` is
+  # structure, and only the line that needs quoting changes.
+  - id: flow_mapping_beside_a_line_needing_quotes
+    profile: pure-yaml
+    text: "meta: {a: b}\nsummary: Note: actually Q1\n"
+    repaired: true
+    expected_text: "meta: {a: b}\nsummary: \"Note: actually Q1\"\n"
+  # A rejected character in the comment of a line that needs quoting: neither pass may trim
+  # it away (Python's `str.strip()` eats U+0085, JavaScript's `trim()` eats U+FEFF), so the
+  # line stays a parse error in both runtimes instead of being quoted with the character
+  # silently dropped in one of them.
+  - id: next_line_in_comment_of_line_needing_quotes
+    profile: pure-yaml
+    text: "summary: a: b # c\u0085\n"
+    repaired: false
+    code: yaml_parse_error
+  # A U+FEFF before the `#` is content (only space or tab opens a comment), and it is in
+  # the portable class, so both runtimes quote the whole value and keep it; before, one
+  # trimmed it away as whitespace and the other refused the file.
+  - id: bom_before_hash_in_line_needing_quotes
+    profile: pure-yaml
+    text: "summary: a: b\ufeff# c\n"
+    repaired: true
+    expected_text: "summary: \"a: b\ufeff# c\"\n"
+  # Keys, comments and block scalars have no exact rewrite and stay parse errors. A block
+  # scalar is recognised by its indicator whatever the key looks like.
+  - id: next_line_in_key
+    profile: pure-yaml
+    text: "no\u0085te: x\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_comment
+    profile: pure-yaml
+    text: "# a\u0085comment\nnote: x\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar
+    profile: pure-yaml
+    text: "note: |\n  sub: a\u0085b\nother: 1\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar_after_quoted_key
+    profile: pure-yaml
+    text: "\"note\": |\n  sub: a\u0085b\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar_in_sequence_mapping
+    profile: pure-yaml
+    text: "- note: |\n    sub: a\u0085b\n- other: 1\n"
+    repaired: false
+    code: yaml_parse_error
+  - id: next_line_in_block_scalar_after_non_ascii_key
+    profile: pure-yaml
+    text: "título: >\n  sub: a\u0085b\n"
+    repaired: false
+    code: yaml_parse_error
 
 # Type conform, structural source only. The semantic source (Pydantic `string_type` /
 # Zod `invalid_type`) is per-language by design and lives in each adapter's own tests.
@@ -1084,6 +1489,16 @@ schema_conform:
     envelope: thing
     changed: true
     expected_text: "---\nthing:\n  name: '1850'\n---\nB.\n"
+  # A retyped scalar beside an escaped U+0085: the round-trip emitter must write the
+  # neighbour's escape back as `\N`, not as the raw character the reader rejects. One
+  # emitter escapes it on its own; the other has to be made to, or the pass undoes the
+  # escape and fails its own write guard.
+  - id: integer_name_beside_escaped_next_line
+    schema: { type: object, properties: { name: { type: string } } }
+    text: "---\nthing:\n  name: 1850\n  note: \"a\\Nb\"\n---\nB.\n"
+    envelope: thing
+    changed: true
+    expected_text: "---\nthing:\n  name: '1850'\n  note: \"a\\Nb\"\n---\nB.\n"
   # Lossless: the text comes from the scalar as written, not from `str()` of the parsed
   # value, so a notation the author chose survives being retyped.
   - id: float_notation

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive Gemini over the prelim-scan-terms form and save whatever it writes.
+"""Drive Gemini over the scan-terms form and save whatever it writes.
 
 The agent sees the runbook and the template only -- never the JSON Schema. Field-name
 and value drift therefore arise the way they do in the real pipeline.
@@ -57,19 +57,19 @@ PROMPT_PROSE = """{runbook}
 Write the document as Markdown with YAML frontmatter. It must begin with a `---` line,
 carry the metadata, and close the frontmatter with another `---` line before the body.
 The frontmatter must open with exactly this block, then carry the form values under the
-`prelim_scan_terms:` key, per the runbook above:
+`scan_terms:` key, per the runbook above:
 
     ---
     softschema:
-      contract: trading.prelim_scan:PrelimScanTerms/v1
-      schema: prelim-scan-terms.schema.yaml
-      envelope: prelim_scan_terms
+      contract: example.research:ScanTerms/v1
+      schema: scan-terms.schema.yaml
+      envelope: scan_terms
       status: enforced
-    prelim_scan_terms:
+    scan_terms:
       ...the form values...
     ---
 
-After the closing `---`, add a `# {ticker} - Prelim Scan Terms` heading and a Notes
+After the closing `---`, add a `# {ticker} - Scan Terms` heading and a Notes
 paragraph.
 
 ---

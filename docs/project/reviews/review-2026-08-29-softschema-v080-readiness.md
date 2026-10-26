@@ -14,6 +14,10 @@ author: Claude, with maintainer direction from Joshua Levy
 covered. Not yet released — the version bump, the changelog cut, and the manual e2e
 phases are still open.
 
+**Current status:** released as v0.8.0 on 2026-08-30 (tag `v0.8.0`, PR #53); see the
+[2026-10-25 addendum](#status-addendum--2026-10-25). The text below is left as written
+when the review was made.
+
 ## Decision
 
 Ship the unreleased work as **v0.8.0, a minor**, not a patch.
@@ -219,7 +223,7 @@ Build after formatting, not before.
 The CLI surface changed after the entry above: `validate --repair` and
 `validate --check-repair` became `repair`, `repair --dry-run`, and `repair --check`, and
 strictness became a property of the command.
-See `docs/project/specs/active/plan-2026-08-30-repair-command.md`.
+See `docs/project/specs/done/plan-2026-08-30-repair-command.md`.
 
 The runbook re-ran against that surface, all four phases:
 
@@ -246,6 +250,12 @@ Unchanged from the list above: bump `packages/typescript/package.json` to `0.8.0
 the changelog, and run e2e phases 2–4 (clean-environment installs of the wheel and npm
 tarball, the quickstart as written, and the skill bootstrap).
 Tracked as `ss-txij`.
+
+### Status Addendum — 2026-10-25
+
+v0.8.0 shipped on 2026-08-30 (tag `v0.8.0`, PR #53), closing the items above.
+The sections before this one are left as written; they record what was open when the
+review was made.
 
 ## Baseline for the Next Release
 

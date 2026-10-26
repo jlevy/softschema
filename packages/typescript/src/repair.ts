@@ -34,8 +34,10 @@
  */
 import type { SchemaProfile } from "./models.js";
 import {
+  findNonPortableCharacter,
   PortableInputError,
   parsePortableYaml,
+  portableEscape,
   readUtf8,
   splitFrontmatter,
   writeArtifactText,
@@ -54,7 +56,21 @@ export type { RepairRecord };
 export const REPAIR_KIND = "repair_applied";
 
 /** `code` for the one repair this module performs. */
+/** `code` for a plain scalar quoted because YAML read structure in it. */
 const YAML_QUOTED_SCALAR = "yaml_quoted_scalar";
+
+/**
+ * `code` for a value rewritten as a double-quoted scalar to escape a rejected character.
+ *
+ * The portable preflight refuses a raw U+0085, U+2028, U+2029, control character or lone
+ * carriage return anywhere in the YAML text. Inside a single-line value the fix is
+ * mechanical and meaning-preserving: a serializer would have written the escape, and the
+ * decoded value is exactly what YAML 1.2 gives the raw text. The character itself is never
+ * replaced by a guess at what was meant (a mis-decoded ellipsis stays a U+0085, now visible
+ * in the record); and a rejected character in a key, a comment or a block scalar has no
+ * such rewrite, so those stay parse errors.
+ */
+const YAML_ESCAPED_CHARACTER = "yaml_escaped_character";
 
 /**
  * Portable violations that are not authoring slips. Quoting a scalar cannot fix any of
@@ -85,7 +101,37 @@ const NOT_REPAIRABLE = new Set([
  * ASCII set, so a non-ASCII key is left unrepaired identically on both sides; the shared
  * vectors lock this in.
  */
-const MAPPING_LINE = /^(?<indent>[ \t]*)(?<key>[A-Za-z0-9_.-]+): (?<value>.+)$/;
+// `[^\n]` rather than `.`: in JavaScript `.` also stops at U+2028, U+2029 and `\r`, which
+// Python's `.` does not, and a line holding one of those is exactly what the escaping rule
+// below must be able to see.
+const MAPPING_LINE = /^(?<indent>[ \t]*)(?<key>[A-Za-z0-9_.-]+): (?<value>[^\n]+)$/;
+
+/**
+ * A line that opens a block scalar (`key: |`, `"quoted": >-`, `- |2`, `- key: |`, with an
+ * optional comment): its content is every following line indented deeper than the opener,
+ * and the escaping rule must not touch those lines even when one looks like `key: value`.
+ * The opener is recognised by the indicator alone, whatever the key looks like, so a quoted
+ * or non-ASCII key opens a block scalar here exactly as it does for the engines.
+ */
+const BLOCK_SCALAR_OPENER = /^[ \t]*(?:-[ \t]+)?(?:[^\n]*?:[ \t]+)?[|>][-+0-9]*[ \t]*(?:#[^\n]*)?$/;
+const TRAILING_COMMENT = /^[ \t]*(?:#[^\n]*)?$/;
+
+/**
+ * Characters that cannot begin a plain scalar (YAML 1.2 c-indicator). A value starting with
+ * one is a flow collection, a comment, an anchor, an alias, a tag, a block scalar indicator,
+ * or a directive, never a plain scalar, so neither pass may quote it: the quotes would turn
+ * structure into a string. `-`, `?` and `:` are indicators only when followed by a space or
+ * standing alone.
+ */
+const NOT_PLAIN_START = new Set([..."[]{}#&*!|>'\"%@`"]);
+
+function canBePlainScalar(stripped: string): boolean {
+  const first = stripped[0];
+  if (first === undefined || NOT_PLAIN_START.has(first)) return false;
+  if (first !== "-" && first !== "?" && first !== ":") return true;
+  const second = stripped[1];
+  return !(second === undefined || second === " " || second === "\t");
+}
 
 /**
  * What one repair attempt did.
@@ -115,8 +161,128 @@ function result(partial: Partial<RepairResult>): RepairResult {
   };
 }
 
-function record(path: (string | number)[], message: string): RepairRecord {
-  return { kind: REPAIR_KIND, code: YAML_QUOTED_SCALAR, path, message };
+function record(
+  path: (string | number)[],
+  message: string,
+  code: string = YAML_QUOTED_SCALAR,
+): RepairRecord {
+  return { kind: REPAIR_KIND, code, path, message };
+}
+
+function indentOf(line: string): number {
+  return line.length - line.replace(/^[ \t]+/u, "").length;
+}
+
+/**
+ * Index of the quote that closes the scalar opened at `text[0]`, or null.
+ *
+ * Inside double quotes a backslash escapes the next character; inside single quotes the
+ * only escape is a doubled quote.
+ */
+function closingQuote(text: string, quote: string): number | null {
+  let index = 1;
+  while (index < text.length) {
+    const char = text[index];
+    if (quote === '"' && char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === quote) {
+      if (quote === "'" && text[index + 1] === "'") {
+        index += 2;
+        continue;
+      }
+      return index;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function isRejected(char: string): boolean {
+  return findNonPortableCharacter(char) !== null;
+}
+
+function escapeCharacters(text: string): string {
+  return [...text].map((char) => (isRejected(char) ? portableEscape(char) : char)).join("");
+}
+
+/**
+ * Rewrite a single-line value holding a rejected character as a double-quoted scalar.
+ *
+ * Returns the new value text and the characters escaped, or null when the value has nothing
+ * to escape or is not one of the three shapes this rule can rewrite exactly: a plain
+ * scalar, a complete single-quoted scalar, or a complete double-quoted scalar, each
+ * optionally followed by a comment. Whitespace before a comment is kept as written. The
+ * decoded value is unchanged in every case: the plain and single-quoted forms are
+ * re-expressed with the same content, and in the double-quoted form only the raw
+ * characters are replaced, so escapes the author already wrote stay as they are.
+ */
+/**
+ * Whether a rejected character in a double-quoted body follows an unescaped backslash.
+ *
+ * There the character is the second half of an escape the author started: `\` and a raw
+ * NEL is a YAML 1.1 escaped line break, and `\` and a raw control character is no escape
+ * at all. No rewrite keeps a value the text never had, and escaping the character as well
+ * would write `\\` and the escape's name as text while reporting success. The value is
+ * left for the author. A backslash that is itself escaped (`\\`) does not count. Mirrors
+ * Python's `_follows_open_escape`.
+ */
+function followsOpenEscape(body: string): boolean {
+  let backslashes = 0;
+  for (const char of body) {
+    if (char === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (backslashes % 2 === 1 && isRejected(char)) return true;
+    backslashes = 0;
+  }
+  return false;
+}
+
+function escapeValue(value: string): { text: string; escaped: string[] } | null {
+  if (findNonPortableCharacter(value) === null) return null;
+  // A lone carriage return is a line break for YAML 1.2 and for ruamel, so the text after it
+  // may be another line of the document; escaping it as content would swallow that line. It
+  // stays a parse error, whose message already says to end lines with "\n".
+  if (value.includes("\r")) return null;
+  // Only ASCII blanks are trimmed, the same set Python's `strip(" \t")` takes.
+  const stripped = stripBlanks(value);
+  let body: string;
+  let rest: string;
+  const quote = stripped[0];
+  if (quote === '"' || quote === "'") {
+    const end = closingQuote(stripped, quote);
+    if (end === null || !TRAILING_COMMENT.test(stripped.slice(end + 1))) return null;
+    body = stripped.slice(1, end);
+    rest = stripped.slice(end + 1);
+    if (quote === '"' && followsOpenEscape(body)) return null;
+    if (quote === "'") {
+      body = body.replaceAll("''", "'").replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+    }
+  } else {
+    if (!canBePlainScalar(stripped)) return null; // a flow collection, comment, anchor, tag
+    const comment = /([ \t]+#[^\n]*)$/u.exec(stripped);
+    body = comment ? stripped.slice(0, comment.index) : stripped;
+    rest = comment ? (comment[1] as string) : "";
+    body = body.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  }
+  const escaped = [...new Set([...body].filter(isRejected))].sort(
+    (a, b) => (a.codePointAt(0) ?? 0) - (b.codePointAt(0) ?? 0),
+  );
+  if (escaped.length === 0) return null; // the rejected character sits in the comment
+  return { text: `"${escapeCharacters(body)}"${rest}`, escaped };
+}
+
+function escapeDetail(key: string, escaped: string[]): string {
+  const listed = escaped
+    .map(
+      (char) =>
+        `#x${(char.codePointAt(0) ?? 0).toString(16).padStart(4, "0")} as "${portableEscape(char)}"`,
+    )
+    .join(", ");
+  return `escaped ${listed} in the value of '${key}'`;
 }
 
 /**
@@ -126,8 +292,15 @@ function record(path: (string | number)[], message: string): RepairRecord {
  * author meant prose. A leading quote that never closes makes it try to read a quoted
  * scalar and run off the end of the value.
  */
+function stripBlanks(value: string): string {
+  return value.replace(/^[ \t]+/u, "").replace(/[ \t]+$/u, "");
+}
+
 function valueNeedsQuoting(value: string): boolean {
-  const stripped = value.trim();
+  // Only ASCII blanks are trimmed and only `[ \t]+#[ \t]` opens a comment: the hosts'
+  // default whitespace sets differ (U+0085 is whitespace to Python, U+FEFF to JavaScript),
+  // and a rejected character trimmed away here would be dropped from the file silently.
+  const stripped = stripBlanks(value);
   if (
     (stripped.startsWith('"') && stripped.endsWith('"')) ||
     (stripped.startsWith("'") && stripped.endsWith("'"))
@@ -135,7 +308,9 @@ function valueNeedsQuoting(value: string): boolean {
     return false;
   }
   if (["null", "true", "false", "~", ""].includes(stripped)) return false;
-  const comment = /\s+#\s/.exec(stripped);
+  const first = stripped[0];
+  if (first !== '"' && first !== "'" && !canBePlainScalar(stripped)) return false;
+  const comment = /[ \t]+#[ \t]/u.exec(stripped);
   const valuePart = comment ? stripped.slice(0, comment.index) : stripped;
   if (valuePart.includes(": ")) return true;
   return startsWithUnbalancedQuotedPhrase(valuePart);
@@ -163,8 +338,8 @@ function startsWithUnbalancedQuotedPhrase(value: string): boolean {
  * reviewable-looking whole-file one.
  */
 function quoteValue(value: string): string {
-  const stripped = value.trim();
-  const comment = /(\s+#\s.*)$/.exec(stripped);
+  const stripped = stripBlanks(value);
+  const comment = /([ \t]+#[ \t][^\n]*)$/u.exec(stripped);
   const valuePart = comment ? stripped.slice(0, comment.index) : stripped;
   const commentPart = comment ? (comment[1] as string) : "";
   const escaped = valuePart.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -196,13 +371,38 @@ export function repairYamlText(text: string): RepairResult {
 
   const repairedLines: string[] = [];
   const records: RepairRecord[] = [];
+  let blockIndent: number | null = null;
   for (const line of text.split("\n")) {
+    if (blockIndent !== null) {
+      // Inside a block scalar: content runs while lines are blank or indented deeper than
+      // the opener. The escaping rule leaves it alone, whatever it looks like.
+      if (line.replace(/[ \t]+/gu, "") === "" || indentOf(line) > blockIndent) {
+        repairedLines.push(line);
+        continue;
+      }
+      blockIndent = null;
+    }
+    if (BLOCK_SCALAR_OPENER.test(line)) {
+      blockIndent = indentOf(line);
+      repairedLines.push(line);
+      continue;
+    }
     const match = MAPPING_LINE.exec(line);
     const groups = match?.groups;
-    if (groups && valueNeedsQuoting(groups.value as string)) {
-      repairedLines.push(`${groups.indent}${groups.key}: ${quoteValue(groups.value as string)}`);
-      records.push(record([groups.key as string], `quoted the value of '${groups.key}'`));
-      continue;
+    if (groups) {
+      const key = groups.key as string;
+      const value = groups.value as string;
+      const escaped = escapeValue(value);
+      if (escaped !== null) {
+        repairedLines.push(`${groups.indent}${key}: ${escaped.text}`);
+        records.push(record([key], escapeDetail(key, escaped.escaped), YAML_ESCAPED_CHARACTER));
+        continue;
+      }
+      if (valueNeedsQuoting(value)) {
+        repairedLines.push(`${groups.indent}${key}: ${quoteValue(value)}`);
+        records.push(record([key], `quoted the value of '${key}'`));
+        continue;
+      }
     }
     repairedLines.push(line);
   }

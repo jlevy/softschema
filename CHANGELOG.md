@@ -6,9 +6,249 @@ version number.
 
 ## Unreleased
 
+This is a minor release (0.9.0): the portable YAML rule gains a normative rejection, and
+documents that validated under 0.8.1 can now be refused.
 Validation results now record actual execution independently for structural and semantic
 checks. Declared `status` still selects validation mode; it does not prove a check ran.
 The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
+
+### Compatibility
+
+**Newly rejected input.** Both implementations now reject, as `yaml_parse_error`, any
+raw character outside YAML 1.2 `c-printable` (the C0 controls other than tab, line feed,
+and carriage return; DEL; the C1 controls; U+FFFE and U+FFFF), the line separators
+U+0085, U+2028, and U+2029, and a carriage return that does not begin a `\r\n` sequence,
+anywhere in the YAML text they read: the frontmatter block or the pure-yaml document,
+comments and keys included, and every compiled schema file, YAML or JSON. The Markdown
+body is not checked.
+What changes for each runtime:
+
+- **TypeScript** previously read every one of these characters as content.
+  Any of them in frontmatter or pure-yaml now exits 2 under `validate`.
+- **Python** previously folded a raw U+0085 in a flow scalar to a space and kept a raw
+  U+2028 or U+2029 there; a lone carriage return was a line break.
+  Each is now rejected.
+  The rest of the class was already a ruamel parse error.
+
+Write such a character as an escape inside a double-quoted scalar: `"\N"` for U+0085,
+`"\L"` for U+2028, `"\P"` for U+2029, `"\r"` for a carriage return, `"\f"`, `"\v"`,
+`"\0"`, or `"\xHH"` for a control character.
+Both engines decode every one identically.
+`repair` writes the escape for a character inside a single-line scalar value (see
+Added); one in a key, a comment, a block scalar, or a value that is not a scalar is
+reported with its line and escape and left for the author, and a lone carriage return is
+never escaped, since it may be a line ending.
+To find affected files before upgrading:
+
+```bash
+rg -l '[\x{85}\x{2028}\x{2029}\x{FFFE}\x{FFFF}\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\r(?:[^\n]|$)'
+```
+
+**Tabs and a plain `=`.** A raw tab inside a plain scalar, or as spacing in block
+context (after a key’s colon, before a comment, at the end of a value, on a blank line,
+after a block scalar header such as `|`, after a closing quote, after a flow
+collection’s closing bracket), was a parse error in Python and content in TypeScript;
+TypeScript now rejects it too, as `yaml_parse_error` with its own message, while a tab
+inside a quoted scalar, a block scalar’s content, or a comment, and as spacing between
+the brackets of a flow collection, is accepted by both.
+Write such a value as a quoted scalar.
+A plain `=` was the YAML 1.1 `!!value` key in Python (a parse error) and the string `=`
+in TypeScript; Python now reads it as the string `=`, as YAML 1.2 does.
+
+**Flow continuation lines.** A later line of a flow collection or a quoted scalar in
+block context that is not indented with spaces past its parent block, such as
+`tags: [a,` followed by a line `<TAB>b]`, or an indented `title: "first` followed by a
+line indented no further than `title`, was read by Python and a parse error in
+TypeScript, as YAML 1.2 makes it.
+Python now rejects it too, as `yaml_parse_error`. A blank line, a comment line inside a
+flow collection, a closing bracket at the parent’s column, and every line of a root flow
+collection (a JSON document indented with tabs) are still accepted by both.
+Indent such a line past its parent with spaces.
+
+**Implicit keys.** A flow-mapping key whose `:` is more than 1,024 characters after the
+key starts, or on a later line, such as `{"<1,100 characters>": 1}` or `{"a"` followed
+by a line `: 1}`, was a parse error in Python and read by TypeScript; TypeScript now
+rejects it too, as `yaml_parse_error`. For a block-mapping key or a flow-sequence pair,
+TypeScript counts the 1,024 in UTF-16 code units and Python counted characters, so a key
+of more than 512 characters outside the Basic Multilingual Plane read in Python and
+failed in TypeScript; Python now counts UTF-16 code units there too.
+
+**Number forms outside the core schema.** A plain scalar that ruamel reads as a number
+and the YAML 1.2 core schema as a string, or the reverse, was a number in one runtime
+and a string in the other, silently: `1_000`, `1_0.5`, `0b101`, `-0x10`, `+0x10`, and
+`-0o17` were numbers in Python and strings in TypeScript, and `.5e3` the reverse.
+Both runtimes now reject such a scalar as `yaml_unsupported_scalar`, with a message
+naming it; write the number in core form (`1000`, `0x10`, `0o17`, `500.0`) or quote it.
+Core-form numbers, quoted scalars, and strings such as `1:30` and `yes` are unaffected.
+A generated sweep of 350,355 number-like plain scalars in block values, sequence items,
+keys, flow collections, and JSON arrays now finds no number the two runtimes read
+differently.
+
+**Indicators glued to flow scalars.** Inside a flow collection, a `:` with no space
+after it before `,`, `]`, `}`, `[`, or `{` was part of the scalar in Python and a key
+indicator in TypeScript, silently: `[a:, b]` was `['a:', 'b']` in Python and
+`[{a: null}, 'b']` in TypeScript, and `{a:, b}` and `[a :, b]` differed the same way.
+`[?a]` was an explicit key in Python and the string `?a` in TypeScript.
+A bare `-`, a leading `:` in a flow mapping, `["a":1]`, a `#` right after a closing
+quote or bracket (`"a"#c`), and, inside a flow collection, a `#` right after an opening
+`[` or `{`, a `,`, or a `:` or `?` indicator (`[#c`, `[a,#c`) were read by one runtime
+and refused by the other.
+Both now reject all of these as `yaml_parse_error`; write a space after the `:` or `?`,
+before the `#`, or quote the scalar.
+For a glued `:` or `?` both runtimes now name the indicator’s line and column.
+A generated sweep of 210,000 flow-collection scalars around `:`, `?`, `-`, `#`, and the
+indicator characters, and a 160,000-case fuzz of flow and block structures, now find no
+flow collection the two runtimes read differently, and none that one accepts and the
+other refuses. The fuzz finds one remaining class, loud and unchanged: a block scalar
+without an indentation indicator whose leading lines of only spaces are indented
+differently from its first content line is refused by one engine and read by the other
+(429 cases). Write an indentation indicator, or trim those lines.
+
+**A block scalar at the end of the text.** A block scalar that ended the YAML text with
+no line break after it read differently, silently: `body: |` as the last key of a
+frontmatter block (whose last line the reader joined without its break), or at the end
+of a pure-yaml file with no final newline, was `"line one\nline two"` in Python and
+`"line one\nline two\n"` in TypeScript, and `>` and `|+` the same.
+Both readers now hand the parser the text with its final line break, so **Python’s value
+changes**: clip (`|`, `>`) and keep (`|+`, `>+`) chomping end with `"\n"` there, as they
+do anywhere else in a document; strip (`|-`, `>-`) is unchanged, and TypeScript’s values
+are unchanged. A model with `pattern: ...$` or a `maxLength` on such a field may see the
+extra character; write `|-` to keep a value without its final line break.
+
+**Spaces under an explicit indentation indicator.** In a block scalar with an explicit
+indentation indicator (`|2`, `>1`), a line of only spaces wider than the indentation the
+indicator sets was content in Python (as YAML 1.2 reads it) and an empty line in
+TypeScript, silently: `key: >1` followed by a line of four spaces read as three spaces
+and a line break in Python and as an empty string in TypeScript.
+Both runtimes now reject it as `yaml_parse_error`; trim the line or drop the indicator.
+A line of only spaces no wider than that indentation, and every such line in a block
+scalar without an indicator, is unaffected.
+
+**Mapping entries with content but no `:`.** An entry that has a value, a tag, or an
+anchor but no `:` before it, such as an explicit key `- ? k` followed by a sequence item
+`- x` under it, or `{"a": b, ""!}`, was a parse error in Python and read by TypeScript
+with that content left out.
+TypeScript now rejects it too, as `yaml_parse_error`.
+
+**Depth limit.** TypeScript now counts an empty collection toward the 64-collection
+limit and reports the limit before a duplicate key earlier in the text or a parse error
+later in it, as Python does: an empty `[]` that is the 65th open collection was
+accepted, and a document past the limit with a duplicate key was `yaml_duplicate_key`.
+Both are `yaml_limit` in both runtimes, while a tag, a merge key, or another refusal
+earlier in the text than the deep collection is still reported first.
+
+**Directives.** `%YAML 1.1` switched both engines to YAML 1.1 schemas that differ (`08`
+was a string in Python and 8 in TypeScript, and a date a string in one and an
+unsupported host value in the other); `%YAML 1.0` and `%YAML 1.3` crashed the Python
+reader with an assertion; and an unknown directive such as `%FOO` was ignored by Python
+and refused by TypeScript.
+Both runtimes now accept only `%YAML 1.2` and `%TAG` and reject any other directive as
+`yaml_parse_error`.
+
+**Integer negative zero.** The integer literal `-0` (also `-00`, and `-0` in JSON text)
+read as `0` in Python and was rejected as `number_negative_zero` in TypeScript; Python
+now rejects it too, as the spec’s negative-zero rule says.
+`+0` and the string `'-0'` are unaffected.
+
+**Fence lines.** A frontmatter delimiter is `---` plus trailing spaces or tabs only.
+Python previously also trimmed U+0085 and U+001C–U+001F, and TypeScript U+FEFF, so a
+`---` followed by one of those opened a fence in one runtime and not the other; now it
+is a fence in neither.
+
+**Escaped surrogate pairs.** A surrogate pair written as two `\u` escapes
+(`"\ud83d\ude00"`) is the one character it encodes in both runtimes, as in JSON; Python
+previously rejected it as a lone surrogate.
+
+**Message and `kind` changes.** `message` text may change within a minor release, and
+these did; `kind` is the matching key:
+
+- Every `line N, column M` in a frontmatter-md diagnostic now counts from the top of the
+  file (the opening fence is line 1), in the preflight and engine messages alike; it was
+  block-relative. Pure-yaml line numbers are unchanged.
+- An engine error at the end of the YAML text (an unclosed `[`) now names the start of
+  the line after the text’s last line, since the text is parsed with its final line
+  break: in frontmatter, the closing fence’s line.
+- The preflight message names the escape to write.
+- A path in a human-readable message (the backticked document name) has C0/C1 controls
+  and DEL written as `#xHHHH`.
+- A `schema_invalid` record whose schema the reader refused, or whose root is not a
+  mapping, now begins with the backticked schema path.
+- `repair` without `--contract` reports a fenceless document, an empty block, or a
+  pure-yaml list or scalar root with validate’s `kind` (`no_frontmatter`,
+  `yaml_not_mapping`) and message; it said `yaml_parse_error`.
+- `compile --check` reports a committed sidecar the portable reader refuses as drift
+  (exit 1, `drift_diff` naming the file) rather than raising a usage error (exit 2).
+
+**New record code.** `repair` emits `repair_applied` records with
+`code: yaml_escaped_character`; a consumer matching repair codes exhaustively should add
+it.
+
+**Compiled schemas.** `compile` output changes only for a model whose text carries one
+of the rejected characters, a carriage return, a tab, or is exactly `=`: such strings
+are now double-quoted with escapes, so the sidecar one writer produces reads back in
+both runtimes with the model’s content (a 4,686-case writer-to-other-reader sweep over
+U+0000–U+02FF and the separators in six scalar shapes finds no remaining difference).
+`schema_sha256` is computed over canonical JSON, so the escaping leaves it unchanged for
+every schema.
+
+**Zod 4.6 in TypeScript.** The TypeScript package now requires zod `^4.6.6`. String
+length bounds, strict-object refinements, and `z.iso.datetime()` change behavior, and a
+TypeScript model using one of the constructs listed under Changed (tuples,
+intersections, records with typed keys, and `z.email()` among them) compiles to a new
+`schema_sha256`; recompile its committed schema.
+
+**Execution evidence and schema refusals.** Python layer-result constructors require an
+explicit keyword-only `execution`; TypeScript layer interfaces require the same field.
+Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit classes, artifact
+metadata, and compiled schema files are unchanged except for the corrected repair-result
+verdicts (see Fixed), the Zod 4.6 model behavior (see Changed), the portable-reading
+changes above, and the schema refusals below, each of which turns an artifact bound to
+such a schema `invalid` (`ok` false, `validate` exit 1, under every status, with or
+without `--require`) until the schema is fixed.
+They affect hand-written or third-party schemas only; schemas written by
+`softschema compile` carry the canonical `$schema` and absolute ids and use none of the
+refused keywords. **Python users** are the ones who change for an unresolvable `$ref` on
+a branch the payload never reaches (TypeScript already refused it; remove or fix the
+reference), for a `$schema` line naming draft-07 or another draft, which Python used to
+accept and validate as 2020-12 (TypeScript already refused it, now under
+`reason: dialect` rather than `compilation`; delete the line or set the 2020-12 URI),
+and for `$recursiveRef`, which Python ignored and TypeScript evaluated (write
+`$dynamicRef`). **Both runtimes** change for the legacy `dependencies` keyword, which
+TypeScript enforced and Python ignored (write `dependentSchemas` or
+`dependentRequired`), for OpenAPI `nullable`, which TypeScript honored and Python
+ignored (write `type: [..., "null"]`), and for any resource identity outside the
+identity grammar, which both now refuse as `reason: resource_identity` and
+`compile --schema-id` refuses too.
+Before, the engines read such identities differently: a relative root `$id` against
+different invented bases; `URN:`, `urn:Ex:…`, an uppercase host, `%7E`, or a dot
+segment, which fast-uri normalizes and Python does not; a whitespace-prefixed id, which
+Python’s `urlsplit` trims; a malformed host such as `http://[::1`, which Python refused
+as `compilation` and TypeScript accepted; and `urn:example` or `urn:dir/item.json`,
+which TypeScript failed to compile.
+Ordinary-looking ids it also refuses: `https://example.com` with no path (write
+`https://example.com/`), an explicit default port as in `https://example.com:443/x`, an
+uppercase `urn:uuid:6E8BC430-…`, a trailing empty `#` as in
+`http://example.com/schema#`, common in draft-07-era schemas, and `s3://` or `gs://`
+ids, since only `http`, `https`, and `file` take `//host`. Write `https://host/path`,
+`file:///path`, `urn:<nid>:<name>` in lowercase, or another `scheme:path`, with no
+fragment. Skip reasons change only for the TypeScript library fix under Fixed.
+Strict serialized-result consumers must accept the new layer fields and remove the
+unreleased aggregate field.
+Old reports without execution fields have **unknown** execution; preserve absence or
+revalidate rather than fabricating evidence.
+See the
+[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
+for downstream adoption and release sequencing.
+
+Compiled schema files also change for one TypeScript construct.
+A model with a `.default()` over a transforming schema, or an authored `default` or
+`examples` on one, compiles to a new schema and `schema_sha256`, because the field gains
+the `default` or `examples` that 0.8.1 dropped under zod 4.4 and 4.6 (see Fixed).
+`compile --check` reports drift for such a model; recompile its committed schema.
+The new schema is the one its Pydantic mirror compiles to.
+This fix changes no compiled schema without a transform, and no Python-compiled schema.
+A `.catch()` whose value the referenced `$defs` entry already carries compiles as in
+0.8.1, to the bare `$ref` Zod writes; only the unreleased #66 wrote the value beside it.
 
 ### Added
 
@@ -30,6 +270,19 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   strict reads raise or throw, and `validate` exits 1 for readable invalid artifacts.
   An unreadable artifact retains the library’s `input_error` outcome and the `validate`
   command’s exit 2. Without a requirement, results are unchanged.
+- **`repair` escapes a raw character the portable rule rejects.** A U+0085, U+2028,
+  U+2029, or control character other than a carriage return inside a single-line scalar
+  value is rewritten as a double-quoted scalar carrying the YAML escape, with one
+  `yaml_escaped_character` record per value naming each character and its escape.
+  The decoded value is exactly what YAML 1.2 gives the raw text; no character is
+  replaced by a guess at what was meant (a mis-decoded cp1252 ellipsis stays a visible
+  U+0085). Plain, single-quoted, and double-quoted values are handled, trailing comments
+  and the author’s own escapes are kept.
+  Only a scalar value is rewritten: a flow collection, a comment, an anchor, an alias,
+  or a tag is left alone, a rejected character in a key, a comment, or a block scalar
+  (whatever its key looks like) stays a parse error, and a lone carriage return is never
+  escaped, because it may be a line ending and the text after it another line.
+  Both implementations.
 
 ### Changed
 
@@ -141,6 +394,28 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
     as every other helper already did: `z.ipv4().lowercase()` emits `format: lowercase`
     and `z.ipv4().regex(...)` emits none.
 
+### Performance
+
+- **A strict JSON document is parsed with `json`** when ruamel would read it
+  identically, so a large `.json` artifact validates many times faster.
+  YAML input, and every text on which JSON and YAML 1.2 can disagree, keeps the ruamel
+  path, so values, types, key order and error codes do not change.
+  The path runs only at a ruamel release the guards were checked against (0.18 and
+  0.19).
+- **YAML is parsed by ruamel’s optional C extension where it reads exactly as the
+  pure-Python parser**, several times faster, when `ruamel.yaml.clib` is installed and
+  is the libyaml build softschema was checked against.
+  Every other text, and every text libyaml fails on, is read by the pure parser, so
+  values and errors do not change.
+  `yaml_parser_mode()` and `softschema doctor` report which parser is active, and
+  `SOFTSCHEMA_PURE_YAML=1` turns the C parser off.
+  Compiled schemas are always written by the pure-Python emitter.
+- **The TypeScript reader is linear in the width of a mapping.** The `yaml` package’s
+  own duplicate-key check compares each key with every earlier key of its mapping, so a
+  0.4 MB block mapping took 6 s and grew with the square of its width; duplicates are
+  now found in one pass with a set per mapping, with the same `kind`, message, and
+  position, and the same document takes 0.4 s.
+
 ### Fixed
 
 - Python `repair_and_validate_artifact(..., model=...)` uses the supplied model for both
@@ -148,17 +423,21 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   A model rejection now returns `invalid` after repair rather than validating against
   the caller’s model-free contract.
   The caller’s contract is unchanged.
+
 - TypeScript repair results for a missing or invalid-UTF-8 artifact without an inferred
   contract report `input_error`, matching Python and other library reads.
   Parse failures remain `invalid`.
+
 - TypeScript `validateArtifact` without a bound schema reports structural
   `skipped_reason: inferred_via_model` only when the call supplies a `semanticModel`, as
   Python does. A `Contract.model` label alone reports `no_schema`, and a semantic model
   without a label reports `inferred_via_model`. The CLI output is unchanged because
   `--model` sets both.
+
 - Python `validate_values(schema=...)` with a schema file that does not exist reports
   `schema_missing` with the path, as artifact validation does, instead of
   `schema_invalid` with the operating system’s message.
+
 - **TypeScript-compiled schemas match Pydantic again for nullable fields under zod 4.5
   and later.** Zod 4.5 began rewriting `anyOf: [{type: "string"}, {type: "null"}]`, what
   `.nullable()` and a union of plain primitives emit, as `type: ["string", "null"]`. The
@@ -167,6 +446,7 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   Python mirror. The published `^4.4.3` range already admitted those zod versions.
   The compiler now expands every `type` array back into `anyOf` branches before
   canonicalization; the committed reference schemas and goldens are unchanged.
+
 - **TypeScript-compiled schemas match Pydantic again for `.startsWith()`, `.endsWith()`,
   and `.includes()` under zod 4.6.** Zod 4.6 writes each check’s name (`starts_with`,
   `ends_with`, `includes`) as the string’s `format`. No JSON Schema vocabulary defines
@@ -178,6 +458,7 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   generated is corrected: an authored `.meta({ format })` is kept whatever its name.
   Each other string helper zod 4.4 already had, used alone, emits the same `format` as
   under zod 4.4.
+
 - **TypeScript-compiled schemas match Pydantic again for `.catch()` under zod 4.6.** Zod
   4.6 lists a `.catch()` field in `required` because its inner type is required,
   although Zod’s runtime fills an absent key with the catch value and the field’s
@@ -192,6 +473,7 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   A tuple element with a `.catch()` still counts toward `minItems`, as an element of
   Pydantic’s `tuple[...]` does, although Zod’s runtime fills a missing trailing element;
   Pydantic cannot default a tuple element.
+
 - **TypeScript-compiled schemas keep the `default` of a `.default()` over a transform,
   and an authored `default` or `examples` on one, as Pydantic does.** In input mode zod
   4.4 and 4.6 drop the `default` of a schema that transforms, so
@@ -223,6 +505,7 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   `.meta()` clone such as `R.describe("a").describe("b")`. Validation is the same, and
   such shapes have no Pydantic mirror.
   The KitchenSink parity fixture now covers a defaulted transform.
+
 - **TypeScript compile rejects a default that canonical JSON cannot carry, as Python
   compile does.** A NaN or infinite `.default()`, `.prefault()`, `.catch()`, or authored
   `default` used to compile to `default: null`, because Zod’s final JSON copy of the
@@ -241,6 +524,159 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   frontmatter-format 0.5.0 keeps each writer’s representers on a private subclass.
   Compiled schema files are unchanged.
 
+- **`compile` writes schemas the portable reader accepts.** Both writers emitted U+0085,
+  U+2028, and U+2029 raw (ruamel single-quoted, the `yaml` package plain or
+  double-quoted), so a model whose description, default, or enum value carried one
+  produced a sidecar every later read refused as `schema_invalid`. Each writer now
+  forces such a string (keys included) into double-quoted style and writes the escape
+  both engines decode; `compile` runs the reader’s preflight on its own output; and
+  `compile --check` reports an unreadable committed sidecar as drift.
+  The cross-language parity fixture carries these characters in a description, a
+  default, and an enum value.
+  Two older holes of the same kind are closed: the Python writer wrote a string holding
+  a CRLF as a block literal, which both readers normalize to `\n`, so the sidecar’s
+  content differed from the model and `compile --check` reported drift on fresh output
+  (such strings are now double-quoted, `"a\r\nb"`); and the TypeScript writer wrote a
+  tab inside a plain scalar, and a bare `=`, which ruamel refuses (both are now
+  double-quoted). The parity fixture carries a CRLF, a tab, and `=` as well.
+
+- **Conform never folds a raw U+0085.** The conform pass loaded the YAML region through
+  the round-trip loader, which skipped the preflight; ruamel folds the character to a
+  space, so Python `repair --contract … --schema …` on a document `validate` rejects
+  retyped a scalar beside the fold, wrote the folded text with no record of it, and
+  reported `valid`. Conform now runs the preflight before loading, in both runtimes.
+  The TypeScript round-trip emitter also re-escapes these characters on output, so a
+  retype beside an escaped `\N` no longer undoes the escape.
+
+- **Fence lines trim one explicit set.** See Compatibility; six `fence_scan` vectors pin
+  the agreement.
+
+- **The quoting pass trims one explicit set too.** `repair`’s older quoting pass trimmed
+  a value with each host’s default whitespace set (U+0085 is whitespace to Python,
+  U+FEFF to JavaScript), so a rejected character in the comment of a line that needed
+  quoting was dropped from the file in one runtime and refused in the other.
+  Both passes now trim space and tab only and treat only `[ \t]+#[ \t]` as a comment;
+  such a line stays a parse error in both runtimes.
+
+- **Tabs in plain scalars and a plain `=` read the same in both runtimes.** See
+  Compatibility.
+
+- **A tab after a block scalar header, a closing quote, or a flow collection’s closing
+  bracket, an under-indented flow continuation line, a long or multi-line implicit
+  flow-mapping key, an astral block key past 1,024 UTF-16 code units, and an integer
+  `-0` get one verdict in both runtimes.** Each was read by one runtime and a parse or
+  value error in the other; see Compatibility.
+  Shared `portable_values` vectors pin every case.
+
+- **A number form only one engine reads as a number is refused in both runtimes**
+  instead of reading as a number in one and a string in the other; see Compatibility.
+
+- **A collection used as a mapping key no longer crashes the Python reader.** A key such
+  as `[?]` in `{[?]}` made ruamel’s constructor raise a bare `TypeError` (an unhashable
+  key) that escaped `validate`; it is now `yaml_non_string_key`, as in TypeScript.
+
+- **A raw rejected character right after a backslash in a double-quoted value is left
+  for the author.** `repair` escaped it anyway, writing `"a\\x01b"` for `"a\<U+0001>b"`,
+  which reads as a backslash and the letters `x01`, and reported the document repaired.
+  Such a value is now left unrepaired with its parse error, in both runtimes; after an
+  escaped backslash (`\\`) the character is escaped as before.
+
+- **A schema file is named once in its diagnostic.** An invalid-UTF-8 compiled schema
+  was reported as `` `s.yaml`: `s.yaml`: input is not valid UTF-8 ``, and
+  `compile --check` named the sidecar twice the same way; the reader now names the file
+  once, whichever step refused it.
+
+- **An unexpected exception in the TypeScript YAML reader is no longer reported as a
+  YAML parse error.** It reaches the caller as itself.
+
+- **A `%YAML 1.0` or `%YAML 1.3` directive no longer crashes the Python reader.** ruamel
+  raised an `AssertionError` that escaped `validate` as a traceback; the directive is
+  now a `yaml_parse_error`, as in TypeScript.
+
+- **Control characters in a filename never reach stderr raw.** A document name in a
+  human-readable message is written through one helper per runtime that escapes C0/C1
+  controls and DEL as `#xHHHH`, so a hostile filename in a third-party corpus cannot
+  drive the terminal (an OSC title or clipboard write, a cleared and overwritten line, a
+  forged second diagnostic).
+  JSON output already escaped them.
+
+- **The TypeScript preflight’s error path no longer materializes the input** to count
+  the line and column (about 4x peak memory on a large single-line input); it counts
+  with index loops, as Python does.
+
+- **Diagnostics are easier to act on.** Frontmatter line numbers count from the top of
+  the file, the preflight message names the escape, and a `schema_invalid` message names
+  the schema file (the record’s `path` is the artifact).
+
+- **`repair` without `--contract` uses validate’s kinds** for a document that reads but
+  holds no mapping; see Compatibility.
+
+- **A surrogate pair written as two `\u` escapes decodes to one character in Python**,
+  as it already did in TypeScript and as JSON reads it.
+
+- **The sdist no longer ships `AGENTS.md`.** The file carries repository policy for
+  agents working in this repository, not package documentation; a consumer vendoring the
+  sdist tree would otherwise place it inside their own repository.
+  The wheel and npm package never included it.
+
+- **`repair` no longer changes how other ruamel emitters spell `null`.** The round-trip
+  emitter behind `repair` registered its null representer through a stock
+  `YAML(typ="rt")` instance, and ruamel’s `add_representer` writes to the shared
+  `RoundTripRepresenter` class.
+  After the first repair, every round-trip emitter in the same process — a host
+  application’s own included — wrote `null` where ruamel writes an empty value.
+  The representer now lives on a softschema-private subclass, so the repair emitter no
+  longer touches ruamel’s shared classes.
+  Python only: the TypeScript emitter is configured per call and has no shared state to
+  leak.
+
+- **A YAML parse failure names the artifact.** The YAML engines say where in the text
+  they stopped, not which text: ruamel reports `in "<unicode string>", line 4` and the
+  `yaml` package a line and column alone.
+  softschema’s own fence messages already named the document, but an engine failure in
+  either profile — and every failure in a pure-yaml artifact — did not, so an agent
+  repairing a batch could not tell which file a `yaml_parse_error` record was about.
+  The `validate` diagnostic and the `yaml_parse_error` record now begin with the
+  backticked document path, followed by the engine’s message, in both profiles, both
+  commands, and both implementations.
+  softschema’s own messages that name a document (an unterminated fence, non-mapping
+  frontmatter, a document with no frontmatter or a non-mapping root) use the same
+  backticked prefix, and the non-UTF-8 diagnostic, which named no file, now names it
+  too. The record `kind` is unchanged; anything matching the engine’s message from its
+  first character, or one of softschema’s own messages in full, needs its pattern
+  widened.
+
+- **`repair` reports a non-UTF-8 artifact the way `validate` does.** Without
+  `--contract`, the record `repair` built for a file that is not UTF-8 carried repair’s
+  raw `invalid_utf8` code as its `kind` and the verdict `invalid`, where the same file
+  under `--contract`, and under `validate`, is `artifact_invalid_utf8` at `input_error`.
+  Repair’s error code now goes through the same code-to-kind rule validation applies, in
+  both implementations, and the TypeScript result for a contract-less unreadable
+  document derives its `outcome` from the record kind as Python does.
+
+- **The Python frontmatter reader splits lines the way TypeScript does.** It used
+  `str.splitlines()`, which also breaks on U+2028, U+2029, U+0085, form feed, and the
+  ASCII separators. A frontmatter scalar containing one was cut into lines the YAML
+  engine could not parse, so Python `validate` exited 2 with a parse error where
+  TypeScript read the document and reached the contract verdict.
+  Both readers now split on `\n` alone and drop a trailing `\r`, the rule the repair
+  fence scan already used.
+
+- **Raw control and line-separator characters are a portable input error in both
+  runtimes.** The two YAML engines read them differently: ruamel rejects every character
+  outside YAML 1.2 `c-printable` (form feed, vertical tab, the ASCII separators, DEL,
+  the C1 controls) and treats U+0085, U+2028, and U+2029 as YAML 1.1 line breaks,
+  folding a NEL in a flow scalar to a space and breaking a block scalar or a comment
+  into a parse error, while the `yaml` package reads all of them as content.
+  So a form feed in a frontmatter scalar failed Python `validate` and passed TypeScript,
+  and a mis-decoded cp1252 ellipsis (U+0085) silently became a space in Python and
+  stayed a character in TypeScript.
+  Both runtimes now reject any of these characters as raw text anywhere in the YAML they
+  read (the frontmatter block or the pure-yaml document, comments and keys included)
+  with one `yaml_parse_error` message naming the character, line, and column; written as
+  a double-quoted escape (`"\f"`, `"\N"`, `"\L"`), every one of them decodes identically
+  in both. The spec records the rule under Portable YAML Values.
+
 ### Security
 
 - **The `fast-uri` override is raised to exactly 3.1.9.** It closes seven advisories
@@ -253,86 +689,15 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   (improper path equivalence in relative reference normalization), and
   GHSA-333x-w4r6-6crp (scheme injection through an unescaped first-segment colon).
   3.1.9 was published 2026-10-19, inside the 14-day cool-off; it is installed under a
-  maintainer-approved exception, pinned exactly.
-  The override applies only to this repository’s own install, for development and CI.
-  npm and Bun ignore the `overrides` of a dependency, and the published package does not
-  bundle `fast-uri`, so a project that installs softschema gets the `fast-uri` its own
-  lockfile resolves for `ajv`; update it to 3.1.9 or later there.
+  maintainer-approved exception, pinned exactly, as the only 3.x release that clears all
+  seven. The override applies only to this repository’s own install, for development and
+  CI. npm and Bun ignore the `overrides` of a dependency, and the published package does
+  not bundle `fast-uri`, so a project that installs softschema gets the `fast-uri` its
+  own lockfile resolves for `ajv`; update it to 3.1.9 or later there.
+  No softschema API or artifact change is involved.
 - **The TypeScript package requires zod `^4.6.6`** (locked at 4.6.6), which closes
   GHSA-mrhx-c7xc-m3w5: validating an oversized array, set, or map against a size bound
   could exhaust memory, because Zod parsed every element before checking the bound.
-
-### Compatibility
-
-Target the next coordinated minor release, **0.9.0**. Python layer-result constructors
-require an explicit keyword-only `execution`; TypeScript layer interfaces require the
-same field. Ordinary validation call signatures, `ok`, outcomes, errors, CLI exit
-classes, artifact metadata, and compiled schema files are unchanged except for the
-corrected repair-result verdicts above, the Zod 4.6 model behavior above, and the schema
-refusals below, each of which turns an artifact bound to such a schema `invalid` (`ok`
-false, `validate` exit 1, under every status, with or without `--require`) until the
-schema is fixed.
-They affect hand-written or third-party schemas only; schemas written by
-`softschema compile` carry the canonical `$schema` and absolute ids and use none of the
-refused keywords. **Python users** are the ones who change for an unresolvable `$ref` on
-a branch the payload never reaches (TypeScript already refused it; remove or fix the
-reference), for a `$schema` line naming draft-07 or another draft, which Python used to
-accept and validate as 2020-12 (TypeScript already refused it, now under
-`reason: dialect` rather than `compilation`; delete the line or set the 2020-12 URI),
-and for `$recursiveRef`, which Python ignored and TypeScript evaluated (write
-`$dynamicRef`). **Both runtimes** change for the legacy `dependencies` keyword, which
-TypeScript enforced and Python ignored (write `dependentSchemas` or
-`dependentRequired`), for OpenAPI `nullable`, which TypeScript honored and Python
-ignored (write `type: [..., "null"]`), and for any resource identity outside the
-identity grammar, which both now refuse as `reason: resource_identity` and
-`compile --schema-id` refuses too.
-Before, the engines read such identities differently: a relative root `$id` against
-different invented bases; `URN:`, `urn:Ex:…`, an uppercase host, `%7E`, or a dot
-segment, which fast-uri normalizes and Python does not; a whitespace-prefixed id, which
-Python’s `urlsplit` trims; a malformed host such as `http://[::1`, which Python refused
-as `compilation` and TypeScript accepted; and `urn:example` or `urn:dir/item.json`,
-which TypeScript failed to compile.
-Ordinary-looking ids it also refuses: `https://example.com` with no path (write
-`https://example.com/`), an explicit default port as in `https://example.com:443/x`, an
-uppercase `urn:uuid:6E8BC430-…`, a trailing empty `#` as in
-`http://example.com/schema#`, common in draft-07-era schemas, and `s3://` or `gs://`
-ids, since only `http`, `https`, and `file` take `//host`. Write `https://host/path`,
-`file:///path`, `urn:<nid>:<name>` in lowercase, or another `scheme:path`, with no
-fragment. Skip reasons change only for the TypeScript library fix above.
-Strict serialized-result consumers must accept the new layer fields and remove the
-unreleased aggregate field.
-Old reports without execution fields have **unknown** execution; preserve absence or
-revalidate rather than fabricating evidence.
-See the
-[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
-for downstream adoption and release sequencing.
-
-Compiled schema files also change for one TypeScript construct.
-A model with a `.default()` over a transforming schema, or an authored `default` or
-`examples` on one, compiles to a new schema and `schema_sha256`, because the field gains
-the `default` or `examples` that 0.8.1 dropped under zod 4.4 and 4.6 (see Fixed).
-`compile --check` reports drift for such a model; recompile its committed schema.
-The new schema is the one its Pydantic mirror compiles to.
-This fix changes no compiled schema without a transform, and no Python-compiled schema.
-A `.catch()` whose value the referenced `$defs` entry already carries compiles as in
-0.8.1, to the bare `$ref` Zod writes; only the unreleased #66 wrote the value beside it.
-
-### Performance
-
-- **A strict JSON document is parsed with `json`** when ruamel would read it
-  identically, so a large `.json` artifact validates many times faster.
-  YAML input, and every text on which JSON and YAML 1.2 can disagree, keeps the ruamel
-  path, so values, types, key order and error codes do not change.
-  The path runs only at a ruamel release the guards were checked against (0.18 and
-  0.19).
-- **YAML is parsed by ruamel’s optional C extension where it reads exactly as the
-  pure-Python parser**, several times faster, when `ruamel.yaml.clib` is installed and
-  is the libyaml build softschema was checked against.
-  Every other text, and every text libyaml fails on, is read by the pure parser, so
-  values and errors do not change.
-  `yaml_parser_mode()` and `softschema doctor` report which parser is active, and
-  `SOFTSCHEMA_PURE_YAML=1` turns the C parser off.
-  Compiled schemas are always written by the pure-Python emitter.
 
 ## v0.8.1—2026-09-11
 

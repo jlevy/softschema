@@ -1,8 +1,9 @@
 $schema: https://json-schema.org/draft/2020-12/schema
-title: PrelimScanTerms
+title: ScanTerms
 description: >-
   High-recall customer search queries for one ticker, proposed after a quick check of
-  current brands and products. Loosely borrowed from the GTIA v2 prelim scan form.
+  current brands and products. Loosely modeled on a downstream pipeline's scan
+  form.
 type: object
 additionalProperties: false
 required:

@@ -87,6 +87,20 @@ class KitchenSink(BaseModel):
     nickname: str | None = "n/a"
     # Optional enum (Literal | None).
     rank: Literal["low", "high"] | None = None
+    # Text the compilers must escape: U+0085, U+2028 and U+2029 in a description, a
+    # default, and an enum value. Both writers emit `\N`, `\L` and `\P`, and both readers
+    # read the sidecar back; raw, the portable preflight would reject it.
+    separator: Literal["next\u0085line", "line\u2028separator"] = Field(
+        default="next\u0085line",
+        description="Carries a next line\u0085a line\u2028and a paragraph\u2029separator.",
+    )
+    # Text one writer or the other once wrote in a form the other reader refused: a CRLF
+    # (Python folded it in a block literal), a tab in a plain scalar and a bare `=` (the
+    # yaml package wrote them plain, ruamel refused them). Both writers now quote them.
+    control_text: Literal["=", "tab\there"] = Field(
+        default="tab\there",
+        description="Carries a CRLF\r\nand a tab\tand ends with =",
+    )
     # Required nested object (single-use $ref).
     primary: Address
     # Optional nested object (anyOf [$ref, null]).

@@ -9,7 +9,7 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Planned
+**Status:** Implemented; shipped in v0.8.0 on 2026-08-30 (PR #52).
 
 **Tracking:** `ss-19s5` (epic)
 

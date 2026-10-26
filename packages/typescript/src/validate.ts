@@ -7,6 +7,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ValidateFunction } from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
+import { YAMLError } from "yaml";
 import type { z } from "zod";
 import {
   EnforcementUnsupportedError,
@@ -36,7 +37,14 @@ import {
   type SchemaWarning,
   type ValidationExecution,
 } from "./models.js";
-import { PortableInputError, parsePortableYaml, readUtf8 } from "./portable.js";
+import {
+  documentLabel,
+  isFenceLine,
+  PortableInputError,
+  parsePortableYaml,
+  readUtf8,
+  readYamlFile,
+} from "./portable.js";
 
 export interface StructuralResult {
   ok: boolean;
@@ -115,15 +123,49 @@ export interface ParsedDocument {
  */
 export class YamlParseError extends Error {}
 
-function parseYaml(text: string): unknown {
+function parseYaml(text: string, source: string, fenceLines = 0): unknown {
   try {
     return parsePortableYaml(text);
   } catch (err) {
-    if (err instanceof PortableInputError) {
-      throw new YamlParseError(err.message, { cause: err });
+    // `parsePortableYaml` reports every input failure as `PortableInputError`; the `yaml`
+    // package collects its parse errors on the document rather than throwing them, and a
+    // `YAMLError` is wrapped too in case a release throws one. Anything else is a bug and
+    // must reach the caller's error boundary as itself, not as a verdict on the input.
+    if (err instanceof PortableInputError || err instanceof YAMLError) {
+      throw new YamlParseError(nameSource(err.message, source, fenceLines), { cause: err });
     }
-    throw new YamlParseError((err as Error).message);
+    throw err;
   }
+}
+
+const LINE_AND_COLUMN = /\bline (\d+), column (\d+)\b/gu;
+
+/**
+ * A parse failure's message with the document named first.
+ *
+ * The engine says where in the text it stopped, not which text: the `yaml` package reports
+ * a line and column and ruamel an anonymous `"<unicode string>"`. An agent repairing a
+ * batch of artifacts cannot act on a line number alone, so both readers put the document
+ * first, in the backticked-prefix form every softschema message that names a document
+ * uses. Mirrors the Python `_parse_document_yaml`.
+ *
+ * `fenceLines` is how many lines of the file precede the text that was parsed: one for a
+ * frontmatter block, whose first line is file line 2. The engines and the preflight count
+ * lines within the text they were handed, so every `line N, column M` in the message is
+ * shifted by that many lines and names a line of the file the agent will open. Both engines
+ * and the preflight write the position in that one form, which is why the rewrite can be
+ * this narrow.
+ */
+function nameSource(message: string, source: string, fenceLines = 0): string {
+  const shifted =
+    fenceLines === 0
+      ? message
+      : message.replace(
+          LINE_AND_COLUMN,
+          (_match, line: string, column: string) =>
+            `line ${Number(line) + fenceLines}, column ${column}`,
+        );
+  return `${documentLabel(source)}: ${shifted}`;
 }
 
 /**
@@ -147,29 +189,36 @@ function readFrontmatterDoc(path: string): ParsedDocument {
  * just produced, rather than what is still on disk — parses it through exactly this code
  * path instead of a second implementation that could disagree with it. `source` only names
  * the document in error messages.
+ *
+ * Lines are split on `"\n"` alone, with a trailing `"\r"` dropped, the same rule
+ * `splitFrontmatter` and the Python reader apply. U+2028, U+2029 and U+0085 stay inside
+ * their line here, so the portable preflight sees them and rejects them as raw text.
  */
 export function parseFrontmatterText(text: string, source = "<text>"): ParsedDocument {
   const lines = text.split(/\r?\n/);
-  if (lines[0]?.trimEnd() !== "---") return { hasFence: false, value: null };
+  if (lines[0] === undefined || !isFenceLine(lines[0])) return { hasFence: false, value: null };
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trimEnd() === "---") {
+    if (isFenceLine(lines[i] ?? "")) {
       end = i;
       break;
     }
   }
   if (end === -1) {
-    throw new YamlParseError(`Delimiter \`---\` for end of frontmatter not found: \`${source}\``);
+    throw new YamlParseError(
+      `${documentLabel(source)}: Delimiter \`---\` for end of frontmatter not found`,
+    );
   }
   // Empty frontmatter (end-fence at line 1) is the portable no_frontmatter case.
   if (end === 1) return { hasFence: false, value: null };
-  const parsed = parseYaml(lines.slice(1, end).join("\n"));
+  // The block starts on file line 2: one fence line precedes it.
+  const parsed = parseYaml(lines.slice(1, end).join("\n"), source, 1);
   if (!isMapping(parsed)) {
     // Reject the same non-mapping values as Python: a whitespace-only block (YAML
     // `null`), a list, or a bare scalar. Use the portable type names from the shared
     // error contract.
     throw new YamlParseError(
-      `Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}: \`${source}\``,
+      `${documentLabel(source)}: Expected YAML metadata to be a dict, got ${pyTypeName(parsed)}`,
     );
   }
   return { hasFence: true, value: parsed };
@@ -182,12 +231,22 @@ export function parseFrontmatterText(text: string, source = "<text>"): ParsedDoc
  * rules, which a host YAML library does not enforce; see `validateArtifact`.
  */
 function readYamlDoc(path: string): ParsedDocument {
-  return parseYamlText(readUtf8(path));
+  return parseYamlText(readUtf8(path), path);
 }
 
-/** The text-level half of `readYamlDoc`, for the same reason. */
-export function parseYamlText(text: string): ParsedDocument {
-  return { hasFence: false, value: parsePortableYaml(text) };
+/**
+ * The text-level half of `readYamlDoc`, for the same reason. `source` only names the
+ * document in error messages; the error keeps its portable code.
+ */
+export function parseYamlText(text: string, source = "<text>"): ParsedDocument {
+  try {
+    return { hasFence: false, value: parsePortableYaml(text) };
+  } catch (err) {
+    if (err instanceof PortableInputError) {
+      throw new PortableInputError(err.code, nameSource(err.message, source));
+    }
+    throw err;
+  }
 }
 
 /**
@@ -897,15 +956,20 @@ function structuralAgainstSchemaFile(
 ): StructuralResult {
   let compiledSchema: unknown;
   try {
-    compiledSchema = parsePortableYaml(readUtf8(resolved));
+    // The reader's message says where in the schema text it stopped; the record's top-level
+    // `path` is the artifact, so the message names the schema file, once, whichever step
+    // refused it (see `readYamlFile`).
+    compiledSchema = readYamlFile(resolved);
   } catch (err) {
-    if (err instanceof PortableInputError) {
-      return schemaInvalid("syntax", err.message, "not_run");
-    }
+    if (err instanceof PortableInputError) return schemaInvalid("syntax", err.message, "not_run");
     throw err;
   }
   if (!isMapping(compiledSchema)) {
-    return schemaInvalid("syntax", "compiled schema root must be a mapping", "not_run");
+    return schemaInvalid(
+      "syntax",
+      `${documentLabel(resolved)}: compiled schema root must be a mapping`,
+      "not_run",
+    );
   }
   return validateStructural(values, compiledSchema, { strictExtras });
 }
@@ -1241,7 +1305,7 @@ function validateBoundArtifact(
         raw = readYamlDoc(docPath).value;
       } catch (err) {
         if (err instanceof PortableInputError) {
-          return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+          return failure(docPath, contract, null, portableArtifactKind(err.code), err.message);
         }
         if (
           err instanceof Error &&
@@ -1324,12 +1388,14 @@ function validateBoundArtifact(
       parsed = readFrontmatterDoc(docPath);
     } catch (err) {
       if (err instanceof PortableInputError) {
-        return failure(docPath, contract, null, portableArtifactKind(err), err.message);
+        return failure(docPath, contract, null, portableArtifactKind(err.code), err.message);
       }
       if (err instanceof YamlParseError) {
         const cause = err.cause;
         const kind =
-          cause instanceof PortableInputError ? portableArtifactKind(cause) : "yaml_parse_error";
+          cause instanceof PortableInputError
+            ? portableArtifactKind(cause.code)
+            : "yaml_parse_error";
         return failure(docPath, contract, null, kind, err.message);
       }
       if (
@@ -1350,7 +1416,13 @@ function validateBoundArtifact(
   }
   const { hasFence, value: frontmatter } = parsed;
   if (!hasFence) {
-    return failure(docPath, contract, null, "no_frontmatter", `no frontmatter in ${docPath}`);
+    return failure(
+      docPath,
+      contract,
+      null,
+      "no_frontmatter",
+      `${documentLabel(docPath)}: the document has no YAML frontmatter`,
+    );
   }
   if (!isMapping(frontmatter)) {
     return failure(
@@ -1425,7 +1497,16 @@ function validateBoundArtifact(
 
 export { readFrontmatterDoc, readYamlDoc };
 
-function portableArtifactKind(error: PortableInputError): string {
-  if (error.code === "invalid_utf8") return "artifact_invalid_utf8";
-  return error.code;
+/**
+ * The record `kind` for a portable input error `code` raised while reading an artifact.
+ *
+ * The reader's `invalid_utf8` becomes `artifact_invalid_utf8`, the input-error kind that
+ * puts the verdict at `input_error` rather than `invalid`; every other code is already the
+ * kind. One rule for every path that turns a read failure into a record, so `repair` and
+ * `validate` report the identical condition with the same `kind`. Mirrors the Python
+ * `portable_artifact_kind`.
+ */
+export function portableArtifactKind(code: string): string {
+  if (code === "invalid_utf8") return "artifact_invalid_utf8";
+  return code;
 }
