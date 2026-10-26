@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
+import re
 import shutil
 import sys
 from dataclasses import asdict, dataclass, is_dataclass
@@ -53,6 +55,12 @@ RUNNER_INVOCATIONS: dict[str, str] = {
     "uvx": f"uvx {ZERO_INSTALL_PACKAGE}",
     "npx": f"npx -y {ZERO_INSTALL_PACKAGE}",
 }
+# The uv cache buckets `uvx` and `uv run --with` build their throwaway environments in
+# (`archive-v0`, plus `environments-v2` and `builds-v0` pointing into it). A bucket counts
+# only under a directory uv tagged as its cache root with `CACHEDIR.TAG`, which holds
+# wherever `UV_CACHE_DIR` puts the cache.
+_UV_CACHE_BUCKET = re.compile(r"(?:archive|builds|environments)-v\d+")
+_PATH_SEGMENT = re.compile(r"[^\\/]+")
 
 AGENT_HELP_EPILOG = f"""IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
@@ -840,22 +848,62 @@ def _doctor_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
-def _doctor_report() -> dict[str, Any]:
+def _doctor_report(
+    *, path_value: str | None = None, running_path: str | None = None
+) -> dict[str, Any]:
+    """Report the runners the caller can use and the prefix to recommend.
+
+    ``path_value`` is the search path (default: ``PATH``) and ``running_path`` is where
+    this softschema runs from (default: this module); tests inject both.
+    """
+    if path_value is None:
+        path_value = os.environ.get("PATH", "")
+    if running_path is None:
+        running_path = __file__
     runners = []
     for name in RUNNER_COMMANDS:
-        path = _find_runner(name)
+        path = _find_runner(name, path_value)
         runners.append({"name": name, "available": path is not None, "path": path})
-    recommended = next(
-        (RUNNER_INVOCATIONS[runner["name"]] for runner in runners if runner["available"]),
-        None,
-    )
+    available = {runner["name"] for runner in runners if runner["available"]}
     return {
         "version": _installed_version(),
         "yaml_parser": yaml_parser_mode(),
         "yaml_parser_reason": yaml_parser_reason(),
         "runners": runners,
-        "recommended_invocation": recommended,
+        "recommended_invocation": _recommended_invocation(
+            available, _ephemeral_runner(running_path)
+        ),
     }
+
+
+def _recommended_invocation(available: set[str], running_runner: str | None) -> str | None:
+    """Pick the first available prefix, in the skill's runner order.
+
+    An installed ``softschema`` wins. Next comes the zero-install runner that started
+    this softschema, then ``uvx`` and ``npx``. Only a runner found on ``PATH`` is
+    recommended, so the answer is always a command the caller's shell can run.
+    """
+    order = ["softschema", *([running_runner] if running_runner else []), "uvx", "npx"]
+    return next((RUNNER_INVOCATIONS[name] for name in order if name in available), None)
+
+
+def _ephemeral_runner(path: str) -> str | None:
+    """Name the zero-install runner (``uvx`` or ``npx``) whose cache holds ``path``, if any.
+
+    Both runners prepend their throwaway environment's bin directory to the ``PATH`` of
+    the process they start, so a ``softschema`` found there is not on the caller's own
+    ``PATH``. npm's cache is recognized by its ``_npx/<hash>/node_modules`` layout, and uv's
+    by a bucket directly under a tagged cache root.
+    """
+    segments = list(_PATH_SEGMENT.finditer(path))
+    for i, segment in enumerate(segments):
+        name = segment.group()
+        if name == "_npx" and [s.group() for s in segments[i + 2 : i + 3]] == ["node_modules"]:
+            return "npx"
+        cache_tag = path[: segment.start()] + "CACHEDIR.TAG"
+        if _UV_CACHE_BUCKET.fullmatch(name) and os.path.isfile(cache_tag):
+            return "uvx"
+    return None
 
 
 def _doctor_text(report: dict[str, Any]) -> str:
@@ -875,8 +923,10 @@ def _doctor_text(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _find_runner(name: str) -> str | None:
-    return shutil.which(name)
+def _find_runner(name: str, path_value: str) -> str | None:
+    """Find ``name`` on ``path_value``, skipping empty entries and ephemeral runner caches."""
+    search = [d for d in path_value.split(os.pathsep) if d and _ephemeral_runner(d) is None]
+    return shutil.which(name, path=os.pathsep.join(search))
 
 
 SKILL_INSTALL_TARGETS: dict[str, Path] = {
