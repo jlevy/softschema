@@ -650,7 +650,8 @@ def _portable_vector_text(case: dict[str, Any]) -> str:
     generated = case.get("generated")
     if generated == "deep_sequence":
         depth = int(case.get("depth", 1_000))
-        return "value: " + "[" * depth + "0" + "]" * depth
+        inner = "" if case.get("empty") else "0"
+        return str(case.get("prefix", "")) + "value: " + "[" * depth + inner + "]" * depth
     if generated == "long_flow_key":
         key = str(case.get("key_char", "k")) * int(case["length"])
         if case.get("explicit_comment"):
@@ -804,7 +805,9 @@ def test_frontmatter_messages_count_lines_from_the_top_of_the_file() -> None:
     """
     with pytest.raises(PortableInputError) as engine:
         parse_frontmatter_text("---\nmovie:\n  notes: [\n---\nbody\n", source="doc.md")
-    assert "line 3, column 11" in str(engine.value)
+    # The block is parsed with its last line break, so the end of input it reports is the
+    # start of the closing fence's line.
+    assert "line 4, column 1" in str(engine.value)
     assert "line 2, column" not in str(engine.value)
     with pytest.raises(PortableInputError) as pure:
         parse_yaml_text("a: x\u2028y\n", source="doc.yaml")

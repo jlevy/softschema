@@ -85,17 +85,56 @@ keys, flow collections, and JSON arrays now finds no number the two runtimes rea
 differently.
 
 **Indicators glued to flow scalars.** Inside a flow collection, a `:` with no space
-after it before `,`, `]`, or `}` was part of the scalar in Python and a key indicator in
-TypeScript, silently: `[a:, b]` was `['a:', 'b']` in Python and `[{a: null}, 'b']` in
-TypeScript, and `{a:, b}` and `[a :, b]` differed the same way.
+after it before `,`, `]`, `}`, `[`, or `{` was part of the scalar in Python and a key
+indicator in TypeScript, silently: `[a:, b]` was `['a:', 'b']` in Python and
+`[{a: null}, 'b']` in TypeScript, and `{a:, b}` and `[a :, b]` differed the same way.
 `[?a]` was an explicit key in Python and the string `?a` in TypeScript.
-A bare `-`, a leading `:` in a flow mapping, `["a":1]`, and a `#` right after a closing
-quote or bracket (`"a"#c`) were read by one runtime and refused by the other.
+A bare `-`, a leading `:` in a flow mapping, `["a":1]`, a `#` right after a closing
+quote or bracket (`"a"#c`), and, inside a flow collection, a `#` right after an opening
+`[` or `{`, a `,`, or a `:` or `?` indicator (`[#c`, `[a,#c`) were read by one runtime
+and refused by the other.
 Both now reject all of these as `yaml_parse_error`; write a space after the `:` or `?`,
 before the `#`, or quote the scalar.
+For a glued `:` or `?` both runtimes now name the indicator’s line and column.
 A generated sweep of 210,000 flow-collection scalars around `:`, `?`, `-`, `#`, and the
-indicator characters now finds no document the two runtimes read differently, and none
-that one accepts and the other refuses.
+indicator characters, and a 160,000-case fuzz of flow and block structures, now find no
+flow collection the two runtimes read differently, and none that one accepts and the
+other refuses. The fuzz finds one remaining class, loud and unchanged: a block scalar
+without an indentation indicator whose leading lines of only spaces are indented
+differently from its first content line is refused by one engine and read by the other
+(429 cases). Write an indentation indicator, or trim those lines.
+
+**A block scalar at the end of the text.** A block scalar that ended the YAML text with
+no line break after it read differently, silently: `body: |` as the last key of a
+frontmatter block (whose last line the reader joined without its break), or at the end
+of a pure-yaml file with no final newline, was `"line one\nline two"` in Python and
+`"line one\nline two\n"` in TypeScript, and `>` and `|+` the same.
+Both readers now hand the parser the text with its final line break, so **Python’s value
+changes**: clip (`|`, `>`) and keep (`|+`, `>+`) chomping end with `"\n"` there, as they
+do anywhere else in a document; strip (`|-`, `>-`) is unchanged, and TypeScript’s values
+are unchanged. A model with `pattern: ...$` or a `maxLength` on such a field may see the
+extra character; write `|-` to keep a value without its final line break.
+
+**Spaces under an explicit indentation indicator.** In a block scalar with an explicit
+indentation indicator (`|2`, `>1`), a line of only spaces wider than the indentation the
+indicator sets was content in Python (as YAML 1.2 reads it) and an empty line in
+TypeScript, silently: `key: >1` followed by a line of four spaces read as three spaces
+and a line break in Python and as an empty string in TypeScript.
+Both runtimes now reject it as `yaml_parse_error`; trim the line or drop the indicator.
+A line of only spaces no wider than that indentation, and every such line in a block
+scalar without an indicator, is unaffected.
+
+**Mapping entries with content but no `:`.** An entry that has a value, a tag, or an
+anchor but no `:` before it, such as an explicit key `- ? k` followed by a sequence item
+`- x` under it, or `{"a": b, ""!}`, was a parse error in Python and read by TypeScript
+with that content left out.
+TypeScript now rejects it too, as `yaml_parse_error`.
+
+**Depth limit.** TypeScript now counts an empty collection toward the 64-collection
+limit and reports the limit before a duplicate key earlier in the text or a parse error
+later in it, as Python does: an empty `[]` that is the 65th open collection was
+accepted, and a document past the limit with a duplicate key was `yaml_duplicate_key`.
+Both are `yaml_limit` in both runtimes.
 
 **Directives.** `%YAML 1.1` switched both engines to YAML 1.1 schemas that differ (`08`
 was a string in Python and 8 in TypeScript, and a date a string in one and an
@@ -125,6 +164,9 @@ these did; `kind` is the matching key:
 - Every `line N, column M` in a frontmatter-md diagnostic now counts from the top of the
   file (the opening fence is line 1), in the preflight and engine messages alike; it was
   block-relative. Pure-yaml line numbers are unchanged.
+- An engine error at the end of the YAML text (an unclosed `[`) now names the start of
+  the line after the text’s last line, since the text is parsed with its final line
+  break: in frontmatter, the closing fence’s line.
 - The preflight message names the escape to write.
 - A path in a human-readable message (the backticked document name) has C0/C1 controls
   and DEL written as `#xHHHH`.
@@ -367,6 +409,11 @@ A `.catch()` whose value the referenced `$defs` entry already carries compiles a
   `yaml_parser_mode()` and `softschema doctor` report which parser is active, and
   `SOFTSCHEMA_PURE_YAML=1` turns the C parser off.
   Compiled schemas are always written by the pure-Python emitter.
+- **The TypeScript reader is linear in the width of a mapping.** The `yaml` package’s
+  own duplicate-key check compares each key with every earlier key of its mapping, so a
+  0.4 MB block mapping took 6 s and grew with the square of its width; duplicates are
+  now found in one pass with a set per mapping, with the same `kind`, message, and
+  position, and the same document takes 0.4 s.
 
 ### Fixed
 

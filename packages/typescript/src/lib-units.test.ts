@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse as yamlParse } from "yaml";
+import { parseDocument, parse as yamlParse } from "yaml";
 import { z } from "zod";
 import { buildCanonicalSchema, compileSchema } from "./compile.js";
 import {
@@ -20,7 +20,12 @@ import {
   parseSchemaMetadata,
   SchemaMetadataError,
 } from "./models.js";
-import { documentLabel, findNonPortableCharacter, parsePortableYaml } from "./portable.js";
+import {
+  documentLabel,
+  findNonPortableCharacter,
+  PortableInputError,
+  parsePortableYaml,
+} from "./portable.js";
 import { validateArtifact, validateStructural } from "./validate.js";
 
 const HARDENING_VECTORS = join(import.meta.dir, "../../../tests/vectors/hardening.yaml");
@@ -1190,5 +1195,78 @@ describe("validate: artifact error kinds + advisory warning", () => {
     expect((sm.structural as { errors: { kind: string }[] }).errors[0]?.kind).toBe(
       "schema_missing",
     );
+  });
+});
+
+describe("portable reader: cost and duplicate keys", () => {
+  /** The best of `repeats` timings, in milliseconds, of reading `text`, after a warm-up. */
+  const timeRead = (text: string, repeats = 3): number => {
+    const read = (): void => {
+      try {
+        parsePortableYaml(text);
+      } catch {
+        // Only the time matters here.
+      }
+    };
+    read();
+    let best = Number.POSITIVE_INFINITY;
+    for (let run = 0; run < repeats; run += 1) {
+      const start = performance.now();
+      read();
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+
+  // Ten times the input should cost about ten times the time; a quadratic term costs a
+  // hundred. The bound sits between the two, and there is no absolute threshold, only the
+  // within-run ratio, so a slow runner does not decide it.
+  const grows = (shape: (count: number) => string, small: number): void => {
+    const smallTime = timeRead(shape(small));
+    const largeTime = timeRead(shape(small * 10), 1);
+    expect(largeTime).toBeLessThan(40 * Math.max(smallTime, 1));
+  };
+
+  test("explicit keys after a comment in a flow mapping cost linear time", () => {
+    // Each key's `?` is followed by a comment, so the key's `:` is on a later line; the
+    // reader looks every such key up in one parse of the document, not one parse each.
+    const shape = (count: number): string => {
+      const keys = Array.from({ length: count }, (_, index) => `? # c\n  k${index}\n  : ${index}`);
+      return `value: {${keys.join(", ")}}\n`;
+    };
+    expect(parsePortableYaml(shape(2))).toEqual({ value: { k0: 0, k1: 1 } });
+    grows(shape, 500);
+  });
+
+  test("a wide mapping costs linear time", () => {
+    const shape = (count: number): string =>
+      Array.from({ length: count }, (_, index) => `k${index}: ${index}\n`).join("");
+    grows(shape, 2_000);
+  });
+
+  test("a duplicate key reads as the yaml package reports it", () => {
+    for (const text of [
+      "a: 1\nb: 2\na: 3\n",
+      "x:\n  k: 1\n  k: 2\n",
+      "value: {a: 1, b: 2, a: 3}\n",
+      "value: [{k: 1, k: 2}]\n",
+      "a: 1\na: [\n",
+      "value: {a: 1, a: [}\n",
+      `value: "${"x".repeat(100)}"\nvalue: 2\n`,
+    ]) {
+      const expected = parseDocument(text).errors[0];
+      let actual: unknown;
+      try {
+        parsePortableYaml(text);
+      } catch (error) {
+        actual = error;
+      }
+      expect(actual).toBeInstanceOf(PortableInputError);
+      const error = actual as PortableInputError;
+      expect(error.code).toBe(
+        expected?.code === "DUPLICATE_KEY" ? "yaml_duplicate_key" : "yaml_parse_error",
+      );
+      expect(error.message).toBe(expected?.message as string);
+    }
   });
 });

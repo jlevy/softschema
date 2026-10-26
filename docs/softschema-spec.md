@@ -188,12 +188,38 @@ in the scalar, the other reads a key), and after a quoted key in a flow sequence
 (`["a":1]`); a `?` glued to the entry after it (`[?a]`, read as an explicit key by one
 engine and as the scalar `?a` by the other); a bare `-`; and a plain scalar that starts
 with `:` as a flow mapping’s key or value.
-A `#` right after a closing quote or bracket (`"a"#c`, `[a]#c`) is rejected anywhere:
-one engine reads it as a comment, while YAML 1.2 needs a blank before a comment.
-A space after the `:` or `?`, or quoting the scalar, gives one reading; `[a: b]`,
-`[a:b]`, `[:a]`, `[? a : b]`, and JSON’s `{"a":1}` are unaffected.
-When both engines refuse a document for different reasons (an empty key such as `[:]` or
-`[?]` is a parse error to one and a non-string key to the other), the `kind` may differ.
+A `#` right after a closing quote or bracket (`"a"#c`, `[a]#c`) is rejected anywhere,
+and inside a flow collection so is a `#` right after an opening bracket, a `,`, or a `:`
+or `?` indicator (`[#c`, `[a,#c`, `{"a":#c`): one engine reads it as a comment and the
+other refuses it, as YAML 1.2 needs a blank before a comment.
+A space after the `:` or `?`, before the `#`, or quoting the scalar, gives one reading;
+`[a: b]`, `[a:b]`, `[:a]`, `[? a : b]`, and JSON’s `{"a":1}` are unaffected.
+For a glued `:` or `?` the message names the line and column of the indicator, in both
+runtimes.
+When both engines refuse a document for different reasons (an empty key such as
+`[:]` or `[?]` is a parse error to one and a non-string key to the other), the `kind`
+may differ.
+
+A mapping entry that has a value, a tag, or an anchor but no `:` before it, such as an
+explicit key followed by a less-indented `- x`, or `{"" !}`, is rejected as
+`yaml_parse_error`: one engine refuses it, and the other composes the entry with that
+content left out.
+
+The YAML text a reader parses ends with a line break: the frontmatter block’s last line
+keeps the break before the closing fence, and a pure-yaml document that ends without one
+is read as though it had one.
+A block scalar that ends the text therefore keeps its final line break under clip and
+keep chomping (`body: |` as the last key reads `"line\n"`, and `|-` reads `"line"`), as
+it does anywhere else; at the very end of the input one engine drops it and the other
+keeps it. A block scalar with an explicit indentation indicator (`|2`, `>1-`) may not
+hold a line of only spaces wider than the indentation the indicator sets (the parent
+block’s column plus the indicator); it is rejected as `yaml_parse_error`, because YAML
+1.2 makes the extra spaces content and one engine drops them.
+A line of only spaces no wider than that indentation is an empty line to both.
+Without an indicator, a block scalar whose leading lines of only spaces are indented
+differently from its first content line is refused by one engine and read by the other;
+each runtime reports what its engine does, so write an indentation indicator or trim
+those lines.
 
 A document may carry `%YAML 1.2` and `%TAG` directives.
 Any other `%YAML` version, and any other directive, is rejected as `yaml_parse_error`:
@@ -233,10 +259,11 @@ constraint. An explicit tag such as `!!timestamp` remains unsupported under the
 explicit-tag rule.
 
 One YAML document has at most 64 simultaneously open collections, including the root.
-Exceeding that depth is `yaml_limit`, as is a host YAML parser stack overflow.
-The depth rule is a portability rule rather than a resource ceiling: left to the host,
-the two runtimes disagree by an order of magnitude about how deep a document may be, so
-a fixed bound is what makes depth mean the same thing in both.
+Exceeding that depth is `yaml_limit`, as is a host YAML parser stack overflow; an empty
+collection counts, and the limit is reported before a duplicate key or a parse error
+later in the text. The depth rule is a portability rule rather than a resource ceiling:
+left to the host, the two runtimes disagree by an order of magnitude about how deep a
+document may be, so a fixed bound is what makes depth mean the same thing in both.
 
 Input size, scalar size, and node count are not bounded.
 Those ceilings only answered whether a hostile document could exhaust the parser, and

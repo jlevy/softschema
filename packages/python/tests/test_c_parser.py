@@ -725,6 +725,42 @@ def test_the_guard_cost_grows_linearly_with_the_input(shape: Callable[[int], str
     assert large < 1000 * max(small, 0.0001), (small, large)
 
 
+READER_SHAPES: dict[str, Callable[[int], str]] = {
+    "flow_lists_without_a_hash": lambda n: "".join(f"k{i}: [a, 'b', {{c: d}}]\n" for i in range(n)),
+    "quoted_scalars_without_a_hash": lambda n: "".join(f"k{i}: 'v'\n" for i in range(n)),
+    "flow_lists_with_comments": lambda n: "".join(f"k{i}: [a, 'b'] # c\n" for i in range(n)),
+}
+"""Documents whose events each tested the whole text for a ``#`` before the test was hoisted."""
+
+
+class _ContainsCountingText(str):
+    """A text that counts the substring tests made on it; a slice of it is a plain ``str``."""
+
+    tests = 0
+
+    def __contains__(self, key: str) -> bool:  # pyright: ignore[reportImplicitOverride]
+        _ContainsCountingText.tests += 1
+        return super().__contains__(key)
+
+
+@pytest.mark.parametrize("shape", READER_SHAPES.values(), ids=READER_SHAPES.keys())
+def test_the_reader_tests_the_whole_text_a_fixed_number_of_times(
+    shape: Callable[[int], str],
+) -> None:
+    """A hundred times the events makes no more substring tests of the whole document.
+
+    A test per event made the read quadratic in a document with quoted scalars or flow
+    collections and no ``#``, where each test scans to the end: 5 MB took 73 s instead of
+    13 s. Counting the tests pins it without a clock.
+    """
+    counts = []
+    for lines in (10, 1_000):
+        _ContainsCountingText.tests = 0
+        parse_yaml(_ContainsCountingText(shape(lines)))
+        counts.append(_ContainsCountingText.tests)
+    assert counts[0] == counts[1], counts
+
+
 def _time_guard(text: str, repeats: int = 5) -> float:
     """The best of ``repeats`` timings of the guard on ``text``, after one warm-up run."""
     _portable._needs_pure_parser(text)
@@ -766,7 +802,6 @@ ROUTED_TO_PURE = {
     "root_block_scalar_after_marker_and_comment": "# c\n--- # d\n>\n  x\n",
     "flow_quoted_key_adjacent_colon": '["a":1]',
     "flow_quoted_key_spaced_colon": "['k'  :v]",
-    "quoted_key_colon_at_end": '"a":',
     "explicit_key_colon_next_line": '[? "a"\n:x]',
     "explicit_plain_key_colon_after_comment": "[? a #c\n:x]",
     "spaced_colon_in_block_value": "a: x :y\n",
@@ -859,6 +894,9 @@ C_FIRST = {
     "ellipsis_and_times": "a: and so on...\nt: 12:30\nu: http://example.com/x\n",
     "banner_comment": "#" * 40 + "\n# Movie page record\n" + "#" * 40 + "\ntitle: x\n",
     "comment_with_block_indicator": "# see | and > below\na: |\n  x\n",
+    # The reader supplies the text's last line break, so this colon is followed by one,
+    # which both parsers read as a value indicator.
+    "quoted_key_colon_at_end_of_text": '"a":',
 }
 
 

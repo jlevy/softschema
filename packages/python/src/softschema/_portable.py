@@ -306,6 +306,12 @@ def parse_yaml(text: str) -> Any:
     # ruamel. Nothing below may see such a text: `json` would keep a raw NEL as content
     # and ruamel would fold it, which is the disagreement the preflight exists to end.
     check_portable_text(text)
+    # A last line without a line break is still a line (the spec says so for fences), and
+    # the engines read a block scalar that ends the text without one differently: ruamel
+    # clips its final break away and the `yaml` package keeps it. Both readers parse the
+    # text with the break supplied, so `body: |` as the last key reads `"…\n"` in both.
+    if text and not text.endswith("\n"):
+        text += "\n"
     value = _parse_json_subset(text)
     if value is _NOT_JSON:
         return _parse_with_ruamel(text)
@@ -638,6 +644,11 @@ class _FlowIndentation:
         """Whether the next event is inside a flow collection."""
         return self._flow_depth > 0
 
+    @property
+    def block_column(self) -> int:
+        """Column of the innermost open block collection, or 0 at the root."""
+        return self._blocks[-1] if self._blocks else 0
+
     def collection_start(self, event: MappingStartEvent | SequenceStartEvent) -> None:
         if self._flow_depth:
             self._flow_depth += 1
@@ -847,6 +858,78 @@ def _check_glued_comment(text_lines: list[str], mark: Any) -> None:
         )
 
 
+_BLOCK_HEADER_INDENT = re.compile(r"[|>][-+]?([1-9])")
+"""A block scalar header with an explicit indentation indicator, such as ``|2`` or ``>-1``."""
+
+
+def _check_block_scalar_spaces(text_lines: list[str], event: ScalarEvent, parent: int) -> None:
+    """Reject a line of only spaces wider than an explicit block scalar indentation.
+
+    With an indentation indicator the content is indented ``parent + indicator`` spaces,
+    and YAML 1.2 makes any further spaces on a line of only spaces content: ``key: >1``
+    followed by a line of four spaces is ``"   \n"`` to ruamel, as the spec reads it, and
+    ``""`` to the ``yaml`` package, which treats the line as empty. Neither reading can be
+    reproduced in the other engine, so the line is refused. ``parent`` is the column of
+    the block collection holding the scalar, or 0 at the root.
+    """
+    mark = event.start_mark
+    header = _BLOCK_HEADER_INDENT.match(text_lines[mark.line], mark.column)
+    if header is None:
+        return
+    indent = parent + int(header.group(1))
+    for number in range(mark.line + 1, min(event.end_mark.line + 1, len(text_lines))):
+        line = text_lines[number]
+        if line.endswith("\r"):
+            line = line[:-1]
+        if len(line) > indent and not line.strip(" "):
+            raise PortableInputError(
+                "yaml_parse_error",
+                f"line {number + 1} of only spaces is wider than the block scalar's explicit "
+                f"indentation ({indent}); the two YAML engines read its extra spaces "
+                "differently; trim the line or drop the indentation indicator",
+            )
+
+
+_GLUED_TO_INDICATOR = frozenset("[{,:?")
+"""Flow indicators a comment's ``#`` may not follow without a blank."""
+
+
+def _check_flow_gap(text: str, starts: list[int], after: Any, before: Any) -> None:
+    """Reject a ``#`` right after a flow indicator (``[``, ``{``, ``,``, ``:``, ``?``).
+
+    ``after`` is the end of one event and ``before`` the start of the next; the text
+    between holds only blanks, line breaks, indicators and comments. ruamel starts a comment at
+    a ``#`` with no blank before it; YAML 1.2 and the ``yaml`` package require one.
+    A comment that does start after a blank is skipped to its line end, so its own text
+    (which may hold ``,#``) is not mistaken for the shape.
+    """
+    begin = starts[after.line] + after.column
+    end = starts[before.line] + before.column
+    if "#" not in text[begin:end]:
+        return
+    previous = text[begin - 1] if begin else ""
+    index = begin
+    while index < end:
+        char = text[index]
+        if char == "#":
+            if previous in _GLUED_TO_INDICATOR:
+                line = text.count("\n", 0, index) + 1
+                column = index - (text.rfind("\n", 0, index) + 1) + 1
+                raise PortableInputError(
+                    "yaml_parse_error",
+                    f"comment at line {line}, column {column} starts right after `{previous}`; "
+                    "one YAML engine reads it as a comment and the other refuses it; write a "
+                    "space before the `#`",
+                )
+            newline = text.find("\n", index, end)
+            if newline == -1:
+                return
+            index, previous = newline, "\n"
+            continue
+        previous = char
+        index += 1
+
+
 def _check_flow_scalar(text_lines: list[str], event: ScalarEvent, *, in_mapping: bool) -> None:
     """Reject a scalar in a flow collection whose indicator characters the engines split.
 
@@ -872,9 +955,11 @@ def _check_flow_scalar(text_lines: list[str], event: ScalarEvent, *, in_mapping:
         and (event.style or value)
         and (mark.column < 2 or line[mark.column - 2] in " \t,[]{}")
     ):
+        # Reported at the `?`, as the other runtime reports it.
         raise PortableInputError(
             "yaml_parse_error",
-            f"a `?` directly before the entry at {where} inside a flow collection is a key "
+            f"a `?` at line {mark.line + 1}, column {mark.column} glued to the next entry "
+            "inside a flow collection is a key "
             "indicator to one YAML engine and part of a plain scalar to the other; write a "
             "space after it for an explicit key, or quote the value",
         )
@@ -897,9 +982,11 @@ def _check_flow_scalar(text_lines: list[str], event: ScalarEvent, *, in_mapping:
         )
     end = event.end_mark
     if value.endswith(":") and text_lines[end.line][end.column : end.column + 1] in ",[]{}":
+        # Reported at the `:`, as the other runtime reports it.
         raise PortableInputError(
             "yaml_parse_error",
-            f"plain scalar `{value}` at {where} ends with ':' inside a flow collection, which "
+            f"':' at line {end.line + 1}, column {end.column} has no space after it inside a "
+            f"flow collection, so plain scalar `{value}` ends with it, which "
             "one YAML engine reads as part of the scalar and the other as a key indicator; "
             "quote the value, or write a space and a value after the colon",
         )
@@ -962,6 +1049,12 @@ def _parse_with(text: str, *, pure: bool) -> Any:
     engine error elsewhere is reported first in both runtimes."""
     has_alias = False
     indentation = _FlowIndentation(text)
+    # Scanned once: a per-event `"#" in text` made a document of quoted scalars and no `#`
+    # quadratic.
+    has_hash = "#" in text
+    line_starts: list[int] = []
+    gap_from: Any = None
+    """End of the previous event inside a flow collection, where the next gap begins."""
 
     def consume_parent_slot() -> None:
         if stack and stack[-1][0] == "map":
@@ -973,6 +1066,15 @@ def _parse_with(text: str, *, pure: bool) -> Any:
         if text_lines is None:
             text_lines = text.split("\n")
         return text_lines
+
+    def check_gap(event: Any) -> None:
+        nonlocal gap_from
+        if gap_from is not None:
+            if not line_starts:
+                line_starts.append(0)
+                line_starts.extend(index + 1 for index, char in enumerate(text) if char == "\n")
+            _check_flow_gap(text, line_starts, gap_from, event.start_mark)
+        gap_from = event.end_mark
 
     try:
         for event in yaml.parse(text):
@@ -990,8 +1092,12 @@ def _parse_with(text: str, *, pure: bool) -> Any:
                         _check_key_width(lines(), event)
                 if indentation.in_flow:
                     _check_flow_scalar(lines(), event, in_mapping=stack[-1][0] == "map")
-                if event.style in ('"', "'") and "#" in text:
+                    if has_hash:
+                        check_gap(event)
+                if event.style in ('"', "'") and has_hash:
                     _check_glued_comment(lines(), event.end_mark)
+                if event.style in ("|", ">"):
+                    _check_block_scalar_spaces(lines(), event, indentation.block_column)
                 if deferred_error is None:
                     deferred_error = _number_form_error(event)
                 consume_parent_slot()
@@ -1019,13 +1125,18 @@ def _parse_with(text: str, *, pure: bool) -> Any:
                     measured.append(False)
                 if len(stack) > MAX_DEPTH:
                     raise PortableInputError("yaml_limit", "YAML nesting exceeds the depth limit")
+                if has_hash and (indentation.in_flow or event.flow_style):
+                    check_gap(event)
                 indentation.collection_start(event)
             elif isinstance(event, (MappingEndEvent, SequenceEndEvent)):
                 stack.pop()
                 measured.pop()
-                if "#" in text and indentation.in_flow:
+                if has_hash and indentation.in_flow:
+                    check_gap(event)
                     _check_glued_comment(lines(), event.end_mark)
                 indentation.collection_end(event)
+                if not indentation.in_flow:
+                    gap_from = None
         if deferred_error is not None:
             raise deferred_error
         if has_alias:

@@ -19,6 +19,20 @@ frontmatter:
       ---
       body
     expected: { notes: "first line\n---\nmore text\n", count: 3 }
+  # The block is handed to the parser with its last line's break, so a block scalar that is
+  # the last entry reads the same in both runtimes: clip and keep end with "\n", strip not.
+  - id: literal_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  title: Post\n  body: |\n    line one\n    line two\n---\nbody\n"
+    expected: { title: Post, body: "line one\nline two\n" }
+  - id: folded_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  summary: >\n    folded\n    text\n---\nbody\n"
+    expected: { summary: "folded text\n" }
+  - id: keep_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  body: |+\n    text\n---\nbody\n"
+    expected: { body: "text\n" }
+  - id: strip_block_scalar_ends_frontmatter
+    text: "---\nmovie:\n  body: |-\n    text\n---\nbody\n"
+    expected: { body: "text" }
   # U+0085, U+2028 and U+2029 may appear only as double-quoted escapes (`\N`, `\L`, `\P`),
   # which both engines decode to the same characters; raw, the portable preflight rejects
   # them (see `portable_values`). The fence scan must not split on them either: both readers
@@ -117,6 +131,18 @@ portable_values:
   - { id: tab_in_block_scalar, text: "value: |\n  a\tb\n", valid: true, expected: { value: "a\tb\n" } }
   - { id: tab_in_comment, text: "value: a # c\td", valid: true, expected: { value: a } }
   - { id: tab_as_flow_spacing, text: "value: [a,\tb]", valid: true, expected: { value: [a, b] } }
+  # A pure-yaml document whose last line has no break is read as if it had one, so a block
+  # scalar at the end of the input reads the same in both runtimes.
+  - { id: literal_block_scalar_at_end_of_input, text: "value: |\n  line one\n  line two", valid: true, expected: { value: "line one\nline two\n" } }
+  - { id: folded_block_scalar_at_end_of_input, text: "value: >\n  folded\n  text", valid: true, expected: { value: "folded text\n" } }
+  - { id: keep_block_scalar_at_end_of_input, text: "value: |+\n  text", valid: true, expected: { value: "text\n" } }
+  - { id: strip_block_scalar_at_end_of_input, text: "value: |-\n  text", valid: true, expected: { value: "text" } }
+  # A line of only spaces wider than an explicit block scalar indentation is content to one
+  # engine (as YAML 1.2 reads it) and an empty line to the other, so it is refused; one no
+  # wider than the indentation is an empty line to both.
+  - { id: block_scalar_space_line_wider_than_indicator, text: "value: >1\n    \n  \n", valid: false, code: yaml_parse_error }
+  - { id: block_scalar_space_line_inside_explicit_indent, text: "value: |2\n  a\n     \n  b\n", valid: false, code: yaml_parse_error }
+  - { id: block_scalar_space_line_at_explicit_indent, text: "value: |2\n  a\n  \n  b\n", valid: true, expected: { value: "a\n\nb\n" } }
   # Block context resumes after a block scalar header, a closing quote, and a flow
   # collection's closing bracket, so a tab there is block-context spacing; before the
   # bracket it is still flow spacing, and inside the header's comment it is comment text.
@@ -246,6 +272,16 @@ portable_values:
   - { id: flow_leading_colon_in_mapping, text: "value: {k: :a}", valid: false, code: yaml_parse_error }
   - { id: glued_comment_after_quote, text: "value: \"a\"#c", valid: false, code: yaml_parse_error }
   - { id: glued_comment_after_bracket, text: "value: [a]#c", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_open_bracket, text: "value: [#c\n  a]", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_open_brace, text: "value: {#c\n  a: 1}", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_comma, text: "value: [a,#c\n  b]", valid: false, code: yaml_parse_error }
+  - { id: glued_comment_after_flow_colon, text: "value: {\"a\":#c\n  1}", valid: false, code: yaml_parse_error }
+  - { id: comment_after_comma_and_space, text: "value: [a, # c,#d\n  b]", valid: true, expected: { value: [a, b] } }
+  # The `yaml` package composes these malformed mapping entries with text left out (the
+  # `- x`, the `!`, the `&'`) and no error; ruamel refuses them, and so do both runtimes.
+  - { id: explicit_key_value_without_indicator, text: "a:\n- ? k\n  - x\nb: 1", valid: false, code: yaml_parse_error }
+  - { id: flow_entry_tag_without_value, text: "{\"a\" : b , \"\"!}", valid: false, code: yaml_parse_error }
+  - { id: flow_entry_anchor_without_value, text: "- {k : v, ': '&'}", valid: false, code: yaml_parse_error }
   - { id: flow_pair_spaced, text: "value: [a: b]", valid: true, expected: { value: [{ a: b }] } }
   - { id: flow_colon_inside_plain, text: "value: [a:b]", valid: true, expected: { value: ["a:b"] } }
   - { id: json_adjacent_colon, text: "{\"a\":1,\"b\":[2]}", valid: true, expected: { a: 1, b: [2] } }
@@ -269,6 +305,11 @@ portable_values:
   - { id: depth_65, generated: deep_sequence, depth: 65, valid: false, code: yaml_limit }
   - { id: excessive_depth, generated: deep_sequence, depth: 1000, valid: false, code: yaml_limit }
   - { id: hostile_depth, generated: deep_sequence, depth: 50000, valid: false, code: yaml_limit }
+  # The limit counts open collections, an empty one too, and is reported before a duplicate
+  # key earlier in the text, as Python's event pass finds it first.
+  - { id: empty_sequence_at_depth_limit, generated: deep_sequence, depth: 63, empty: true, valid: true }
+  - { id: empty_sequence_past_depth_limit, generated: deep_sequence, depth: 64, empty: true, valid: false, code: yaml_limit }
+  - { id: duplicate_key_before_excess_depth, generated: deep_sequence, depth: 64, prefix: "a: 1\na: 2\n", valid: false, code: yaml_limit }
   # A JSON document is a YAML document and keeps its YAML meaning, including where the
   # two languages disagree: NaN is a plain scalar string, and duplicate keys fail.
   - id: json_document

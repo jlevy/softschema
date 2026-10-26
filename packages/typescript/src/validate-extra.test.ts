@@ -298,7 +298,8 @@ describe("non-mapping frontmatter is rejected per entrypoint (ss-7cbb)", () => {
 function portableVectorText(item: Record<string, unknown>): string {
   if (item.generated === "deep_sequence") {
     const depth = Number(item.depth ?? 1_000);
-    return `value: ${"[".repeat(depth)}0${"]".repeat(depth)}`;
+    const inner = item.empty === true ? "" : "0";
+    return `${String(item.prefix ?? "")}value: ${"[".repeat(depth)}${inner}${"]".repeat(depth)}`;
   }
   if (item.generated === "long_flow_key") {
     const key = String(item.key_char ?? "k").repeat(Number(item.length));
@@ -387,8 +388,10 @@ test("frontmatter messages count lines from the top of the file", () => {
   expect(() => parseFrontmatterText("---\na: x\u2028y\n---\nbody\n", "doc.md")).toThrow(
     /^`doc\.md`: unacceptable character #x2028 at line 2, column 5: .*write it as "\\L" inside a double-quoted scalar$/u,
   );
+  // The block is parsed with its last line break, so the end of input it reports is the
+  // start of the closing fence's line.
   expect(() => parseFrontmatterText("---\nmovie:\n  notes: [\n---\nbody\n", "doc.md")).toThrow(
-    /line 3, column 11/u,
+    /line 4, column 1/u,
   );
   expect(() => parseYamlText("a: x\u2028y\n", "doc.yaml")).toThrow(/at line 1, column 5/u);
 });
