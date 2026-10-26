@@ -4,7 +4,12 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
-## Unreleased
+## v0.9.1—2026-10-26
+
+A patch release.
+`doctor` recommends a command that works when `uvx` or `npx` started it,
+Python reads C-first only with `ruamel.yaml.clib`’s parser, and the Python package
+requires frontmatter-format 0.5.1.
 
 ### Fixed
 
@@ -39,6 +44,26 @@ version number.
   `ruamel.yaml.clibz` by default, which compiles libyaml with Zig at install time, and
   its `YAML()` does not use it.
   The requirement is now `ruamel-yaml>=0.18,!=0.19.0`.
+
+### Dependencies
+
+- **The Python package requires `frontmatter-format>=0.5.1`.** softschema validates with
+  its own reader and uses frontmatter-format only to write compiled schemas, so
+  validation results and compiled schema bytes are unchanged.
+  The release matters to code that reads or writes with frontmatter-format alongside
+  softschema:
+  - **Lossless writes.** `fmf_write` and `fmf_insert_frontmatter` split the metadata
+    only at LF, CRLF and CR, not at every separator `str.splitlines()` knows, so a value
+    holding LS, PS or NEL no longer gains a real line break in the file.
+    They also keep a shebang or PEP 723 block before hash-style frontmatter, and a
+    replaced file keeps its mode where the filesystem allows.
+  - **Control and line-separator characters are escaped.** A string holding NEL, LS, PS,
+    CR or a character outside YAML 1.2 `c-printable` is written double-quoted, as `\N`,
+    `\L`, `\P`, `\r`, `\x1F` and so on, so it reads back exactly.
+    softschema’s compile writer already wrote compiled schemas this way.
+  - **The C-first gate admits only `ruamel.yaml.clib`’s parser**, the same gate
+    softschema’s own reader now applies, so frontmatter-format’s readers never read with
+    `ruamel.yaml.clibz`.
 
 ## v0.9.0—2026-10-26
 
