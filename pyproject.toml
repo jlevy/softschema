@@ -22,7 +22,9 @@ dependencies = [
     "frontmatter-format>=0.5.0",
     "jsonschema>=4.20",
     "pydantic>=2",
-    "ruamel-yaml>=0.18",
+    # 0.19.0 alone depends on ruamel.yaml.clibz by default, which compiles libyaml with
+    # Zig at install time; its YAML() never uses it, so the build buys nothing here.
+    "ruamel-yaml>=0.18,!=0.19.0",
     "strif>=3.1.0",
 ]
 

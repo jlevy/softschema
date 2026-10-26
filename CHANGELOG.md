@@ -4,6 +4,27 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## Unreleased
+
+### Fixed
+
+- **Python reads C-first only with `ruamel.yaml.clib`’s parser.** The C-first gate
+  admitted any C parser that reported libyaml 0.1.7 on ruamel.yaml 0.18–0.19.
+  `ruamel.yaml.clibz` reports the same version but is a different build, compiled with
+  Zig and flagged for free-threading, and the differential search behind the C-first
+  guards has never run on it.
+  No released ruamel.yaml `YAML()` uses clibz, so no install changes mode today, but a
+  patch release that switched to it would have turned C-first on for an unsearched
+  build. The gate now also checks the parser’s module (`ruamel.yaml.clib._ruamel_yaml` or
+  `_ruamel_yaml`): a clibz parser leaves every text to pure ruamel, and `doctor`’s
+  `yaml_parser_reason` says clibz is not a checked build.
+  When clibz is installed and `YAML()` does not use it, the reason says so.
+
+- **The Python package excludes ruamel.yaml 0.19.0.** That release alone depends on
+  `ruamel.yaml.clibz` by default, which compiles libyaml with Zig at install time, and
+  its `YAML()` does not use it.
+  The requirement is now `ruamel-yaml>=0.18,!=0.19.0`.
+
 ## v0.9.0—2026-10-26
 
 This is a minor release (0.9.0): the portable YAML rule gains a normative rejection, and
