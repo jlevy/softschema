@@ -8,6 +8,19 @@ version number.
 
 ### Fixed
 
+- **`doctor` recommends a prefix that works from the caller’s shell.** Run through
+  `uvx softschema@latest` or `npx -y softschema@latest`, `doctor` found the runner’s own
+  throwaway copy of `softschema`, which the runner had put on the `PATH` of the process
+  it started, and recommended `softschema`, a command the caller’s shell cannot find.
+  An agent following the skill’s advice to use the recommended prefix then failed.
+  Both implementations now skip the uv cache (`archive-v0` and the `environments` and
+  `builds` buckets) and npm’s `_npx` cache when looking for `softschema`, so they report
+  `softschema: no` when only such a copy exists, and recommend the runner that started
+  them: `uvx softschema@latest` from the uv cache, `npx -y softschema@latest` from
+  `_npx`. An installed `softschema` on `PATH` is still recommended first.
+  The TypeScript CLI also counts only executable files as runners now, as the Python CLI
+  already did.
+
 - **Python reads C-first only with `ruamel.yaml.clib`’s parser.** The C-first gate
   admitted any C parser that reported libyaml 0.1.7 on ruamel.yaml 0.18–0.19.
   `ruamel.yaml.clibz` reports the same version but is a different build, compiled with

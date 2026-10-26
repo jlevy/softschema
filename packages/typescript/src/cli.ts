@@ -5,11 +5,14 @@
  * bytes so the shared golden corpus passes against both `softschema-py` and `softschema-ts`.
  */
 import {
+  accessSync,
+  constants,
   existsSync,
   mkdirSync,
   readFileSync,
   realpathSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -59,6 +62,10 @@ const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
   uvx: `uvx ${ZERO_INSTALL_PACKAGE}`,
   npx: `npx -y ${ZERO_INSTALL_PACKAGE}`,
 };
+// The uv cache buckets `uvx` and `uv run --with` build their throwaway environments in
+// (`archive-v0`, plus `environments-v2` and `builds-v0` pointing into it). Matched as a
+// whole path segment, because `UV_CACHE_DIR` can put the cache anywhere.
+const UV_CACHE_BUCKET = /^(?:archive|builds|environments)-v\d+$/;
 
 const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
@@ -333,42 +340,97 @@ function writeText(text: string): void {
   if (!text.endsWith("\n")) process.stdout.write("\n");
 }
 
+type RunnerName = (typeof RUNNER_COMMANDS)[number];
+type EphemeralRunner = Exclude<RunnerName, "softschema">;
+
 interface RunnerReport {
-  name: (typeof RUNNER_COMMANDS)[number];
+  name: RunnerName;
   available: boolean;
   path: string | null;
 }
 
-interface DoctorReport {
+export interface DoctorReport {
   version: string;
   runners: RunnerReport[];
   recommended_invocation: string | null;
 }
 
-function findExecutable(name: string): string | null {
-  const pathValue = process.env.PATH ?? "";
-  for (const dir of pathValue.split(delimiter)) {
-    if (dir === "") continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
+/**
+ * Name the zero-install runner (`uvx` or `npx`) whose cache holds `path`, if any.
+ *
+ * Both runners prepend their throwaway environment's bin directory to the `PATH` of the
+ * process they start, so a `softschema` found there is not on the caller's own `PATH`.
+ */
+function ephemeralRunner(path: string): EphemeralRunner | null {
+  for (const segment of path.split(/[\\/]/)) {
+    if (segment === "_npx") return "npx";
+    if (UV_CACHE_BUCKET.test(segment)) return "uvx";
   }
   return null;
 }
 
-function doctorReport(): DoctorReport {
+/** True for a non-directory the current user may execute, as Python's `shutil.which`. */
+function isExecutable(path: string): boolean {
+  try {
+    if (statSync(path).isDirectory()) return false;
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Find `name` on `pathValue`, skipping empty entries and ephemeral runner caches. */
+function findExecutable(name: string, pathValue: string): string | null {
+  for (const dir of pathValue.split(delimiter)) {
+    if (dir === "" || ephemeralRunner(dir) !== null) continue;
+    const candidate = join(dir, name);
+    if (isExecutable(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Pick the prefix that works from the caller's shell, in the skill's runner order.
+ *
+ * An installed `softschema` wins. Otherwise a softschema that a zero-install runner
+ * started recommends that runner's form, since the runner is what the caller has. Failing
+ * both, the first available runner is recommended.
+ */
+function recommendedInvocation(
+  available: ReadonlySet<RunnerName>,
+  runningRunner: EphemeralRunner | null,
+): string | null {
+  if (available.has("softschema")) return RUNNER_INVOCATIONS.softschema;
+  if (runningRunner !== null) return RUNNER_INVOCATIONS[runningRunner];
+  const fallback = (["uvx", "npx"] as const).find((name) => available.has(name));
+  return fallback === undefined ? null : RUNNER_INVOCATIONS[fallback];
+}
+
+/**
+ * Report the runners the caller can use and the prefix to recommend.
+ *
+ * `pathValue` is the search path (default: `PATH`) and `runningPath` is where this
+ * softschema runs from (default: this module); tests inject both.
+ */
+export function doctorReport(
+  options: { pathValue?: string; runningPath?: string } = {},
+): DoctorReport {
+  const pathValue = options.pathValue ?? process.env.PATH ?? "";
+  const runningPath = options.runningPath ?? fileURLToPath(import.meta.url);
   const runners = RUNNER_COMMANDS.map((name) => {
-    const path = findExecutable(name);
+    const path = findExecutable(name, pathValue);
     return { name, available: path !== null, path };
   });
-  const recommended = runners.find((runner) => runner.available)?.name;
+  const available = new Set(runners.filter((runner) => runner.available).map((r) => r.name));
   return {
     version: packageVersion(),
     runners,
-    recommended_invocation: recommended === undefined ? null : RUNNER_INVOCATIONS[recommended],
+    recommended_invocation: recommendedInvocation(available, ephemeralRunner(runningPath)),
   };
 }
 
-function doctorText(report: DoctorReport): string {
+export function doctorText(report: DoctorReport): string {
   const lines = [`softschema version: ${report.version}`, "available runners:"];
   for (const runner of report.runners) {
     const path = runner.path === null ? "" : ` (${runner.path})`;

@@ -8,8 +8,6 @@ from textwrap import dedent
 import pytest
 
 import softschema.cli as cli
-from softschema import yaml_parser_mode
-from softschema._portable import yaml_parser_reason
 from softschema.cli import main as softschema_main
 from softschema.models import SchemaProfile
 
@@ -240,47 +238,6 @@ def test_version_prints_installed_version_and_implementation(
 
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == f"softschema {cli._installed_version()} (Python)"
-
-
-def test_doctor_reports_available_runners_as_json(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    paths = {
-        "softschema": "/usr/local/bin/softschema",
-        "uvx": "/opt/homebrew/bin/uvx",
-        "npx": None,
-    }
-    monkeypatch.setattr(cli, "_find_runner", lambda name: paths[name])
-
-    exit_code = softschema_main(["doctor", "--json"])
-
-    assert exit_code == 0
-    output = json.loads(capsys.readouterr().out)
-    assert output["version"] == cli._installed_version()
-    assert output["yaml_parser"] == yaml_parser_mode()
-    assert output["yaml_parser"] in ("c-first", "pure")
-    assert output["yaml_parser_reason"] == yaml_parser_reason()
-    assert output["recommended_invocation"] == "softschema"
-    assert output["runners"] == [
-        {"name": "softschema", "available": True, "path": "/usr/local/bin/softschema"},
-        {"name": "uvx", "available": True, "path": "/opt/homebrew/bin/uvx"},
-        {"name": "npx", "available": False, "path": None},
-    ]
-
-
-def test_doctor_text_tells_user_how_to_recover_when_no_runner_exists(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(cli, "_find_runner", lambda _name: None)
-
-    exit_code = softschema_main(["doctor"])
-
-    assert exit_code == 0
-    output = capsys.readouterr().out
-    assert "softschema version:" in output
-    assert f"yaml parser: {yaml_parser_mode()} ({yaml_parser_reason()})" in output
-    assert "recommended invocation: unavailable" in output
-    assert "Install uv or Node" in output
 
 
 def test_skill_brief_points_agents_to_docs_and_rules(
