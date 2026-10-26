@@ -120,18 +120,21 @@ The JSON result carries:
   `execution`, `ok`, `errors`, and `skipped_reason` (why a layer was `not_run`, such as
   `no_schema` or `no_semantic_model`).
 - `status`: the effective status; `document_metadata` is what the artifact declared.
-- `warnings`: `document-enforcement-not-applied` or
+- `warnings`, advisory and never a failure: `document-enforcement-not-applied` or
   `document-enforcement-via-model-only` when the status is `enforced` but no schema
-  check completed.
+  check completed, and `document-status-mismatch` when a caller’s status (such as
+  `--status`) differs from the document’s; the library’s advisory metadata mode adds
+  `document-contract-mismatch`. Every warning code starts with `document-`.
 - `repairs`: `repair_applied` records whose `code` is `yaml_quoted_scalar`,
   `yaml_escaped_character`, or `scalar_conformed`.
 - `values`: the payload, when it was read.
 
 Every error has a `kind`. A schema violation is `kind: schema_violation` with a `code`
-of `missing_property`, `undeclared_property`, or `invalid_value`, a `path`, and, for the
-first two, the `property`. Match on `kind`, `code`, `path`, and `property`, never on
-`message`. `check_not_completed` means a layer named in `--require` did not run: bind a
-schema (`softschema.schema` or `--schema`) or a model.
+of `missing_property`, `undeclared_property`, `invalid_value`, or `unmapped_keyword` (a
+keyword softschema has no category for yet), a `path`, and, for the first two, the
+`property`. Match on `kind`, `code`, `path`, and `property`, never on `message`.
+`check_not_completed` means a layer named in `--require` did not run: bind a schema
+(`softschema.schema` or `--schema`) or a model.
 
 ## Common Refusals and Fixes
 
