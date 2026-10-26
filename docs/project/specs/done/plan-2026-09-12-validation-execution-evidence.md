@@ -2,7 +2,7 @@
 title: Actual Validation Execution and Result Migration
 description: Replace the unreleased mechanism hierarchy with execution evidence on independent structural and semantic checks.
 date: 2026-09-12
-status: Implemented and source-integrated; coordinated release pending
+status: Complete; released in v0.9.0 on 2026-10-26
 upstream_pr: https://github.com/jlevy/softschema/pull/59
 baseline: main at bb8617aa7249096eec39e1f45d0b245289ede651
 ---
@@ -24,8 +24,8 @@ Add an `execution` field to each and remove the unreleased `enforcement_applied`
 and type. The spec remains the authority for the public definitions.
 This plan records the migration and verification decisions.
 
-A downstream consumer verified source integration against `b494f72`; the coordinated
-package release remains open.
+A downstream consumer verified source integration against `b494f72`. Both packages
+released together as 0.9.0 on 2026-10-26 (#69).
 
 ## Public Contract
 
@@ -168,8 +168,12 @@ bindings’ contract and is a separate migration.
   consumer.
 - [x] Add an opt-in caller requirement for completed checks, with shared vectors, CLI
   journeys, and documentation.
-- [ ] Publish coordinated 0.9.0 releases and migrate released consumer dependency
-  ranges; this remains separate from source implementation completion.
+- [x] Publish coordinated 0.9.0 releases: PyPI and npm on 2026-10-26, from tag `v0.9.0`
+  at `8085986` (#69).
+
+**Scope change (2026-10-26):** this plan no longer covers migrating released consumer
+dependency ranges, because that work lands in each consumer’s own repository.
+Metaproc still pins `softschema>=0.8.0,<0.9`; bead `ss-kx95` tracks its move to 0.9.
 
 Shared vectors own portable evidence cases; adapter tests own model identity, callback
 exceptions, and engine-specific progress.
@@ -236,6 +240,11 @@ checks pass 268 Python tests, 303 TypeScript tests, 86 Python, 84 Node, and 86 B
 golden commands, and 27 direct Python–Node parity comparisons.
 The golden commands used an installed `tryscript` 0.1.7 because the sandbox could not
 download the configured 0.2.1 runner; hosted CI must confirm the configured runner.
+
+Release verification: 0.9.0 was tagged `v0.9.0` at main `8085986` (#69) and published to
+PyPI and npm on 2026-10-26 by the release-triggered publish workflow, which succeeded.
+Every hosted check on #69 passed, including the golden jobs, which run the configured
+`tryscript@0.2.1`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

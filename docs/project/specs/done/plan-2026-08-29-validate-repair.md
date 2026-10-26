@@ -9,26 +9,25 @@ author: Claude Code, with maintainer direction from Joshua Levy
 
 **Author:** Claude Code, with maintainer direction from Joshua Levy
 
-**Status:** Implemented (phases 1-3); phase 4 and the metaproc coordination deferred.
-**Superseded in part, 2026-08-30:** the CLI surface described below —
-`validate --repair` and `validate --check-repair` — was replaced before release by the
-`repair` command, with `--dry-run` and `--check`. See
-[plan-2026-08-30-repair-command.md](../done/plan-2026-08-30-repair-command.md).
+**Status:** Complete for phases 1-3, which shipped in v0.8.0 (#51 and #52). Phase 4 and
+the Metaproc coordination are outside this plan’s delivery and are tracked as beads
+`ss-n0pz` and `ss-kx95`. **Superseded in part, 2026-08-30:** the CLI surface described
+below — `validate --repair` and `validate --check-repair` — was replaced before release
+by the `repair` command, with `--dry-run` and `--check`. See
+[plan-2026-08-30-repair-command.md](plan-2026-08-30-repair-command.md).
 Everything else here still holds: the escalating pass, the two corrections in scope, the
 conformance guarantees, and the record surface are unchanged.
 This document is left as written; it records what was true when the feature was
 designed.
 
-**Placement:** kept in `active/` rather than moved to `done/`, which the v0.8.0
-readiness review left as an open call.
-The deferred phase 4 and metaproc coordination are still live work, and the plan is the
-only place they are described.
+**Placement:** moved to `done/` on 2026-10-26, once the deferred phase 4 and the
+Metaproc coordination each had a bead that describes it in full.
 
-**Tracking:** `ss-pac1` (epic), with file-level children `ss-uwp6`/`ss-l3dc` (portable
-helpers), `ss-arqr`/`ss-ioej`/`ss-ibay` (repair), `ss-1obx`/`ss-xisi`/`ss-roh1`
-(conform), `ss-oguz`/`ss-unny`/`ss-xri1`/`ss-g5tr` (wiring), `ss-y3h8` (golden journey),
-`ss-umu2` (docs), and the deferred `ss-e56b` (near-miss hint) and `ss-vt54` (metaproc),
-from GitHub issue [#50](https://github.com/jlevy/softschema/issues/50)
+**Tracking:** GitHub issue [#50](https://github.com/jlevy/softschema/issues/50). The
+delivered work is recorded in closed beads `ss-k8h2` (end-to-end validation), `ss-19s5`
+(the `repair` command), and `ss-0l42` (PR #52 review).
+Open follow-ups: `ss-n0pz` (phase 4, near-miss key hint) and `ss-kx95` (Metaproc
+migration).
 
 ## Overview
 
@@ -388,64 +387,69 @@ These are the properties to test, not aspirations:
 
 ## Implementation Plan
 
+Phases 1-3 shipped in v0.8.0: #51 landed them, and #52 replaced the two Phase 3
+`validate` flags with the `repair` command before release.
+Phase 4 was not started and is tracked as `ss-n0pz`.
+
 ### Phase 1: Syntactic repair, both implementations
 
 Self-contained, no schema dependency, and the largest single win: an unparsable document
 is a total loss today.
 
-- [ ] Add the offset-preserving frontmatter split and the round-trip writer in both
+- [x] Add the offset-preserving frontmatter split and the round-trip writer in both
   languages, since every later step writes through them.
   Python adopts `frontmatter_format.fmf_split_frontmatter`; TypeScript needs one written
   against the existing fence rules.
-- [ ] Port `yaml_repair` to `softschema/repair.py`, dropping metaproc imports.
-- [ ] Replace the self-check with `parse_yaml`, so repair is judged by the reader that
+- [x] Port `yaml_repair` to `softschema/repair.py`, dropping metaproc imports.
+- [x] Replace the self-check with `parse_yaml`, so repair is judged by the reader that
   will judge the artifact.
-- [ ] Relax the line matcher to unindented keys, and cover the `pure-yaml` profile (no
+- [x] Relax the line matcher to unindented keys, and cover the `pure-yaml` profile (no
   fence, payload at column 0).
-- [ ] Exclude the portable violations that are not typos — aliases, anchors, merge keys,
+- [x] Exclude the portable violations that are not typos — aliases, anchors, merge keys,
   explicit tags — up front, with their existing error codes.
-- [ ] Port to `src/repair.ts` on `parseDocument`.
-- [ ] Shared vectors for the repair corpus, including the unindented and pure-yaml cases
+- [x] Port to `src/repair.ts` on `parseDocument`.
+- [x] Shared vectors for the repair corpus, including the unindented and pure-yaml cases
   that metaproc’s version cannot reach.
 
 ### Phase 2: Type conform, both implementations
 
-- [ ] `softschema/conform.py`, keyed on `{code: "invalid_value", validator: "type"}`
+- [x] `softschema/conform.py`, keyed on `{code: "invalid_value", validator: "type"}`
   records whose `validator_value` admits `string`, resolving the scalar through the
   record’s `path`.
-- [ ] Add the semantic source alongside it, so model-only callers (metaproc’s registered
+- [x] Add the semantic source alongside it, so model-only callers (metaproc’s registered
   contracts among them) keep the behavior being migrated.
-- [ ] Carry `expected` through the TypeScript Zod issue mapping, which currently drops
+- [x] Carry `expected` through the TypeScript Zod issue mapping, which currently drops
   it, so the semantic source can identify a string-type issue at all.
-- [ ] Iterate to a fixed point under a bound; terminate on the first no-change round.
-- [ ] Derive the coercible set from softschema’s portable value domain, not metaproc’s:
+- [x] Iterate to a fixed point under a bound; terminate on the first no-change round.
+- [x] Derive the coercible set from softschema’s portable value domain, not metaproc’s:
   settle the `datetime` members against the round-trip/portable parse disagreement.
-- [ ] Drop the alias machinery; keep the null-spelling pin under its own test.
-- [ ] Preserve the source text of the scalar (`1.10` stays `1.10`, `007` stays `007`),
+- [x] Drop the alias machinery; keep the null-spelling pin under its own test.
+- [x] Preserve the source text of the scalar (`1.10` stays `1.10`, `007` stays `007`),
   so the fix is lossless.
-- [ ] Port to `src/conform.ts`.
-- [ ] Shared vectors for the structural source, including every notation the round trip
+- [x] Port to `src/conform.ts`.
+- [x] Shared vectors for the structural source, including every notation the round trip
   does not preserve; per-language tests for the semantic source, as the parity policy
   already requires for Pydantic-versus-Zod behavior.
 
 ### Phase 3: Wire the pass and the flags
 
-- [ ] `repair_and_validate_artifact` in both implementations.
-- [ ] `--repair` and `--check-repair` on `validate`, in both CLIs.
-- [ ] `repairs` on the result; atomic writes through `strif` and `atomically`.
-- [ ] Golden scenario in `tests/golden/scenarios/`, run through all three
+- [x] `repair_and_validate_artifact` in both implementations.
+- [x] `--repair` and `--check-repair` on `validate`, in both CLIs.
+- [x] `repairs` on the result; atomic writes through `strif` and `atomically`.
+- [x] Golden scenario in `tests/golden/scenarios/`, run through all three
   `SOFTSCHEMA_IMPL` variants.
-- [ ] Spec, guide, design docs, SKILL.md, and CHANGELOG.
+- [x] Spec, guide, design docs, SKILL.md, and CHANGELOG.
 
 ### Phase 4 (separate change): near-miss key hint
 
 Touches the message contract, so it lands on its own.
+Not delivered by this plan: bead `ss-n0pz` carries the scope below.
 
-- [ ] When a required property is absent and the instance carries an undeclared
-  near-miss key, name it.
-- [ ] Extend the search to the frontmatter root, so the envelope-indentation class gets
-  a diagnostic.
-- [ ] Byte-identical strings in both implementations, with golden coverage in each.
+- When a required property is absent and the instance carries an undeclared near-miss
+  key, name it.
+- Extend the search to the frontmatter root, so the envelope-indentation class gets a
+  diagnostic.
+- Byte-identical strings in both implementations, with golden coverage in each.
 
 ## Testing Strategy
 
@@ -594,6 +598,11 @@ Both releases land together.
 A metaproc pinned to a softschema without the migrated code, with its own copies already
 deleted, silently loses repair at its boundary.
 
+As of 2026-10-26, step 1 has shipped (v0.8.0) and step 2 has not.
+Metaproc pins `softschema>=0.8.0,<0.9` and still carries `engine/yaml_repair.py` and
+`engine/schema_conform.py`. Bead `ss-kx95` tracks step 2, together with the 0.9 range
+bump.
+
 ## Rejected Alternatives
 
 **A `repair` subcommand.** Steps 2 and 3 are already validation and step 1 must precede
@@ -624,7 +633,7 @@ See [Background](#2-conform-has-to-read-both-validation-layers-not-one).
 ## Open Questions
 
 Questions 1-3 were settled during implementation and are recorded here with what was
-decided; question 4 is still open, and belongs to the deferred phase 4.
+decided; question 4 is still open, and belongs to the deferred phase 4 (`ss-n0pz`).
 
 1. **Is string coercion unconditional, or gated on `repair: safe_coerce`?** *Decided:
    unconditional.* The issue argues it is intent-free and therefore always safe.
