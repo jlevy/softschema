@@ -1129,8 +1129,9 @@ deliberately.
    only the texts on which it was shown to agree with pure ruamel, and only for clib’s
    libyaml 0.1.7 on ruamel.yaml 0.18–0.19. Install `ruamel.yaml.clib`
    (`uv add ruamel.yaml.clib`, or `--with ruamel.yaml.clib` for `uv tool install` and
-   `uvx`), not `ruamel.yaml[libyaml]`, whose `ruamel.yaml.clibz` ruamel’s `YAML()` API
-   does not use. A bare `uvx softschema@latest` runs the pure parser.
+   `uvx`), not `ruamel.yaml[libyaml]`: its `ruamel.yaml.clibz` is not used by ruamel’s
+   `YAML()` API, and softschema never reads with it.
+   A bare `uvx softschema@latest` runs the pure parser.
    `softschema.yaml_parser_mode()` returns `"c-first"` when libyaml is in use and
    `"pure"` otherwise, `softschema doctor` prints the same with the reason, and
    `SOFTSCHEMA_PURE_YAML=1` forces the pure parser; [Installation](installation.md) has

@@ -261,13 +261,15 @@ the comparison is rerun; that costs only speed.
 
 ruamel’s optional C extension (`ruamel.yaml.clib`) is libyaml, a YAML 1.1 scanner and
 parser; ruamel’s constructor and resolver stay in Python either way.
-softschema uses it when it is installed and is the libyaml build the guards below were
-derived for (`CHECKED_LIBYAML_VERSION`, on a ruamel release inside
-`CHECKED_RUAMEL_VERSIONS`), and pure ruamel stays the definition of every result:
-`yaml_parser_mode()` reports `"c-first"` then, and `"pure"` when the extension is
-absent, is another build, runs on a ruamel release outside the checked range, or
-`SOFTSCHEMA_PURE_YAML` is set to anything but empty or `0`; `softschema doctor` reports
-the same, with the reason.
+softschema uses it when ruamel’s `YAML()` parser comes from `ruamel.yaml.clib`
+(`CHECKED_C_PARSER_MODULES`) and is the libyaml build the guards below were derived for
+(`CHECKED_LIBYAML_VERSION`, on a ruamel release inside `CHECKED_RUAMEL_VERSIONS`), and
+pure ruamel stays the definition of every result: `yaml_parser_mode()` reports
+`"c-first"` then, and `"pure"` when the extension is absent, is another build (such as
+`ruamel.yaml.clibz`, which bundles the same libyaml but is never admitted), runs on a
+ruamel release outside the checked range, or `SOFTSCHEMA_PURE_YAML` is set to anything
+but empty or `0`. `softschema doctor` reports the same with the reason from
+`yaml_parser_reason()`, which also says when clibz is installed but unused.
 On ordinary documents libyaml reads exactly what pure ruamel reads, several times
 faster. Where the two differ, libyaml usually rejects what pure ruamel accepts (a URL
 inside a flow sequence, a reserved directive) or words the error differently, so any

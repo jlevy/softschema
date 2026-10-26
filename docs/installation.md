@@ -46,7 +46,8 @@ ruamel.yaml 0.18 depended on it on CPython below a Python-version cap (below 3.1
 `oldlibyaml` extra).
 The newer `ruamel.yaml.clibz` is the same libyaml, compiled with Zig at install time and
 published only as source; ruamel’s `YAML()` API does not use it, so it gives no speedup
-here.
+here. softschema never reads with clibz, and requires ruamel.yaml 0.18 or later except
+0.19.0, the one release that builds clibz by default.
 
 libyaml parses YAML 1.1 and pure ruamel YAML 1.2, so they disagree on some texts.
 softschema gives libyaml only the texts on which the two were shown to agree, and reads
@@ -66,8 +67,9 @@ uvx --with ruamel.yaml.clib softschema@latest doctor  # zero-install
 
 A bare `uvx softschema@latest` runs the pure parser.
 `softschema.yaml_parser_mode()` returns `"c-first"` when libyaml is in use and `"pure"`
-otherwise, `softschema doctor` reports the same with the reason (not installed, another
-build or release, or turned off), and `SOFTSCHEMA_PURE_YAML=1` forces the pure parser.
+otherwise, `softschema doctor` reports the same with the reason (not installed, clibz
+installed but unused, another build or release, or turned off), and
+`SOFTSCHEMA_PURE_YAML=1` forces the pure parser.
 
 ## Zero-Install
 
