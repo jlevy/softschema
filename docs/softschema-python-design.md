@@ -265,8 +265,9 @@ softschema uses it when it is installed and is the libyaml build the guards belo
 derived for (`CHECKED_LIBYAML_VERSION`, on a ruamel release inside
 `CHECKED_RUAMEL_VERSIONS`), and pure ruamel stays the definition of every result:
 `yaml_parser_mode()` reports `"c-first"` then, and `"pure"` when the extension is
-absent, is another build, or `SOFTSCHEMA_PURE_YAML` is set to anything but empty or `0`;
-`softschema doctor` reports the same.
+absent, is another build, runs on a ruamel release outside the checked range, or
+`SOFTSCHEMA_PURE_YAML` is set to anything but empty or `0`; `softschema doctor` reports
+the same, with the reason.
 On ordinary documents libyaml reads exactly what pure ruamel reads, several times
 faster. Where the two differ, libyaml usually rejects what pure ruamel accepts (a URL
 inside a flow sequence, a reserved directive) or words the error differently, so any
@@ -437,8 +438,11 @@ directory under the user home.
 The project intentionally uses generated copies rather than symlinks because agent
 discovery paths and package registries do not share one portable symlink model.
 Full copies are also easier for users and agents to inspect after installation.
-The mirrors carry a `DO NOT EDIT` marker and source digest and are regenerated from the
-source skill; the drift test verifies the managed wrapper and source payload.
+The mirrors carry a `DO NOT EDIT` marker after the skill’s frontmatter and are
+regenerated from the source skill; the drift tests
+(`packages/python/tests/test_skill_mirror_drift.py` and
+`packages/typescript/test/mirror-drift.test.ts`) compare each committed mirror with the
+install payload byte for byte.
 
 When adding another agent target, extend `SKILL_INSTALL_TARGETS`, regenerate from the
 source skill, and update the drift test for the new managed target.
@@ -471,13 +475,18 @@ emitted code that isn’t a `WarningCode` member fails CI.
 
 `StructuralResult.errors[*].kind` uses a separate `snake_case` namespace because errors
 are blocking, not advisory.
-The current first-release kinds:
+The current kinds:
 
 | Kind | Meaning |
 | --- | --- |
 | `artifact_unreadable` | The artifact cannot be opened. |
 | `artifact_invalid_utf8` | The artifact is not valid UTF-8. |
-| `yaml_parse_error` | YAML or frontmatter could not be parsed. |
+| `yaml_parse_error` | YAML or frontmatter could not be parsed, or uses a construct the two YAML engines read differently: a raw control or line-separator character, a tab in a plain scalar or block spacing, a glued flow indicator, an under-indented flow continuation line, an over-long implicit key, or a directive other than `%YAML 1.2` and `%TAG`. |
+| `yaml_unsupported_scalar` | A plain scalar only one engine reads as a number (`1_000`, `0b101`, `-0x10`, `.5e3`), or a lone surrogate. |
+| `yaml_duplicate_key`, `yaml_alias`, `yaml_merge_key`, `yaml_custom_tag`, `yaml_non_string_key` | A duplicate key, an anchor or alias, a `<<` merge key, an explicit tag, or a non-string key. |
+| `yaml_limit` | More than 64 simultaneously open collections. |
+| `number_out_of_range` | An integer outside the safe range (`abs < 2^53`), or a non-finite number. |
+| `number_negative_zero` | A negative zero, integer or float. |
 | `no_frontmatter` | Frontmatter block is missing in a Markdown artifact. |
 | `frontmatter_not_mapping` | Frontmatter parsed but is not a mapping at the top level. |
 | `yaml_not_mapping` | Pure-YAML artifact root is not a mapping. |
@@ -489,7 +498,7 @@ The current first-release kinds:
 | `document_softschema_invalid` | `softschema:` metadata block is malformed (unknown keys, bad shape, invalid `contract`). |
 | `document_contract_mismatch` | Document’s `softschema.contract` does not match the registered contract’s `id` (enforced metadata mode). |
 | `schema_missing` | A compiled schema is bound (a `schema_path` or `softschema.schema`) but the file does not exist, is unreadable, or fails bounded resolution (absolute path or path escaping the document directory and working directory). |
-| `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). |
+| `schema_invalid` | The bound file is not a valid compiled schema (for example a non-mapping YAML root). A `reason` names the class where one applies: `dialect`, `pattern`, `reference`, `resource_identity`, or `shared_subschema`. |
 | `enforcement_unsupported` | The schema is valid Draft 2020-12, but its topology is outside the checked enforced profile; `reason` and `schema_path` identify the boundary. |
 | `schema_violation` | A JSON Schema validation error (engine-neutral; see Engine-neutral structural errors above). |
 | `check_not_completed` | A layer named in `require` did not complete. It carries `layer` and `execution` and is appended after existing errors; a required semantic layer receives the same record in `SemanticResult.errors`. |

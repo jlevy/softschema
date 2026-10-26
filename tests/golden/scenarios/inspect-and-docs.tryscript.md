@@ -63,67 +63,42 @@ $ $SOFTSCHEMA skill --brief
 Use soft schemas when humans, agents, or software produce YAML records whose consumed
 structure should stabilize over time.
 
-- Choose the artifact profile independently of the contract status.
-  Use the standard `frontmatter-md` profile when the YAML payload benefits from a
-  Markdown body carrying context; use `pure-yaml` when the whole artifact is structured.
 - YAML is authoritative for any consumed value.
   In `frontmatter-md`, the Markdown body is reader-facing.
   Do not parse Markdown body prose or tables for structured fields.
-- Treat `soft`, `permissive`, and `enforced` as boundary maturity.
-  Start with a named convention, validate the stable fields under authored rules, and
-  enforce a bound structural schema when undeclared fields should fail.
-- Read `structural.execution` and `semantic.execution` beside each check’s `ok`. A
-  required check must be `completed` and accepted; `not_run` and `errored` do not
-  establish validity. Declared status alone is no evidence that a validator ran.
-  Older reports without execution fields have unknown execution; revalidate when
-  completed checks are required.
-- Evolve the schema as records and consumers reveal stable fields and constraints.
-  Changing the schema or status does not require changing a Markdown body.
-- Date- and timestamp-shaped YAML scalars are portable strings, quoted or unquoted.
-  JSON Schema `format` is annotation-only; use a semantic model or an explicit
-  structural assertion when date validity matters.
-- Write YAML as printable text.
-  A raw control character, a lone carriage return, or the line separators U+0085, U+2028
-  and U+2029 anywhere in the YAML (keys and comments included) is a `yaml_parse_error`
-  in both runtimes, because the YAML engines read them differently; write such a
-  character as a double-quoted escape (`"\N"`, `"\L"`, `"\P"`, `"\f"`, `"\xHH"`).
-  `$SS repair` writes that escape for one inside a value.
-- The `softschema:` block is the self-description quartet: `contract` (the payload
-  contract ID), `schema` (relative path to the compiled schema), `envelope` (the payload
-  key), `status` (strictness).
-  A fully self-describing artifact validates with `$SS validate <artifact>`, no flags.
-- Add a field to the contract when a consumer relies on its name and meaning.
-  Leave uncertain YAML extensions outside the contract until they stabilize.
-- Use the optional Markdown body for provenance, reasoning, and caveats that do not fit
-  fixed fields.
-- Read `$SS docs guide` for the mental model.
-- Read `$SS docs spec` for the exact artifact format.
-- Inspect `$SS docs example` and `$SS docs example-artifact` for the copyable movie
-  example; `$SS docs example-schema` prints its compiled schema.
-- Validate at the boundary with `$SS validate`: no flags for a self-describing artifact;
-  `--schema` to override with a compiled schema; `--model` for a Pydantic/Zod model
-  (imports and runs local code; trusted models only; `--schema` is the safe path for
-  untrusted input). Run `$SS validate --help` for exact syntax.
-- **Check your own artifact before you finish, with `$SS repair`.** After writing a
-  contract-bearing artifact, run it on that file.
-  It fixes the three mistakes a model makes writing YAML by hand — an unquoted `: `
-  inside a value, a raw character both YAML engines cannot read the same way (a
-  mis-decoded ellipsis arriving as U+0085, a line separator, a control character), which
-  it rewrites as a double-quoted escape such as `"\N"` without guessing at what was
-  meant, and a scalar like `1850` that reads as a number where the contract wants a
-  string — writes the file, and reports the verdict.
-  Such a character in a key, a comment, or a block scalar is reported as a parse error
-  naming its line and the escape to write; it is never written raw in the YAML. Anything
-  it does not fix, such as a missing field or a key that is a near-miss for the declared
-  one, is yours to correct: it reports those and never guesses at them.
-  A document it cannot read at all comes back as a record naming why, which is what a
-  truncated write leaves behind.
-  Add `--dry-run` to see what would change without writing, or `--check` to fail
-  whenever anything would change, which is what a gate wants.
-  `$SS validate` never writes; it is what a consumer runs, and it refuses an artifact it
-  cannot read rather than reporting one.
-- Keep examples copyable; do not scaffold or mutate a target project unless the user
-  explicitly asks for that workflow.
+- Choose the artifact profile independently of the contract status: `frontmatter-md`
+  when the payload benefits from a Markdown body, `pure-yaml` when the whole artifact is
+  structured data.
+- The `softschema:` block names the contract (`contract`, the payload contract ID), the
+  compiled schema (`schema`, a path relative to the document), the payload key
+  (`envelope`), and the maturity (`status`: `soft`, `permissive`, or `enforced`). An
+  artifact with all four validates with `$SS validate <artifact>` and no flags.
+- Treat status as boundary maturity.
+  A bound schema or model checks the payload under every status; `enforced` additionally
+  rejects fields the schema does not declare.
+  Add a field to the contract when a consumer relies on it, and leave uncertain fields
+  outside it until they stabilize.
+- After writing an artifact, run `$SS repair <file>`. It quotes a plain value YAML would
+  read as structure (an unquoted `: `), escapes a raw control or line-separator
+  character inside a value (`"\N"`, `"\x01"`), and quotes a scalar such as `1850` where
+  the contract wants a string; then it writes the file and validates.
+  It reports what it cannot fix and never guesses at it.
+- At a boundary, run `$SS validate <file>`. It never writes.
+  Add `--require structural` (or `semantic`, repeatable) when the handoff needs a check
+  that actually ran: without it, an artifact with no schema bound can still be `valid`.
+- Judge each check by `execution` as well as `ok`: `completed` means the validator ran
+  and `ok` is its verdict; `not_run` and `errored` establish nothing.
+  Declared status is no evidence that a validator ran, and a record without `execution`
+  has unknown execution.
+- Write YAML both engines read the same way: core-form numbers (`1000`, not `1_000`),
+  printable text with escapes for control characters, spaces rather than tabs, no
+  anchors, tags, or `%YAML 1.1`. The refusal message names the line and the fix.
+- Date- and timestamp-shaped scalars are strings.
+  JSON Schema `format` is annotation-only; use a semantic model or an explicit pattern
+  when date validity matters.
+- `--model` imports and runs local code; use it only with trusted models.
+  `--schema` with a compiled schema executes nothing.
+- Read `$SS docs guide` for the mental model and `$SS docs spec` for the exact rules.
 ? 0
 ```
 
