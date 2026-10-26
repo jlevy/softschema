@@ -6,7 +6,7 @@ requires-python = ">=3.11, <4.0"
 exclude-newer = "2026-06-02T00:00:00Z"
 
 [options.exclude-newer-package]
-frontmatter-format = "2026-08-01T01:26:20.316336Z"
+frontmatter-format = "2026-10-25T20:50:58.660308Z"
 strif = "2026-06-03T00:00:00Z"
 
 [[package]]
@@ -59,14 +59,14 @@ wheels = [
 
 [[package]]
 name = "frontmatter-format"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ruamel-yaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/da/ea/e71223bb3eb80354cd15d4c4895f6ff28941d46750945d81ac11c48c6391/frontmatter_format-0.4.0.tar.gz", hash = "sha256:dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a", size = 17068, upload-time = "2026-08-01T01:26:20.316Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/83/b6964897c71758657ef7eae455dcc46dc4138266d59435e90cb8dd35c4a8/frontmatter_format-0.5.0.tar.gz", hash = "sha256:7b489c6cd1182b38cb2478eaf8d6351c8b0633d831f1325f8ed1a0cd8867e72f", size = 28265, upload-time = "2026-10-25T20:50:58.66Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/a1/0f9fdbe478d31b3b804e58b9436c4e53d89166c472fefff6990df4da39da/frontmatter_format-0.4.0-py3-none-any.whl", hash = "sha256:71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76", size = 15676, upload-time = "2026-08-01T01:26:19.434Z" },
+    { url = "https://files.pythonhosted.org/packages/45/39/7f28ad014ef6712b76675c2072e85a44123c9c0d75865d43cbabb2a53531/frontmatter_format-0.5.0-py3-none-any.whl", hash = "sha256:779f561c2d7c853fe0a76ec016ee7fff8e1e8415bc64b81a53d8ffb8abe45fcb", size = 27476, upload-time = "2026-10-25T20:50:57.458Z" },
 ]
 
 [[package]]
@@ -585,7 +585,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "frontmatter-format", specifier = ">=0.4.0" },
+    { name = "frontmatter-format", specifier = ">=0.5.0" },
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "pydantic", specifier = ">=2" },
     { name = "ruamel-yaml", specifier = ">=0.18" },

@@ -171,7 +171,7 @@ jobs:
         # Keep their timestamps aligned with pyproject [tool.uv] exclude-newer-package.
         run: >-
           uv sync --all-extras
-          --exclude-newer-package frontmatter-format=2026-08-01T01:26:20.316336Z
+          --exclude-newer-package frontmatter-format=2026-10-25T20:50:58.660308Z
           --exclude-newer-package strif=2026-06-03T00:00:00Z
 
       - name: Run linting
@@ -225,7 +225,7 @@ jobs:
         # Keep their timestamps aligned with pyproject [tool.uv] exclude-newer-package.
         run: >-
           uv sync --all-extras
-          --exclude-newer-package frontmatter-format=2026-08-01T01:26:20.316336Z
+          --exclude-newer-package frontmatter-format=2026-10-25T20:50:58.660308Z
           --exclude-newer-package strif=2026-06-03T00:00:00Z
 
       - name: Set up Node
@@ -347,7 +347,7 @@ jobs:
         # Keep their timestamps aligned with pyproject [tool.uv] exclude-newer-package.
         run: >-
           uv sync --all-extras
-          --exclude-newer-package frontmatter-format=2026-08-01T01:26:20.316336Z
+          --exclude-newer-package frontmatter-format=2026-10-25T20:50:58.660308Z
           --exclude-newer-package strif=2026-06-03T00:00:00Z
 
       - name: Set up Bun

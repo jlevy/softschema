@@ -171,10 +171,11 @@ def _yaml_dump(schema: dict[str, Any]) -> str:
     # its default empty/None suppression: a schema serializer must never drop a
     # field (e.g. an empty `properties` or a `null` enum member).
     writer = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
-    # Always ruamel's pure-Python emitter. With the optional C extension installed, a
-    # safe handle otherwise writes through libyaml's emitter, which escapes astral
-    # characters such as emoji and breaks long lines differently, so the compiled bytes,
-    # and every `compile --check`, would depend on what else is installed.
+    # Always ruamel's pure-Python emitter. frontmatter-format >= 0.5.0 already returns a
+    # pure handle; the pin keeps that a property of softschema. With the optional C
+    # extension installed, a safe handle can write through libyaml's emitter, which
+    # escapes astral characters such as emoji and breaks long lines differently, so the
+    # compiled bytes, and every `compile --check`, would depend on what else is installed.
     writer.Emitter = Emitter
     # Wide width so long scalars (the 64-char schema_sha256, $refs) are never
     # wrapped onto continuation lines; keeps the compiled schema clean and the byte

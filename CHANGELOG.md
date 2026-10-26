@@ -232,6 +232,14 @@ The TypeScript package also moves to zod 4.6 and a patched `fast-uri`.
   An authored `examples` value is checked the same way.
   A BigInt `.catch()` value or example fails with a named error instead of Zod’s
   `Error converting schema to JSON.` A `Date` value is still written as its ISO string.
+- **Python `compile` no longer restyles the host process’s own YAML output.** The Python
+  package now requires `frontmatter-format>=0.5.0`. The compile writer comes from
+  `frontmatter_format.new_yaml`, which in 0.4.0 registered its `dict` and `str`
+  representers on ruamel’s shared `SafeRepresenter`, so after a compile every
+  `YAML(typ="safe")` dump in the same process wrote mappings in block style and
+  multi-line strings as `|-` block literals.
+  frontmatter-format 0.5.0 keeps each writer’s representers on a private subclass.
+  Compiled schema files are unchanged.
 
 ### Security
 
