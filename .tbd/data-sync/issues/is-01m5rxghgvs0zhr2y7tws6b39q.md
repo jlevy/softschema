@@ -3,14 +3,18 @@ type: is
 id: is-01m5rxghgvs0zhr2y7tws6b39q
 title: "PR #64 A11: suggestion: raise zod declared floor to ^4.6.6 with the lockfile bump; Reviewed-by trailer"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m5rxgc8kdy9fz5wgg3ew5vsq
 created_at: 2026-10-25T06:56:01.563Z
-updated_at: 2026-10-25T07:14:43.105Z
+updated_at: 2026-10-26T01:37:09.310Z
+closed_at: 2026-10-26T01:37:09.310Z
+close_reason: "main package.json declares zod ^4.6.6 (landed via #65/#66)."
+resolution: null
+duplicate_of: null
 ---
 Suggestion. packages/typescript/package.json:68. The zod bump is a later commit by the coordinator after the cool-off.
 PR #64. Review A: https://github.com/jlevy/softschema/pull/64#pullrequestreview-5641911619

@@ -3,13 +3,17 @@ type: is
 id: is-01m5rt23qna630vr0y300jnhrb
 title: "Release softschema after #59/#60/#62/#64 merge (bump frontmatter-format if needed, changelog, publish PyPI+npm)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-10-25T05:55:42.964Z
-updated_at: 2026-10-25T16:21:49.611Z
+updated_at: 2026-10-26T01:43:24.855Z
+closed_at: 2026-10-26T01:43:24.855Z
+close_reason: "Released softschema 0.9.0: https://github.com/jlevy/softschema/releases/tag/v0.9.0 at 8085986 (main CI 20/20). Publish run 40255278104: build, smoke, PyPI and npm all success (npm provenance logged to sigstore). Verified: uvx softschema@0.9.0 --version -> 'softschema 0.9.0 (Python)'; npx softschema@0.9.0 --version -> 'softschema 0.9.0 (TypeScript)'. Requires frontmatter-format>=0.5.0 (released v0.5.0)."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

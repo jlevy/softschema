@@ -3,16 +3,20 @@ type: is
 id: is-01m5rxgd6hbvkskdqwkj87p0w0
 title: "PR #64 A2: commit 9decc4f message spells the old private-named contract ID"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 2
+version: 4
 labels: []
 dependencies: []
 parent_id: is-01m5rxgc8kdy9fz5wgg3ew5vsq
-hold: blocked
+hold: null
 hold_until: null
 created_at: 2026-10-25T06:55:57.137Z
-updated_at: 2026-10-25T07:14:42.643Z
+updated_at: 2026-10-26T01:37:21.225Z
+closed_at: 2026-10-26T01:37:21.224Z
+close_reason: "#64 squash-merged as d23718b with an explicit clean subject/body; 9decc4f's message is not in main's history."
+resolution: null
+duplicate_of: null
 ---
 Medium. Fix (pick one): reword and force-push, or squash-merge with a clean message. Coordinator chose squash (ss-1azo).
 PR #64. Review A: https://github.com/jlevy/softschema/pull/64#pullrequestreview-5641911619
