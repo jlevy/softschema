@@ -63,9 +63,11 @@ const RUNNER_INVOCATIONS: Record<(typeof RUNNER_COMMANDS)[number], string> = {
   npx: `npx -y ${ZERO_INSTALL_PACKAGE}`,
 };
 // The uv cache buckets `uvx` and `uv run --with` build their throwaway environments in
-// (`archive-v0`, plus `environments-v2` and `builds-v0` pointing into it). Matched as a
-// whole path segment, because `UV_CACHE_DIR` can put the cache anywhere.
+// (`archive-v0`, plus `environments-v2` and `builds-v0` pointing into it). A bucket counts
+// only under a directory uv tagged as its cache root with `CACHEDIR.TAG`, which holds
+// wherever `UV_CACHE_DIR` puts the cache.
 const UV_CACHE_BUCKET = /^(?:archive|builds|environments)-v\d+$/;
+const PATH_SEGMENT = /[^\\/]+/g;
 
 const AGENT_HELP_EPILOG = `IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
@@ -360,24 +362,47 @@ export interface DoctorReport {
  *
  * Both runners prepend their throwaway environment's bin directory to the `PATH` of the
  * process they start, so a `softschema` found there is not on the caller's own `PATH`.
+ * npm's cache is recognized by its `_npx/<hash>/node_modules` layout, and uv's by a bucket
+ * directly under a tagged cache root.
  */
-function ephemeralRunner(path: string): EphemeralRunner | null {
-  for (const segment of path.split(/[\\/]/)) {
-    if (segment === "_npx") return "npx";
-    if (UV_CACHE_BUCKET.test(segment)) return "uvx";
+export function ephemeralRunner(path: string): EphemeralRunner | null {
+  const segments = [...path.matchAll(PATH_SEGMENT)];
+  for (const [i, segment] of segments.entries()) {
+    const name = segment[0];
+    if (name === "_npx" && segments[i + 2]?.[0] === "node_modules") return "npx";
+    const cacheTag = `${path.slice(0, segment.index)}CACHEDIR.TAG`;
+    if (UV_CACHE_BUCKET.test(name) && isFile(cacheTag)) return "uvx";
   }
   return null;
 }
 
+/**
+ * Answer a filesystem question, reading an operating-system error (a missing or
+ * unreadable path) as "no", like Python's `os.path` predicates. Any other error, such as
+ * an invalid argument, is a bug and propagates.
+ */
+function probe(question: () => boolean): boolean {
+  try {
+    return question();
+  } catch (err) {
+    if (err instanceof Error && typeof (err as NodeJS.ErrnoException).syscall === "string") {
+      return false;
+    }
+    throw err;
+  }
+}
+
+function isFile(path: string): boolean {
+  return probe(() => statSync(path).isFile());
+}
+
 /** True for a non-directory the current user may execute, as Python's `shutil.which`. */
 function isExecutable(path: string): boolean {
-  try {
+  return probe(() => {
     if (statSync(path).isDirectory()) return false;
     accessSync(path, constants.X_OK);
     return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 /** Find `name` on `pathValue`, skipping empty entries and ephemeral runner caches. */
@@ -391,20 +416,24 @@ function findExecutable(name: string, pathValue: string): string | null {
 }
 
 /**
- * Pick the prefix that works from the caller's shell, in the skill's runner order.
+ * Pick the first available prefix, in the skill's runner order.
  *
- * An installed `softschema` wins. Otherwise a softschema that a zero-install runner
- * started recommends that runner's form, since the runner is what the caller has. Failing
- * both, the first available runner is recommended.
+ * An installed `softschema` wins. Next comes the zero-install runner that started this
+ * softschema, then `uvx` and `npx`. Only a runner found on `PATH` is recommended, so the
+ * answer is always a command the caller's shell can run.
  */
 function recommendedInvocation(
   available: ReadonlySet<RunnerName>,
   runningRunner: EphemeralRunner | null,
 ): string | null {
-  if (available.has("softschema")) return RUNNER_INVOCATIONS.softschema;
-  if (runningRunner !== null) return RUNNER_INVOCATIONS[runningRunner];
-  const fallback = (["uvx", "npx"] as const).find((name) => available.has(name));
-  return fallback === undefined ? null : RUNNER_INVOCATIONS[fallback];
+  const order: RunnerName[] = [
+    "softschema",
+    ...(runningRunner === null ? [] : [runningRunner]),
+    "uvx",
+    "npx",
+  ];
+  const name = order.find((runner) => available.has(runner));
+  return name === undefined ? null : RUNNER_INVOCATIONS[name];
 }
 
 /**

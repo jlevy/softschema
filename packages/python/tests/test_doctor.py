@@ -22,7 +22,8 @@ from softschema.cli import main as softschema_main
 
 # The layouts `uvx` and `npx` really create: each prepends the throwaway environment's
 # bin directory to the PATH of the softschema it starts.
-UVX_ENV = Path(".cache/uv/archive-v0/V9O-H0OPJjiVa81e")
+UV_CACHE = Path(".cache/uv")
+UVX_ENV = UV_CACHE / "archive-v0/V9O-H0OPJjiVa81e"
 UVX_BIN = UVX_ENV / "bin"
 UVX_MODULE = UVX_ENV / "lib/python3.14/site-packages/softschema/cli.py"
 NPX_ENV = Path(".npm/_npx/be80e5187394a449/node_modules")
@@ -43,6 +44,14 @@ def _executable(directory: Path, name: str) -> Path:
     path.write_text("#!/bin/sh\n", encoding="utf-8")
     path.chmod(0o755)
     return path
+
+
+def _tag_cache(directory: Path) -> None:
+    """Mark `directory` as a cache root, as uv marks its own."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "CACHEDIR.TAG").write_text(
+        "Signature: 8a477f597d28d172789f06886806bc55\n", encoding="utf-8"
+    )
 
 
 def _search_path(root: Path, *dirs: Path) -> str:
@@ -74,6 +83,7 @@ def test_installed_softschema_on_path_is_recommended(tmp_path: Path) -> None:
 
 
 def test_uvx_environment_recommends_uvx_not_its_own_softschema(tmp_path: Path) -> None:
+    _tag_cache(tmp_path / UV_CACHE)
     _executable(tmp_path / UVX_BIN, "softschema")
     uvx = _executable(tmp_path / TOOLS_BIN, "uvx")
     npx = _executable(tmp_path / TOOLS_BIN, "npx")
@@ -97,6 +107,7 @@ def test_npx_cache_recommends_npx_not_its_own_softschema(tmp_path: Path) -> None
 
 
 def test_installed_softschema_wins_over_the_runner_that_started_it(tmp_path: Path) -> None:
+    _tag_cache(tmp_path / UV_CACHE)
     _executable(tmp_path / UVX_BIN, "softschema")
     softschema = _executable(tmp_path / INSTALLED_BIN, "softschema")
     uvx = _executable(tmp_path / TOOLS_BIN, "uvx")
@@ -116,24 +127,57 @@ def test_neither_installed_nor_ephemeral_falls_back_to_the_first_runner(tmp_path
     assert report["recommended_invocation"] == "npx -y softschema@latest"
 
 
+def test_a_runner_missing_from_path_is_not_recommended(tmp_path: Path) -> None:
+    _tag_cache(tmp_path / UV_CACHE)
+    _executable(tmp_path / UVX_BIN, "softschema")
+    npx = _executable(tmp_path / TOOLS_BIN, "npx")
+
+    # Started by a uvx the caller's PATH does not have, e.g. one run by absolute path.
+    report = _report(tmp_path, UVX_MODULE, UVX_BIN, TOOLS_BIN)
+    assert report["runners"] == _runners(softschema=None, uvx=None, npx=npx)
+    assert report["recommended_invocation"] == "npx -y softschema@latest"
+
+    report = _report(tmp_path, UVX_MODULE, UVX_BIN)
+    assert report["recommended_invocation"] is None
+
+
+def test_an_install_under_a_directory_named_like_a_cache_is_found(tmp_path: Path) -> None:
+    softschema = _executable(tmp_path / "opt/archive-v0/bin", "softschema")
+
+    report = _report(tmp_path, SOURCE_MODULE, Path("opt/archive-v0/bin"))
+
+    assert report["runners"] == _runners(softschema=softschema, uvx=None, npx=None)
+    assert report["recommended_invocation"] == "softschema"
+
+
 @pytest.mark.parametrize(
-    ("running", "expected"),
+    ("location", "cache_root", "expected"),
     [
-        ("/root/.cache/uv/archive-v0/V9O-H0OPJjiVa81e/bin/softschema", "uvx softschema@latest"),
-        ("/home/runner/_temp/setup-uv-cache/builds-v0/.tmpAbc/bin", "uvx softschema@latest"),
-        ("/root/.cache/uv/environments-v2/0413/f9c7/bin/softschema", "uvx softschema@latest"),
-        (r"C:\Users\me\AppData\Local\uv\cache\archive-v0\x\Scripts\softschema.exe", "uvx softschema@latest"),
-        ("/root/.npm/_npx/be80e5187394a449/node_modules/softschema/dist/cli.js", "npx -y softschema@latest"),
-        (r"C:\Users\me\AppData\Local\npm-cache\_npx\be80\node_modules\.bin\softschema.cmd", "npx -y softschema@latest"),
-        ("/root/.local/share/uv/tools/softschema/bin/softschema", None),
-        ("/home/me/archive-v0-notes/softschema/cli.py", None),
-        ("/home/me/project/node_modules/softschema/dist/cli.js", None),
+        (".cache/uv/archive-v0/V9O-H0OPJjiVa81e/bin/softschema", ".cache/uv", "uvx"),
+        ("_temp/setup-uv-cache/builds-v0/.tmpAbc/bin", "_temp/setup-uv-cache", "uvx"),
+        (".cache/uv/environments-v2/0413/f9c7/bin/softschema", ".cache/uv", "uvx"),
+        ("opt/archive-v0/bin/softschema", None, None),
+        ("opt/cache/archive-v0/x/bin", "opt", None),
+        (".npm/_npx/be80e5187394a449/node_modules/softschema/dist/cli.js", None, "npx"),
+        ("opt/_npx/bin/softschema", None, None),
+        (".local/share/uv/tools/softschema/bin/softschema", None, None),
+        ("home/archive-v0-notes/softschema/cli.py", None, None),
+        ("project/node_modules/softschema/dist/cli.js", None, None),
     ],
 )  # fmt: skip
-def test_ephemeral_runner_locations(running: str, expected: str | None) -> None:
-    report = cli._doctor_report(path_value="", running_path=running)
+def test_ephemeral_runner_recognizes_runner_caches(
+    tmp_path: Path, location: str, cache_root: str | None, expected: str | None
+) -> None:
+    if cache_root is not None:
+        _tag_cache(tmp_path / cache_root)
 
-    assert report["recommended_invocation"] == expected
+    assert cli._ephemeral_runner(str(tmp_path / location)) == expected
+
+
+def test_ephemeral_runner_splits_windows_paths() -> None:
+    path = r"C:\Users\me\AppData\Local\npm-cache\_npx\be80e5187394a449\node_modules\.bin\x.cmd"
+
+    assert cli._ephemeral_runner(path) == "npx"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows has no execute bit")

@@ -10,11 +10,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { doctorReport, doctorText, main } from "../src/cli.js";
+import { doctorReport, doctorText, ephemeralRunner, main } from "../src/cli.js";
 
 // The layouts `uvx` and `npx` really create: each prepends the throwaway environment's
 // bin directory to the PATH of the softschema it starts.
-const UVX_ENV = ".cache/uv/archive-v0/V9O-H0OPJjiVa81e";
+const UV_CACHE = ".cache/uv";
+const UVX_ENV = `${UV_CACHE}/archive-v0/V9O-H0OPJjiVa81e`;
 const UVX_BIN = `${UVX_ENV}/bin`;
 const UVX_MODULE = `${UVX_ENV}/lib/python3.14/site-packages/softschema/cli.py`;
 const NPX_ENV = ".npm/_npx/be80e5187394a449/node_modules";
@@ -43,6 +44,12 @@ function executable(dir: string, name: string): string {
   return path;
 }
 
+/** Mark `dir` as a cache root, as uv marks its own. */
+function tagCache(dir: string): void {
+  mkdirSync(join(root, dir), { recursive: true });
+  writeFileSync(join(root, dir, "CACHEDIR.TAG"), "Signature: 8a477f597d28d172789f06886806bc55\n");
+}
+
 const searchPath = (...dirs: string[]) => dirs.map((dir) => join(root, dir)).join(delimiter);
 
 const report = (running: string, ...dirs: string[]) =>
@@ -68,6 +75,7 @@ describe("doctor recommendation", () => {
   });
 
   test("a uvx environment recommends uvx, not its own softschema", () => {
+    tagCache(UV_CACHE);
     executable(UVX_BIN, "softschema");
     const uvx = executable(TOOLS_BIN, "uvx");
     const npx = executable(TOOLS_BIN, "npx");
@@ -91,6 +99,7 @@ describe("doctor recommendation", () => {
   });
 
   test("an installed softschema wins over the runner that started it", () => {
+    tagCache(UV_CACHE);
     executable(UVX_BIN, "softschema");
     const softschema = executable(INSTALLED_BIN, "softschema");
     const uvx = executable(TOOLS_BIN, "uvx");
@@ -110,28 +119,56 @@ describe("doctor recommendation", () => {
     expect(result.recommended_invocation).toBe("npx -y softschema@latest");
   });
 
-  test.each([
-    ["/root/.cache/uv/archive-v0/V9O-H0OPJjiVa81e/bin/softschema", "uvx softschema@latest"],
-    ["/home/runner/_temp/setup-uv-cache/builds-v0/.tmpAbc/bin", "uvx softschema@latest"],
-    ["/root/.cache/uv/environments-v2/0413/f9c7/bin/softschema", "uvx softschema@latest"],
-    [
-      "C:\\Users\\me\\AppData\\Local\\uv\\cache\\archive-v0\\x\\Scripts\\softschema.exe",
-      "uvx softschema@latest",
-    ],
-    [
-      "/root/.npm/_npx/be80e5187394a449/node_modules/softschema/dist/cli.js",
-      "npx -y softschema@latest",
-    ],
-    [
-      "C:\\Users\\me\\AppData\\Local\\npm-cache\\_npx\\be80\\node_modules\\.bin\\softschema.cmd",
-      "npx -y softschema@latest",
-    ],
-    ["/root/.local/share/uv/tools/softschema/bin/softschema", null],
-    ["/home/me/archive-v0-notes/softschema/cli.py", null],
-    ["/home/me/project/node_modules/softschema/dist/cli.js", null],
-  ])("running from %s recommends %p", (running, expected) => {
-    expect(doctorReport({ pathValue: "", runningPath: running }).recommended_invocation).toBe(
-      expected,
+  test("a runner missing from PATH is not recommended", () => {
+    tagCache(UV_CACHE);
+    executable(UVX_BIN, "softschema");
+    const npx = executable(TOOLS_BIN, "npx");
+
+    // Started by a uvx the caller's PATH does not have, e.g. one run by absolute path.
+    const result = report(UVX_MODULE, UVX_BIN, TOOLS_BIN);
+    expect(result.runners).toEqual(runners({ softschema: null, uvx: null, npx }));
+    expect(result.recommended_invocation).toBe("npx -y softschema@latest");
+
+    expect(report(UVX_MODULE, UVX_BIN).recommended_invocation).toBeNull();
+  });
+
+  test("an install under a directory named like a cache is found", () => {
+    const softschema = executable("opt/archive-v0/bin", "softschema");
+
+    const result = report(SOURCE_MODULE, "opt/archive-v0/bin");
+
+    expect(result.runners).toEqual(runners({ softschema, uvx: null, npx: null }));
+    expect(result.recommended_invocation).toBe("softschema");
+  });
+
+  test.each<[string, string | null, "uvx" | "npx" | null]>([
+    [".cache/uv/archive-v0/V9O-H0OPJjiVa81e/bin/softschema", ".cache/uv", "uvx"],
+    ["_temp/setup-uv-cache/builds-v0/.tmpAbc/bin", "_temp/setup-uv-cache", "uvx"],
+    [".cache/uv/environments-v2/0413/f9c7/bin/softschema", ".cache/uv", "uvx"],
+    ["opt/archive-v0/bin/softschema", null, null],
+    ["opt/cache/archive-v0/x/bin", "opt", null],
+    [".npm/_npx/be80e5187394a449/node_modules/softschema/dist/cli.js", null, "npx"],
+    ["opt/_npx/bin/softschema", null, null],
+    [".local/share/uv/tools/softschema/bin/softschema", null, null],
+    ["home/archive-v0-notes/softschema/cli.py", null, null],
+    ["project/node_modules/softschema/dist/cli.js", null, null],
+  ])("%s (cache root %p) is from runner %p", (location, cacheRoot, expected) => {
+    if (cacheRoot !== null) tagCache(cacheRoot);
+
+    expect(ephemeralRunner(join(root, location))).toBe(expected);
+  });
+
+  test("ephemeralRunner splits Windows paths", () => {
+    const path =
+      "C:\\Users\\me\\AppData\\Local\\npm-cache\\_npx\\be80e5187394a449\\node_modules\\.bin\\x.cmd";
+
+    expect(ephemeralRunner(path)).toBe("npx");
+  });
+
+  test("a lookup error that is not an operating-system error propagates", () => {
+    // A NUL byte is an invalid argument, not a missing path: a bug, never "not found".
+    expect(() => doctorReport({ pathValue: "bad\0dir", runningPath: SOURCE_MODULE })).toThrow(
+      TypeError,
     );
   });
 

@@ -56,9 +56,11 @@ RUNNER_INVOCATIONS: dict[str, str] = {
     "npx": f"npx -y {ZERO_INSTALL_PACKAGE}",
 }
 # The uv cache buckets `uvx` and `uv run --with` build their throwaway environments in
-# (`archive-v0`, plus `environments-v2` and `builds-v0` pointing into it). Matched as a
-# whole path segment, because `UV_CACHE_DIR` can put the cache anywhere.
+# (`archive-v0`, plus `environments-v2` and `builds-v0` pointing into it). A bucket counts
+# only under a directory uv tagged as its cache root with `CACHEDIR.TAG`, which holds
+# wherever `UV_CACHE_DIR` puts the cache.
 _UV_CACHE_BUCKET = re.compile(r"(?:archive|builds|environments)-v\d+")
+_PATH_SEGMENT = re.compile(r"[^\\/]+")
 
 AGENT_HELP_EPILOG = f"""IMPORTANT for agents:
   To set up softschema for this repo as a skill, run one command from the repo root:
@@ -875,17 +877,14 @@ def _doctor_report(
 
 
 def _recommended_invocation(available: set[str], running_runner: str | None) -> str | None:
-    """Pick the prefix that works from the caller's shell, in the skill's runner order.
+    """Pick the first available prefix, in the skill's runner order.
 
-    An installed ``softschema`` wins. Otherwise a softschema that a zero-install runner
-    started recommends that runner's form, since the runner is what the caller has. Failing
-    both, the first available runner is recommended.
+    An installed ``softschema`` wins. Next comes the zero-install runner that started
+    this softschema, then ``uvx`` and ``npx``. Only a runner found on ``PATH`` is
+    recommended, so the answer is always a command the caller's shell can run.
     """
-    if "softschema" in available:
-        return RUNNER_INVOCATIONS["softschema"]
-    if running_runner is not None:
-        return RUNNER_INVOCATIONS[running_runner]
-    return next((RUNNER_INVOCATIONS[name] for name in ("uvx", "npx") if name in available), None)
+    order = ["softschema", *([running_runner] if running_runner else []), "uvx", "npx"]
+    return next((RUNNER_INVOCATIONS[name] for name in order if name in available), None)
 
 
 def _ephemeral_runner(path: str) -> str | None:
@@ -893,12 +892,16 @@ def _ephemeral_runner(path: str) -> str | None:
 
     Both runners prepend their throwaway environment's bin directory to the ``PATH`` of
     the process they start, so a ``softschema`` found there is not on the caller's own
-    ``PATH``.
+    ``PATH``. npm's cache is recognized by its ``_npx/<hash>/node_modules`` layout, and uv's
+    by a bucket directly under a tagged cache root.
     """
-    for segment in re.split(r"[\\/]", path):
-        if segment == "_npx":
+    segments = list(_PATH_SEGMENT.finditer(path))
+    for i, segment in enumerate(segments):
+        name = segment.group()
+        if name == "_npx" and [s.group() for s in segments[i + 2 : i + 3]] == ["node_modules"]:
             return "npx"
-        if _UV_CACHE_BUCKET.fullmatch(segment):
+        cache_tag = path[: segment.start()] + "CACHEDIR.TAG"
+        if _UV_CACHE_BUCKET.fullmatch(name) and os.path.isfile(cache_tag):
             return "uvx"
     return None
 
