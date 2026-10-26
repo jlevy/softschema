@@ -1135,7 +1135,7 @@ deliberately.
    `softschema.yaml_parser_mode()` returns `"c-first"` when libyaml is in use and
    `"pure"` otherwise, `softschema doctor` prints the same with the reason, and
    `SOFTSCHEMA_PURE_YAML=1` forces the pure parser; [Installation](installation.md) has
-   the details. frontmatter-format 0.5.0, which the Python package uses to write compiled
+   the details. frontmatter-format 0.5.1, which the Python package uses to write compiled
    schemas, reads YAML C-first the same way in its own readers, behind the same build
    gate (`FRONTMATTER_FORMAT_PURE_YAML=1` turns it off there); softschema validates with
    its own reader, so that switch does not affect validation.
