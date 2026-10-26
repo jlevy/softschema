@@ -5,9 +5,7 @@ import json
 import math
 import os
 import random
-import re
 from datetime import date, datetime
-from importlib.metadata import version as package_version
 from io import StringIO
 from pathlib import Path
 from typing import Any, Literal
@@ -239,41 +237,32 @@ def test_compile_escapes_every_character_the_reader_rejects(tmp_path: Path) -> N
     assert validate_structural({"kind": "line\u2028separator"}, out).ok
 
 
-_FRONTMATTER_FORMAT_VERSION = tuple(
-    int(part) for part in re.findall(r"\d+", package_version("frontmatter-format"))[:3]
-)
-
-
-@pytest.mark.xfail(
-    _FRONTMATTER_FORMAT_VERSION < (0, 4, 1),
-    reason=(
-        "frontmatter-format < 0.4.1 registers new_yaml's representers on ruamel's shared "
-        "SafeRepresenter; 0.4.1 gives each instance a private subclass (softschema's floor "
-        "rises with ss-c9bc)"
-    ),
-    strict=True,
-)
 def test_compile_leaves_ruamels_shared_safe_representer_unchanged(tmp_path: Path) -> None:
     """``compile`` must not restyle a host's own safe YAML dumps.
 
     The compile writer comes from ``frontmatter_format.new_yaml``, which registers a
-    ``dict`` and a ``str`` representer. ruamel's ``add_representer`` is a classmethod, so
-    registered on a stock ``YAML(typ="safe")`` those land on the shared ``SafeRepresenter``
-    and every safe emitter in the process writes multi-line strings as block literals and
-    sorts its keys. The shared table, and a stock emitter built afterward, must both come
-    out as ruamel ships them.
+    ``dict`` and a ``str`` representer. Before frontmatter-format 0.5.0 (softschema's
+    floor) those landed on ruamel's shared ``SafeRepresenter``, since ``add_representer``
+    is a classmethod, and every safe emitter in the process then wrote mappings in block
+    style and multi-line strings as block literals. The shared table, and a stock emitter
+    built afterward, must both come out as they were before the compile.
     """
     from ruamel.yaml.representer import SafeRepresenter
 
+    def stock_dump() -> str:
+        buffer = StringIO()
+        YAML(typ="safe").dump({"zebra": "two\nlines", "apple": 1}, buffer)
+        return buffer.getvalue()
+
+    # Taken before the compile, so the comparison holds with or without ruamel's C
+    # emitter, which writes the same data in a different style.
+    before = stock_dump()
     compile_model(SampleModel, tmp_path / "sample.schema.yaml", contract_id="example:Sample/v1")
 
     assert SafeRepresenter.yaml_representers[dict] is SafeRepresenter.represent_dict
     assert SafeRepresenter.yaml_representers[str] is SafeRepresenter.represent_str
-    buffer = StringIO()
-    YAML(typ="safe").dump({"zebra": "two\nlines", "apple": 1}, buffer)
-    # ruamel quotes a multi-line scalar and keeps insertion order; the compile writer
-    # would emit a `|-` block and sort the keys.
-    assert buffer.getvalue() == 'zebra: "two\\nlines"\napple: 1\n'
+    assert "|" not in before
+    assert stock_dump() == before
 
 
 def test_shared_generated_title_vectors(tmp_path: Path) -> None:

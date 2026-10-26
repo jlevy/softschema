@@ -1125,6 +1125,7 @@ COMPILE_SCHEMA = {
 def test_compiled_schema_bytes_do_not_depend_on_the_c_emitter(tmp_path: Path) -> None:
     """The C emitter escapes astral characters and wraps long lines differently."""
     from frontmatter_format import new_yaml
+    from ruamel.yaml.main import CEmitter
 
     from softschema.compile import _yaml_dump
 
@@ -1135,7 +1136,9 @@ def test_compiled_schema_bytes_do_not_depend_on_the_c_emitter(tmp_path: Path) ->
     assert _yaml_dump(COMPILE_SCHEMA) == reference
 
     # The fixture discriminates: through libyaml's emitter the same dump differs.
+    # frontmatter-format >= 0.5.0 returns a pure-emitter handle, so select libyaml's.
     unpinned = new_yaml(key_sort=str, suppress_vals=None, typ="safe")
+    unpinned.Emitter = CEmitter
     unpinned.width = 4096
     buffer = io.StringIO()
     unpinned.dump(COMPILE_SCHEMA, buffer)

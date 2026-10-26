@@ -21,7 +21,7 @@ UV_RUN := uv run --frozen --no-config
 # the same exceptions as CI.
 UV_SYNC := uv sync --all-extras --frozen --no-config \
 	--exclude-newer 2026-06-02T00:00:00Z \
-	--exclude-newer-package frontmatter-format=2026-08-01T01:26:20.316336Z \
+	--exclude-newer-package frontmatter-format=2026-10-25T20:50:58.660308Z \
 	--exclude-newer-package strif=2026-06-03T00:00:00Z
 
 default: install format lint test
