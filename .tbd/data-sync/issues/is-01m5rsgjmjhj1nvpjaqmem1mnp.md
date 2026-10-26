@@ -5,7 +5,8 @@ title: "PR #59 A2: require mishandles bare string and None/null; runtimes disagr
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rr5w4r03h667rqqwvz0a5s
 hold: null
 hold_until: null
 created_at: 2026-10-25T05:46:08.402Z
-updated_at: 2026-10-25T06:13:11.570Z
+updated_at: 2026-10-26T03:34:06.199Z
 started_at: 2026-10-25T05:46:16.942Z
 closed_at: 2026-10-25T06:13:11.570Z
 close_reason: "fixed in 5b06690: both runtimes raise TypeError for a bare string, None/null, or non-string elements with one message pointing at [\"structural\"]; unknown names stay ValueError/Error; tests test_require_rejects_bare_string_and_none and the TS 'require rejects a bare string, null, and an unknown layer' test; spec sentence added"

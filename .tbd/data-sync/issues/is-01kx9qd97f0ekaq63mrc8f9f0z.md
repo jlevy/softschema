@@ -5,8 +5,8 @@ title: "Step 7: Fix SchemaView, schema paths, and TypeScript model loading"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - api
   - filesystem
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9qd9qmjfhmv9egzc34rwtj
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:12.238Z
-updated_at: 2026-07-12T00:10:45.625Z
+updated_at: 2026-10-26T03:33:40.898Z
 closed_at: 2026-07-12T00:10:45.624Z
 close_reason: Implemented snapshot SchemaView parity, identity separation, exact nullable handling, realpath containment, and URL-safe model loading with focused tests.
 ---

@@ -5,7 +5,8 @@ title: "PR #59 E4: non-string $schema refused under different reasons; http:// 2
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rztad5krc4zxt6mw8qwhw7
 hold: null
 hold_until: null
 created_at: 2026-10-25T07:36:23.805Z
-updated_at: 2026-10-25T07:46:09.925Z
+updated_at: 2026-10-26T03:34:08.689Z
 started_at: 2026-10-25T07:36:28.300Z
 closed_at: 2026-10-25T07:46:09.925Z
 close_reason: "fixed in 7aded61: non-string $schema refused explicitly as dialect in both; message/spec/CHANGELOG say canonical Draft 2020-12 URI; vectors non-string-schema-keyword, http-2020-12-schema-keyword"

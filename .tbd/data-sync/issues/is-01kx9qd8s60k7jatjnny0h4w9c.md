@@ -5,8 +5,8 @@ title: "Step 5: Make canonicalization, digests, and enforcement semantic"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - compiler
   - parity
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx9qd9qmjfhmv9egzc34rwtj
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:11.781Z
-updated_at: 2026-07-11T23:53:55.379Z
+updated_at: 2026-10-26T03:33:50.875Z
 closed_at: 2026-07-11T23:53:55.378Z
 close_reason: Canonicalization now preserves annotations and traverses all recognized subschema positions; digest encoding sorts bytes directly; unsafe composed closure returns enforcement_unsupported; paired compiler output remains identical.
 ---

@@ -5,7 +5,8 @@ title: "[epic] repair as its own command, and strict reads"
 kind: feature
 status: closed
 priority: 1
-version: 24
+version: 25
+spec_path: docs/project/specs/done/plan-2026-08-30-repair-command.md
 labels: []
 dependencies:
   - type: blocks
@@ -33,7 +34,7 @@ child_order_hints:
   - is-01m19xcyqz1ddyrpe6jbc0g4xa
   - is-01m19xcz3ktm8yt7ajz1p5ww55
 created_at: 2026-08-30T18:00:43.702Z
-updated_at: 2026-10-25T06:13:05.415Z
+updated_at: 2026-10-26T03:34:09.135Z
 closed_at: 2026-10-25T06:13:05.415Z
 close_reason: "Shipped in v0.8.0: PR #52 (cdb5ff6, 9ec17f9); load_artifact/loadArtifact on main; all children closed."
 resolution: null

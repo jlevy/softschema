@@ -5,8 +5,8 @@ title: "Spec: Portable YAML timestamp strings"
 kind: epic
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-07-31-portable-yaml-timestamps.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-07-31-portable-yaml-timestamps.md
 labels:
   - github-22
   - v0.4.0
@@ -21,7 +21,7 @@ child_order_hints:
   - is-01kyx92x7k2x1ht64n0r3gr05f
   - is-01kyx93bh11rmrma1zvkh6m2gy
 created_at: 2026-07-31T23:44:18.469Z
-updated_at: 2026-07-31T23:54:59.357Z
+updated_at: 2026-10-26T03:33:55.024Z
 closed_at: 2026-07-31T23:54:59.356Z
 close_reason: "All dependency-ordered child beads are implemented and closed in commit a6046c9; PR #23 is published and all 18 CI checks passed."
 ---

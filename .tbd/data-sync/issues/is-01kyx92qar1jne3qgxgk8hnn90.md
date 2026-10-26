@@ -5,8 +5,8 @@ title: Update the spec, guide, and package design docs
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-31-portable-yaml-timestamps.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-07-31-portable-yaml-timestamps.md
 labels:
   - github-22
   - documentation
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kyx92x7k2x1ht64n0r3gr05f
 parent_id: is-01kyx90yh6vv5n0jdmhh5dar9n
 created_at: 2026-07-31T23:45:16.631Z
-updated_at: 2026-07-31T23:48:16.199Z
+updated_at: 2026-10-26T03:33:57.898Z
 closed_at: 2026-07-31T23:48:16.198Z
 close_reason: The spec, guide, both package design docs, prior-plan pointer, and delivery-epic linkage match implemented behavior and pass documentation, spelling, formatting, type, and footer checks.
 ---

@@ -5,7 +5,8 @@ title: "PR #59 C3: validate_values(schema=absent path) reports schema_invalid/co
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rxe40c2nyv4rwytvha8dhy
 hold: null
 hold_until: null
 created_at: 2026-10-25T06:54:46.844Z
-updated_at: 2026-10-25T07:16:46.612Z
+updated_at: 2026-10-26T03:34:07.490Z
 started_at: 2026-10-25T06:54:52.907Z
 closed_at: 2026-10-25T07:16:46.611Z
 close_reason: "fixed in e02b064: FileNotFoundError -> schema_missing in validate_structural; test_values_schema_path_that_does_not_exist_is_schema_missing"

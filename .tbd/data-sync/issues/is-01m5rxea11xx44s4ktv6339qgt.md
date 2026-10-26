@@ -5,7 +5,8 @@ title: "PR #59 Qodo 2: Python _required_layers accepts a mapping as require"
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rxe40c2nyv4rwytvha8dhy
 hold: null
 hold_until: null
 created_at: 2026-10-25T06:54:48.353Z
-updated_at: 2026-10-25T07:16:48.123Z
+updated_at: 2026-10-26T03:34:07.490Z
 started_at: 2026-10-25T06:54:53.994Z
 closed_at: 2026-10-25T07:16:48.123Z
 close_reason: "fixed in e02b064: _required_layers rejects Mapping with the same TypeError; test extended"

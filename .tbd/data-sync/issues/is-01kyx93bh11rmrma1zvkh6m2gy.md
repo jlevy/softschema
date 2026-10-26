@@ -5,15 +5,15 @@ title: Run paired-runtime release validation
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-31-portable-yaml-timestamps.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-31-portable-yaml-timestamps.md
 labels:
   - github-22
   - validation
 dependencies: []
 parent_id: is-01kyx90yh6vv5n0jdmhh5dar9n
 created_at: 2026-07-31T23:45:37.312Z
-updated_at: 2026-07-31T23:52:06.533Z
+updated_at: 2026-10-26T03:33:58.344Z
 closed_at: 2026-07-31T23:52:06.532Z
 close_reason: "Full implementation review and release matrix pass: 167 Python tests, 169 TypeScript tests, Python/Node/Bun goldens, cross-runtime parity, lint/type checks, builds, publint, mirror checks, diff checks, and clean wheel/sdist/npm installs."
 ---

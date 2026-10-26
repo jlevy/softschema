@@ -5,8 +5,8 @@ title: "Step 14: Publish validation plan and complete final senior review"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - review
   - planning
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9n8xq83ng2r748pfrtd88e
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:13.886Z
-updated_at: 2026-07-12T03:11:57.327Z
+updated_at: 2026-10-26T03:33:43.160Z
 closed_at: 2026-07-12T03:11:57.325Z
 close_reason: Published the final test-ownership and validation results in the completed spec; senior review found and resolved release, docs, parity, status, and comment gaps.
 ---

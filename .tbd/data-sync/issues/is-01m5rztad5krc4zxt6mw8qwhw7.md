@@ -5,7 +5,8 @@ title: "Address PR #59 round 3: reviews D, E"
 kind: task
 status: closed
 priority: 1
-version: 11
+version: 12
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -21,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-25T07:36:19.109Z
-updated_at: 2026-10-25T07:49:15.205Z
+updated_at: 2026-10-26T03:34:08.139Z
 started_at: 2026-10-25T07:36:28.752Z
 closed_at: 2026-10-25T07:49:15.205Z
 close_reason: "Round 3 of PR #59 addressed: D1-D4, E1-E4 all fixed (7aded61, 608bcc4, 788c61b); replies posted; CI at 788c61b green except the known bun audit step (#64)"

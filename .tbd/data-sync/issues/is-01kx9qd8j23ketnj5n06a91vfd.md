@@ -5,8 +5,8 @@ title: "Step 4: Close JSON Schema validation semantics"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - validation
   - parity
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9qd9qmjfhmv9egzc34rwtj
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:11.553Z
-updated_at: 2026-07-11T23:45:03.074Z
+updated_at: 2026-10-26T03:33:45.319Z
 closed_at: 2026-07-11T23:45:03.073Z
 close_reason: Validation now uses closed in-memory resource registries, rejects duplicate identities and unavailable refs, normalizes schema failures, treats formats as annotations, and checks a bounded portable pattern subset.
 ---

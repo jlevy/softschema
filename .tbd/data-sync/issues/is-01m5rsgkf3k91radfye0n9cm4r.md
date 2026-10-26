@@ -5,7 +5,8 @@ title: "PR #59 A4: repair --check called a gate but has no require"
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rr5w4r03h667rqqwvz0a5s
 hold: null
 hold_until: null
 created_at: 2026-10-25T05:46:09.251Z
-updated_at: 2026-10-25T06:13:12.241Z
+updated_at: 2026-10-26T03:34:06.199Z
 started_at: 2026-10-25T05:46:17.632Z
 closed_at: 2026-10-25T06:13:12.241Z
 close_reason: "fixed in 39eac06 (minimal doc option): spec Repair section and both repair docstrings say repair takes no require and a gate that needs completed checks follows repair --check with validate --require"

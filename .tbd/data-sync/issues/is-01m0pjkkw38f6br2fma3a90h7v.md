@@ -5,15 +5,15 @@ title: Pin known cross-implementation error deviations as documented diffs
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - testing
   - parity
 dependencies: []
 parent_id: is-01m0pjfmt8vxpkcjk8msfa8c32
 created_at: 2026-08-23T05:48:29.955Z
-updated_at: 2026-08-23T06:31:38.529Z
+updated_at: 2026-10-26T03:34:05.037Z
 closed_at: 2026-08-23T06:31:38.528Z
 close_reason: "Landed on claude/review-open-issue-spec-dt4zkk (PR #42)."
 resolution: null

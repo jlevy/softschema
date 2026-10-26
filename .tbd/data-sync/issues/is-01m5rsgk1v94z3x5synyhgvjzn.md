@@ -5,7 +5,8 @@ title: "PR #59 A3: PR description omits nullable-wrapper acceptance (799c7e9) an
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rr5w4r03h667rqqwvz0a5s
 hold: null
 hold_until: null
 created_at: 2026-10-25T05:46:08.826Z
-updated_at: 2026-10-25T06:13:11.925Z
+updated_at: 2026-10-26T03:34:06.199Z
 started_at: 2026-10-25T05:46:17.304Z
 closed_at: 2026-10-25T06:13:11.925Z
 close_reason: "fixed: PR #59 body updated via gh pr edit --body-file to name 799c7e9 (nullable wrappers around closed references) and b494f72 (lefthook --frozen --no-config, --no-verify guidance removed), plus the A1/A2 behavior and validation at 39eac06"

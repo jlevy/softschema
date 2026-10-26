@@ -5,8 +5,8 @@ title: "Step 11: Build once and smoke exact release artifacts"
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - release
   - security
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx9qdakxzyp25ef7kyyd0xnr
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:13.204Z
-updated_at: 2026-07-12T03:11:56.318Z
+updated_at: 2026-10-26T03:33:44.218Z
 closed_at: 2026-07-12T03:11:56.316Z
 close_reason: Built wheel, sdist, and npm candidates once without publish authority; checksummed, transferred, and smoke-tested each exact artifact before OIDC publication.
 ---

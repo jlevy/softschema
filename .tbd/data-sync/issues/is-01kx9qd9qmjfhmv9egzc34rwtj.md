@@ -5,8 +5,8 @@ title: "Step 9: Integrate the final paired API and CLI hard cut"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - api
   - cli
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx9qda5nktgj47m9c54mreg5
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:12.755Z
-updated_at: 2026-07-12T00:21:24.808Z
+updated_at: 2026-10-26T03:33:42.001Z
 closed_at: 2026-07-12T00:21:24.808Z
 close_reason: Integrated the final paired root exports, direct TypeScript result shape, outcome discriminator, CLI exit mapping, and removed unused dependencies.
 ---

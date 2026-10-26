@@ -5,8 +5,8 @@ title: "Step 10: Consolidate unit tests and CLI goldens"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - testing
   - cleanup
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9qdakxzyp25ef7kyyd0xnr
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:12.978Z
-updated_at: 2026-07-12T00:23:43.376Z
+updated_at: 2026-10-26T03:33:50.025Z
 closed_at: 2026-07-12T00:23:43.375Z
 close_reason: Reduced neutral goldens from 11 to 6, removed duplicate pure-YAML and coverage-driven CLI tests, retained adapter-only cases, and kept 96% instrumented coverage.
 ---

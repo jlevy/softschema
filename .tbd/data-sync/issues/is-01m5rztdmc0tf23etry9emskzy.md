@@ -5,7 +5,8 @@ title: "PR #59 E1: walk follows contains where Ajv compiles nothing (minContains
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rztad5krc4zxt6mw8qwhw7
 hold: null
 hold_until: null
 created_at: 2026-10-25T07:36:22.411Z
-updated_at: 2026-10-25T07:46:08.662Z
+updated_at: 2026-10-26T03:34:08.689Z
 started_at: 2026-10-25T07:36:27.031Z
 closed_at: 2026-10-25T07:46:08.662Z
 close_reason: "fixed in 7aded61: contains skip conditions in the walk; unreached vectors both complete; reached cases pinned (inert-contains-dangling-reference-reached, impossible-contains-dangling-reference-reached)"

@@ -5,7 +5,8 @@ title: "PR #59 C2: pre-existing engine differences exposed by execution are unpi
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rxe40c2nyv4rwytvha8dhy
 hold: null
 hold_until: null
 created_at: 2026-10-25T06:54:46.335Z
-updated_at: 2026-10-25T07:16:46.143Z
+updated_at: 2026-10-26T03:34:07.490Z
 started_at: 2026-10-25T06:54:52.491Z
 closed_at: 2026-10-25T07:16:46.142Z
 close_reason: "fixed in e02b064 + 11f2d34: draft-07 $schema refused in both (dialect); root self-ref agrees (ordinary vector); reference-cycle, root-dynamic-reference, reference-to-non-schema-location, id-and-ref-siblings, embedded-id-with-resolvable-ref-sibling pinned as engine_deviations; spec lists them"

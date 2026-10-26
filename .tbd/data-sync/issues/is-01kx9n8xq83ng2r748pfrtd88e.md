@@ -5,8 +5,8 @@ title: "Spec: Minimal softschema hardening"
 kind: epic
 status: closed
 priority: 1
-version: 18
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 19
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - hardening
   - simplification
@@ -28,7 +28,7 @@ child_order_hints:
   - is-01kx9qdakxzyp25ef7kyyd0xnr
   - is-01kx9qdatz2pmwz6r61kw4czdp
 created_at: 2026-07-11T22:37:52.231Z
-updated_at: 2026-07-12T03:11:57.766Z
+updated_at: 2026-10-26T03:33:48.535Z
 closed_at: 2026-07-12T03:11:57.766Z
 close_reason: All minimal-hardening implementation beads and final review are complete; production growth is 947 lines, the golden system is smaller, and all local release gates pass.
 ---

@@ -5,14 +5,14 @@ title: Document the closure rule, code enum, deviation policy, and upgrade path
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - docs
 dependencies: []
 parent_id: is-01m0pjfmt8vxpkcjk8msfa8c32
 created_at: 2026-08-23T05:48:30.322Z
-updated_at: 2026-08-23T06:31:38.780Z
+updated_at: 2026-10-26T03:33:58.862Z
 closed_at: 2026-08-23T06:31:38.780Z
 close_reason: "Landed on claude/review-open-issue-spec-dt4zkk (PR #42)."
 resolution: null

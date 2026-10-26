@@ -5,7 +5,8 @@ title: "PR #59 A1: --require structural passes in Python, fails in TypeScript fo
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rr5w4r03h667rqqwvz0a5s
 hold: null
 hold_until: null
 created_at: 2026-10-25T05:46:07.996Z
-updated_at: 2026-10-25T06:13:11.174Z
+updated_at: 2026-10-26T03:34:06.199Z
 started_at: 2026-10-25T05:46:16.573Z
 closed_at: 2026-10-25T06:13:11.174Z
 close_reason: "fixed in b058d1c: Python preparation resolves every reachable $ref (_check_references) so an unresolvable local or remote reference is schema_invalid/reference with not_run in both runtimes; vectors unreached-local-reference, unreached-remote-reference, unreached-reference-required-structural, unreferenced-definition-dangling-reference in tests/vectors/validation-execution.yaml (fail before, pass after); spec, python design, plan, CHANGELOG updated"

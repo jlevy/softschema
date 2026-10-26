@@ -5,8 +5,8 @@ title: Document the minor-release migration and agent guidance
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-31-portable-yaml-timestamps.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-31-portable-yaml-timestamps.md
 labels:
   - github-22
   - release-content
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kyx93bh11rmrma1zvkh6m2gy
 parent_id: is-01kyx90yh6vv5n0jdmhh5dar9n
 created_at: 2026-07-31T23:45:22.674Z
-updated_at: 2026-07-31T23:48:38.039Z
+updated_at: 2026-10-26T03:33:51.309Z
 closed_at: 2026-07-31T23:48:38.038Z
 close_reason: "Migration and release content are complete: source and managed skills are byte-identical, reviewed Python goldens pass, and the changelog records the v0.3 baseline plus the v0.4-compatible upgrade path."
 ---

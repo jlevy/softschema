@@ -5,8 +5,8 @@ title: "Step 3: Enforce portable artifact input and bounded YAML"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - validation
   - security
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx9qd8s60k7jatjnny0h4w9c
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:11.324Z
-updated_at: 2026-07-11T23:40:50.173Z
+updated_at: 2026-10-26T03:33:49.493Z
 closed_at: 2026-07-11T23:40:50.172Z
 close_reason: Added strict bounded UTF-8 reads and portable YAML representation/value checks in two small private helpers; shared artifact, value, and limit vectors pass in both runtimes.
 ---

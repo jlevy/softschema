@@ -5,7 +5,8 @@ title: "TypeScript: add loadArtifact, the strict consuming API"
 kind: feature
 status: closed
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-30-repair-command.md
 labels: []
 dependencies:
   - type: blocks
@@ -14,7 +15,7 @@ dependencies:
     target: is-01m19xc8gqjq2nksc03y981jez
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:01:46.021Z
-updated_at: 2026-08-30T18:42:16.839Z
+updated_at: 2026-10-26T03:34:09.699Z
 closed_at: 2026-08-30T18:42:16.839Z
 close_reason: Implemented on claude/senior-engineering-review-h24e5m (cdb5ff6, 9ec17f9). validate/repair split with --dry-run and --check, strictness per command, load_artifact/loadArtifact, enforcement lint, all docs and derived artifacts regenerated, runbook re-run green on all four phases. pytest 243, bun test 240, golden 75/73/75, cross-impl parity OK.
 resolution: null

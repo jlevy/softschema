@@ -5,7 +5,8 @@ title: "PR #59 (fix): Report actual execution and require completed validation c
 kind: task
 status: closed
 priority: 1
-version: 8
+version: 9
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -18,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-25T05:22:49.112Z
-updated_at: 2026-10-25T06:16:29.187Z
+updated_at: 2026-10-26T03:34:05.519Z
 started_at: 2026-10-25T05:22:57.575Z
 closed_at: 2026-10-25T06:16:29.187Z
 close_reason: "Review A on PR #59 addressed: A1 fixed b058d1c, A2 fixed 5b06690, A3 fixed (PR body), A4 and A5 fixed 39eac06; disposition reply posted; CI at 39eac06 green except the known bun audit step (#64)"

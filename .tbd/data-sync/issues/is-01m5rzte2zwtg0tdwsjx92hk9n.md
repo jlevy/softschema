@@ -5,7 +5,8 @@ title: "PR #59 E2: if-with-empty-then pin asserts one of three shapes; reword ru
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rztad5krc4zxt6mw8qwhw7
 hold: null
 hold_until: null
 created_at: 2026-10-25T07:36:22.879Z
-updated_at: 2026-10-25T07:46:09.094Z
+updated_at: 2026-10-26T03:34:08.689Z
 started_at: 2026-10-25T07:36:27.430Z
 closed_at: 2026-10-25T07:46:09.093Z
 close_reason: "fixed in 7aded61: if-with-true-then, if-with-annotation-then, if-with-annotation-else pins added; why reworded to Ajv's rule (schemas Ajv has no rule for)"

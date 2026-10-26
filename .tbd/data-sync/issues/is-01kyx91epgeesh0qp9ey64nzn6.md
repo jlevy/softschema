@@ -5,8 +5,8 @@ title: Define shared timestamp decoding conformance
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-31-portable-yaml-timestamps.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-07-31-portable-yaml-timestamps.md
 labels:
   - github-22
   - parity
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kyx91wz5ng8ea0gzf2g6p3a5
 parent_id: is-01kyx90yh6vv5n0jdmhh5dar9n
 created_at: 2026-07-31T23:44:35.023Z
-updated_at: 2026-07-31T23:46:27.541Z
+updated_at: 2026-10-26T03:33:56.048Z
 closed_at: 2026-07-31T23:46:27.534Z
 close_reason: Shared timestamp vectors are implemented and revalidated in both adapters, including exact decoded-value assertions.
 ---

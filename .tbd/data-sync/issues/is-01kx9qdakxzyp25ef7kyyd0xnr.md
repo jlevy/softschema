@@ -5,8 +5,8 @@ title: "Step 13: Run the full matrix and perform the deletion pass"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - validation
   - cleanup
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9qdatz2pmwz6r61kw4czdp
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:13.659Z
-updated_at: 2026-07-12T03:11:57.102Z
+updated_at: 2026-10-26T03:33:37.517Z
 closed_at: 2026-07-12T03:11:57.101Z
 close_reason: Full Python, TypeScript, golden, parity, package, and isolated-install matrix passed; deleted seven unreferenced fixtures and confirmed every retained fixture has a consumer.
 ---

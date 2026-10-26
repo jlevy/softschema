@@ -5,7 +5,8 @@ title: "PR #59 B4: $dynamicRef with no anchor diverges (TS untyped root valid, P
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rxe40c2nyv4rwytvha8dhy
 hold: null
 hold_until: null
 created_at: 2026-10-25T06:54:44.350Z
-updated_at: 2026-10-25T07:16:44.169Z
+updated_at: 2026-10-26T03:34:07.490Z
 started_at: 2026-10-25T06:54:51.337Z
 closed_at: 2026-10-25T07:16:44.169Z
 close_reason: "fixed in e02b064 (pinned): engine_deviations dynamic-ref-missing-anchor-typed-root/-untyped-root, root-dynamic-reference; spec lists it (11f2d34)"

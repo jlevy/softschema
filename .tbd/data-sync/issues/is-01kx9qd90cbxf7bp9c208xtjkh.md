@@ -5,8 +5,8 @@ title: "Step 6: Correct identities, compiler boundaries, and annotations"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - compiler
   - api
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kx9qd9qmjfhmv9egzc34rwtj
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:12.011Z
-updated_at: 2026-07-12T00:02:40.896Z
+updated_at: 2026-10-26T03:33:50.456Z
 closed_at: 2026-07-12T00:02:40.895Z
 close_reason: Contracts are validated at construction/registry/compiler boundaries; compile requires a contract, accepts an optional absolute schema ID, reserves root identity keys, emits no format version, validates annotations, and compares sidecars strictly.
 ---

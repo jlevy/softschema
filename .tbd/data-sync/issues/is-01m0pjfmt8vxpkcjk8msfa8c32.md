@@ -5,8 +5,8 @@ title: "Spec: enforced closure for composed schemas (issue #41)"
 kind: epic
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - enforcement
   - json-schema
@@ -20,7 +20,7 @@ child_order_hints:
   - is-01m0pjkkw38f6br2fma3a90h7v
   - is-01m0pjkm7kd2kf57ennae999ye
 created_at: 2026-08-23T05:46:19.848Z
-updated_at: 2026-08-23T06:31:39.046Z
+updated_at: 2026-10-26T03:34:03.276Z
 closed_at: 2026-08-23T06:31:39.046Z
 close_reason: "All six children landed on PR #42. Issue #41 resolved: composed schemas validate under enforced, records carry a stable code enum, engine deviations pinned. Sibling anyOf bug filed as ss-p32o."
 resolution: null

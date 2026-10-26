@@ -5,8 +5,8 @@ title: "Step 8: Simplify packaged resources, bootstrap, and skill installation"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - agents
   - installer
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9qd9qmjfhmv9egzc34rwtj
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:15:12.528Z
-updated_at: 2026-07-12T00:17:07.197Z
+updated_at: 2026-10-26T03:33:39.773Z
 closed_at: 2026-07-12T00:17:07.196Z
 close_reason: Implemented exact resource resolution, explicit safe installer behavior, collision coverage, and exact verified bootstrap guidance.
 ---

@@ -5,13 +5,13 @@ title: Normalize YAML timestamps to portable strings
 kind: feature
 status: closed
 priority: 2
-version: 8
-spec_path: docs/project/specs/active/plan-2026-07-31-portable-yaml-timestamps.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-07-31-portable-yaml-timestamps.md
 labels:
   - github-22
 dependencies: []
 created_at: 2026-07-31T23:02:59.366Z
-updated_at: 2026-07-31T23:43:04.659Z
+updated_at: 2026-10-26T03:33:52.788Z
 closed_at: 2026-07-31T23:43:04.658Z
 close_reason: "Issue #22 implementation, migration path, specification, design docs, agent guidance, parity fixtures, and full validation matrix are complete. Publishing remains a separate maintainer action."
 ---

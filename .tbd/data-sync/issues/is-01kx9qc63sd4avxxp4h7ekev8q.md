@@ -5,8 +5,8 @@ title: "Step 1: Baseline defects and choose the hard-cut surface"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-11-minimal-softschema-hardening.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-07-11-minimal-softschema-hardening.md
 labels:
   - planning
   - api
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kx9qd83rhjpngwe7qkpdzqff
 parent_id: is-01kx9n8xq83ng2r748pfrtd88e
 created_at: 2026-07-11T23:14:36.280Z
-updated_at: 2026-07-11T23:25:44.398Z
+updated_at: 2026-10-26T03:33:46.460Z
 closed_at: 2026-07-11T23:25:44.397Z
 close_reason: Recorded verified main baseline, reproduced all 24 accepted defect categories, documented exclusions, and fixed the hard-cut API/CLI/result surface.
 ---

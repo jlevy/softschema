@@ -5,7 +5,8 @@ title: "Docs: regenerate every derived artifact, in order, and verify parity"
 kind: task
 status: closed
 priority: 1
-version: 4
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-30-repair-command.md
 labels: []
 dependencies:
   - type: blocks
@@ -14,7 +15,7 @@ dependencies:
     target: is-01m19xcz3ktm8yt7ajz1p5ww55
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:02:19.402Z
-updated_at: 2026-08-30T18:42:16.872Z
+updated_at: 2026-10-26T03:34:09.699Z
 closed_at: 2026-08-30T18:42:16.872Z
 close_reason: Implemented on claude/senior-engineering-review-h24e5m (cdb5ff6, 9ec17f9). validate/repair split with --dry-run and --check, strictness per command, load_artifact/loadArtifact, enforcement lint, all docs and derived artifacts regenerated, runbook re-run green on all four phases. pytest 243, bun test 240, golden 75/73/75, cross-impl parity OK.
 resolution: null

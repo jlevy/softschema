@@ -5,8 +5,8 @@ title: Add stable code enum to structural error records
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-23-enforced-composition-closure.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-23-enforced-composition-closure.md
 labels:
   - diagnostics
   - parity
@@ -17,7 +17,7 @@ dependencies:
     target: is-01m0pjkm7kd2kf57ennae999ye
 parent_id: is-01m0pjfmt8vxpkcjk8msfa8c32
 created_at: 2026-08-23T05:46:39.375Z
-updated_at: 2026-08-23T06:31:38.032Z
+updated_at: 2026-10-26T03:34:04.476Z
 closed_at: 2026-08-23T06:31:38.032Z
 close_reason: "Landed on claude/review-open-issue-spec-dt4zkk (PR #42)."
 resolution: null

@@ -5,7 +5,8 @@ title: "PR #59 Qodo 1: TS --require payload usage error lacks softschema validat
 kind: bug
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,7 +14,7 @@ parent_id: is-01m5rxe40c2nyv4rwytvha8dhy
 hold: null
 hold_until: null
 created_at: 2026-10-25T06:54:47.835Z
-updated_at: 2026-10-25T07:16:47.596Z
+updated_at: 2026-10-26T03:34:07.490Z
 started_at: 2026-10-25T06:54:53.645Z
 closed_at: 2026-10-25T07:16:47.596Z
 close_reason: "fixed in 1289d8a: --require values judged in runValidate via UsageError -> softschema validate: invalid require: ...; golden asserts prefix in both CLIs"

@@ -5,12 +5,13 @@ title: "Docs: forward-link the superseded 2026-08-29 repair plan"
 kind: chore
 status: closed
 priority: 3
-version: 3
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-30-repair-command.md
 labels: []
 dependencies: []
 parent_id: is-01m19x9cxpqdvztd07cf5tthdb
 created_at: 2026-08-30T18:02:19.014Z
-updated_at: 2026-08-30T18:42:38.396Z
+updated_at: 2026-10-26T03:34:09.699Z
 closed_at: 2026-08-30T18:42:38.396Z
 close_reason: Forward link and placement call added.
 resolution: null
