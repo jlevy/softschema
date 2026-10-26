@@ -258,7 +258,7 @@ unreleased aggregate field.
 Old reports without execution fields have **unknown** execution; preserve absence or
 revalidate rather than fabricating evidence.
 See the
-[migration plan](docs/project/specs/active/plan-2026-09-12-validation-execution-evidence.md)
+[migration plan](docs/project/specs/done/plan-2026-09-12-validation-execution-evidence.md)
 for downstream adoption and release sequencing.
 
 Compiled schema files also change for one TypeScript construct.
