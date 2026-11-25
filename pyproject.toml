@@ -187,3 +187,5 @@ markers = [
     "slow: costly evidence excluded from the default run; `uv run pytest -m slow` runs it",
 ]
 addopts = "-m 'not slow'"
+# Delete passing tests' temp files when they finish; keep failing tests' for debugging.
+tmp_path_retention_policy = "failed"
