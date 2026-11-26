@@ -35,7 +35,7 @@ from softschema.validate import (
 RecordState = Literal["valid", "repaired", "invalid", "unbound", "unreadable", "malformed"]
 _SCHEMA_SUFFIXES = (".schema.yaml", ".schema.yml", ".schema.json")
 _ARTIFACT_SUFFIXES = frozenset({".md", ".yaml", ".yml", ".json"})
-_SNAPSHOT_VERSION = 1
+_SNAPSHOT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,7 @@ class CollectionScan:
     _version: int
     _scope: tuple[str, bool, str | None, int, int, int]
     _files: dict[str, _ScannedFile]
+    _unread_paths: tuple[str, ...]
 
     def snapshot_json(self) -> str:
         """Serialize a scan for storage by the caller, including its refresh data."""
@@ -194,11 +195,11 @@ def _read_record(path: str, text: str) -> tuple[CollectionRecord | None, str]:
     # A key may contain escapes, so that possibility also requires the portable reader.
     if "softschema" not in yaml and "\\" not in yaml:
         return None, ""
-    body = ""
+    body = text[split.body_offset :] if split is not None else ""
     repairs: tuple[dict[str, Any], ...] = ()
     try:
         if profile is SchemaProfile.frontmatter_md:
-            body, document = parse_frontmatter_text(text, source=path)
+            _, document = parse_frontmatter_text(text, source=path)
         else:
             document = parse_yaml_text(text, source=path)
     except PortableInputError:
@@ -213,7 +214,6 @@ def _read_record(path: str, text: str) -> tuple[CollectionRecord | None, str]:
             ), ""
         yaml = repaired.text
         document = parse_yaml_text(yaml, source=path)
-        body = text[split.body_offset :] if split is not None else ""
         repairs = tuple(repaired.records)
     if not isinstance(document, dict) or "softschema" not in document:
         return None, ""
@@ -281,6 +281,7 @@ def _bind(
     record_yaml: str,
     schemas: dict[str, tuple[CollectionSchema, str]],
     by_contract: dict[str, dict[str, str]],
+    complete: bool,
     prior: tuple[CollectionRecord, str | None] | None,
 ) -> CollectionRecord:
     if record.metadata is None or record.values is None:
@@ -290,8 +291,12 @@ def _bind(
     direct = schemas.get(pointer or "")
     if direct is None or direct[0].contract not in (None, contract):
         candidates = by_contract.get(contract, {})
-        if len(candidates) != 1:
-            code = "schema_ambiguous" if candidates else "schema_unbound"
+        if not complete or len(candidates) != 1:
+            code = (
+                "schema_ambiguous"
+                if len(candidates) > 1
+                else ("schema_unbound" if complete else "schema_discovery_incomplete")
+            )
             return replace(record, errors=({"kind": code},))
         direct = schemas[next(iter(candidates.values()))]
     schema, text = direct
@@ -365,6 +370,9 @@ def scan_collection(
     Paths in the result and in the optional ignore callback are relative to the root.
     The entry bound covers every enumerated name. The file and aggregate read bounds
     limit memory and work independently. When a bound cuts the scan, `complete` is false.
+    A fully walked listing can establish removals even when record reads hit a byte limit.
+    A partial scan binds an observed explicit schema pointer, and defers unique-contract
+    fallback until discovery completes.
     A previous scan with the same root, limits and ignore identity can reuse unchanged
     artifacts. Pass a stable `ignore_id` for the effective policy when providing an
     ignore callback. A scan without that identity does a fresh read.
@@ -376,14 +384,20 @@ def scan_collection(
         raise ValueError("collection root must be a directory")
     scope = (str(root), ignore is not None, ignore_id, max_entries, max_file_bytes, max_total_bytes)
     if previous is not None and (
-        previous._scope != scope or (ignore is not None and ignore_id is None)
+        previous._version != _SNAPSHOT_VERSION
+        or previous._scope != scope
+        or (ignore is not None and ignore_id is None)
     ):
         previous = None
     saved_files = previous._files if previous is not None else {}
+    known_paths = set(saved_files)
+    if previous is not None:
+        known_paths.update(previous._unread_paths)
     prior_records = {record.path: record for record in previous.records} if previous else {}
     prior_digests = {schema.path: schema.digest for schema in previous.schemas} if previous else {}
     problems: list[dict[str, str]] = []
-    files, complete = _walk(root, max_entries, ignore, problems)
+    files, walked = _walk(root, max_entries, ignore, problems)
+    complete = walked
     records: list[CollectionRecord] = []
     scanned: dict[str, _ScannedFile] = {}
     schemas: dict[str, tuple[CollectionSchema, str]] = {}
@@ -430,23 +444,30 @@ def scan_collection(
                 latest.record_yaml,
                 schemas,
                 by_contract,
+                complete,
                 (prior, prior_digests.get(prior.schema or "")),
             )
-        return _bind(record, latest.record_yaml, schemas, by_contract, None)
+        return _bind(record, latest.record_yaml, schemas, by_contract, complete, None)
 
+    # A byte limit does not make an already listed path disappear. Incomplete
+    # directory walks keep a bounded set of previously known but unread paths.
+    listed = {name for name, _ in files}
+    removed = known_paths - listed if walked else set()
+    unread = known_paths.difference(removed, scanned)
     return CollectionScan(
         tuple(bind(record) for record in records),
         tuple(schema for schema, _ in schemas.values()),
         tuple(problems),
         complete,
-        tuple(name for name in scanned if name not in saved_files),
+        tuple(name for name in scanned if name not in known_paths),
         tuple(
             name
             for name in scanned
-            if name in saved_files and scanned[name] is not saved_files[name]
+            if name in known_paths and scanned[name] is not saved_files.get(name)
         ),
-        tuple(name for name in saved_files if name not in scanned) if complete else (),
+        tuple(sorted(removed)),
         _SNAPSHOT_VERSION,
         scope,
         scanned,
+        tuple(sorted(unread)[:max_entries]),
     )

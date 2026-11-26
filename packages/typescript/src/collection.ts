@@ -41,7 +41,7 @@ import {
 export type RecordState = "valid" | "repaired" | "invalid" | "unbound" | "unreadable" | "malformed";
 const SCHEMA_SUFFIXES = [".schema.yaml", ".schema.yml", ".schema.json"];
 const ARTIFACT_SUFFIXES = new Set([".md", ".yaml", ".yml", ".json"]);
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
 
 export interface CollectionSchema {
   path: string;
@@ -90,6 +90,7 @@ export interface CollectionScan {
     version: number;
     scope: string;
     files: ReadonlyArray<readonly [string, ScannedFile]>;
+    unreadPaths: readonly string[];
   };
 }
 
@@ -292,6 +293,7 @@ function bind(
   recordYaml: string | undefined,
   schemas: Map<string, CollectionSchema>,
   byContract: Map<string, Map<string, CollectionSchema>>,
+  complete: boolean,
   prior: CollectionRecord | undefined,
   priorDigest: string | undefined,
 ): CollectionRecord {
@@ -300,11 +302,20 @@ function bind(
   let schema = schemas.get(pointer(record));
   if (!schema || (schema.contract !== null && schema.contract !== contract)) {
     const candidates = byContract.get(contract);
-    schema = candidates?.size === 1 ? candidates.values().next().value : undefined;
+    schema = complete && candidates?.size === 1 ? candidates.values().next().value : undefined;
     if (!schema) {
       return {
         ...record,
-        errors: [{ kind: candidates?.size ? "schema_ambiguous" : "schema_unbound" }],
+        errors: [
+          {
+            kind:
+              (candidates?.size ?? 0) > 1
+                ? "schema_ambiguous"
+                : complete
+                  ? "schema_unbound"
+                  : "schema_discovery_incomplete",
+          },
+        ],
       };
     }
   }
@@ -392,6 +403,7 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
       ? options.previous
       : undefined;
   const saved = new Map(previous?.snapshot.files);
+  const knownPaths = new Set([...saved.keys(), ...(previous?.snapshot.unreadPaths ?? [])]);
   const priorRecords = new Map(previous?.records.map((record) => [record.path, record]));
   const priorDigests = new Map(previous?.schemas.map((schema) => [schema.path, schema.digest]));
   const scanned = new Map<string, ScannedFile>();
@@ -442,6 +454,14 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
     }
     if (entry.record) records.push(entry.record);
   }
+  const removed = discovered.complete
+    ? [...knownPaths].filter((name) => !discovered.files.has(name)).sort(byCodePoint)
+    : [];
+  const removedPaths = new Set(removed);
+  const unreadPaths = [...knownPaths]
+    .filter((name) => !removedPaths.has(name) && !scanned.has(name))
+    .sort(byCodePoint)
+    .slice(0, maxEntries);
   return {
     records: records.map((record) => {
       const prior =
@@ -453,6 +473,7 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
         scanned.get(record.path)?.recordYaml,
         schemas,
         byContract,
+        complete,
         prior,
         priorDigests.get(prior?.schema ?? ""),
       );
@@ -460,12 +481,12 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
     schemas: [...schemas.values()],
     problems,
     complete,
-    added: [...scanned.keys()].filter((name) => !saved.has(name)),
+    added: [...scanned.keys()].filter((name) => !knownPaths.has(name)),
     changed: [...scanned.keys()].filter(
-      (name) => saved.has(name) && scanned.get(name) !== saved.get(name),
+      (name) => knownPaths.has(name) && scanned.get(name) !== saved.get(name),
     ),
-    removed: complete ? [...saved.keys()].filter((name) => !scanned.has(name)) : [],
-    snapshot: { version: SNAPSHOT_VERSION, scope, files: [...scanned] },
+    removed,
+    snapshot: { version: SNAPSHOT_VERSION, scope, files: [...scanned], unreadPaths },
   };
 }
 
