@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from softschema._portable import yaml_parser_mode
+from softschema.collection import (
+    CollectionRecord,
+    CollectionScan,
+    CollectionSchema,
+    scan_collection,
+)
 from softschema.compile import CompileResult, compile_model
 from softschema.conform import ConformResult, conform_artifact
 from softschema.generate import GeneratedSection, RegenerateResult, regenerate
@@ -48,6 +54,9 @@ from softschema.validate import (
 __all__ = [
     "ArtifactInvalidError",
     "ArtifactValidationResult",
+    "CollectionRecord",
+    "CollectionScan",
+    "CollectionSchema",
     "CompileResult",
     "ConformResult",
     "Contract",
@@ -84,6 +93,7 @@ __all__ = [
     "repair_artifact",
     "repair_yaml_text",
     "resolve_bound_schema",
+    "scan_collection",
     "validate_artifact",
     "validate_semantic",
     "validate_structural",

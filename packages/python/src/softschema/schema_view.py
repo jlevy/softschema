@@ -38,6 +38,11 @@ class FieldInfo:
     required: bool
     description: str | None
     softmeta: dict[str, Any] = field(default_factory=dict)
+    title: str | None = None
+    format: str | None = None
+    pattern: str | None = None
+    item_type: str | None = None
+    definition: str | None = None
 
 
 class SchemaView:
@@ -140,6 +145,15 @@ class SchemaView:
                 continue
             prop, ref = self._maybe_resolve_ref(raw_prop, seen_refs, include_refs=include_refs)
             pointer = f"{base_pointer}/properties/{_escape_pointer_segment(name)}"
+            shape = _nullable_value_branch(prop) or prop
+            raw_items = shape.get("items")
+            items = raw_items if isinstance(raw_items, dict) else {}
+            item_ref = _text_value(items, "$ref") or _ref_from_anyof(items)
+            item_schema = _resolve_ref(self._schema, item_ref) if item_ref else None
+            definition = (
+                item_ref or ref or _text_value(raw_prop, "$ref") or _ref_from_anyof(raw_prop)
+            )
+            definition_parts = definition.split("/") if definition else []
             yield FieldInfo(
                 pointer=pointer,
                 name=name,
@@ -148,6 +162,15 @@ class SchemaView:
                 required=name in required_set,
                 description=prop.get("description"),
                 softmeta=_extract_softmeta(prop),
+                title=_text_value(prop, "title"),
+                format=_text_value(items, "format") or _text_value(shape, "format"),
+                pattern=_text_value(items, "pattern") or _text_value(shape, "pattern"),
+                item_type=_extract_type(item_schema or items),
+                definition=(
+                    _unescape_pointer_segment(definition_parts[2])
+                    if len(definition_parts) == 3 and definition_parts[:2] == ["#", "$defs"]
+                    else None
+                ),
             )
             # Recurse into nested objects (after the ref is resolved). Carry the
             # just-followed $ref down the recursion path so a cyclic schema
@@ -185,6 +208,11 @@ def _ref_from_anyof(prop: dict[str, Any]) -> str | None:
     branch = _nullable_value_branch(prop)
     ref = branch.get("$ref") if branch is not None else None
     return ref if isinstance(ref, str) else None
+
+
+def _text_value(node: dict[str, Any], name: str) -> str | None:
+    value = node.get(name)
+    return value if isinstance(value, str) else None
 
 
 def _resolve_ref(schema: dict[str, Any], ref: str) -> dict[str, Any] | None:

@@ -75,6 +75,9 @@ def test_package_root_exports_only_the_supported_surface() -> None:
     assert set(softschema.__all__) == {
         "ArtifactInvalidError",
         "ArtifactValidationResult",
+        "CollectionRecord",
+        "CollectionScan",
+        "CollectionSchema",
         "CompileResult",
         "ConformResult",
         "Contract",
@@ -111,6 +114,7 @@ def test_package_root_exports_only_the_supported_surface() -> None:
         "repair_artifact",
         "repair_yaml_text",
         "resolve_bound_schema",
+        "scan_collection",
         "validate_artifact",
         "validate_semantic",
         "validate_structural",

@@ -159,6 +159,27 @@ fully known:
 The design test is concrete: name the consumers, the values each reads, and the point at
 which an unknown field should become an error.
 
+## Inspecting a Collection
+
+Run `softschema scan ROOT --json` to count contracts, schemas, and record states in a
+directory. The scan reads Markdown, YAML, and JSON artifacts and stays inside the chosen
+root. It follows a record’s local schema pointer first, then tries a unique compiled
+schema with the same contract.
+A record with no binding remains visible as unbound.
+
+Scanning uses compiled structural validation and can repair YAML or conform scalar
+values in memory. The report distinguishes changed values that pass from a completed
+rejection, a missing binding, and an unreadable input.
+The command exits 1 when it reports problems or reaches a scan bound, and 2 when the
+root cannot be opened.
+The JSON summary includes relative paths and error codes for problems.
+
+Python hosts can call `scan_collection` and TypeScript hosts can call `scanCollection`.
+Both return the records and schemas for the scanned scope.
+Pass the previous result to reuse unchanged inputs and to revalidate a stored payload
+when the schema it binds to changes.
+Persist snapshots in a trusted host cache.
+
 ## Artifact Profiles
 
 Both artifact profiles use a `softschema` metadata block.

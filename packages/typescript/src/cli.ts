@@ -20,6 +20,7 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
 import { z } from "zod";
+import { collectionSummary, scanCollection } from "./collection.js";
 import { compileSchema } from "./compile.js";
 import { regenerate } from "./generate.js";
 import {
@@ -985,6 +986,22 @@ function parseAfterRepair(
   }
 }
 
+function runScan(path: string, opts: { json?: boolean }): number {
+  try {
+    const result = scanCollection(path);
+    const summary = collectionSummary(result);
+    const state = result.complete ? "complete" : "incomplete";
+    writeText(
+      opts.json
+        ? stableStringify(summary, 2)
+        : `Collection scan ${state}: ${result.records.length} records, ${result.schemas.length} schemas, ${summary.problems.length} problems.`,
+    );
+    return result.complete && !summary.problems.length ? 0 : 1;
+  } catch (error) {
+    return reportUserError("scan", error);
+  }
+}
+
 function runInspect(path: string, opts: { profile?: string }): number {
   try {
     // Reads under the same profile detection as `validate`, so the two never disagree
@@ -1214,6 +1231,15 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     )
     .action((path: string, opts: { profile?: string }) => {
       exitCode = runInspect(path, opts);
+    });
+
+  program
+    .command("scan")
+    .description("Survey a directory of SoftSchema artifacts")
+    .argument("<path>")
+    .option("--json", "emit a structured summary")
+    .action((path: string, opts: { json?: boolean }) => {
+      exitCode = runScan(path, opts);
     });
 
   program

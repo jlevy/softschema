@@ -22,6 +22,11 @@ export interface FieldInfo {
   description: string | null;
   /** The field's per-property `x-softschema` block (empty when unannotated). */
   softmeta: Record<string, unknown>;
+  title?: string | null;
+  format?: string | null;
+  pattern?: string | null;
+  itemType?: string | null;
+  definition?: string | null;
 }
 
 function escapePointerSegment(segment: string): string {
@@ -35,6 +40,11 @@ function unescapePointerSegment(segment: string): string {
 function refFromAnyOf(prop: SchemaNode): string | null {
   const branch = nullableValueBranch(prop);
   return branch !== null && typeof branch.$ref === "string" ? branch.$ref : null;
+}
+
+function textValue(node: SchemaNode, name: string): string | null {
+  const value = node[name];
+  return typeof value === "string" ? value : null;
 }
 
 function resolveRef(schema: SchemaNode, ref: string): SchemaNode | null {
@@ -182,6 +192,12 @@ export class SchemaView {
       if (!isMapping(rawProp)) continue;
       const { node: prop, ref } = this.maybeResolveRef(rawProp, seenRefs, includeRefs);
       const pointer = `${basePointer}/properties/${escapePointerSegment(name)}`;
+      const shape = nullableValueBranch(prop) ?? prop;
+      const items = isMapping(shape.items) ? shape.items : {};
+      const itemRef = textValue(items, "$ref") ?? refFromAnyOf(items);
+      const itemSchema = itemRef ? resolveRef(this.schema, itemRef) : null;
+      const definition = itemRef ?? ref ?? textValue(rawProp, "$ref") ?? refFromAnyOf(rawProp);
+      const definitionParts = definition?.split("/") ?? [];
       out.push({
         pointer,
         name,
@@ -190,6 +206,16 @@ export class SchemaView {
         required: requiredSet.has(name),
         description: typeof prop.description === "string" ? prop.description : null,
         softmeta: extractSoftmeta(prop),
+        title: textValue(prop, "title"),
+        format: textValue(items, "format") ?? textValue(shape, "format"),
+        pattern: textValue(items, "pattern") ?? textValue(shape, "pattern"),
+        itemType: extractType(itemSchema ?? items),
+        definition:
+          definitionParts.length === 3 &&
+          definitionParts[0] === "#" &&
+          definitionParts[1] === "$defs"
+            ? unescapePointerSegment(definitionParts[2] as string)
+            : null,
       });
       if (includeRefs && isMapping(prop.properties)) {
         // Carry the just-followed $ref down the recursion path so a cyclic schema

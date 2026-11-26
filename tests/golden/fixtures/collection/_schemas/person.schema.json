@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-softschema": {"contract": "example:Person/v1"},
+  "type": "object",
+  "properties": {"name": {"type": "string"}},
+  "required": ["name"]
+}

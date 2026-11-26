@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from ast import literal_eval
-from collections.abc import Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -313,9 +313,26 @@ def validate_structural(
     checked enforced profile before compilation; unsupported composition fails with a
     stable ``enforcement_unsupported`` record.
     """
+    return _validate_with_schema(
+        values,
+        schema_yaml_path,
+        lambda: _validator_for(schema_yaml_path, strict_extras, resources),
+    )
+
+
+def validate_structural_text(
+    values: Any, text: str, source: Path, *, strict_extras: bool = False
+) -> StructuralResult:
+    """Validate using the schema bytes a bounded collection read already captured."""
+    return _validate_with_schema(values, source, lambda: _cached_validator(text, strict_extras))
+
+
+def _validate_with_schema(
+    values: Any, schema_yaml_path: Path, prepare: Callable[[], Draft202012Validator]
+) -> StructuralResult:
     execution: ValidationExecution = "not_run"
     try:
-        validator = _validator_for(schema_yaml_path, strict_extras, resources)
+        validator = prepare()
         execution = "errored"
         errors = list(_structural_error_records(validator.iter_errors(values)))
     except _SchemaRootNotAMapping:
