@@ -3,9 +3,9 @@ type: is
 id: is-01m8cmw1zadjh938ny4pmztqfd
 title: "PR #78 B2: Deduplicate equivalent compiled schema documents"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 2
+version: 3
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m8cmv706qkqr4n2mhhnbhw3x
 hold: null
 hold_until: null
 created_at: 2026-11-26T19:21:13.959Z
-updated_at: 2026-11-26T19:21:14.728Z
+updated_at: 2026-11-26T19:29:48.948Z
 started_at: 2026-11-26T19:21:14.721Z
+closed_at: 2026-11-26T19:29:48.948Z
+close_reason: "Fixed in SoftSchema PR #78 at e6ee08f. Published disposition lists regression evidence for this finding. All 19 GitHub checks passed."
+resolution: null
+duplicate_of: null
 ---
 packages/python/src/softschema/collection.py:353 and packages/typescript/src/collection.ts:370.
 

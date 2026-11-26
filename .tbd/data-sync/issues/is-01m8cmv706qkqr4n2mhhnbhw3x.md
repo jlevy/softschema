@@ -3,9 +3,9 @@ type: is
 id: is-01m8cmv706qkqr4n2mhhnbhw3x
 title: "Address SoftSchema PR #78 reviews B and C"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 14
+version: 15
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -26,7 +26,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T19:20:46.340Z
-updated_at: 2026-11-26T19:21:24.246Z
+updated_at: 2026-11-26T19:29:49.423Z
 started_at: 2026-11-26T19:21:12.822Z
+closed_at: 2026-11-26T19:29:49.422Z
+close_reason: "Astra technical and design reviews and all dispositions published on SoftSchema PR #78. Verified at e6ee08f."
+resolution: null
+duplicate_of: null
 ---
 Track the Astra technical and design reviews and their follow-up for SoftSchema PR #78.
