@@ -470,7 +470,13 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
 }
 
 /** Report verdicts and counts without exposing payload or body values. */
-export function collectionSummary(scan: CollectionScan) {
+export function collectionSummary(scan: CollectionScan): {
+  complete: boolean;
+  contracts: Record<string, number>;
+  states: Record<string, number>;
+  schemas: number;
+  problems: ScanProblem[];
+} {
   const counts = new Map<string, number>();
   const states: Record<string, number> = {};
   const problems = [...scan.problems];

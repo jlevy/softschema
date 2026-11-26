@@ -109,7 +109,7 @@ class CollectionScan:
             if record.metadata is not None:
                 contracts[record.metadata.contract_id] += 1
             problems.extend(
-                {"path": record.path, "code": str(error.get("code", error["kind"]))}
+                {"path": record.path, "code": str(error.get("code", error.get("kind", "invalid")))}
                 for error in record.errors
             )
         return {
