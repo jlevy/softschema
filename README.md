@@ -430,6 +430,8 @@ They release together under the same version number on PyPI and npm.
   playbooks.
 - [softschema Spec](docs/softschema-spec.md): the exact artifact format and validation
   rules.
+- [Collection Design](docs/softschema-collection-design.md) describes file references,
+  optional lazy reads, and scanning and reconciliation for small and large collections.
 - [Movie Page Example](examples/movie_page/README.md): the complete example backing the
   snippets above.
 - [Installation](docs/installation.md): pinned vs zero-install, uv and Node setup.

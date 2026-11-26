@@ -2,29 +2,37 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import stat
 from collections import Counter, defaultdict
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PureWindowsPath
 from typing import Any, Literal, cast
 
 from pydantic import TypeAdapter
 
-from softschema._portable import PortableInputError, opens_frontmatter_fence, split_frontmatter
+from softschema._portable import (
+    MAX_SAFE_INTEGER,
+    PortableInputError,
+    opens_frontmatter_fence,
+    split_frontmatter,
+)
+from softschema.compile import _schema_sha256
 from softschema.conform import _conform_text
 from softschema.models import (
     Contract,
     SchemaMetadata,
     SchemaProfile,
     SchemaStatus,
+    ValidationExecution,
     parse_schema_metadata,
 )
 from softschema.repair import repair_yaml_text
 from softschema.schema_view import SchemaView
 from softschema.validate import (
+    StructuralResult,
     infer_envelope_key,
     parse_frontmatter_text,
     parse_yaml_text,
@@ -35,7 +43,7 @@ from softschema.validate import (
 RecordState = Literal["valid", "repaired", "invalid", "unbound", "unreadable", "malformed"]
 _SCHEMA_SUFFIXES = (".schema.yaml", ".schema.yml", ".schema.json")
 _ARTIFACT_SUFFIXES = frozenset({".md", ".yaml", ".yml", ".json"})
-_SNAPSHOT_VERSION = 2
+_SNAPSHOT_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -62,6 +70,7 @@ class CollectionRecord:
     errors: tuple[dict[str, Any], ...] = ()
     repairs: tuple[dict[str, Any], ...] = ()
     envelope: str | None = None
+    execution: ValidationExecution = "not_run"
 
 
 @dataclass(frozen=True)
@@ -86,19 +95,28 @@ class CollectionScan:
     _version: int
     _scope: tuple[str, bool, str | None, int, int, int]
     _files: dict[str, _ScannedFile]
-    _unread_paths: tuple[str, ...]
+    _known_stamps: dict[str, tuple[int, ...]]
+    _bound_records: tuple[CollectionRecord, ...]
 
     def snapshot_json(self) -> str:
-        """Serialize a scan for storage by the caller, including its refresh data."""
-        return _SNAPSHOT.dump_json(self).decode("utf-8")
+        """Serialize Python refresh data for a trusted local cache."""
+        return _SNAPSHOT.dump_json(replace(self, records=(), schemas=())).decode("utf-8")
 
     @classmethod
     def from_snapshot_json(cls, contents: str) -> CollectionScan:
-        """Read a snapshot produced by this API from a trusted cache."""
+        """Read a snapshot produced by the Python API from a trusted local cache."""
+        # The public views are rebuilt from authoritative cached inputs and verdicts.
         result = _SNAPSHOT.validate_json(contents)
         if result._version != _SNAPSHOT_VERSION:
             raise ValueError("unsupported collection snapshot version")
-        return result
+        return result._with_public_views()
+
+    def _with_public_views(self) -> CollectionScan:
+        return replace(
+            self,
+            records=deepcopy(self._bound_records),
+            schemas=deepcopy(tuple(entry.schema for entry in self._files.values() if entry.schema)),
+        )
 
     def summary(self) -> dict[str, Any]:
         """Report verdicts and counts without exposing payload or body values."""
@@ -154,12 +172,15 @@ def _walk(
         directory = directories.pop()
         try:
             if directory.resolve(strict=True) != directory:
-                continue
+                raise OSError("directory changed during scan")
             with os.scandir(directory) as listing:
                 entries = []
                 for entry in listing:
                     walked += 1
                     if walked > max_entries:
+                        problems.append(
+                            {"path": directory.relative_to(root).as_posix(), "code": "entry_limit"}
+                        )
                         return sorted(files), False
                     entries.append(entry)
                 for entry in sorted(entries, key=lambda entry: entry.name, reverse=True):
@@ -173,13 +194,15 @@ def _walk(
                             continue
                         if is_directory:
                             directories.append(path)
-                        elif path.suffix in _ARTIFACT_SUFFIXES and entry.is_file(
+                        elif path.suffix.lower() in _ARTIFACT_SUFFIXES and entry.is_file(
                             follow_symlinks=False
                         ):
                             files.append((relative, entry.stat(follow_symlinks=False)))
                     except OSError:
                         problems.append({"path": relative, "code": "entry_unreadable"})
-        except OSError:
+        except OSError as error:
+            if directory == root:
+                raise ValueError("collection root cannot be opened") from error
             problems.append(
                 {"path": directory.relative_to(root).as_posix(), "code": "directory_unreadable"}
             )
@@ -187,10 +210,10 @@ def _walk(
 
 
 def _read_record(path: str, text: str) -> tuple[CollectionRecord | None, str]:
-    profile = SchemaProfile.frontmatter_md if path.endswith(".md") else SchemaProfile.pure_yaml
+    yaml_named = path.lower().endswith((".yaml", ".yml"))
+    fenced = not yaml_named and opens_frontmatter_fence(text)
+    profile = SchemaProfile.frontmatter_md if fenced else SchemaProfile.pure_yaml
     split = split_frontmatter(text) if profile is SchemaProfile.frontmatter_md else None
-    if profile is SchemaProfile.frontmatter_md and not opens_frontmatter_fence(text):
-        return None, ""
     yaml = split.metadata_text if split is not None else text
     # A key may contain escapes, so that possibility also requires the portable reader.
     if "softschema" not in yaml and "\\" not in yaml:
@@ -203,6 +226,8 @@ def _read_record(path: str, text: str) -> tuple[CollectionRecord | None, str]:
         else:
             document = parse_yaml_text(text, source=path)
     except PortableInputError:
+        if not fenced and path.lower().endswith(".md"):
+            return None, ""
         if profile is SchemaProfile.frontmatter_md and split is None:
             return CollectionRecord(
                 path, profile, "unreadable", errors=({"kind": "yaml_parse_error"},)
@@ -307,9 +332,14 @@ def _bind(
     path = Path(schema.path)
     verdict = validate_structural_text(record.values, text, path, strict_extras=strict)
     if verdict.execution == "completed" and not verdict.ok and record_yaml:
+
+        def check_conformance(values: dict[str, Any]) -> StructuralResult:
+            payload = _without_metadata(values) if record.envelope is None else values
+            return validate_structural_text(payload, text, path)
+
         conformed = _conform_text(
             record_yaml,
-            lambda values: validate_structural_text(values, text, path),
+            check_conformance,
             None,
             record.envelope,
             SchemaProfile.pure_yaml,
@@ -318,9 +348,7 @@ def _bind(
             updated = parse_yaml_text(conformed.text, source=record.path)
             if isinstance(updated, dict):
                 values = (
-                    updated.get(record.envelope)
-                    if record.envelope
-                    else {key: value for key, value in updated.items() if key != "softschema"}
+                    updated.get(record.envelope) if record.envelope else _without_metadata(updated)
                 )
                 if isinstance(values, dict):
                     final = validate_structural_text(values, text, path, strict_extras=strict)
@@ -331,15 +359,30 @@ def _bind(
                             schema=schema.path,
                             values=values,
                             repairs=(*record.repairs, *conformed.records),
+                            execution=final.execution,
                         )
     state: RecordState = "unbound"
     if verdict.execution == "completed":
         state = ("repaired" if record.repairs else "valid") if verdict.ok else "invalid"
-    return replace(record, state=state, schema=schema.path, errors=tuple(verdict.errors))
+    return replace(
+        record,
+        state=state,
+        schema=schema.path,
+        errors=tuple(verdict.errors),
+        execution=verdict.execution,
+    )
+
+
+def _without_metadata(document: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in document.items() if key != "softschema"}
+
+
+def _valid_bound(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 < value <= MAX_SAFE_INTEGER
 
 
 def _scan_file(relative: str, stamp: tuple[int, ...], data: str) -> _ScannedFile:
-    if not relative.endswith(_SCHEMA_SUFFIXES):
+    if not relative.lower().endswith(_SCHEMA_SUFFIXES):
         record, yaml = _read_record(relative, data)
         return _ScannedFile(stamp, record=record, record_yaml=yaml)
     try:
@@ -348,9 +391,9 @@ def _scan_file(relative: str, stamp: tuple[int, ...], data: str) -> _ScannedFile
             raise ValueError("schema root must be a mapping")
         document = cast(dict[str, Any], schema_root)
         contract_id = SchemaView(document).contract_id
-    except ValueError:
+        digest = _schema_sha256(document)
+    except (TypeError, ValueError):
         return _ScannedFile(stamp, problem="schema_invalid")
-    digest = hashlib.sha256(data.encode("utf-8")).hexdigest()
     schema = CollectionSchema(relative, digest, contract_id, document)
     return _ScannedFile(stamp, schema=schema, schema_text=data)
 
@@ -377,8 +420,8 @@ def scan_collection(
     artifacts. Pass a stable `ignore_id` for the effective policy when providing an
     ignore callback. A scan without that identity does a fresh read.
     """
-    if min(max_entries, max_file_bytes, max_total_bytes) < 1:
-        raise ValueError("collection bounds must be positive integers")
+    if not all(map(_valid_bound, (max_entries, max_file_bytes, max_total_bytes))):
+        raise ValueError("collection bounds must be positive safe integers")
     root = root.resolve()
     if not root.is_dir():
         raise ValueError("collection root must be a directory")
@@ -390,11 +433,8 @@ def scan_collection(
     ):
         previous = None
     saved_files = previous._files if previous is not None else {}
-    known_paths = set(saved_files)
-    if previous is not None:
-        known_paths.update(previous._unread_paths)
-    prior_records = {record.path: record for record in previous.records} if previous else {}
-    prior_digests = {schema.path: schema.digest for schema in previous.schemas} if previous else {}
+    known_stamps = previous._known_stamps if previous else {}
+    prior_records = {record.path: record for record in previous._bound_records} if previous else {}
     problems: list[dict[str, str]] = []
     files, walked = _walk(root, max_entries, ignore, problems)
     complete = walked
@@ -409,6 +449,7 @@ def scan_collection(
             complete = False
             continue
         if status.st_size > remaining:
+            problems.append({"path": relative, "code": "total_byte_limit"})
             complete = False
             break
         remaining -= status.st_size
@@ -439,35 +480,42 @@ def scan_collection(
         prior = prior_records.get(record.path)
         latest = scanned[record.path]
         if latest is saved_files.get(record.path) and prior is not None:
+            old_schema = saved_files.get(prior.schema or "")
+            old_digest = old_schema.schema.digest if old_schema and old_schema.schema else None
             return _bind(
                 record,
                 latest.record_yaml,
                 schemas,
                 by_contract,
                 complete,
-                (prior, prior_digests.get(prior.schema or "")),
+                (prior, old_digest),
             )
         return _bind(record, latest.record_yaml, schemas, by_contract, complete, None)
 
-    # A byte limit does not make an already listed path disappear. Incomplete
-    # directory walks keep a bounded set of previously known but unread paths.
+    # Only a complete listing can advance membership. Byte limits can leave known
+    # files unread without making them disappear.
     listed = {name for name, _ in files}
-    removed = known_paths - listed if walked else set()
-    unread = known_paths.difference(removed, scanned)
+    removed = known_stamps.keys() - listed if walked else set()
+    added = tuple(name for name in scanned if name not in known_stamps) if walked else ()
+    next_known = {name: stamp for name, stamp in known_stamps.items() if name not in removed}
+    next_known.update(
+        {name: entry.stamp for name, entry in scanned.items() if walked or name in next_known}
+    )
     return CollectionScan(
-        tuple(bind(record) for record in records),
-        tuple(schema for schema, _ in schemas.values()),
+        (),
+        (),
         tuple(problems),
         complete,
-        tuple(name for name in scanned if name not in known_paths),
+        added,
         tuple(
             name
             for name in scanned
-            if name in known_paths and scanned[name] is not saved_files.get(name)
+            if name in known_stamps and scanned[name].stamp != known_stamps[name]
         ),
         tuple(sorted(removed)),
         _SNAPSHOT_VERSION,
         scope,
         scanned,
-        tuple(sorted(unread)[:max_entries]),
-    )
+        next_known,
+        tuple(bind(record) for record in records),
+    )._with_public_views()

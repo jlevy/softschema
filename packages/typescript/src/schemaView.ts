@@ -23,9 +23,13 @@ export interface FieldInfo {
   /** The field's per-property `x-softschema` block (empty when unannotated). */
   softmeta: Record<string, unknown>;
   title?: string | null;
+  /** These annotations describe the field value. */
   format?: string | null;
   pattern?: string | null;
   itemType?: string | null;
+  /** These annotations describe the elements of an array. */
+  itemFormat?: string | null;
+  itemPattern?: string | null;
   definition?: string | null;
 }
 
@@ -192,10 +196,12 @@ export class SchemaView {
       if (!isMapping(rawProp)) continue;
       const { node: prop, ref } = this.maybeResolveRef(rawProp, seenRefs, includeRefs);
       const pointer = `${basePointer}/properties/${escapePointerSegment(name)}`;
-      const shape = nullableValueBranch(prop) ?? prop;
+      const shape = { ...nullableValueBranch(prop), ...prop };
       const items = isMapping(shape.items) ? shape.items : {};
       const itemRef = textValue(items, "$ref") ?? refFromAnyOf(items);
       const itemSchema = itemRef ? resolveRef(this.schema, itemRef) : null;
+      const itemNode = { ...itemSchema, ...items };
+      const itemShape = { ...nullableValueBranch(itemNode), ...itemNode };
       const definition = itemRef ?? ref ?? textValue(rawProp, "$ref") ?? refFromAnyOf(rawProp);
       const definitionParts = definition?.split("/") ?? [];
       out.push({
@@ -207,9 +213,11 @@ export class SchemaView {
         description: typeof prop.description === "string" ? prop.description : null,
         softmeta: extractSoftmeta(prop),
         title: textValue(prop, "title"),
-        format: textValue(items, "format") ?? textValue(shape, "format"),
-        pattern: textValue(items, "pattern") ?? textValue(shape, "pattern"),
-        itemType: extractType(itemSchema ?? items),
+        format: textValue(shape, "format"),
+        pattern: textValue(shape, "pattern"),
+        itemType: extractType(itemShape),
+        itemFormat: textValue(itemShape, "format"),
+        itemPattern: textValue(itemShape, "pattern"),
         definition:
           definitionParts.length === 3 &&
           definitionParts[0] === "#" &&

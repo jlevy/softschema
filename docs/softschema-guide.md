@@ -163,22 +163,38 @@ which an unknown field should become an error.
 
 Run `softschema scan ROOT --json` to count contracts, schemas, and record states in a
 directory. The scan reads Markdown, YAML, and JSON artifacts and stays inside the chosen
-root. It follows a record’s local schema pointer first, then tries a unique compiled
-schema with the same contract.
+root. It follows a record’s usable local schema pointer first, then tries a unique
+compiled schema with the same contract once discovery completes.
+Copies of the same compiled schema document count as one candidate.
 A record with no binding remains visible as unbound.
 
 Scanning uses compiled structural validation and can repair YAML or conform scalar
-values in memory. The report distinguishes changed values that pass from a completed
-rejection, a missing binding, and an unreadable input.
+values in memory. Each library record reports its validation `execution` as `not_run`,
+`completed`, or `errored`. Its state distinguishes a passing repaired payload, a
+completed rejection, an unbound record, and an unreadable input.
 The command exits 1 when it reports problems or reaches a scan bound, and 2 when the
 root cannot be opened.
-The JSON summary includes relative paths and error codes for problems.
+The JSON summary includes relative paths and error codes for problems and scan limits.
 
 Python hosts can call `scan_collection` and TypeScript hosts can call `scanCollection`.
 Both return the records and schemas for the scanned scope.
 Pass the previous result to reuse unchanged inputs and to revalidate a stored payload
 when the schema it binds to changes.
-Persist snapshots in a trusted host cache.
+The `added`, `changed`, and `removed` lists contain input file paths, including schemas
+and nonrecord files the scan examined.
+A schema edit can change multiple record verdicts while only the schema path appears in
+`changed`. If the directory walk is incomplete, additions and removals wait for a
+complete listing.
+
+To persist a snapshot in a trusted local cache, use Python’s `snapshot_json()` and
+`CollectionScan.from_snapshot_json()`, or TypeScript’s `collectionSnapshotJson()` and
+`collectionFromSnapshotJson()`. Restore it with the runtime that produced it.
+The snapshot contains record data and serves as a disposable cache.
+
+This is a bounded eager scan.
+The [Collection Design](softschema-collection-design.md) describes the proposed optional
+APIs for enumerating references, reading selected records, and reconciling streaming
+scans.
 
 ## Artifact Profiles
 

@@ -7,12 +7,18 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from softschema import Contract, parse_schema_metadata, validate_artifact
+from softschema import Contract, SchemaMetadata, parse_schema_metadata, validate_artifact
 
 
 def test_unknown_softschema_key_is_rejected() -> None:
     with pytest.raises(ValidationError, match="bogus"):
         parse_schema_metadata({"contract": "t:X/v1", "bogus": 1})
+
+
+def test_python_metadata_constructor_accepts_field_names() -> None:
+    metadata = parse_schema_metadata({"contract": "t:X/v1", "schema": "item.schema.yaml"})
+    assert metadata is not None
+    assert SchemaMetadata(**metadata.model_dump(by_alias=False)) == metadata
 
 
 def test_empty_contract_id_is_rejected() -> None:

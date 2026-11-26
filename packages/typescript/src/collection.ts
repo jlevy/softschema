@@ -1,6 +1,5 @@
 /** Bounded, read-only discovery and structural validation of a directory of artifacts. */
 
-import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -14,7 +13,7 @@ import {
   type Stats,
 } from "node:fs";
 import { extname, isAbsolute, join, posix, relative, sep } from "node:path";
-import { conformArtifact } from "./conform.js";
+import { conformCollectionRecord } from "./conform.js";
 import { isMapping } from "./guards.js";
 import { byCodePoint } from "./identity.js";
 import {
@@ -23,10 +22,12 @@ import {
   type SchemaMetadata,
   SchemaMetadataError,
   type SchemaProfile,
+  type ValidationExecution,
 } from "./models.js";
 import { opensFrontmatterFence, PortableInputError, splitFrontmatter } from "./portable.js";
 import { repairYamlText } from "./repair.js";
 import { SchemaView } from "./schemaView.js";
+import { schemaSha256 } from "./settings.js";
 import {
   inferEnvelopeKey,
   type ParsedDocument,
@@ -41,7 +42,7 @@ import {
 export type RecordState = "valid" | "repaired" | "invalid" | "unbound" | "unreadable" | "malformed";
 const SCHEMA_SUFFIXES = [".schema.yaml", ".schema.yml", ".schema.json"];
 const ARTIFACT_SUFFIXES = new Set([".md", ".yaml", ".yml", ".json"]);
-const SNAPSHOT_VERSION = 2;
+const SNAPSHOT_VERSION = 3;
 
 export interface CollectionSchema {
   path: string;
@@ -54,6 +55,7 @@ export interface CollectionRecord {
   path: string;
   profile: SchemaProfile;
   state: RecordState;
+  execution: ValidationExecution;
   metadata?: SchemaMetadata;
   values?: Record<string, unknown>;
   host?: Record<string, unknown>;
@@ -77,21 +79,56 @@ interface ScannedFile {
   problem?: string;
 }
 
-export interface CollectionScan {
-  records: readonly CollectionRecord[];
-  schemas: readonly CollectionSchema[];
+interface ScanReport {
   problems: readonly ScanProblem[];
   complete: boolean;
   added: readonly string[];
   changed: readonly string[];
   removed: readonly string[];
-  /** Refresh data for a trusted cache. The scan result can be serialized as JSON. */
-  snapshot: {
-    version: number;
-    scope: string;
-    files: ReadonlyArray<readonly [string, ScannedFile]>;
-    unreadPaths: readonly string[];
+}
+
+export interface CollectionScan extends ScanReport {
+  records: readonly CollectionRecord[];
+  schemas: readonly CollectionSchema[];
+}
+
+interface CollectionSnapshot {
+  version: number;
+  scope: string;
+  files: ReadonlyArray<readonly [string, ScannedFile]>;
+  knownStamps: ReadonlyArray<readonly [string, string]>;
+  records: readonly CollectionRecord[];
+}
+
+const snapshots = new WeakMap<CollectionScan, CollectionSnapshot>();
+
+function exposeScan(report: ScanReport, snapshot: CollectionSnapshot): CollectionScan {
+  const schemas = snapshot.files.flatMap(([, entry]) => (entry.schema ? [entry.schema] : []));
+  const scan = {
+    ...report,
+    records: structuredClone(snapshot.records),
+    schemas: structuredClone(schemas),
   };
+  snapshots.set(scan, snapshot);
+  return scan;
+}
+
+/** Serialize TypeScript refresh data for a trusted local cache. */
+export function collectionSnapshotJson(scan: CollectionScan): string {
+  const snapshot = snapshots.get(scan);
+  if (!snapshot) throw new TypeError("expected a TypeScript collection scan");
+  const { added, changed, removed, problems, complete } = scan;
+  return JSON.stringify({ added, changed, removed, problems, complete, snapshot });
+}
+
+/** Read a snapshot produced by the TypeScript API from a trusted local cache. */
+export function collectionFromSnapshotJson(contents: string): CollectionScan {
+  const { snapshot, ...report } = JSON.parse(contents) as ScanReport & {
+    snapshot?: CollectionSnapshot;
+  };
+  if (snapshot?.version !== SNAPSHOT_VERSION)
+    throw new Error("unsupported collection snapshot version");
+  return exposeScan(report, snapshot);
 }
 
 export interface CollectionOptions {
@@ -156,19 +193,23 @@ function walk(
     const directory = directories.pop() as string;
     let entries: Dirent[];
     try {
-      if (realpathSync(directory) !== directory) continue;
+      if (realpathSync(directory) !== directory) throw new Error("directory changed during scan");
       const listing = opendirSync(directory);
       entries = [];
       try {
         for (let entry = listing.readSync(); entry !== null; entry = listing.readSync()) {
           walked += 1;
-          if (walked > maxEntries) return { files, complete: false };
+          if (walked > maxEntries) {
+            problems.push({ path: portablePath(root, directory) || ".", code: "entry_limit" });
+            return { files, complete: false };
+          }
           entries.push(entry);
         }
       } finally {
         listing.closeSync();
       }
-    } catch {
+    } catch (error) {
+      if (directory === root) throw new Error("collection root cannot be opened", { cause: error });
       problems.push({ path: portablePath(root, directory) || ".", code: "directory_unreadable" });
       continue;
     }
@@ -180,7 +221,7 @@ function walk(
       if (ignore?.(name, isDirectory)) continue;
       if (isDirectory) {
         directories.push(path);
-      } else if (entry.isFile() && ARTIFACT_SUFFIXES.has(extname(path))) {
+      } else if (entry.isFile() && ARTIFACT_SUFFIXES.has(extname(path).toLowerCase())) {
         try {
           files.set(name, lstatSync(path));
         } catch {
@@ -193,9 +234,10 @@ function walk(
 }
 
 function readRecord(path: string, text: string): Pick<ScannedFile, "record" | "recordYaml"> {
-  const profile = path.endsWith(".md") ? "frontmatter-md" : "pure-yaml";
+  const yamlNamed = [".yaml", ".yml"].includes(extname(path).toLowerCase());
+  const fenced = !yamlNamed && opensFrontmatterFence(text);
+  const profile = fenced ? "frontmatter-md" : "pure-yaml";
   const split = profile === "frontmatter-md" ? splitFrontmatter(text) : null;
-  if (profile === "frontmatter-md" && !opensFrontmatterFence(text)) return {};
   let yaml = split?.metadataText ?? text;
   if (!yaml.includes("softschema") && !yaml.includes("\\")) return {};
   let parsed: ParsedDocument;
@@ -205,11 +247,18 @@ function readRecord(path: string, text: string): Pick<ScannedFile, "record" | "r
       profile === "frontmatter-md" ? parseFrontmatterText(text, path) : parseYamlText(text, path);
   } catch (error) {
     if (!(error instanceof PortableInputError || error instanceof YamlParseError)) throw error;
+    if (!fenced && path.toLowerCase().endsWith(".md")) return {};
     const repaired =
       profile === "pure-yaml" || split ? repairYamlText(yaml.replaceAll("\r\n", "\n")) : null;
     if (!repaired?.ok || repaired.text === null) {
       return {
-        record: { path, profile, state: "unreadable", errors: [{ kind: "yaml_parse_error" }] },
+        record: {
+          path,
+          profile,
+          state: "unreadable",
+          execution: "not_run",
+          errors: [{ kind: "yaml_parse_error" }],
+        },
       };
     }
     yaml = repaired.text;
@@ -231,6 +280,7 @@ function readRecord(path: string, text: string): Pick<ScannedFile, "record" | "r
         path,
         profile,
         state: "malformed",
+        execution: "not_run",
         errors: [{ kind: "document_softschema_invalid" }],
       },
     };
@@ -253,7 +303,14 @@ function readRecord(path: string, text: string): Pick<ScannedFile, "record" | "r
   const values = extracted.values;
   if (values === null) {
     return {
-      record: { path, profile, state: "malformed", metadata, errors: extracted.structural.errors },
+      record: {
+        path,
+        profile,
+        state: "malformed",
+        execution: "not_run",
+        metadata,
+        errors: extracted.structural.errors,
+      },
     };
   }
   const host =
@@ -269,6 +326,7 @@ function readRecord(path: string, text: string): Pick<ScannedFile, "record" | "r
       path,
       profile,
       state: "unbound",
+      execution: "not_run",
       metadata,
       values,
       host,
@@ -324,13 +382,12 @@ function bind(
     strictExtras: record.metadata.status === "enforced",
   });
   if (verdict.execution === "completed" && !verdict.ok && recordYaml) {
-    const conformed = conformArtifact(record.path, {
-      schema: schema.document,
-      profile: "pure-yaml",
-      envelopeKey: record.envelope ?? null,
-      text: recordYaml,
-      write: false,
-    });
+    const conformed = conformCollectionRecord(
+      record.path,
+      recordYaml,
+      schema.document,
+      record.envelope ?? null,
+    );
     if (conformed.changed && conformed.text !== null) {
       const { value: root } = parseYamlText(conformed.text, record.path);
       if (isMapping(root)) {
@@ -344,6 +401,7 @@ function bind(
           return {
             ...record,
             state: "repaired",
+            execution: final.execution,
             schema: schema.path,
             values,
             repairs: [...(record.repairs ?? []), ...conformed.records],
@@ -356,21 +414,34 @@ function bind(
   if (verdict.execution === "completed") {
     state = verdict.ok ? (record.repairs?.length ? "repaired" : "valid") : "invalid";
   }
-  return { ...record, state, schema: schema.path, errors: verdict.errors };
+  return {
+    ...record,
+    state,
+    schema: schema.path,
+    errors: verdict.errors,
+    execution: verdict.execution,
+  };
 }
 
 function scanFile(path: string, stamp: string, text: string): ScannedFile {
-  if (!SCHEMA_SUFFIXES.some((suffix) => path.endsWith(suffix))) {
+  if (!SCHEMA_SUFFIXES.some((suffix) => path.toLowerCase().endsWith(suffix))) {
     return { stamp, ...readRecord(path, text) };
   }
   try {
     const { value: document } = parseYamlText(text, path);
     if (!isMapping(document)) return { stamp, problem: "schema_invalid" };
     const contract = new SchemaView(document).contractId;
-    const digest = createHash("sha256").update(text).digest("hex");
+    const digest = schemaSha256(document);
     return { stamp, schema: { path, digest, contract, document } };
   } catch (error) {
-    if (!(error instanceof PortableInputError || error instanceof SchemaMetadataError)) throw error;
+    if (
+      !(
+        error instanceof PortableInputError ||
+        error instanceof SchemaMetadataError ||
+        error instanceof TypeError
+      )
+    )
+      throw error;
     return { stamp, problem: "schema_invalid" };
   }
 }
@@ -379,7 +450,7 @@ function scanFile(path: string, stamp: string, text: string): ScannedFile {
 export function scanCollection(input: string, options: CollectionOptions = {}): CollectionScan {
   const { maxEntries = 50_000, maxFileBytes = 1024 ** 2, maxTotalBytes = 64 * 1024 ** 2 } = options;
   if (![maxEntries, maxFileBytes, maxTotalBytes].every((n) => Number.isSafeInteger(n) && n > 0)) {
-    throw new Error("collection bounds must be positive integers");
+    throw new Error("collection bounds must be positive safe integers");
   }
   let root: string;
   try {
@@ -396,16 +467,14 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
     maxFileBytes,
     maxTotalBytes,
   ]);
+  const cached = options.previous && snapshots.get(options.previous);
   const previous =
-    options.previous?.snapshot.version === SNAPSHOT_VERSION &&
-    options.previous.snapshot.scope === scope &&
-    (!options.ignore || options.ignoreId !== undefined)
-      ? options.previous
+    cached?.scope === scope && (!options.ignore || options.ignoreId !== undefined)
+      ? cached
       : undefined;
-  const saved = new Map(previous?.snapshot.files);
-  const knownPaths = new Set([...saved.keys(), ...(previous?.snapshot.unreadPaths ?? [])]);
+  const saved = new Map(previous?.files);
+  const knownStamps = new Map(previous?.knownStamps);
   const priorRecords = new Map(previous?.records.map((record) => [record.path, record]));
-  const priorDigests = new Map(previous?.schemas.map((schema) => [schema.path, schema.digest]));
   const scanned = new Map<string, ScannedFile>();
   const problems: ScanProblem[] = [];
   const discovered = walk(root, maxEntries, options.ignore, problems);
@@ -422,6 +491,7 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
       continue;
     }
     if (status.size > remaining) {
+      problems.push({ path, code: "total_byte_limit" });
       complete = false;
       break;
     }
@@ -455,39 +525,48 @@ export function scanCollection(input: string, options: CollectionOptions = {}): 
     if (entry.record) records.push(entry.record);
   }
   const removed = discovered.complete
-    ? [...knownPaths].filter((name) => !discovered.files.has(name)).sort(byCodePoint)
+    ? [...knownStamps.keys()].filter((name) => !discovered.files.has(name)).sort(byCodePoint)
     : [];
-  const removedPaths = new Set(removed);
-  const unreadPaths = [...knownPaths]
-    .filter((name) => !removedPaths.has(name) && !scanned.has(name))
-    .sort(byCodePoint)
-    .slice(0, maxEntries);
-  return {
-    records: records.map((record) => {
-      const prior =
-        scanned.get(record.path) === saved.get(record.path)
-          ? priorRecords.get(record.path)
-          : undefined;
-      return bind(
-        record,
-        scanned.get(record.path)?.recordYaml,
-        schemas,
-        byContract,
-        complete,
-        prior,
-        priorDigests.get(prior?.schema ?? ""),
-      );
-    }),
-    schemas: [...schemas.values()],
-    problems,
-    complete,
-    added: [...scanned.keys()].filter((name) => !knownPaths.has(name)),
-    changed: [...scanned.keys()].filter(
-      (name) => knownPaths.has(name) && scanned.get(name) !== saved.get(name),
-    ),
-    removed,
-    snapshot: { version: SNAPSHOT_VERSION, scope, files: [...scanned], unreadPaths },
-  };
+  const added = discovered.complete
+    ? [...scanned.keys()].filter((name) => !knownStamps.has(name))
+    : [];
+  const changed = [...scanned]
+    .filter(([name, entry]) => knownStamps.has(name) && entry.stamp !== knownStamps.get(name))
+    .map(([name]) => name);
+  for (const name of removed) knownStamps.delete(name);
+  for (const [name, entry] of scanned) {
+    if (discovered.complete || knownStamps.has(name)) knownStamps.set(name, entry.stamp);
+  }
+  return exposeScan(
+    {
+      problems,
+      complete,
+      added,
+      changed,
+      removed,
+    },
+    {
+      version: SNAPSHOT_VERSION,
+      scope,
+      files: [...scanned],
+      knownStamps: [...knownStamps],
+      records: records.map((record) => {
+        const prior =
+          scanned.get(record.path) === saved.get(record.path)
+            ? priorRecords.get(record.path)
+            : undefined;
+        return bind(
+          record,
+          scanned.get(record.path)?.recordYaml,
+          schemas,
+          byContract,
+          complete,
+          prior,
+          saved.get(prior?.schema ?? "")?.schema?.digest,
+        );
+      }),
+    },
+  );
 }
 
 /** Report verdicts and counts without exposing payload or body values. */

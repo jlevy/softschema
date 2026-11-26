@@ -5,6 +5,18 @@ artifact_input:
   - { id: missing, source: missing, outcome: input_error, code: artifact_unreadable }
   - { id: invalid_utf8, source: invalid_utf8, outcome: input_error, code: artifact_invalid_utf8 }
   - { id: malformed_yaml, text: "movie: [", outcome: invalid, code: yaml_parse_error }
+  - id: internal_contract_name
+    text: "softschema: {contract_id: 'example:Portable/v1'}"
+    outcome: invalid
+    code: document_softschema_invalid
+  - id: internal_schema_name
+    text: "softschema: {contract: 'example:Portable/v1', schema_ref: missing.schema.yaml}"
+    outcome: invalid
+    code: document_softschema_invalid
+  - id: contract_with_trailing_newline
+    text: 'softschema: "example:Portable/v1\n"'
+    outcome: invalid
+    code: document_softschema_invalid
 
 frontmatter:
   - id: indented_delimiter_in_block_scalar

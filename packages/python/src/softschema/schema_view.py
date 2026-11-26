@@ -29,6 +29,8 @@ class FieldInfo:
     `pointer` is a JSON Pointer (RFC 6901) relative to the root schema document.
     `softmeta` is the field's per-property `x-softschema` block (empty dict when
     the field was not annotated with `SoftField`).
+    `format` and `pattern` describe the field value. Their `item_` counterparts
+    describe the elements of an array.
     """
 
     pointer: JsonPointer
@@ -43,6 +45,8 @@ class FieldInfo:
     pattern: str | None = None
     item_type: str | None = None
     definition: str | None = None
+    item_format: str | None = None
+    item_pattern: str | None = None
 
 
 class SchemaView:
@@ -145,11 +149,13 @@ class SchemaView:
                 continue
             prop, ref = self._maybe_resolve_ref(raw_prop, seen_refs, include_refs=include_refs)
             pointer = f"{base_pointer}/properties/{_escape_pointer_segment(name)}"
-            shape = _nullable_value_branch(prop) or prop
+            shape = {**(_nullable_value_branch(prop) or {}), **prop}
             raw_items = shape.get("items")
             items = raw_items if isinstance(raw_items, dict) else {}
             item_ref = _text_value(items, "$ref") or _ref_from_anyof(items)
             item_schema = _resolve_ref(self._schema, item_ref) if item_ref else None
+            item_node = {**(item_schema or {}), **items}
+            item_shape = {**(_nullable_value_branch(item_node) or {}), **item_node}
             definition = (
                 item_ref or ref or _text_value(raw_prop, "$ref") or _ref_from_anyof(raw_prop)
             )
@@ -163,9 +169,11 @@ class SchemaView:
                 description=prop.get("description"),
                 softmeta=_extract_softmeta(prop),
                 title=_text_value(prop, "title"),
-                format=_text_value(items, "format") or _text_value(shape, "format"),
-                pattern=_text_value(items, "pattern") or _text_value(shape, "pattern"),
-                item_type=_extract_type(item_schema or items),
+                format=_text_value(shape, "format"),
+                pattern=_text_value(shape, "pattern"),
+                item_type=_extract_type(item_shape),
+                item_format=_text_value(item_shape, "format"),
+                item_pattern=_text_value(item_shape, "pattern"),
                 definition=(
                     _unescape_pointer_segment(definition_parts[2])
                     if len(definition_parts) == 3 and definition_parts[:2] == ["#", "$defs"]

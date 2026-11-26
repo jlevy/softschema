@@ -211,6 +211,9 @@ error `kind`s, and warning codes are identical.
 Native engines may emit different structural record sets only for deviations pinned
 explicitly in the shared vectors.
 
+The [Collection Design](softschema-collection-design.md) covers the shared eager scanner
+and the proposed optional library operations for large trees.
+
 | Python | TypeScript | Notes |
 | --- | --- | --- |
 | `validate_artifact` | `validateArtifact` | same result fields, `outcome`, per-layer `execution`, error kinds, and warnings; `require=` ↔ `require` option |
@@ -222,6 +225,7 @@ explicitly in the shared vectors.
 | `compile_model` | `compileSchema` | content-identical canonical compiled schema, equal `schema_sha256` |
 | `Contracts` | `Contracts` | `register`/`resolve`/`all`; dup-id error |
 | `SchemaView` / `FieldInfo` | `SchemaView` / `FieldInfo` | same navigation and filters |
+| `scan_collection` | `scanCollection` | same eager scan semantics and shared CLI summary, with runtime-local snapshot formats |
 | `SoftField` | `softField` | same emitted `x-softschema` block and omit-empty rules |
 | `parse_schema_metadata` | `parseSchemaMetadata` | same accepted shapes and errors |
 | `SchemaMetadata` | `SchemaMetadata` | quartet: `contract_id`/`schema_ref`/`envelope`/`status` (Python); `contractId`/`schema`/`envelope`/`status` (TS); serialized as `{contract, envelope, schema, status}` |

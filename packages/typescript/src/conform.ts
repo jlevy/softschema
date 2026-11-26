@@ -198,6 +198,24 @@ export interface ConformOptions {
  * single write.
  */
 export function conformArtifact(path: string, options: ConformOptions = {}): ConformResult {
+  return conform(path, options, false);
+}
+
+/** Conform the payload of a captured collection record without writing the source. */
+export function conformCollectionRecord(
+  path: string,
+  text: string,
+  schema: Record<string, unknown>,
+  envelopeKey: string | null,
+): ConformResult {
+  return conform(path, { text, schema, envelopeKey, profile: "pure-yaml", write: false }, true);
+}
+
+function conform(
+  path: string,
+  options: ConformOptions,
+  excludeRootMetadata: boolean,
+): ConformResult {
   const { schema, model, envelopeKey = null, profile = "frontmatter-md", write = true } = options;
   if (schema === undefined && model === undefined) {
     return outcome({ text: options.text ?? null, skipped_reason: "no_contract_binding" });
@@ -248,7 +266,10 @@ export function conformArtifact(path: string, options: ConformOptions = {}): Con
   const root = document.toJS() as unknown;
   if (!isPlainObject(root)) return outcome({ text, skipped_reason: "not_a_mapping" });
 
-  const values = envelopeKey === null ? root : root[envelopeKey];
+  let values = envelopeKey === null ? root : root[envelopeKey];
+  if (envelopeKey === null && excludeRootMetadata) {
+    values = Object.fromEntries(Object.entries(root).filter(([key]) => key !== "softschema"));
+  }
   if (!isPlainObject(values)) {
     // A missing or non-mapping envelope is a real disagreement for validation to report,
     // not licence to apply the envelope's contract to the document root.

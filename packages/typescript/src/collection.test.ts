@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CollectionScan, scanCollection } from "./collection.js";
+import {
+  collectionFromSnapshotJson,
+  collectionSnapshotJson,
+  scanCollection,
+} from "./collection.js";
 
 const contract = "example:Item/v1";
 const record = `softschema: ${contract}\nname: one\n`;
@@ -23,9 +27,18 @@ test("snapshot refresh invalidates verdicts when only the schema changes", () =>
     writeFileSync(join(root, "item.yaml"), valid);
     const initial = scanCollection(root);
     expect(initial.records[0]?.state).toBe("valid");
-    const previous = JSON.parse(JSON.stringify(initial)) as CollectionScan;
+    const values = initial.records[0]?.values;
+    if (!values) throw new Error("expected a payload");
+    values.name = 123;
+    const document = initial.schemas[0]?.document;
+    if (!document) throw new Error("expected a schema");
+    document.type = "string";
+    expect(scanCollection(root, { previous: initial }).records[0]?.values).toEqual({ name: "one" });
+    const previous = collectionFromSnapshotJson(collectionSnapshotJson(initial));
     const unchanged = scanCollection(root, { previous });
-    expect(unchanged.records[0]).toBe(previous.records[0]);
+    expect(unchanged.records[0]?.values).toEqual({ name: "one" });
+    expect(unchanged.records[0]?.execution).toBe("completed");
+    expect(unchanged.schemas[0]?.document.type).toBe("object");
 
     writeFileSync(join(root, "item.schema.json"), schema("integer"));
     writeFileSync(join(root, "new.yaml"), valid);
@@ -60,6 +73,7 @@ test("an incomplete scan leaves fallback pending and preserves explicit binding"
       maxTotalBytes: text.length + record.length + direct.length,
     });
     expect(partial.complete).toBe(false);
+    expect(partial.problems).toContainEqual({ path: "z.schema.json", code: "total_byte_limit" });
     expect(partial.records[0]?.errors).toEqual([{ kind: "schema_discovery_incomplete" }]);
     expect(partial.records[1]?.state).toBe("valid");
     expect(scanCollection(root).records[0]?.errors).toEqual([{ kind: "schema_ambiguous" }]);
@@ -107,12 +121,115 @@ test("an incomplete walk keeps known names for a later complete scan", () => {
     const partial = scanCollection(root, { maxEntries: 2, previous: initial });
     expect(partial.complete).toBe(false);
     expect(partial.removed).toEqual([]);
+    expect(partial.problems).toEqual([{ path: ".", code: "entry_limit" }]);
     unlinkSync(join(root, "b.yaml"));
-    const previous = JSON.parse(JSON.stringify(partial)) as CollectionScan;
+    const previous = collectionFromSnapshotJson(collectionSnapshotJson(partial));
     const final = scanCollection(root, { maxEntries: 2, previous });
     expect(final.complete).toBe(true);
     expect(final.removed).toEqual(["b.yaml"]);
     expect(final.added).toEqual(["c.yaml"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("equivalent schema documents share one fallback", () => {
+  const root = mkdtempSync(join(tmpdir(), "softschema-collection-"));
+  try {
+    const schema = {
+      type: "object",
+      "x-softschema": { contract },
+      properties: { name: { type: "string" } },
+    };
+    writeFileSync(join(root, "a.schema.json"), JSON.stringify(schema));
+    writeFileSync(join(root, "b.schema.json"), JSON.stringify(schema, null, 2));
+    writeFileSync(join(root, "item.md"), record);
+    writeFileSync(join(root, "ordinary.md"), "# Prose\n\nLearn about softschema here.");
+    const scan = scanCollection(root);
+    expect(scan.records).toHaveLength(1);
+    expect(scan.records[0]).toMatchObject({
+      profile: "pure-yaml",
+      state: "valid",
+      schema: "a.schema.json",
+    });
+    expect(scan.schemas[0]?.digest).toBe(scan.schemas[1]?.digest);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a partial walk defers adding new members until listing completes", () => {
+  const root = mkdtempSync(join(tmpdir(), "softschema-collection-"));
+  try {
+    writeFileSync(join(root, "a.yaml"), record);
+    writeFileSync(join(root, "b.yaml"), record);
+    let previous = scanCollection(root, { maxEntries: 2 });
+    unlinkSync(join(root, "a.yaml"));
+    unlinkSync(join(root, "b.yaml"));
+    const child = join(root, "z");
+    const ignored = join(child, "ignored-extension.txt");
+    mkdirSync(child);
+    writeFileSync(ignored, "");
+    for (const name of ["c.yaml", "d.yaml"]) {
+      const path = join(root, name);
+      writeFileSync(path, record);
+      previous = scanCollection(root, { maxEntries: 2, previous });
+      expect(previous.records.map((row) => row.path)).toEqual([name]);
+      expect(previous.added).toEqual([]);
+      expect(previous.removed).toEqual([]);
+      if (name === "c.yaml") unlinkSync(path);
+    }
+    unlinkSync(ignored);
+    const final = scanCollection(root, { maxEntries: 2, previous });
+    expect(final.added).toEqual(["d.yaml"]);
+    expect(final.removed).toEqual(["a.yaml", "b.yaml"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("collection reports whether structural validation ran", () => {
+  const root = mkdtempSync(join(tmpdir(), "softschema-collection-"));
+  try {
+    writeFileSync(join(root, "item.yaml"), record);
+    for (const [shape, execution] of [
+      [{ type: "bogus" }, "not_run"],
+      [{ $ref: "#" }, "errored"],
+    ] as const) {
+      const schema = { "x-softschema": { contract }, ...shape };
+      writeFileSync(join(root, "item.schema.json"), JSON.stringify(schema));
+      expect(scanCollection(root).records[0]).toMatchObject({
+        schema: "item.schema.json",
+        state: "unbound",
+        execution,
+        errors: [expect.objectContaining({ kind: "schema_invalid" })],
+      });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("collection conforms the root payload without metadata", () => {
+  const root = mkdtempSync(join(tmpdir(), "softschema-collection-"));
+  try {
+    const schema = {
+      "x-softschema": { contract },
+      type: "object",
+      if: { maxProperties: 1 },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema's conditional keyword.
+      then: { properties: { name: { type: "string" } } },
+      else: { properties: { name: { type: "integer" } } },
+    };
+    writeFileSync(join(root, "item.schema.json"), JSON.stringify(schema));
+    const input = join(root, "item.yaml");
+    const source = `softschema: ${contract}\nname: 10\n`;
+    writeFileSync(input, source);
+    expect(scanCollection(root).records[0]).toMatchObject({
+      state: "repaired",
+      values: { name: "10" },
+    });
+    expect(readFileSync(input, "utf8")).toBe(source);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

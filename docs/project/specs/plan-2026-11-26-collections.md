@@ -6,6 +6,10 @@ Collection consumers need to discover artifacts in a tree, bind compiled schemas
 read payloads and per-record verdicts without launching a process for each file.
 The first consumer is Metabrowser’s proposed folder Table view.
 Both SoftSchema runners use the same collection semantics and CLI output.
+This plan covers the bounded eager API. The
+[Collection Design](../../softschema-collection-design.md) defines the proposed
+reference, streaming, and reconciliation capabilities for hosts that need to control
+materialization.
 
 ## Collection Boundary
 
@@ -36,7 +40,7 @@ The body is reader-facing.
    Pin the output in one journey run by both implementations.
 2. Bind schemas and use the existing portable validation and repair layers.
    Publish schema field information through `SchemaView`.
-3. Persist a versioned snapshot through the host.
+3. Persist a versioned, runtime-local snapshot through the host.
    Refresh only changed file inputs and revalidate stored payloads when a bound schema
    changes. Compare an incremental refresh with a fresh scan after rewrites, additions,
    and removals.

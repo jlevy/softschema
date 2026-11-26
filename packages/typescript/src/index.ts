@@ -4,6 +4,8 @@ export {
   type CollectionRecord,
   type CollectionScan,
   type CollectionSchema,
+  collectionFromSnapshotJson,
+  collectionSnapshotJson,
   collectionSummary,
   scanCollection,
 } from "./collection.js";

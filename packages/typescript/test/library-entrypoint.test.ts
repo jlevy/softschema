@@ -78,6 +78,8 @@ describe("library entrypoint (issue #16)", () => {
       "REPAIR_KIND",
       "SchemaView",
       "clearValidatorCache",
+      "collectionFromSnapshotJson",
+      "collectionSnapshotJson",
       "collectionSummary",
       "compileSchema",
       "conformArtifact",

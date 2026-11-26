@@ -104,6 +104,25 @@ describe("SchemaView ($ref cycle detection)", () => {
 describe("SchemaView shared contract", () => {
   const vectors = YAML.parse(readFileSync(HARDENING_VECTORS, "utf8")).schema_view;
 
+  test("array items keep their own annotations", () => {
+    const day = { type: "string", format: "date", pattern: "^[0-9]" };
+    const view = new SchemaView({
+      $defs: { Day: day },
+      properties: {
+        one: { anyOf: [{ $ref: "#/$defs/Day" }, { type: "null" }] },
+        inline: { type: "array", items: day },
+        referenced: { type: "array", items: { $ref: "#/$defs/Day" } },
+      },
+    });
+    const scalar = view.field("/properties/one");
+    expect([scalar.format, scalar.pattern]).toEqual([day.format, day.pattern]);
+    for (const name of ["inline", "referenced"]) {
+      const array = view.field(`/properties/${name}`);
+      expect([array.format, array.pattern]).toEqual([null, null]);
+      expect([array.itemFormat, array.itemPattern]).toEqual([scalar.format, scalar.pattern]);
+    }
+  });
+
   test("preserves ref siblings, snapshots input, and rejects genuine unions", () => {
     const refCase = vectors[0];
     const source = structuredClone(refCase.schema);
