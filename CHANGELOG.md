@@ -4,6 +4,17 @@ All notable changes to softschema are documented here.
 Both the Python (PyPI) and TypeScript (npm) packages release together under the same
 version number.
 
+## v0.10.0 (Unreleased)
+
+- `softschema scan` reads a directory of Markdown, YAML, and JSON records and reports
+  validation problems by path.
+  Python’s `scan_collection` and TypeScript’s `scanCollection` expose the records and
+  compiled schemas. Pass a previous scan to reuse unchanged inputs and revalidate records
+  whose schema changed.
+- Python now rejects the internal field names `contract_id` and `schema_ref` in artifact
+  metadata. Use `contract` and `schema` respectively.
+  Contract identifiers ending in a newline are invalid.
+
 ## v0.9.1—2026-10-26
 
 A patch release.
