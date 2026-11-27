@@ -3,9 +3,9 @@ type: is
 id: is-01m8bkvknb9jjxtvp7dfhe4nc6
 title: Add a bounded read-only collection API and scan command
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 9
+version: 10
 delegate: codex@spud10.local
 labels: []
 dependencies: []
@@ -16,8 +16,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-26T09:44:16.298Z
-updated_at: 2026-11-27T09:53:32.455Z
+updated_at: 2026-11-27T17:51:45.764Z
 started_at: 2026-11-26T09:45:22.605Z
+closed_at: 2026-11-27T17:51:45.762Z
+close_reason: "Released SoftSchema 0.10.0 from merged stack #80. Both registries match the published CI candidates. Installed Python and TypeScript quickstarts and collection scan parity passed."
+resolution: null
+duplicate_of: null
 ---
 Support the Metabrowser SoftSchema collection-table effort with portable scanning, schema binding, document outcomes, and refresh. Keep the Python and TypeScript CLI and public result semantics aligned.
 
