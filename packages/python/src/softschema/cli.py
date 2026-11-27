@@ -272,6 +272,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     inspect_parser.set_defaults(func=_inspect_cmd)
 
+    scan_parser = subparsers.add_parser("scan", help="Survey a directory of SoftSchema artifacts")
+    scan_parser.add_argument("path", type=Path)
+    scan_parser.add_argument("--json", action="store_true", help="emit a structured summary")
+    scan_parser.set_defaults(func=_scan_cmd)
+
     docs_parser = subparsers.add_parser("docs", help="Print bundled docs and examples.")
     docs_parser.add_argument("topic", nargs="?", choices=sorted(DOC_TOPICS))
     docs_parser.add_argument(
@@ -749,6 +754,22 @@ def _compile_cmd(args: argparse.Namespace) -> int:
     )
     print(_json(result))
     return 1 if result.drift else 0
+
+
+def _scan_cmd(args: argparse.Namespace) -> int:
+    from softschema.collection import scan_collection
+
+    result = scan_collection(args.path)
+    summary = result.summary()
+    if args.json:
+        _write_text(_json(summary))
+    else:
+        state = "complete" if result.complete else "incomplete"
+        _write_text(
+            f"Collection scan {state}: {len(result.records)} records, "
+            f"{len(result.schemas)} schemas, {len(summary['problems'])} problems."
+        )
+    return int(not result.complete or bool(summary["problems"]))
 
 
 def _inspect_cmd(args: argparse.Namespace) -> int:

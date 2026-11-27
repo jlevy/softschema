@@ -23,7 +23,7 @@ _CONTRACT_ID_RE = re.compile(
 
 def _check_contract_id(value: str) -> str:
     """Raise if ``value`` violates the enforced contract-ID grammar."""
-    if not _CONTRACT_ID_RE.match(value):
+    if not _CONTRACT_ID_RE.fullmatch(value):
         raise ValueError(
             f"malformed contract ID {value!r}: expected [namespace:]Name[/version] "
             "(namespace lowercase [a-z0-9_], dot-separated; name starts with a letter "
@@ -132,6 +132,10 @@ def parse_schema_metadata(raw: Any) -> SchemaMetadata | None:
     if isinstance(raw, str):
         return SchemaMetadata.model_validate({"contract": raw})
     if isinstance(raw, dict):
+        # Python callers can construct the model by field name. Artifacts use the wire aliases.
+        for name, field in SchemaMetadata.model_fields.items():
+            if field.alias is not None and field.alias != name and name in raw:
+                raise ValueError(f"unknown softschema key {name!r}, use {field.alias!r}")
         return SchemaMetadata.model_validate(raw)
     msg = f"softschema metadata must be a string or mapping, got {type(raw).__name__}"
     raise ValueError(msg)

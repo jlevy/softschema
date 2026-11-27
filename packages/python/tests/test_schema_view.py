@@ -53,6 +53,26 @@ def test_field_lookup_returns_typed_info(view: SchemaView) -> None:
     assert title.enum is None
 
 
+def test_array_items_keep_their_own_annotations() -> None:
+    day = {"type": "string", "format": "date", "pattern": "^[0-9]"}
+    view = SchemaView(
+        {
+            "$defs": {"Day": day},
+            "properties": {
+                "one": {"anyOf": [{"$ref": "#/$defs/Day"}, {"type": "null"}]},
+                "inline": {"type": "array", "items": day},
+                "referenced": {"type": "array", "items": {"$ref": "#/$defs/Day"}},
+            },
+        }
+    )
+    scalar = view.field("/properties/one")
+    assert (scalar.format, scalar.pattern) == (day["format"], day["pattern"])
+    for name in ("inline", "referenced"):
+        array = view.field(f"/properties/{name}")
+        assert (array.format, array.pattern) == (None, None)
+        assert (array.item_format, array.item_pattern) == (scalar.format, scalar.pattern)
+
+
 def test_field_lookup_missing_pointer_raises(view: SchemaView) -> None:
     with pytest.raises(ValueError, match="no field at pointer"):
         view.field("/properties/does_not_exist")

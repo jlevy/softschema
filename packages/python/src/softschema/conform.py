@@ -52,8 +52,9 @@ person would give something.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, Sequence
+from collections.abc import Callable, MutableMapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +74,7 @@ from softschema.models import SchemaProfile
 
 # One-directional: this module reads validation, and the combined repair-and-validate
 # entry point lives in `softschema.pipeline`, so neither of these two imports the other.
-from softschema.validate import validate_structural
+from softschema.validate import StructuralResult, validate_structural
 
 CONFORM_KIND = "conform_applied"
 """``kind`` on every record this module emits, matching the repair pass's surface."""
@@ -181,9 +182,8 @@ def _admits_string(validator_value: Any) -> bool:
     return False
 
 
-def _structural_locations(values: Any, schema_path: Path) -> list[Sequence[Any]]:
+def _structural_locations(result: StructuralResult) -> list[Sequence[Any]]:
     """Where the compiled schema wanted a string and got something else."""
-    result = validate_structural(values, schema_path)
     return [
         record["path"]
         for record in result.errors
@@ -214,15 +214,15 @@ def _conform_values(
     values: Any,
     yaml: Any,
     *,
-    schema_path: Path | None,
+    validator: Callable[[Any], StructuralResult] | None,
     model: type[BaseModel] | None,
 ) -> list[dict[str, Any]]:
     """Replace mistyped scalars with their own text. Returns one record per change."""
     records: list[dict[str, Any]] = []
     for _round in range(_MAX_ROUNDS):
         locations: list[Sequence[Any]] = []
-        if schema_path is not None:
-            locations.extend(_structural_locations(values, schema_path))
+        if validator is not None:
+            locations.extend(_structural_locations(validator(values)))
         if model is not None:
             locations.extend(_semantic_locations(model, values))
         if not locations:
@@ -283,6 +283,21 @@ def conform_artifact(
         except OSError:
             return ConformResult(changed=False, skipped_reason="artifact_unreadable")
 
+    validator = partial(validate_structural, schema_yaml_path=schema_path) if schema_path else None
+    result = _conform_text(text, validator, model, envelope_key, profile)
+    if write and result.changed and result.text is not None:
+        write_artifact_text(path, result.text)
+    return result
+
+
+def _conform_text(
+    text: str,
+    validator: Callable[[Any], StructuralResult] | None,
+    model: type[BaseModel] | None,
+    envelope_key: str | None,
+    profile: SchemaProfile,
+) -> ConformResult:
+    """Conform a captured document against a prepared, filesystem-independent binding."""
     crlf = "\r\n" in text
     normalized = text.replace("\r\n", "\n") if crlf else text
 
@@ -315,7 +330,7 @@ def conform_artifact(
         # report, not licence to apply the envelope's contract to the document root.
         return ConformResult(changed=False, text=text, skipped_reason="no_envelope")
 
-    records = _conform_values(values, yaml, schema_path=schema_path, model=model)
+    records = _conform_values(values, yaml, validator=validator, model=model)
     if not records:
         return ConformResult(changed=False, text=text)
 
@@ -329,8 +344,6 @@ def conform_artifact(
     if not _still_portable(conformed, profile):
         return ConformResult(changed=False, text=text, skipped_reason="not_portable")
 
-    if write:
-        write_artifact_text(path, conformed)
     return ConformResult(changed=True, text=conformed, records=records)
 
 

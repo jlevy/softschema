@@ -649,6 +649,9 @@ which no pass emits yet.
 
 ### Schema View
 
+See the [Collection Design](softschema-collection-design.md) for schema inspection and
+payload loading in a directory of records.
+
 `SchemaView` is the single read-only navigator over a compiled JSON Schema.
 Every downstream consumer (QA rules, agent prompts, comparison logic, generated
 sections) goes through this one API instead of re-parsing the schema in each module.

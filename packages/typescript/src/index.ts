@@ -1,5 +1,15 @@
 /** Public API for softschema. Targets Node.js / Bun runtimes (uses `node:` builtins transitively). */
 export {
+  type CollectionOptions,
+  type CollectionRecord,
+  type CollectionScan,
+  type CollectionSchema,
+  collectionFromSnapshotJson,
+  collectionSnapshotJson,
+  collectionSummary,
+  scanCollection,
+} from "./collection.js";
+export {
   type CompileOptions,
   type CompileResult,
   compileSchema,
